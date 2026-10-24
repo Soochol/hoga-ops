@@ -16,13 +16,15 @@ import re
 import tempfile
 import time
 import warnings
+from datetime import date as CalendarDate
 from pathlib import Path
 from typing import Annotated, Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, Field, StringConstraints, ValidationError
+from pydantic import BaseModel, Field, StringConstraints, ValidationError, field_validator
 
 from hoga.util.atomic_write import atomic_write_json
 
@@ -53,6 +55,41 @@ class WhiteboardScene(BaseModel):
     files: dict[str, WhiteboardFile] = Field(default_factory=dict)
 
 
+class ReviewRecord(BaseModel):
+    model_config = {"extra": "forbid"}
+    id: BoardId
+    title: str = Field(default="", max_length=300)
+    stock: str = Field(default="", max_length=120)
+    code: str = Field(default="", pattern=r"^(?:[0-9]{6})?$")
+    timeframe: str = Field(default="", max_length=20)
+    captured_at_ms: int | None = Field(default=None, ge=0)
+    image_file_id: str | None = Field(default=None, max_length=128)
+    judgment: str = Field(default="", max_length=20_000)
+    action: str = Field(default="", max_length=20_000)
+    result: str = Field(default="", max_length=20_000)
+
+
+class ReviewSummary(BaseModel):
+    model_config = {"extra": "forbid"}
+    date: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    summary: str = Field(default="", max_length=10_000)
+    completed: bool = False
+    stocks: list[str] = Field(default_factory=list, max_length=200)
+
+    @field_validator("date")
+    @classmethod
+    def valid_date(cls, value: str) -> str:
+        CalendarDate.fromisoformat(value)
+        return value
+
+
+class ReviewNote(ReviewSummary):
+    good: str = Field(default="", max_length=10_000)
+    change: str = Field(default="", max_length=10_000)
+    principle: str = Field(default="", max_length=10_000)
+    records: list[ReviewRecord] = Field(default_factory=list, max_length=200)
+
+
 class WhiteboardSummary(BaseModel):
     id: BoardId
     name: str
@@ -61,9 +98,11 @@ class WhiteboardSummary(BaseModel):
     updated_at_ms: int
     deleted_at_ms: int | None = None
     element_count: int
+    review: ReviewSummary | None = None
 
 
 class WhiteboardDocument(WhiteboardSummary):
+    review: ReviewNote | None = None
     schema_version: int = 1
     engine_version: str = "excalidraw/0.18.1"
     scene: WhiteboardScene
@@ -81,6 +120,7 @@ class WhiteboardCreate(BaseModel):
     mutation_id: BoardId
     name: Name = "새 보드"
     scene: WhiteboardScene = Field(default_factory=WhiteboardScene)
+    review: ReviewNote | None = None
 
 
 class WhiteboardWrite(BaseModel):
@@ -89,6 +129,7 @@ class WhiteboardWrite(BaseModel):
     name: Name
     scene: WhiteboardScene
     deleted: bool = False
+    review: ReviewNote | None = None
 
 
 def _error(status: int, code: str, message: str) -> HTTPException:
@@ -119,7 +160,7 @@ class WhiteboardStore:
             raise _error(503, "whiteboard_unreadable", "보드 파일을 읽지 못했습니다. 원본은 보존했습니다") from exc
         if not isinstance(raw, dict):
             raise _error(503, "whiteboard_unreadable", "보드 파일이 손상되었습니다. 원본은 보존했습니다")
-        if raw.get("schema_version") != 1:
+        if raw.get("schema_version") not in {1, 2}:
             raise _error(409, "whiteboard_version", "지원하지 않는 보드 버전입니다. 원본은 보존했습니다")
         try:
             doc = WhiteboardDocument.model_validate(raw)
@@ -138,7 +179,11 @@ class WhiteboardStore:
                 unreadable.append(path.stem)
                 continue
             if bool(doc.deleted_at_ms) == deleted:
-                boards.append(WhiteboardSummary.model_validate(doc.model_dump()))
+                payload = doc.model_dump()
+                payload["review"] = (
+                    doc.review.model_dump(include=set(ReviewSummary.model_fields)) if doc.review else None
+                )
+                boards.append(WhiteboardSummary.model_validate(payload))
         boards.sort(key=lambda b: (-b.updated_at_ms, b.id))
         return WhiteboardList(boards=boards, unreadable_ids=unreadable)
 
@@ -160,7 +205,9 @@ class WhiteboardStore:
 
     def write(self, req: WhiteboardCreate | WhiteboardWrite, board_id: str) -> WhiteboardDocument:
         path = self.document_path(board_id)
-        digest = hashlib.sha256(req.model_dump_json().encode()).hexdigest()
+        digest = hashlib.sha256(req.model_dump_json(
+            exclude={"review"} if "review" not in req.model_fields_set else set(),
+        ).encode()).hexdigest()
         old = self.read(board_id) if path.exists() else None
         if old and old.last_mutation_id == req.mutation_id:
             if old.last_mutation_hash != digest:
@@ -176,6 +223,20 @@ class WhiteboardStore:
                 409, "whiteboard_conflict", "다른 창에서 보드를 변경했습니다. 내 편집을 새 보드로 보존할 수 있습니다"
             )
         self.validate_scene(req.scene)
+        # Clients predating notes may update a legacy canvas. An omitted field
+        # never erases structured writing from a newer document.
+        review = req.review if "review" in req.model_fields_set or not old else old.review
+        if review:
+            if len(review.model_dump_json().encode()) + len(req.scene.model_dump_json().encode()) > MAX_DOCUMENT_BYTES:
+                raise _error(413, "whiteboard_too_large", "노트 문서는 최대 12MB까지 저장할 수 있습니다")
+            ids = [record.id for record in review.records]
+            if len(ids) != len(set(ids)):
+                raise _error(422, "review_duplicate_record", "기록 ID가 중복되었습니다")
+            if any(record.image_file_id and record.image_file_id not in req.scene.files for record in review.records):
+                raise _error(422, "whiteboard_missing_asset", "기록에 필요한 이미지가 없습니다")
+            review = review.model_copy(update={"stocks": list(dict.fromkeys(
+                record.stock or record.code for record in review.records if record.stock or record.code
+            ))})
         now = int(time.time() * 1000)
         doc = WhiteboardDocument(
             id=board_id,
@@ -188,11 +249,23 @@ class WhiteboardStore:
             else None,
             element_count=sum(not el.get("isDeleted", False) for el in req.scene.elements),
             scene=req.scene,
+            schema_version=2 if review else 1,
+            review=review,
             last_mutation_id=req.mutation_id,
             last_mutation_hash=digest,
         )
         atomic_write_json(path, doc.model_dump(mode="json"))
         return doc
+
+    def daily(self, review_date: str) -> WhiteboardDocument:
+        for board in sorted(self.list(deleted=False).boards, key=lambda b: (b.created_at_ms, b.id)):
+            if board.review and board.review.date == review_date:
+                return self.read(board.id)
+        board_id = uuid4().hex
+        return self.write(WhiteboardCreate(
+            id=board_id, mutation_id=board_id, name=f"{review_date} 복기",
+            review=ReviewNote(date=review_date),
+        ), board_id)
 
     def upload(self, data: bytes) -> WhiteboardAsset:
         try:
@@ -263,6 +336,11 @@ def build_router(*, data_dir: Path) -> APIRouter:
             if len(data) > MAX_IMAGE_BYTES:
                 raise _error(413, "whiteboard_image_too_large", "이미지는 한 장당 최대 16MB입니다")
         return await disk_call(store.upload, bytes(data))
+
+    @router.post("/daily/{review_date}")
+    async def open_daily(review_date: CalendarDate) -> WhiteboardDocument:
+        async with store.lock:
+            return await disk_call(store.daily, review_date.isoformat())
 
     @router.get("/assets/{asset_id}")
     async def get_asset(asset_id: str) -> FileResponse:

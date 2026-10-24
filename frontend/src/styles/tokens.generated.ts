@@ -28,12 +28,17 @@ export const TAILWIND_THEME = {
     "3xl": "var(--space-3xl)",
   },
   height: {
+    "review-image": "var(--h-review-image)",
+    "review-thumbnail": "var(--h-review-thumbnail)",
     "toolbar": "var(--h-toolbar)",
     "capture-row": "var(--h-capture-row)",
     "top-nav": "var(--h-top-nav)",
     "bottom-bar": "var(--h-bottom-bar)",
   },
   width: {
+    "review-list": "var(--review-list-w)",
+    "review-document": "var(--review-document-w)",
+    "review-thumbnail": "var(--review-thumbnail-w)",
     "whiteboard-list": "var(--whiteboard-list-w)",
     "sidebar": "var(--sidebar-w)",
     "watchlist-panel": "var(--watchlist-panel-w)",

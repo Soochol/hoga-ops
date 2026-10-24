@@ -1,0 +1,91 @@
+{
+  "base_sha": "ff1488fa3d3471c423169c0422b9bdf29ec541b4",
+  "branch": "codex/daily-review-notes",
+  "working_tree": true,
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "node": "v24.13.1",
+    "python": "Python 3.14.7",
+    "chrome": "Google Chrome 156.0.8078.47",
+    "electron": "44.8.0",
+    "e2e_workers": 1,
+    "credentials": "empty vendor credentials, isolated test data"
+  },
+  "source_sets": [
+    {
+      "directory": "frontend/src/",
+      "files": 1683,
+      "sha256": "83cbbc86fdd9cf10fc6ec2294be57512b89db710afd112ea6bbe99945caee56d"
+    },
+    {
+      "directory": "frontend/tests/",
+      "files": 185,
+      "sha256": "db03905ba83e9dddd76bd63a518081a8ff7938be388e094dc93e9be6ac65765d"
+    },
+    {
+      "directory": "hoga/",
+      "files": 316,
+      "sha256": "3e23440fef56df739865079d1e42f59f31afe763502d83452ca2c11d4690208c"
+    },
+    {
+      "directory": "tests/",
+      "files": 499,
+      "sha256": "7c3e102b8fe54bd9678edecf42f9fd085e645a96cdd01c5be28472134a46977e"
+    },
+    {
+      "directory": "desktop/",
+      "files": 62,
+      "sha256": "d4739b215f6a84b3ea8a8db50b23e560ef014c8627e9659cb6cef2ebe66f3244"
+    }
+  ],
+  "sha256": {
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    "CHANGELOG.md": "ea351dfe56fad19766147a2d4d365dfdcfaf26028869bb37bc447858545732c3",
+    "CONTEXT.md": "42ce4c166a1a8a73a8ad19d6718539f9b37eb4c13a8957c002fd8118f8199678",
+    "DESIGN.md": "79da2c89072ead3be677afd51e296fadc33a24444ccda4c894f934470bd372d3",
+    "desktop/package-lock.json": "913027885f935c6077429db3bf2cabdc39c5dbc0577bf786344ded7ef73e0609",
+    "desktop/package.json": "6e2e2b6e7a9229d2c402b06eb7049e42b6f8dac506967c1e7f6c4fe59739ecc2",
+    "desktop/playwright.config.cjs": "6c49425f8c8fcf846fc1680b6b252a7dffba334160e5b1747941febe6d9ec249",
+    "desktop/tests/e2e/whiteboard.spec.cjs": "27319ba172bbdf9d2675a8da3e3ee3f12f2715853a70f0d6fb2b86b4330e9fcc",
+    "docs/review-notes.md": "b50f3b349fe8aadea622680c6b3cf24929afb3f85ed3047e294d0f6c5ee44a3b",
+    "docs/whiteboard.md": "0ad7c81f38a7b670cc29d6d02e54788ce14889b9fe855fcfad15126ccfe71a83",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/src/api/whiteboards.ts": "880b532ebaddadd87730d7be9aefb2c67ed0479100b9bc04dcc1b618ee0bb6db",
+    "frontend/src/chart/ChartCaptureActions.tsx": "bf8273655c9ce89c95adff65261fa74ecb26f7f871b4cabfc32076f2f3cc5a0a",
+    "frontend/src/nav/TopNav.test.tsx": "d3ce8d763343d36c5769806f4320461ca2c1a843ce3a9d93b570feba53f0a21c",
+    "frontend/src/nav/items.ts": "36822ecb5b21585c05071107e0d72f6e5a4e39dcd70ac4e53b9e12e3b11e14cf",
+    "frontend/src/pages/LegacyWhiteboard.tsx": "cce9d9132447ea6394c1873452dd46fbfa68606c814f48a755de11f3eeffdb98",
+    "frontend/src/pages/ReviewNotes.tsx": "4de48ff68e85d9d7501aa78cf43ee55e184ca7bbc7d95e1354e860711039a6a9",
+    "frontend/src/pages/Whiteboard.tsx": "398b78bb43133c4bfcd10d3aac18c89879c8e46ef27c199e46c42dc5f0d3b416",
+    "frontend/src/styles/design-tokens.ts": "a052d419ba379e8f633a5858ed02760cfd4e9ec2ee5c29d7f68632663b63c174",
+    "frontend/src/styles/tokens.css": "0b4e4257df694c105919784886de14913bbb8b11b37a800f9f2d8947a8caac1a",
+    "frontend/src/styles/tokens.generated.ts": "121cc1eca7994e35cacfdbf21f05873a93a413e071497ff2decb8171c99a1da4",
+    "frontend/src/whiteboard/ChartToBoardDialog.tsx": "49e1848c37a13b9860543df9f3b97e501bc4ec665ea378cb9d0122d2ae06dd68",
+    "frontend/src/whiteboard/ReviewDocument.tsx": "d6c6d992854529993fa348733c0c1f40f5ee861cff8b471799954f7c733fa119",
+    "frontend/src/whiteboard/chartTransfer.ts": "d51f431a5aae9e456f99f709705ff311ee75096ea972e2dcee1d180733bdde74",
+    "frontend/src/whiteboard/drafts.ts": "4cdc77093c2eca2b13d69bfdb79253698933cdfb1b6ab7e2a8b63d518e7e438a",
+    "frontend/src/whiteboard/files.ts": "c7402b8de0789efc5abeaa7c2a9702d4ca8fbe77145bbdc2c013028df28a7ab6",
+    "frontend/src/whiteboard/review.css": "38dfc9e03995faa9539278b02576f857eb45faaabd3e52584bce869010335e3f",
+    "frontend/src/whiteboard/review.test.ts": "1dd5ab669848bc158a0e4e46d8e830f17dc0f5d7ae544aa4d17fb30d85803ebd",
+    "frontend/src/whiteboard/review.ts": "de19c6e6db9e9e536bd567bfd8e73758326c5f0c18595e284e8471005cde95de",
+    "frontend/src/whiteboard/session.test.ts": "a6acc58b0910c91499460fda8080cff61282f3521a43d623171a7e5e41eda915",
+    "frontend/src/whiteboard/session.ts": "c4ce0d7f5f386139232ef5176d3e0ad75ce8802058ee9dcd5046eab59f46173b",
+    "frontend/tailwind.config.ts": "9777f54a252d961a85577a881ab4c06979f47e1f3cc43071bb7106fb9f752574",
+    "frontend/tests/e2e/chart-image-export.spec.ts": "aa2a781951efbec67cade4df99dcafffde91692a88cecf9f66c5699a81938348",
+    "frontend/tests/e2e/review-notes.spec.ts": "4343c6dbe30f0df7adea9489dfa18f34e80f5ba4b750e30317046fdaabb7aad6",
+    "frontend/tests/e2e/whiteboard.spec.ts": "2ddf2badaa09996d60541e536aeeb119e1afe93476acdb2867bd8e9669583d69",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "hoga/api/whiteboards.py": "96b21f78a72c743545aa36e0eec0642f405c718185733d592e88f2b745a04df4",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "ruff.toml": "422277b5742ea124f25690201cb540117de803f74719052a6dbdc3bfa8aa7d07",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "d7b3dd38eecf465480e2ac48a323d181c50145051c17cda67689c5697f70d37c",
+    "tests/unit/api/test_whiteboards.py": "e22051723b941b2a4b8f9ce1074498c48d291b544746851993eee32b1d3163bd",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  }
+}

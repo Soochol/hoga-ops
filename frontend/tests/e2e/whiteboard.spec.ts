@@ -128,7 +128,7 @@ test('이미지 포함 자동 저장, PNG 내보내기와 편집 파일 왕복',
   );
   const clean = await browser.newContext({ baseURL: BASE_URL });
   const fresh = await clean.newPage();
-  await fresh.goto('/whiteboard');
+  await fresh.goto('/whiteboard?legacy=1');
   await fresh.getByLabel('보드 파일 선택', { exact: true }).setInputFiles(path);
   await expect(fresh.getByText('보드를 새로 가져왔습니다', { exact: true })).toBeVisible();
   await expect(fresh.getByTestId('whiteboard-editor')).toBeVisible();
@@ -187,13 +187,14 @@ test('복제 보드는 독립적이며 삭제한 보드를 휴지통에서 복�
   await page.getByRole('button', { name: '보드 복제', exact: true }).click();
   await expect(page).not.toHaveURL(new RegExp(doc.id));
   const cloneId = new URL(page.url()).searchParams.get('board')!;
+  await expect(page.getByRole('textbox', { name: '보드 이름' })).toHaveValue('원본 독립성 복사');
   await page.getByRole('textbox', { name: '보드 이름' }).fill('복사본 변경');
   await expect.poll(async () => (await read(request, cloneId)).name).toBe('복사본 변경');
   expect((await read(request, doc.id)).name).toBe('원본 독립성');
   await page.getByRole('button', { name: '보드 삭제', exact: true }).click();
   await expect.poll(async () => (await read(request, cloneId)).deleted_at_ms).not.toBeNull();
   await page.getByRole('button', { name: '휴지통', exact: true }).click();
-  await page.getByRole('button', { name: /복사본 변경 객체/ }).click();
+  await page.getByTestId(`whiteboard-row-${cloneId}`).click();
   await page.getByRole('button', { name: '보드 복원', exact: true }).first().click();
   await expect.poll(async () => (await read(request, cloneId)).deleted_at_ms).toBeNull();
 });

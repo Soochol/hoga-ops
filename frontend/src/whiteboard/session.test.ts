@@ -42,7 +42,7 @@ function element(version: number) {
   ] as unknown as ExcalidrawElement[];
 }
 function acknowledgement(doc: WhiteboardDocument, req: WhiteboardWrite) {
-  return { ...doc, name: req.name, scene: req.scene, revision: req.expected_revision + 1 };
+  return { ...doc, name: req.name, scene: req.scene, review: req.review, revision: req.expected_revision + 1 };
 }
 
 describe('whiteboard durable saves', () => {
@@ -135,5 +135,24 @@ describe('whiteboard durable saves', () => {
     await session.flush();
     expect(session.state.status).toBe('saved');
     expect(session.state.localError).toBe(true);
+  });
+
+  it('preserves newer structured text when a previous save completes and keeps it in recovery', async () => {
+    const doc = document(), session = new BoardSession(doc, {}, 'review-race');
+    const review = { date: '2026-10-24', summary: '이전 문장', completed: false, stocks: [],
+      good: '', change: '', principle: '', records: [] };
+    session.editReview(review);
+    let resolve!: (doc: WhiteboardDocument) => void;
+    vi.mocked(writeBoard).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const saving = session.flush(); await vi.advanceTimersByTimeAsync(0);
+    const request = vi.mocked(writeBoard).mock.calls[0][1];
+    session.editReview({ ...review, summary: '가장 최근의 한글 문장', completed: true });
+    resolve(acknowledgement(doc, request)); await saving;
+    expect(session.state.status).toBe('dirty');
+    expect(session.state.review?.summary).toBe('가장 최근의 한글 문장');
+    expect(writeLocal).toHaveBeenLastCalledWith('review-race', expect.objectContaining({ review: expect.objectContaining({ summary: '가장 최근의 한글 문장', completed: true }) }));
+    vi.mocked(writeBoard).mockImplementationOnce(async (_, req) => acknowledgement(doc, req));
+    await session.flush();
+    expect(session.document.review?.summary).toBe('가장 최근의 한글 문장');
   });
 });
