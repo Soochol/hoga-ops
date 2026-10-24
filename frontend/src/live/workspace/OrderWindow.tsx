@@ -44,6 +44,7 @@ import { bookDayMarkers } from './bookDayMarkers';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { useOrderbookAvailability } from '../useOrderbookAvailability';
 import { BookAvailabilityState } from './BookAvailabilityState';
+import { RestOrderbookEmpty, RestOrderbookSource } from './RestOrderbookState';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
@@ -788,14 +789,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         }}
         render={() => settingsDraft && <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
-    {snapshot != null && !restBook && <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />}
-    {restBook && <div className="m-2 text-xs text-fg-dim" data-testid="order-rest-book-source">
-      {rest.data?.source === 'stored' ? '저장된 마지막 호가' : 'REST 마지막 호가'} · {restBook.book_time ?? '시각 미제공'} · {effectiveVenue === 'UN' ? '통합' : effectiveVenue} · 거래일 미제공
-      {(rest.isError || rest.data?.refresh_failed || rest.data?.storage_failed) && <div>
-        {rest.data?.storage_failed ? '호가 저장 실패' : '최신 호가 조회 실패'}
-        <button type="button" className="ml-2" onClick={() => { void rest.refetch(); }}>다시 조회</button>
-      </div>}
-    </div>}
+    {snapshot != null && !needsRestBook && <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />}
+    {restBook && <RestOrderbookSource rest={rest} venue={effectiveVenue} testId="order-rest-book-source" />}
     <div className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>
@@ -809,11 +804,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           <span data-lane-probe className="order-total-probe" data-figure={samples.total} />
         </span>
         {prices.length === 0 ? <div className={`order-empty-layout ${expanded ? 'order-empty-expanded' : ''}`}>
-          <div>{needsRestBook ? <div className="m-2 text-xs text-fg-dim" data-testid="order-empty-book">
-            {loadingLastBook ? '마지막 호가 불러오는 중…'
-              : rest.isError || rest.data?.refresh_failed ? '마지막 호가 조회 실패' : '저장된 마지막 호가가 없습니다'}
-            {!loadingLastBook && <button type="button" className="ml-2" onClick={() => { void rest.refetch(); retryBook(); }}>다시 조회</button>}
-          </div> : bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />
+          <div>{needsRestBook ? <RestOrderbookEmpty rest={rest} loading={loadingLastBook} onRetry={retryBook} testId="order-empty-book" /> : bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />
             : <p className="order-notice">{afterHoursTotals ? '호가 사다리 없음 (총잔량만 수신 중)' : '현재 표시할 호가가 없습니다'}</p>}</div>
           <div className="order-empty-summary">{renderSummary(264)}</div>
         </div>

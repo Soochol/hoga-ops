@@ -214,6 +214,38 @@ for (const lastBook of ['empty', 'failed'] as const) {
   });
 }
 
+for (const lastBook of ['ready', 'empty', 'failed'] as const) {
+  test(`10호가 ${lastBook}는 마지막 정보를 표시하고 새로고침 후에도 유지한다`, async ({ page }, testInfo) => {
+    await page.clock.setFixedTime(new Date('2026-10-24T10:15:00+09:00'));
+    let restRequests = 0;
+    page.on('request', request => { if (request.url().includes('/api/live/last-orderbook?code=456160')) restRequests++; });
+    await setup(page, false, false, false, 0, 1, { venue: 'KRX', lastBook });
+    const frame = page.locator('[data-win]').filter({ has: page.getByRole('button', { name: '지투지바이오 10호가 창 닫기', exact: true }) });
+    await frame.getByRole('button', { name: '창 최대화', exact: true }).click();
+    const state = frame.getByTestId(lastBook === 'ready' ? 'book-rest-book-source' : 'book-empty-book');
+    await expect(state).toContainText(lastBook === 'ready' ? '20:00:00 · KRX · 거래일 미제공'
+      : lastBook === 'empty' ? '저장된 마지막 호가가 없습니다' : '마지막 호가 조회 실패');
+    // Two windows must share one request, including an empty/failed response.
+    expect(restRequests).toBe(1);
+    await expect(frame.getByText('실시간 연결 운영 시간이 아닙니다')).toHaveCount(0);
+    if (lastBook === 'ready') {
+      await expect(frame.locator('.book-price-value')).toHaveCount(20);
+      await expect(frame.getByLabel('매도총잔량 2,033', { exact: true })).toBeVisible();
+    }
+    await expect(frame.getByTestId('book-summary')).toBeVisible();
+    await frame.screenshot({ path: testInfo.outputPath(`last-book-${lastBook}.png`) });
+    await page.reload();
+    await expect(state).toBeVisible();
+    await expect(frame.getByText('실시간 연결 운영 시간이 아닙니다')).toHaveCount(0);
+    if (lastBook === 'ready') await expect(frame.locator('.book-price-value')).toHaveCount(20);
+    else {
+      await page.setViewportSize({ width: 520, height: 850 });
+      await expect(frame.getByTestId('book-summary')).toBeVisible();
+      await expect(frame.getByTestId('book-summary').getByText('51,000', { exact: true })).toBeVisible();
+    }
+  });
+}
+
 test('증권사 계좌 전환은 키움 주문을 활성화하고 토스 주문을 유지한다', async ({ page }, testInfo) => {
   const { window, toss, kiwoom, commands } = await multiBrokerSetup(page);
   const account = window.getByRole('combobox', { name: '주문 계좌' });
