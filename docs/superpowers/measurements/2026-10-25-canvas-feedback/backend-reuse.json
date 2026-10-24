@@ -1,0 +1,10 @@
+{
+  "source": "docs/diagnostics/2026-10-24-screener-update-unification/verification-inputs.json",
+  "compared_files": 839,
+  "mismatches": [],
+  "prior_validation": "docs/diagnostics/2026-10-24-screener-update-unification/validation.json",
+  "passed": 7122,
+  "skipped": 2,
+  "deselected": 13,
+  "backend_modified_by_this_task": false
+}

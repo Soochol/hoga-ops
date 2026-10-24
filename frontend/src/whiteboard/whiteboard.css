@@ -98,6 +98,7 @@
   border-top: 1px solid var(--border);
 }
 .wb-content {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -234,6 +235,16 @@
   font-size: var(--text-xs);
 }
 .wb-message {
+  position: absolute;
+  z-index: 30;
+  left: var(--space-md);
+  right: var(--space-md);
+  bottom: calc(var(--space-2xl) * 3);
+  max-height: 50%;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -243,6 +254,11 @@
   background: var(--bg-card);
   color: var(--fg-dim);
   border-bottom: 1px solid var(--border);
+}
+/* 0.18.1 has no UIOptions flag and reuses this test id for Mermaid. Scope the
+   web embed after the frame tool above the library's own display rule. */
+.wb-editor .excalidraw .App-toolbar__extra-tools-dropdown [data-testid="toolbar-frame"] + [data-testid="toolbar-embeddable"] {
+  display: none;
 }
 .wb-message > span {
   flex: 1;
@@ -339,3 +355,6 @@
     flex-wrap: wrap;
   }
 }
+
+/* Only suppress the vendor label while its app tooltip owns the same anchor. */
+.excalidraw-tooltip[data-canvas-tooltip-owned] { visibility: hidden !important; }

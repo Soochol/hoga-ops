@@ -14,7 +14,9 @@ import type { BoardSession } from './session';
 import { readLocal, writeLocal, type BoardView } from './drafts';
 import { fromDataURL, imageFile } from './images';
 import { hitInk } from './freehandEraser';
+import { externalEmbedsAsNotes, isExternalEmbed } from './externalEmbeds';
 import { useThemePrefsStore } from '../state/themePrefs';
+import { useCanvasTooltips } from './useCanvasTooltips';
 
 Object.assign(window, { EXCALIDRAW_ASSET_PATH: '/whiteboard/' });
 
@@ -50,6 +52,7 @@ export function BoardEditor({
   const viewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleRef = useRef<BoardEditorHandle | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const tooltip = useCanvasTooltips(surfaceRef);
   const erasing = useRef<Set<string> | null>(null);
   function collectInk(clientX: number, clientY: number) {
     if (!api || !erasing.current) return;
@@ -62,12 +65,13 @@ export function BoardEditor({
   }
   const readyRef = useRef(onReady);
   const errorRef = useRef(onError);
+  const recoveredEmbeds = useRef((initialElements ?? session.elements).some(isExternalEmbed));
   useEffect(() => {
     readyRef.current = onReady;
     errorRef.current = onError;
   }, [onReady, onError]);
   const [initial] = useState(() => ({
-    elements: initialElements ?? session.elements,
+    elements: externalEmbedsAsNotes(initialElements ?? session.elements),
     files: session.files,
     appState: {
       ...session.appState,
@@ -83,6 +87,10 @@ export function BoardEditor({
     if (!api) return;
     let mounted = true,
       imageEpoch = 0;
+    if (recoveredEmbeds.current) {
+      recoveredEmbeds.current = false;
+      api.setToast({ message: '외부 페이지를 링크 메모로 복구했습니다', duration: 5000 });
+    }
     const center = () => {
       const state = api.getAppState();
       return viewportCoordsToSceneCoords(
@@ -277,6 +285,7 @@ export function BoardEditor({
         if (!viewOnly) void handleRef.current?.addImages(files);
       }}
     >
+      {tooltip}
       <Excalidraw
         key={session.document.id}
         excalidrawAPI={setApi}
@@ -301,7 +310,19 @@ export function BoardEditor({
             changeViewBackgroundColor: false,
           },
         }}
-        onChange={(elements, state, files) => session.change(elements, state, files)}
+        onChange={(elements, state, files) => {
+          const supported = externalEmbedsAsNotes(elements);
+          if (supported !== elements) {
+            api?.updateScene({ elements: supported, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+            api?.setToast({ message: '외부 페이지 대신 링크 메모로 추가했습니다', duration: 5000 });
+          }
+          // validateEmbeddable disables rendering, but does not remove the tool in 0.18.1.
+          if (state.activeTool.type === 'embeddable') {
+            api?.setActiveTool({ type: 'selection' });
+            api?.setToast({ message: '웹 주소는 텍스트나 링크 메모로 추가해 주세요', duration: 5000 });
+          }
+          session.change(supported, state, files);
+        }}
         onScrollChange={(scrollX, scrollY, zoom) => {
           const surface = surfaceRef.current;
           if (surface) {
