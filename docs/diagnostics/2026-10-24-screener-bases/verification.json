@@ -1,0 +1,130 @@
+{
+  "checked_at": "2026-10-24T02:21:01.510775+00:00",
+  "head": "a7042c71b2a5f018e41d78814d7476bc641961cc",
+  "base": "a7042c71b2a5f018e41d78814d7476bc641961cc",
+  "working_tree": "uncommitted implementation",
+  "software_input_sha256": "aabe1687f95714e927c85f7205c01159b64b1252bfd3efe4b19146ed6f429748",
+  "code_revision": "de7c2cd95a94043b9e5222de2d75e3f536327f46887485b5133f084cef2c2f48",
+  "environment": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "ruff": "0.15.13",
+    "pytest": "9.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "credentials": "empty worktree .env; E2E provider credentials blank; no new authentication"
+  },
+  "checks": [
+    {
+      "command": ".venv/bin/ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": ".venv/bin/pytest -q -m 'not wallclock'",
+      "result": "6947 passed, 2 skipped, 13 deselected",
+      "log": "pytest-current",
+      "reuse": "Full run before the last optional row amount-method field; affected suite below checks final API/source changes."
+    },
+    {
+      "command": ".venv/bin/pytest -q -m 'not wallclock' tests/api/test_screener*.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/live/test_kiwoom_daily_candles.py",
+      "result": "657 passed",
+      "log": "backend-affected"
+    },
+    {
+      "command": "cd frontend && npx vitest run",
+      "result": "700 files, 8994 tests passed",
+      "log": "vitest-final",
+      "reuse": "Full run before final amount-method tooltip/header changes; affected suite below checks these final files."
+    },
+    {
+      "command": "cd frontend && npx vitest run src/screener src/pages/Screener.test.tsx src/state/screenerPanel.test.ts",
+      "result": "434 passed",
+      "log": "vitest-affected"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed (app/test/E2E projects)",
+      "log": "typecheck-current"
+    },
+    {
+      "command": "cd frontend && npx vite build",
+      "result": "passed; existing >700 kB chunk warning",
+      "log": "build-current"
+    },
+    {
+      "command": "cd frontend && npx playwright test screener-calculation-bases.spec.ts screener-condition-select.spec.ts screener-bar-volume.spec.ts --reporter=list",
+      "result": "5 passed",
+      "log": "e2e-final"
+    },
+    {
+      "command": "cd frontend && npx playwright test screener-calculation-bases.spec.ts --reporter=list",
+      "result": "2 passed after final display changes; these are a subset of the five scenarios",
+      "log": "e2e-current"
+    },
+    {
+      "command": "Intentional in-memory BE VolumeBasis mismatch against the unchanged frontend union",
+      "result": "Guard rejected intentional_guard_mismatch; restored contract passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "logs": {
+    "pytest-current": {
+      "sha256": "4781fc1ef98f4bb458791dba8a70336c8fd0c0e8bbd51fc897a7555a234fcea7",
+      "summary": "  /home/dev/.codex/worktrees/c6fb/hoga-ops/tests/unit/api/test_pattern_saves.py:111: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.\n    fields = set(req.conditions.model_fields)\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=== 6947 passed, 2 skipped, 13 deselected, 50 warnings in 290.12s (0:04:50) ===="
+    },
+    "backend-affected": {
+      "sha256": "ae0ea0e1b59fb3feccf3e34e267fc41a14ccac0aebfcfa894e3990d436421c41",
+      "summary": "  /home/dev/.codex/worktrees/c6fb/hoga-ops/hoga/api/screener_factors.py:115: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided\n    joined = u.join_asof(f, left_on=\"date\", right_on=\"seg_start\", by=\"code\", strategy=\"backward\")\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n====================== 657 passed, 36 warnings in 34.14s ======================="
+    },
+    "vitest-final": {
+      "sha256": "b2eff8325756d0fd815ec7f90799797caa7493e1890ce3061edc6efe96d3f582",
+      "summary": " Test Files  700 passed (700)\n      Tests  8994 passed (8994)\n   Start at  11:07:15\n   Duration  59.52s (transform 138.46s, setup 81.39s, import 412.35s, tests 391.91s, environment 696.61s)\n"
+    },
+    "vitest-affected": {
+      "sha256": "1eb4dc3800e48cad6ceb8e19700a29e38c66b2ea8c6739c178950664a538b314",
+      "summary": " Test Files  45 passed (45)\n      Tests  434 passed (434)\n   Start at  11:15:23\n   Duration  6.80s (transform 23.57s, setup 4.23s, import 35.02s, tests 14.13s, environment 49.19s)\n"
+    },
+    "typecheck-current": {
+      "sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+      "summary": "\n> frontend@0.0.0 typecheck\n> tsc -b && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.e2e.json --noEmit\n"
+    },
+    "build-current": {
+      "sha256": "3b27e1592974ac85cf2ab26b12c4c21f8c5c3d584c469ab2e6e366f35a420f76",
+      "summary": "[plugin builtin:vite-reporter] \n(!) Some chunks are larger than 700 kB after minification. Consider:\n- Using dynamic import() to code-split the application\n- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting\n- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit."
+    },
+    "e2e-final": {
+      "sha256": "fa373885cdafb7452a5da7d4b68030bf1befa3a7f025f78a4af821e2d1f5f088",
+      "summary": "\u001b[2m[WebServer] \u001b[22mINFO:     127.0.0.1:55388 - \"GET /api/screener/exclusions HTTP/1.1\" 200 OK\n  ✓  5 [chromium] › tests/e2e/screener-condition-select.spec.ts:11:1 › saved-condition popup stays open and protects edits in page and rail workflows (2.1s)\n\u001b[2m[WebServer] \u001b[22mINFO:     connection closed\n\n  5 passed (17.8s)"
+    },
+    "e2e-current": {
+      "sha256": "6ebf91e443254e63a42d9617d9a177e07a350f8ae8cc7581c9629416a11a34d2",
+      "summary": "\u001b[2m[WebServer] \u001b[22mINFO:     127.0.0.1:52104 - \"GET /api/screener/exclusions HTTP/1.1\" 200 OK\n  ✓  2 [chromium] › tests/e2e/screener-calculation-bases.spec.ts:78:1 › old servers keep the new policy controls disabled (806ms)\n\u001b[2m[WebServer] \u001b[22mINFO:     connection closed\n\n  2 passed (10.9s)"
+    },
+    "wire-http-current": {
+      "sha256": "432e28c4276af7efbbafb2324058877032ddbdc9194cd84ac328c0fc671f13e7",
+      "summary": "\ntests/api/test_screener_series.py .......................                [ 65%]\ntests/unit/api/test_rest_wire_schema_contract.py ............            [100%]\n\n============================== 35 passed in 3.08s =============================="
+    }
+  },
+  "validation_data": {
+    "source_rows": 9785155,
+    "source_files_unchanged": true,
+    "comparison_copy": "/tmp/hoga-series-v2-verified-20261024",
+    "network": "none during implementation validation; previously captured bounded provider observations only",
+    "e2e_ports": [
+      20368,
+      21368
+    ],
+    "user_servers": "8000/5173 preserved; no E2E listeners remain"
+  },
+  "limits": [
+    "Real market samples have no imported verified quantity interval, so share-adjusted remains unavailable.",
+    "Source/venue/revision cause of the Samsung raw observation conflicts is unresolved and blocked.",
+    "Exact replay supports archived confirmed D/W/M conditions only, at the same code/runtime revision.",
+    "Current charts do not replay the archived screener price version.",
+    "987 historical failures were not reconstructed or repaired in production."
+  ]
+}

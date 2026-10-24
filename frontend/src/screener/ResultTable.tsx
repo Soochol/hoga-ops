@@ -200,7 +200,9 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
           </span>}
         </span>
       )}
-      <span className="font-data tabular-nums text-right text-fg-dim" data-tooltip="조회 당시 추정 거래대금 · 평균 OHLC × 거래량">{toEok(r.trade_value_won)}</span>
+      <span className="font-data tabular-nums text-right text-fg-dim" data-tooltip={r.trade_value_method === 'provider_actual' ? '조회 당시 공급자 실제 거래대금'
+        : r.trade_value_method === 'ohlcv_estimate' ? '조회 당시 추정 거래대금 · 원주가 평균 OHLC × 원본 거래량'
+          : '조회 당시 추정 거래대금 · 평균 OHLC × 거래량'}>{toEok(r.trade_value_won)}</span>
       <span className="flex items-center justify-end gap-2">
         <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
       </span>

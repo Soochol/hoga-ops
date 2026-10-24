@@ -1922,7 +1922,13 @@ class HistoryDateRangeParams(BaseModel):
         return self
 
 
+CalculationPolicy = Literal["legacy_v1", "separate_bases_v2"]
+VolumeBasis = Literal["raw", "share_adjusted"]
+AmountMethod = Literal["provider_actual", "ohlcv_estimate", "mixed_daily"]
+
+
 class HistoryVolumeParams(HistoryDateRangeParams):
+    volume_basis: VolumeBasis | None = None
     record_period: HistoryRecordPeriod
 
     @model_validator(mode="after")
@@ -1934,7 +1940,7 @@ class HistoryVolumeParams(HistoryDateRangeParams):
 
 
 class VolumeBreakoutParams(BreakoutParams):
-    pass
+    volume_basis: VolumeBasis | None = None
 
 
 class BarRecordPeriod(BaseModel):
@@ -1944,6 +1950,7 @@ class BarRecordPeriod(BaseModel):
 
 
 class BarVolumeRangeParams(HistoryDateRangeParams):
+    volume_basis: VolumeBasis | None = None
     timeframe: ScreenerTimeframe
     include_open_bar: bool = True
     record_period: BarRecordPeriod
@@ -1964,6 +1971,11 @@ TradeValueMethod = Literal["ohlcv_estimate", "daily_estimate_sum"]
 
 class PeriodParams(CandleParams):                      # 최신 선택 봉 — 단일 비교 윈도우
     period: int = Field(ge=1)
+
+
+class VolumePeriodParams(PeriodParams):
+    volume_basis: VolumeBasis | None = None
+
 
 class ChangePctParams(CandleParams):
     change_reference: ChangeReference = "previous_day"
@@ -2112,7 +2124,12 @@ class NewHighTodayLeaf(BaseModel):
 class NewHighVolTodayLeaf(BaseModel):
     type: Literal["new_high_vol_today"] = "new_high_vol_today"
     id: str
-    params: PeriodParams
+    params: VolumePeriodParams
+
+    @field_validator("params", mode="before")
+    @classmethod
+    def accept_legacy_period_model(cls, value):
+        return value.model_dump() if isinstance(value, PeriodParams) else value
 
 class ChangePctLeaf(BaseModel):
     type: Literal["change_pct"] = "change_pct"
@@ -2250,12 +2267,19 @@ ScreenerUpdateSkipReason = Literal[
 
 
 class ScreenerConditionExpression(BaseModel):
+    calculation_policy: CalculationPolicy = "legacy_v1"
     conditions: list[ConditionLeaf] = Field(default_factory=list)
     expression: str | None = Field(default=None, max_length=10_000)
 
     @model_validator(mode="after")
     def _validate_expression(self):
         parse_expression(self.expression, len(self.conditions))
+        for leaf in self.conditions:
+            basis = getattr(leaf.params, "volume_basis", None)
+            if basis is not None and self.calculation_policy == "legacy_v1":
+                raise ValueError("거래량 기준 변경에는 새 계산 정책이 필요합니다")
+            if basis == "share_adjusted" and getattr(leaf.params, "timeframe", "D").endswith("m"):
+                raise ValueError("분봉은 실제 거래량 기준만 지원합니다")
         return self
 
 
@@ -2263,6 +2287,13 @@ class ScanRequest(ScreenerConditionExpression):
     universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)
     limit: int = Field(1000, ge=1, le=2000)
     basis: ScanBasis = "eod"
+    snapshot_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="after")
+    def validate_snapshot_policy(self):
+        if self.snapshot_id is not None and (self.calculation_policy != "separate_bases_v2" or self.basis != "eod"):
+            raise ValueError("스냅샷 지정 조회는 새 계산 기준의 확정 데이터만 지원합니다")
+        return self
 
 class HistoryMatch(BaseModel):
     condition_id: str
@@ -2381,6 +2412,8 @@ class BarVolumeCoverage(BaseModel):
 
 
 class ScreenerOccurrence(BaseModel):
+    volume_evidence: ScreenerVolumeEvidence | None = None
+    amount_evidence: ScreenerAmountEvidence | None = None
     condition_id: str
     condition_key: str
     date: str
@@ -2393,6 +2426,7 @@ class ScreenerOccurrence(BaseModel):
 
 
 class ScreenerExclusionWrite(BaseModel):
+    calculation_policy: CalculationPolicy = "legacy_v1"
     condition: ConditionLeaf
     code: str = Field(pattern=CODE_PATTERN)
     date: dt.date
@@ -2401,6 +2435,7 @@ class ScreenerExclusionWrite(BaseModel):
 
     @model_validator(mode="after")
     def validate_bar_date(self):
+        ScreenerConditionExpression(conditions=[self.condition], calculation_policy=self.calculation_policy)
         if self.bar_start_ms is not None:
             try:
                 day = dt.datetime.fromtimestamp(self.bar_start_ms / 1000, KST).date()
@@ -2417,6 +2452,7 @@ class ScreenerExclusionWrite(BaseModel):
 
 
 class ScreenerExclusion(BaseModel):
+    calculation_policy: CalculationPolicy = "legacy_v1"
     id: str
     condition_key: str
     condition: ConditionLeaf
@@ -2438,6 +2474,7 @@ class ScreenerRow(BaseModel):
     market: Literal["KOSPI", "KOSDAQ"]
     price: int
     trade_value_won: int
+    trade_value_method: AmountMethod | None = None
     change_pct: float | None
     # 조회 가격을 가져온 마지막 일봉 날짜. 기간 조건의 충족 발생일과는 다르다.
     price_date: str | None = None
@@ -2487,7 +2524,33 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
     bid_post_max: int | None = None
     bid_renewal_start_hhmm: int | None = None
 
+class ScreenerAmountEvidence(BaseModel):
+    trade_value_won: float = Field(ge=0, allow_inf_nan=False)
+    method: AmountMethod
+
+
+class ScreenerCalculation(BaseModel):
+    policy: CalculationPolicy
+    snapshot_id: str | None = None
+    adjusted_as_of: str | None = None
+    price_basis: str
+    event_revision: str | None = None
+    replayable: bool = False
+    execution_id: str | None = None
+
+
+class ScreenerVolumeEvidence(BaseModel):
+    basis: VolumeBasis
+    original_volume: str
+    compared_volume: str
+    maximum: str
+    window_start: str
+    window_end: str
+    unit: str = "shares"
+
+
 class ScreenerResponse(BaseModel):
+    calculation: ScreenerCalculation | None = None
     history_coverage: HistoryCoverage | None = None
     bar_coverage: BarVolumeCoverage | None = None
     status: Literal["ok", "not_seeded", "building"]
@@ -3305,3 +3368,6 @@ class SecondAggregatesResponse(BaseModel):
 
 class SecondTradeDatesResponse(BaseModel):
     dates: list[str]
+
+ScreenerOccurrence.model_rebuild()
+ScreenerResponse.model_rebuild()

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import polars as pl
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from hoga.api import (
     compute_jobs,
@@ -25,6 +25,7 @@ from hoga.api.calendar import TradingDayUnavailableError, trading_days_in_range
 from hoga.api.compute_pools import ComputePools, thread_pools
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.models import (
+    CalculationPolicy,
     PatternSave,
     PatternSavesFile,
     PatternSaveWriteRequest,
@@ -391,6 +392,7 @@ class ScreenerStatusResponse(BaseModel):
     null 필드가 몇 개 붙는데, 프론트 타입이 전부 optional 이라 무해하다.
     """
 
+    calculation_policies: list[CalculationPolicy] = Field(default_factory=lambda: ["legacy_v1", "separate_bases_v2"])
     status: str
     schema_version: int | None = None
     last_raw_date: str | None = None
@@ -485,6 +487,15 @@ def _read_requests_lifespan(*coalescers: ReadRequestCoalescer, volume_runtime=No
     return lifespan
 
 
+async def _update_save(data_dir: Path, save_id: str, req: ScreenerSaveWriteRequest) -> SavedScreener:
+    try:
+        return await screener_saves.update_save(data_dir, id=save_id, req=req, now_ms=int(time.time() * 1000))
+    except screener_saves.ScreenerSaveNotFoundError as exc:
+        raise _save_not_found(save_id) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = None,
                  live_buffer=None, volume_targets=None) -> APIRouter:
     global _module_bus  # noqa: PLW0603
@@ -505,6 +516,8 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     router.include_router(continuous_router(continuous))
     from hoga.api.screener_history_jobs import build_router as history_router  # noqa: PLC0415 — router import
     router.include_router(history_router(data_dir))
+    from hoga.api.screener_series_execution import build_router as executions_router  # noqa: PLC0415
+    router.include_router(executions_router(data_dir))
     from hoga.api.screener_exclusions import build_router as exclusions_router  # noqa: PLC0415
     router.include_router(exclusions_router(data_dir))
     sdir = data_dir / "screener"
@@ -512,7 +525,7 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     @router.post("/scan")
     async def scan(req: ScanRequest, request: Request) -> ScreenerResponse:
         # 동일 바디의 동시 요청은 하나의 스캔으로 합친다(모니터링·멀티탭 중복 제거).
-        key = f"{data_dir}:{screener_exclusions.revision(data_dir)}:{req.model_dump_json()}"
+        key = f"{data_dir}:{screener_exclusions.revision(data_dir, req.calculation_policy)}:{req.model_dump_json()}"
         return await scan_requests.run(
             key, lambda: screener_runner.run_screener_scan(
                 data_dir=data_dir, req=req, volume_runtime=volume_runtime), request)
@@ -602,11 +615,7 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
 
     @saves.put("/{save_id}", response_model=SavedScreener)
     async def update_save(save_id: str, req: ScreenerSaveWriteRequest) -> SavedScreener:
-        try:
-            return await screener_saves.update_save(
-                data_dir, id=save_id, req=req, now_ms=int(time.time() * 1000))
-        except screener_saves.ScreenerSaveNotFoundError as e:
-            raise _save_not_found(save_id) from e
+        return await _update_save(data_dir, save_id, req)
 
     @saves.delete("/{save_id}", status_code=204)
     async def delete_save(save_id: str) -> None:

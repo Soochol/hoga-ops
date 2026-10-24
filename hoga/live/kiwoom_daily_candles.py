@@ -218,6 +218,7 @@ async def fetch_daily_candles(
         run_page=run_page,
     )
 
+    events, source_rows = [], []
     candles: list[LiveCandle] = []
     violations: list[DailyInvariantViolation] = []
     seen: set[str] = set()
@@ -236,6 +237,12 @@ async def fetch_daily_candles(
         date_s = str(row.get("dt") or "").strip()
         if date_s and date_s in seen:
             continue
+        if (date_s and from_yyyymmdd <= date_s <= base_dt and row.get("upd_stkpc_tp")
+                and row.get("upd_rt") not in (None, "")):
+            events.append({"effective_date": date_s, "provider_kind": str(row["upd_stkpc_tp"]),
+                           "rate": str(row["upd_rt"]), "source": "kiwoom:ka10081"})
+        if not date_s or from_yyyymmdd <= date_s <= base_dt:
+            source_rows.append(dict(row))
         # 상한이 `to` 가 아니라 `base_dt` 다 — walk 가 실제로 덮는 구간이 그것이고,
         # 그 사이 행을 호출자에게 넘겨야 캐시 커버리지를 넓힐 수 있다.
         candle, violation = parse_row(
@@ -272,4 +279,5 @@ async def fetch_daily_candles(
         ))
 
     candles.sort(key=lambda c: c.t_ms)   # 응답은 최신순(DESC) 이다
-    return DailyCandleFetchResult(candles=candles, violations=violations)
+    return DailyCandleFetchResult(candles=candles, violations=violations,
+                                  adjustment_events=events, source_rows=source_rows)

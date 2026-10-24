@@ -68,7 +68,7 @@ async function refreshResults() {
     store.setLastScan({ ...before, basis: 'auto', requestJson: JSON.stringify(request),
       scanKey: before.scanKey === null ? null : JSON.stringify(request),
       interactionStartedAtMs: before.interactionStartedAtMs ?? before.scannedAtMs, rows: response.rows, scanStatus: response.status,
-      warnings: response.warnings, hasMore: response.has_more,
+      calculation: response.calculation, warnings: response.warnings, hasMore: response.has_more,
       historyCoverage: response.history_coverage, barCoverage: response.bar_coverage, depthValues: response.depth_values ?? null,
       intradayFailure: response.intraday_failure, scannedAtMs: response.scanned_at_ms ?? Date.now(),
       basisAtMs: response.basis_at_ms, fallbackBasisAtMs: response.fallback_basis_at_ms, dataStale: false });
@@ -134,7 +134,8 @@ export function useOccurrenceExclusions(scan: PanelScan | null) {
       const condition = conditions.find(c => c.id === occurrence.condition_id);
       if (!condition) { setError('이 발생 건의 조회 조건이 없습니다. 다시 조회해 주세요.'); return; }
       void mutate(async () => {
-        const entry = await excludeScreenerOccurrence({ condition, code, stock_name: name, date: occurrence.date, ...(occurrence.bar_start_ms != null ? { bar_start_ms: occurrence.bar_start_ms } : {}) });
+        const policy = JSON.parse(scan?.requestJson ?? scan?.scanKey ?? '{}').calculation_policy;
+        const entry = await excludeScreenerOccurrence({ ...(policy ? { calculation_policy: policy } : {}), condition, code, stock_name: name, date: occurrence.date, ...(occurrence.bar_start_ms != null ? { bar_start_ms: occurrence.bar_start_ms } : {}) });
         qc.setQueryData<ScreenerExclusionsFile>(KEY, old => ({ schema_version: 1,
           exclusions: [...(old?.exclusions ?? []).filter(e => e.id !== entry.id), entry] }));
         setLastExcluded(entry);

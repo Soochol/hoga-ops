@@ -1,0 +1,48 @@
+{
+  "tandl": {
+    "unadjusted": {
+      "current": 206022,
+      "maximum": 206022,
+      "peak_date": "2026-08-07"
+    },
+    "adjusted": {
+      "current": 206022,
+      "maximum": 333024,
+      "peak_date": "2026-08-04"
+    }
+  },
+  "conclusion": "Actual-volume selection changes the result with the same preserved original rows. Share-adjusted is unavailable until independent quantity evidence is verified.",
+  "samsung_conflicts": [
+    {
+      "date": "2026-09-18",
+      "changed": {
+        "close": {
+          "imported": 259500.0,
+          "observed": 260000
+        },
+        "volume": {
+          "imported": 14912544,
+          "observed": 17489615
+        }
+      },
+      "decision": "keep_imported_and_mark_window_unavailable",
+      "cause": "unconfirmed_source_or_venue_or_provider_revision"
+    },
+    {
+      "date": "2026-09-21",
+      "changed": {
+        "close": {
+          "imported": 274500.0,
+          "observed": 275000
+        },
+        "volume": {
+          "imported": 21995967,
+          "observed": 22261519
+        }
+      },
+      "decision": "keep_imported_and_mark_window_unavailable",
+      "cause": "unconfirmed_source_or_venue_or_provider_revision"
+    }
+  ],
+  "quantity_event_mapping": "Provider kinds 4/256 and price rates have not been decoded into share conversion ratios."
+}

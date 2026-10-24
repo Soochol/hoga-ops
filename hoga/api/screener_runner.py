@@ -22,7 +22,15 @@ from hoga.collector.orchestrator import now_kst
 from hoga.util.timeenc import KST
 
 
-async def run_screener_scan(
+async def run_screener_scan(*, data_dir: Path, req: ScanRequest,
+                            now: dt.datetime | None = None, volume_runtime=None) -> ScreenerResponse:
+    if req.calculation_policy == "separate_bases_v2":
+        from hoga.api.screener_series_runner import run_scan  # noqa: PLC0415 — isolate optional v2 path
+        return await run_scan(data_dir=data_dir, req=req, now=now or now_kst(), volume_runtime=volume_runtime)
+    return await _run_legacy_scan(data_dir=data_dir, req=req, now=now, volume_runtime=volume_runtime)
+
+
+async def _run_legacy_scan(
     *,
     data_dir: Path,
     req: ScanRequest,

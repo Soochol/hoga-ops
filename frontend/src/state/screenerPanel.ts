@@ -24,6 +24,7 @@ const SORT_FIELDS: readonly ScreenerResultSortField[] = [
 const SORT_DIRECTIONS: readonly ScreenerResultSortDirection[] = ['asc', 'desc'];
 
 export interface PanelScan {
+  calculation?: import('../api/screener').ScreenerCalculation | null;
   // saved* 는 드로어(저장본 기반 스캔)에서만 채워진다. 풀페이지 Screener 는 저장 안 된
   // 임시 조건으로도 조회하므로 nullable — null 이면 "임시 조건" 결과다.
   savedId: string | null;
@@ -219,6 +220,7 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     warnings: raw.warnings as string[],
     historyCoverage: raw.historyCoverage as PanelScan['historyCoverage'],
     barCoverage: raw.barCoverage as PanelScan['barCoverage'],
+    calculation: raw.calculation as PanelScan['calculation'],
     depthValues,
     scannedAtMs: raw.scannedAtMs,
     basisAtMs: typeof raw.basisAtMs === 'number' && Number.isFinite(raw.basisAtMs) ? raw.basisAtMs

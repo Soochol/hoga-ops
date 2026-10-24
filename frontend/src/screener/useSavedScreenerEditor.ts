@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { readPersistedAnchorId, useSaveAnchor } from './useSaveAnchor';
 import { useSavedScreeners, useSaveMutations } from './useSavedScreeners';
-import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
+import type { CalculationPolicy, ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import type { SavedScreener } from '../api/savedScreeners';
 
 // The SavedScreener editing session: the builder's live state PLUS the full
@@ -10,6 +10,8 @@ import type { SavedScreener } from '../api/savedScreeners';
 // beginSave→mutate→settleAnchor race guard internally, so consumers (the page,
 // the saved-list view) never orchestrate it. See ADR-0052 / CONTEXT.md SavedScreener.
 export interface SavedScreenerEditor {
+  calculationPolicy: CalculationPolicy;
+  copyToNewPolicy: () => void;
   expression: string | null;
   editExpression: (value: string) => void;
   conditions: ConditionLeaf[];
@@ -59,7 +61,7 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
   const saveAsNew = (name: string) => {
     anchor.beginSave();
     create.mutate(
-      { name, conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) },
+      { name, ...(anchor.calculationPolicy === 'separate_bases_v2' ? { calculation_policy: anchor.calculationPolicy } : {}), conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) },
       { onSuccess: (created) => anchor.settleAnchor(created.id, created.name) },
     );
   };
@@ -67,7 +69,7 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
     if (anchor.anchorId && anchor.anchorName) {
       anchor.beginSave();
       update.mutate(
-        { id: anchor.anchorId, body: { name: anchor.anchorName, conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) } },
+        { id: anchor.anchorId, body: { name: anchor.anchorName, ...(anchor.calculationPolicy === 'separate_bases_v2' ? { calculation_policy: anchor.calculationPolicy } : {}), conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) } },
         { onSuccess: () => anchor.settleAnchor(anchor.anchorId, anchor.anchorName) },
       );
       return;
@@ -78,18 +80,18 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
   const overwrite = (s: SavedScreener) => {
     anchor.beginSave();
     update.mutate(
-      { id: s.id, body: { name: s.name, conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) } },
+      { id: s.id, body: { name: s.name, ...(anchor.calculationPolicy === 'separate_bases_v2' ? { calculation_policy: anchor.calculationPolicy } : {}), conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) } },
       { onSuccess: () => anchor.settleAnchor(s.id, s.name) },
     );
   };
   const duplicate = (s: SavedScreener) => {
-    create.mutate({ name: `${s.name} 복사`, conditions: s.conditions, universe: s.universe, ...(s.expression != null ? { expression: s.expression } : {}) });
+    create.mutate({ name: `${s.name} 복사`, ...(s.calculation_policy ? { calculation_policy: s.calculation_policy } : {}), conditions: s.conditions, universe: s.universe, ...(s.expression != null ? { expression: s.expression } : {}) });
   };
   // rename carries the SAVE's own conditions/universe (NOT the live builder) and
   // does NOT re-anchor — mirrors the prior commitRename.
   const rename = (s: SavedScreener, name: string) => {
     update.mutate(
-      { id: s.id, body: { name, conditions: s.conditions, universe: s.universe, ...(s.expression != null ? { expression: s.expression } : {}) } },
+      { id: s.id, body: { name, ...(s.calculation_policy ? { calculation_policy: s.calculation_policy } : {}), conditions: s.conditions, universe: s.universe, ...(s.expression != null ? { expression: s.expression } : {}) } },
       { onSuccess: () => { if (s.id === anchor.anchorId) anchor.settleAnchor(s.id, name); } },
     );
   };
@@ -99,6 +101,7 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
   };
 
   return {
+    calculationPolicy: anchor.calculationPolicy, copyToNewPolicy: anchor.copyToNewPolicy,
     conditions: anchor.conditions, universe: anchor.universe, expression: anchor.expression, editExpression: anchor.editExpression,
     anchorId: anchor.anchorId, anchorName: anchor.anchorName, dirty: anchor.dirty,
     isSaving: create.isPending || update.isPending || remove.isPending,

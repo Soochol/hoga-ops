@@ -405,3 +405,17 @@ def test_daily_turnover_is_preserved_in_won():
 def test_daily_turnover_missing_is_not_zero(raw, expected):
     candle, _ = parse_row({**ROW, "trde_prica": raw}, from_yyyymmdd="20260803", to_yyyymmdd="20260803")
     assert candle.trade_value_won == expected
+
+
+async def test_keeps_price_event_strings_and_quarantined_source_row_without_guessing_share_ratio():
+    rows = [dict(ROW, upd_stkpc_tp='256', upd_rt='-49.39'),
+            dict(ROW_PREV, high_pric='1')]
+    client = _client(lambda request: _ok(rows))
+    result = await fetch_daily_candles(client, '005930', '20260731', '20260803',
+                                       adjust=True, adjusted_as_of=AS_OF)
+    assert len(result.candles) == 1
+    assert len(result.violations) == 1
+    assert result.source_rows == rows
+    assert result.adjustment_events == [dict(effective_date='20260803', provider_kind='256',
+                                             rate='-49.39', source='kiwoom:ka10081')]
+    assert 'numerator' not in result.adjustment_events[0]

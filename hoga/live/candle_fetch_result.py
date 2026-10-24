@@ -50,6 +50,8 @@ class DailyCandleFetchResult:
     """
     candles: list[LiveCandle]
     violations: list[DailyInvariantViolation] = field(default_factory=list)
+    adjustment_events: list[dict[str, str]] = field(default_factory=list)
+    source_rows: list[dict] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

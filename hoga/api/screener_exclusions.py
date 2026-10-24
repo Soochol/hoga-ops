@@ -1,4 +1,5 @@
 """Occurrence exclusions: condition meaning × code × trading date, independent of saves."""
+
 from __future__ import annotations
 
 import asyncio
@@ -20,13 +21,28 @@ from hoga.util.atomic_write import atomic_write_json
 _lock = asyncio.Lock()
 
 
-def condition_key(leaf: ConditionLeaf) -> str:
+def condition_key(leaf: ConditionLeaf, *, calculation_policy: str = "legacy_v1") -> str:
     params = leaf.params.model_dump(mode="json")
+    if params.get("volume_basis") is None:
+        params.pop("volume_basis", None)
+    if calculation_policy != "legacy_v1":
+        params["calculation_policy"] = calculation_policy
+        if leaf.type in {"new_high_vol", "new_high_vol_today"}:
+            params["volume_basis"] = params.get("volume_basis") or (
+                "raw" if params.get("timeframe", "D").endswith("m") else "share_adjusted"
+            )
     # These fields select the search window, not the predicate on a given day.
     for key in ("mode", "start_date", "end_date"):
         params.pop(key, None)
-    if leaf.type in {"bollinger_breakout", "bollinger_position", "new_high", "new_high_vol", "trade_value_period",
-                     "ask_depth_new_high_period", "bid_depth_new_high_period"}:
+    if leaf.type in {
+        "bollinger_breakout",
+        "bollinger_position",
+        "new_high",
+        "new_high_vol",
+        "trade_value_period",
+        "ask_depth_new_high_period",
+        "bid_depth_new_high_period",
+    }:
         params.pop("lookback", None)
     record_period = params.get("record_period")
     if record_period and record_period["unit"] in {"trading_days", "bars"}:
@@ -42,8 +58,8 @@ def condition_key(leaf: ConditionLeaf) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def load_exclusions(data_dir: Path) -> ScreenerExclusionsFile:
-    path = data_dir / "screener" / "exclusions.json"
+def load_exclusions(data_dir: Path, *, calculation_policy: str = "legacy_v1") -> ScreenerExclusionsFile:
+    path = data_dir / "screener" / ("exclusions.v2.json" if calculation_policy != "legacy_v1" else "exclusions.json")
     if not path.exists():
         return ScreenerExclusionsFile()
     # Fail closed: corrupt/future files must not silently reintroduce dismissed events.
@@ -65,33 +81,36 @@ def exclusion_keys(file: ScreenerExclusionsFile) -> set[tuple]:
         if getattr(item.condition.params, "include_open_bar", True) is False:
             params = item.condition.params.model_copy(update={"include_open_bar": True})
             condition = item.condition.model_copy(update={"params": params})
-            keys.add((condition_key(condition), *suffix))
+            keys.add((condition_key(condition, calculation_policy=item.calculation_policy), *suffix))
     return keys
 
 
 async def put_exclusion(data_dir: Path, req: ScreenerExclusionWrite) -> ScreenerExclusion:
-    key = condition_key(req.condition)
+    key = condition_key(req.condition, calculation_policy=req.calculation_policy)
     suffix = f":{req.bar_start_ms}" if req.bar_start_ms is not None else ""
     identity = hashlib.sha256(f"{key}:{req.code}:{req.date.isoformat()}{suffix}".encode()).hexdigest()
     async with _lock:
-        file = load_exclusions(data_dir)
+        file = load_exclusions(data_dir, calculation_policy=req.calculation_policy)
         for item in file.exclusions:
             if item.id == identity:
                 return item
-        item = ScreenerExclusion(id=identity, condition_key=key,
-                                 created_at_ms=int(time.time() * 1000), **req.model_dump())
+        item = ScreenerExclusion(
+            id=identity, condition_key=key, created_at_ms=int(time.time() * 1000), **req.model_dump()
+        )
         file.exclusions.append(item)
-        atomic_write_json(data_dir / "screener" / "exclusions.json", file.model_dump(mode="json"))
+        path = "exclusions.v2.json" if req.calculation_policy != "legacy_v1" else "exclusions.json"
+        atomic_write_json(data_dir / "screener" / path, file.model_dump(mode="json"))
         return item
 
 
 async def restore_exclusion(data_dir: Path, identity: str) -> None:
     async with _lock:
-        file = load_exclusions(data_dir)
-        remaining = [item for item in file.exclusions if item.id != identity]
-        if len(remaining) != len(file.exclusions):
-            file.exclusions = remaining
-            atomic_write_json(data_dir / "screener" / "exclusions.json", file.model_dump(mode="json"))
+        for policy, name in (("legacy_v1", "exclusions.json"), ("separate_bases_v2", "exclusions.v2.json")):
+            file = load_exclusions(data_dir, calculation_policy=policy)
+            remaining = [item for item in file.exclusions if item.id != identity]
+            if len(remaining) != len(file.exclusions):
+                file.exclusions = remaining
+                atomic_write_json(data_dir / "screener" / name, file.model_dump(mode="json"))
 
 
 def build_router(data_dir: Path) -> APIRouter:
@@ -99,7 +118,11 @@ def build_router(data_dir: Path) -> APIRouter:
 
     @router.get("")
     async def list_exclusions() -> ScreenerExclusionsFile:
-        return await asyncio.to_thread(load_exclusions, data_dir)
+        old, new = await asyncio.gather(
+            asyncio.to_thread(load_exclusions, data_dir),
+            asyncio.to_thread(load_exclusions, data_dir, calculation_policy="separate_bases_v2"),
+        )
+        return ScreenerExclusionsFile(exclusions=[*old.exclusions, *new.exclusions])
 
     @router.put("")
     async def exclude(req: ScreenerExclusionWrite) -> ScreenerExclusion:
@@ -113,9 +136,15 @@ def build_router(data_dir: Path) -> APIRouter:
     return router
 
 
-def revision(data_dir: Path) -> tuple[int, int, int] | None:
-    try:
-        stat = (data_dir / "screener" / "exclusions.json").stat()
-        return stat.st_ino, stat.st_mtime_ns, stat.st_size
-    except FileNotFoundError:
-        return None
+def revision(data_dir: Path, calculation_policy="legacy_v1"):
+    names = (
+        ("exclusions.v2.json", "series_v2/current.json") if calculation_policy != "legacy_v1" else ("exclusions.json",)
+    )
+    versions = []
+    for name in names:
+        try:
+            stat = (data_dir / "screener" / name).stat()
+            versions.append((stat.st_ino, stat.st_mtime_ns, stat.st_size))
+        except FileNotFoundError:
+            versions.append(None)
+    return tuple(versions)

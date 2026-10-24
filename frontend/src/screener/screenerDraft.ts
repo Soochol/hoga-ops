@@ -1,4 +1,4 @@
-import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
+import type { CalculationPolicy, ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import { persistJson, readJsonObject } from '../state/persist';
 import { includeOpenBars } from './candlePolicy';
 
@@ -14,6 +14,7 @@ const STORAGE_KEY = 'screenerDraft.v1';
  * 이유가 없다(스키마 드리프트 시 이중 유지보수만 늘 뿐).
  */
 export interface ScreenerDraft {
+  calculation_policy?: CalculationPolicy;
   expression?: string | null;
   conditions: ConditionLeaf[];
   universe: ScreenerUniverse;
@@ -45,6 +46,7 @@ export function readScreenerDraft(): ScreenerDraft {
   const raw = readJsonObject(STORAGE_KEY);
   if (!isConditionLeafArray(raw.conditions) || !isUniverse(raw.universe)) return EMPTY_SCREENER_DRAFT;
   return {
+    ...(raw.calculation_policy === 'separate_bases_v2' ? { calculation_policy: 'separate_bases_v2' as const } : {}),
     conditions: includeOpenBars(raw.conditions),
     universe: raw.universe,
     ...(typeof raw.expression === 'string' ? { expression: raw.expression } : {}),

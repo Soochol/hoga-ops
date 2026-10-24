@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "code_revision": "de7c2cd95a94043b9e5222de2d75e3f536327f46887485b5133f084cef2c2f48",
+  "at": "2026-10-20T16:00:00+09:00",
+  "inputs": {
+    "calculation_policy": "legacy_v1",
+    "conditions": [
+      {
+        "type": "new_high_vol",
+        "id": "v",
+        "params": {
+          "mode": "date_range",
+          "start_date": "2026-10-20",
+          "end_date": "2026-10-20",
+          "volume_basis": null,
+          "record_period": {
+            "unit": "trading_days",
+            "value": 20
+          }
+        }
+      }
+    ],
+    "expression": null,
+    "universe": {
+      "markets": [],
+      "exclude_etf": false,
+      "exclude_halted": false,
+      "scopes": []
+    },
+    "limit": 1000,
+    "basis": "eod",
+    "snapshot_id": null
+  },
+  "legacy_fingerprints": {
+    "daily_unadjusted.parquet": "ffae2b2ef4d8c1e852a12f20778810b721fca0c086fcf8f3ee76868dab5d1fb0",
+    "daily_adjusted.parquet": "067ad9d115dc2a21765217e0a61d205767b41868470cd899b44c4eca1693a928",
+    "factors.parquet": "6d7df65617257a14d744183f5215cb9b101e4256d18dd8c8b70f639e4562a732",
+    "stocks.parquet": "5a524e29e706bd8a8134cd8433fe2a3ce3118c93c4ba9b4783f00cb6dc81e0fe",
+    "status.json": "1577481b2e048d1d5c9a09bb1b0006917c95ea2b2a9098bcd6008af529c78cfa",
+    "history_evidence.json": "c2ecb2db29c71337c6d4858c2222d43815228722a200586466fd9f2f2920fd14",
+    "saves.json": "f004c8f92c4169fb657940be8e65089298a99d191719491dad728804b5d0a2b6"
+  },
+  "preserved": true,
+  "source_unchanged": true,
+  "legacy_results_unchanged": true,
+  "seconds": {
+    "legacy": 0.349,
+    "raw": 0.128,
+    "share_adjusted": 0.135
+  },
+  "matched": {
+    "legacy": [],
+    "raw": [],
+    "share_adjusted": []
+  },
+  "classifications": {
+    "history_unavailable": 3
+  },
+  "differences": [
+    {
+      "code": "005930",
+      "old_match": false,
+      "raw_match": false,
+      "share_match": false,
+      "legacy_vs_raw": "history_unavailable",
+      "classification": "history_unavailable"
+    },
+    {
+      "code": "0113P0",
+      "old_match": false,
+      "raw_match": false,
+      "share_match": false,
+      "legacy_vs_raw": "unchanged",
+      "classification": "history_unavailable"
+    },
+    {
+      "code": "0233J0",
+      "old_match": false,
+      "raw_match": false,
+      "share_match": false,
+      "legacy_vs_raw": "history_unavailable",
+      "classification": "history_unavailable"
+    }
+  ],
+  "results": {
+    "legacy": {
+      "calculation": null,
+      "history_coverage": {
+        "total": 3,
+        "complete": 2,
+        "incomplete": [
+          {
+            "code": "0233J0",
+            "condition_id": "v",
+            "required_from": "2026-09-17",
+            "required_to": "2026-10-20",
+            "missing_days": 0,
+            "reason": "factor_unavailable"
+          }
+        ]
+      },
+      "bar_coverage": null,
+      "status": "ok",
+      "rows": [],
+      "has_more": false,
+      "scanned_at_ms": 1792808190343,
+      "basis_at_ms": 1792737000000,
+      "fallback_basis_at_ms": null,
+      "warnings": [],
+      "intraday_failure": null,
+      "depth_coverage": null,
+      "depth_values": null
+    },
+    "raw": {
+      "calculation": {
+        "policy": "separate_bases_v2",
+        "snapshot_id": "001c667fbb30b63d1bf38badf6db3285a2997b361068269f9c51b0b31eb4c4d4",
+        "adjusted_as_of": "2026-10-21",
+        "price_basis": "vendor_adjusted",
+        "event_revision": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "replayable": false,
+        "execution_id": null
+      },
+      "history_coverage": null,
+      "bar_coverage": {
+        "total": 3,
+        "complete": 2,
+        "incomplete": [
+          {
+            "code": "005930",
+            "condition_id": "v",
+            "reason": "original_observation_conflict",
+            "missing_days": null,
+            "required_from": null,
+            "required_to": null,
+            "name": null
+          }
+        ],
+        "realtime": null
+      },
+      "status": "ok",
+      "rows": [],
+      "has_more": false,
+      "scanned_at_ms": 1792808190471,
+      "basis_at_ms": 1792477800000,
+      "fallback_basis_at_ms": null,
+      "warnings": [
+        "separate_bases_partial"
+      ],
+      "intraday_failure": null,
+      "depth_coverage": null,
+      "depth_values": null
+    },
+    "share_adjusted": {
+      "calculation": {
+        "policy": "separate_bases_v2",
+        "snapshot_id": "001c667fbb30b63d1bf38badf6db3285a2997b361068269f9c51b0b31eb4c4d4",
+        "adjusted_as_of": "2026-10-21",
+        "price_basis": "vendor_adjusted",
+        "event_revision": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "replayable": false,
+        "execution_id": null
+      },
+      "history_coverage": null,
+      "bar_coverage": {
+        "total": 3,
+        "complete": 0,
+        "incomplete": [
+          {
+            "code": "005930",
+            "condition_id": "v",
+            "reason": "original_observation_conflict",
+            "missing_days": null,
+            "required_from": null,
+            "required_to": null,
+            "name": null
+          },
+          {
+            "code": "0113P0",
+            "condition_id": "v",
+            "reason": "share_evidence_unavailable",
+            "missing_days": null,
+            "required_from": null,
+            "required_to": null,
+            "name": null
+          },
+          {
+            "code": "0233J0",
+            "condition_id": "v",
+            "reason": "share_evidence_unavailable",
+            "missing_days": null,
+            "required_from": null,
+            "required_to": null,
+            "name": null
+          }
+        ],
+        "realtime": null
+      },
+      "status": "ok",
+      "rows": [],
+      "has_more": false,
+      "scanned_at_ms": 1792808190606,
+      "basis_at_ms": 1792477800000,
+      "fallback_basis_at_ms": null,
+      "warnings": [
+        "separate_bases_partial"
+      ],
+      "intraday_failure": null,
+      "depth_coverage": null,
+      "depth_values": null
+    }
+  }
+}
