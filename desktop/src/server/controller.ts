@@ -6,12 +6,17 @@ import { createConnection } from 'node:net';
 import { dirname, isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
+import { randomUUID } from 'node:crypto';
+import { inspectExternal, readProcess, sameProcess, signalProcesses, survivingProcesses, type ExternalProcess } from './processes';
 
-type ServiceId = 'backend' | 'frontend';
+export type ServiceId = 'backend' | 'frontend';
 type Phase = 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
 export interface ServerConfig { project: string; uv: string; npm: string; node: string; ports: { backend: number; frontend: number } }
 interface Service { id: ServiceId; label: string; port: number; path: string; tool: string; dependency: string; cwd: string; args: string[] }
-interface ServiceState { id: ServiceId; label: string; port: number; phase: Phase; owner: 'managed' | 'external' | null; message: string }
+interface ServiceState { id: ServiceId; label: string; port: number; phase: Phase; owner: 'managed' | 'external' | null; message: string; canForce?: boolean }
+export interface StopTarget { id: ServiceId; label: string; port: number; owner: 'managed' | 'external'; pid: number; user: string; cwd: string; command: string; processCount: number }
+export interface StopPlan { token: string; targets: StopTarget[]; blocked: { label: string; reason: string }[]; force: boolean }
+interface PlannedTarget { display: StopTarget; owned?: OwnedProcess; external?: ExternalProcess }
 export interface ServerSnapshot {
   phase: Phase | 'checking';
   project: string; services: ServiceState[]; action: 'starting' | 'stopping' | null;
@@ -65,6 +70,8 @@ export class ServerController extends EventEmitter {
   private checked = false;
   private monitor: NodeJS.Timeout | undefined;
   private notification: NodeJS.Timeout | undefined;
+  private readonly stopPlans = new Map<string, { expires: number; targets: PlannedTarget[]; force: boolean }>();
+  private readonly forceTargets = new Map<ServiceId, ExternalProcess>();
 
   constructor(readonly config: ServerConfig, readonly logPath: string) {
     super();
@@ -91,7 +98,7 @@ export class ServerController extends EventEmitter {
     return { phase, project: this.config.project, services: this.states.map(s => ({ ...s })), action: this.action,
       message: this.failure || this.errors.values().next().value || this.message,
       canStart: !this.action && this.checked && !running,
-      canStop: this.hasOwnedServers && this.action !== 'stopping', logs: [...this.logs] };
+      canStop: (this.hasOwnedServers || this.states.some(s => s.owner === 'external')) && this.action !== 'stopping', logs: [...this.logs] };
   }
   startMonitoring(): void {
     void this.refresh();
@@ -198,6 +205,7 @@ export class ServerController extends EventEmitter {
   async start(): Promise<ServerSnapshot> {
     if (this.stoppingOperation) return this.stoppingOperation;
     if (this.operation) { await this.operation; return this.snapshot(); }
+    this.stopPlans.clear();
     this.action = 'starting'; this.revision++; this.startingAbort = new AbortController();
     this.message = '서버를 준비하고 있습니다.'; this.failure = ''; this.errors.clear(); this.changed();
     this.operation = this.performStart().finally(() => { this.operation = undefined; this.action = null; this.changed(); });
@@ -240,8 +248,128 @@ export class ServerController extends EventEmitter {
       await this.terminate(staged);
     }
   }
+  async prepareStop(ids: unknown = ['backend', 'frontend'], force = false): Promise<StopPlan> {
+    if (!Array.isArray(ids) || !ids.length || ids.some(id => !['backend', 'frontend'].includes(id)) || new Set(ids).size !== ids.length || typeof force !== 'boolean') {
+      throw new Error('중지할 서버를 확인할 수 없습니다.');
+    }
+    if (this.action) throw new Error('진행 중인 서버 작업이 끝난 뒤 다시 시도해 주세요.');
+    const targets: PlannedTarget[] = [];
+    const blocked: StopPlan['blocked'] = [];
+    for (const id of ids as ServiceId[]) {
+      const service = this.services.find(s => s.id === id)!;
+      const owned = this.owned.get(id);
+      try {
+        if (owned && !force) {
+          targets.push({ owned, display: { id, label: service.label, port: service.port, owner: 'managed', pid: owned.child.pid!,
+            user: '이 관리 앱', cwd: service.cwd, command: [service.tool, ...service.args].join(' '), processCount: 1 } });
+        } else if (force) {
+          const previous = this.forceTargets.get(id);
+          if (!previous) throw new Error('먼저 정상 중지를 시도해 주세요.');
+          const members = await survivingProcesses(previous.members);
+          if (!members.length) {
+            this.forceTargets.delete(id); this.state(id).canForce = false; this.changed();
+            throw new Error('확인했던 프로세스가 이미 종료됐습니다. 상태를 새로고침해 주세요.');
+          }
+          const external = { ...previous, root: members[0], members };
+          targets.push({ external, display: this.describeExternal(service, external) });
+        } else {
+          const result = await this.probe(service);
+          if (!result.busy) continue;
+          const external = await inspectExternal(service);
+          targets.push({ external, display: this.describeExternal(service, external) });
+        }
+      } catch (error) { blocked.push({ label: service.label, reason: error instanceof Error ? error.message : '실행 정보를 확인하지 못했습니다.' }); }
+    }
+    if (this.action) throw new Error('서버 상태가 바뀌었습니다. 다시 확인해 주세요.');
+    const token = randomUUID();
+    for (const [key, plan] of this.stopPlans) if (plan.expires < Date.now()) this.stopPlans.delete(key);
+    if (this.stopPlans.size >= 20) this.stopPlans.delete(this.stopPlans.keys().next().value!);
+    this.stopPlans.set(token, { expires: Date.now() + 5 * 60_000, targets, force });
+    return { token, targets: targets.map(t => t.display), blocked, force };
+  }
+  private describeExternal(service: Service, external: ExternalProcess): StopTarget {
+    const root = external.root;
+    return { id: service.id, label: service.label, port: service.port, owner: 'external', pid: root.pid,
+      user: external.user, cwd: root.cwd, command: root.args.join(' ').slice(0, 2000), processCount: external.members.length };
+  }
+  confirmStop(token: unknown): Promise<ServerSnapshot> {
+    const plan = typeof token === 'string' ? this.stopPlans.get(token) : undefined;
+    if (!plan || plan.expires < Date.now() || !plan.targets.length) return Promise.reject(new Error('중지 확인이 만료됐습니다. 종료 대상을 다시 확인해 주세요.'));
+    if (this.action) return Promise.reject(new Error('진행 중인 서버 작업이 끝난 뒤 다시 시도해 주세요.'));
+    this.stopPlans.clear();
+    this.action = 'stopping'; this.revision++;
+    this.message = plan.force ? '확인한 서버를 강제 종료하고 있습니다.' : '확인한 서버의 정상 종료를 기다리고 있습니다.';
+    this.changed();
+    const task = this.performConfirmedStop(plan.targets, plan.force);
+    this.operation = task.then(() => {}, () => {});
+    return task.finally(() => { this.operation = undefined; this.action = null; this.changed(); }).then(() => this.refresh());
+  }
+  private async performConfirmedStop(targets: PlannedTarget[], force: boolean): Promise<void> {
+    // Validate every target again before sending the first signal. Renderer-supplied PIDs are never accepted.
+    try {
+      for (const target of targets) {
+        if (target.owned) {
+          if (this.owned.get(target.display.id) !== target.owned) throw new Error('관리 중인 서버가 바뀌었습니다. 종료 대상을 다시 확인해 주세요.');
+        } else if (target.external) {
+          if (force) {
+            const survivors = await survivingProcesses(target.external.members);
+            if (!survivors.length) throw new Error('종료 대상이 이미 종료됐습니다. 상태를 새로고침해 주세요.');
+          } else {
+            const service = this.services.find(s => s.id === target.display.id)!;
+            const current = await inspectExternal(service);
+            if (!sameProcess(target.external.root, current.root)) throw new Error('외부 서버가 바뀌었습니다. 종료 대상을 다시 확인해 주세요.');
+            // Reload workers may change under the same launcher; confirm the current tree, never unrelated processes.
+            target.external = current;
+          }
+          if (!force && !sameProcess(target.external.root, await readProcess(target.external.root.pid))) throw new Error('외부 서버가 바뀌었습니다. 다시 확인해 주세요.');
+        }
+      }
+    } catch (error) {
+      this.message = error instanceof Error ? error.message : '종료 대상을 다시 확인해 주세요.';
+      this.log('관리', this.message); throw error;
+    }
+    this.failure = ''; targets.forEach(target => this.errors.delete(target.display.id));
+    const results = await Promise.allSettled(targets.map(async target => {
+      const id = target.display.id;
+      if (target.owned) { await this.terminate([id]); return; }
+      const external = target.external!;
+      this.log(target.display.label, `${force ? '강제 종료' : '정상 중지'} 요청 · 외부 PID ${external.root.pid}`);
+      try {
+        await signalProcesses(external.members, force ? 'SIGKILL' : 'SIGTERM');
+        const deadline = Date.now() + (force ? 3000 : 10_000);
+        while ((await survivingProcesses(external.members)).length) {
+          if (Date.now() >= deadline) throw new Error('종료 대기 시간이 초과됐습니다. 실행기를 확인하거나 남은 프로세스의 강제 종료를 선택하세요.');
+          await delay(100);
+        }
+        const service = this.services.find(s => s.id === id)!;
+        // SIGKILL can make /proc disappear just before the kernel releases the socket.
+        const portDeadline = Date.now() + 1500;
+        while ((await this.probe(service)).busy) {
+          if (Date.now() >= portDeadline) throw new Error('포트에 다른 프로세스가 있거나 서버가 자동으로 다시 실행됐습니다. 원래 실행기를 확인해 주세요.');
+          await delay(100);
+        }
+        this.forceTargets.delete(id); this.state(id).canForce = false;
+        this.log(target.display.label, '외부 서버를 중지했습니다.');
+      } catch (error) {
+        const remaining = await survivingProcesses(external.members);
+        if (remaining.length) this.forceTargets.set(id, { ...external, members: remaining });
+        else this.forceTargets.delete(id);
+        this.state(id).canForce = remaining.length > 0;
+        throw error;
+      }
+    }));
+    const failures: string[] = [];
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        const text = `${targets[i].display.label}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`;
+        this.errors.set(targets[i].display.id, text); this.log('관리', text); failures.push(text);
+      }
+    });
+    this.message = failures.length ? failures.join('\n') : '선택한 서버를 중지했습니다. 서버 시작 버튼으로 다시 실행할 수 있습니다.';
+  }
   stop(): Promise<ServerSnapshot> {
     if (this.stoppingOperation) return this.stoppingOperation;
+    this.stopPlans.clear();
     this.startingAbort?.abort();
     this.stoppingOperation = this.performStop().finally(() => { this.stoppingOperation = undefined; });
     return this.stoppingOperation;

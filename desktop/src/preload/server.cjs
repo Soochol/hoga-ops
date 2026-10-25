@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('serverManager', Object.freeze({
   refresh: () => ipcRenderer.invoke('server:refresh'),
   start: () => ipcRenderer.invoke('server:start'),
   stop: () => ipcRenderer.invoke('server:stop'),
+  prepareStop: (ids, force = false) => ipcRenderer.invoke('server:prepare-stop', ids, force),
+  confirmStop: token => ipcRenderer.invoke('server:confirm-stop', token),
   openLogs: () => ipcRenderer.invoke('server:logs'),
   openClient: () => ipcRenderer.invoke('server:open-client'),
   windowState: () => ipcRenderer.invoke('server:window-state'),

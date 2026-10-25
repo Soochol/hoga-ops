@@ -1,12 +1,14 @@
 import { dialog, Menu, nativeImage, Tray } from 'electron';
 import type { BrowserWindow, MenuItemConstructorOptions, NativeImage } from 'electron';
 import { join } from 'node:path';
-import type { ServerSnapshot } from './controller';
+import type { ServerSnapshot, StopPlan } from './controller';
 
 interface TrayActions {
   showWindow: () => void;
   start: () => Promise<unknown>;
   stop: () => Promise<unknown>;
+  prepareStop: () => Promise<StopPlan>;
+  confirmStop: (token: string) => Promise<unknown>;
   openClient: () => Promise<unknown>;
   openLogs: () => Promise<unknown>;
   quit: () => Promise<unknown>;
@@ -68,7 +70,7 @@ export class ServerTray {
       { id: 'stop', label: snapshot.action === 'starting' ? '시작 취소' : '서버 중지', enabled: snapshot.canStop && !this.confirmingStop,
         click: () => { this.run(() => this.stop()); } },
     ];
-    if (external) items.push({ label: '외부 실행 서버는 이 앱에서 중지하지 않습니다', enabled: false });
+    if (external) items.push({ label: '외부 서버는 실행 정보 확인 후 중지합니다', enabled: false });
     items.push(
       { id: 'logs', label: '로그 폴더 열기', click: () => { this.run(this.actions.openLogs); } },
       { type: 'separator' },
@@ -103,10 +105,14 @@ export class ServerTray {
     this.update(this.current);
     this.actions.showWindow();
     try {
+      const plan = await this.actions.prepareStop();
+      const targets = plan.targets.map(t => `${t.label} · localhost:${t.port} · ${t.owner === 'external' ? '외부 실행' : '앱에서 실행'}\nPID ${t.pid} · ${t.user}\n${t.cwd}\n${t.command}`).join('\n\n');
+      const blocked = plan.blocked.map(t => `${t.label}: ${t.reason}`).join('\n');
       const result = await dialog.showMessageBox(this.window, { type: 'question', title: 'Ticklane 서버',
-        message: '로컬 서버를 중지할까요?', detail: '이 관리 앱에서 시작한 서버만 중지합니다. Ticklane 창은 유지되지만 이 PC의 서버 연결이 끊깁니다.',
-        buttons: ['서버 중지', '계속 실행'], defaultId: 1, cancelId: 1 });
-      if (result.response === 0 && this.current.canStop) await this.actions.stop();
+        message: plan.targets.length ? '확인한 로컬 서버를 중지할까요?' : '중지할 서버를 확인하지 못했습니다.',
+        detail: `${targets}\n\n${blocked ? `중지할 수 없는 서버\n${blocked}\n\n` : ''}연결된 Ticklane의 조회·수집·주문 처리가 중단됩니다.`,
+        buttons: plan.targets.length ? ['서버 중지', '계속 실행'] : ['확인'], defaultId: plan.targets.length ? 1 : 0, cancelId: plan.targets.length ? 1 : 0 });
+      if (plan.targets.length && result.response === 0 && this.current.canStop) await this.actions.confirmStop(plan.token);
     } finally { this.confirmingStop = false; this.update(this.current); }
   }
 }

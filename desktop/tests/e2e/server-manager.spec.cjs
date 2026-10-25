@@ -89,7 +89,7 @@ test('manager automatically starts services, supports manual restart and coexist
   } finally { if (client) await client.close(); if (app) await app.close(); await f.dispose(); }
 });
 
-test('external services are read-only and survive management app shutdown', async () => {
+test('external services can be inspected and cancelled and survive management app shutdown', async () => {
   const f = await fixture(); let app;
   try {
     f.external('backend'); f.external('frontend');
@@ -99,16 +99,94 @@ test('external services are read-only and survive management app shutdown', asyn
     const result = await manager(f); app = result.app; const page = result.page;
     await running(page);
     await expect(page.locator('#service-backend')).toHaveAttribute('data-owner', 'external');
-    await expect(page.locator('#stop')).toBeHidden();
+    await expect(page.locator('#stop')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Ticklane 열기', exact: true })).toBeEnabled();
     await expect(page.locator('#external-note')).toBeVisible();
     expect((await f.marker('backend')).pid).toBe(external[0].pid);
     expect((await f.marker('frontend')).pid).toBe(external[1].pid);
+    await page.getByRole('button', { name: '백엔드 중지', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.locator('#stop-targets')).toContainText(`PID ${external[0].pid}`);
+    await expect(page.locator('#stop-targets')).toContainText(f.project);
+    await expect(page.locator('#stop-targets')).toContainText('hoga.api.app:default_app');
+    await expect(page.locator('#stop-blocked')).toBeEmpty();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(420, 580));
+    await expect(page.locator('#cancel-stop')).toBeInViewport();
+    expect(await page.locator('#stop-dialog').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath('external-stop-confirmation.png') });
+    await page.getByRole('button', { name: '계속 실행', exact: true }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
     await expect(page.getByRole('button', { name: '관리 앱 종료', exact: true })).toBeInViewport();
     await page.evaluate(() => window.serverManager.stop());
     await app.close(); app = undefined;
     expect(await healthy(f.ports.backend)).toBe(true);
     expect(await healthy(f.ports.frontend)).toBe(true);
+  } finally { if (app) await app.close(); await f.dispose(); }
+});
+
+test('external servers stop only after confirmation and restart under management', async () => {
+  const f = await fixture(); let app;
+  try {
+    f.external('backend'); f.external('frontend');
+    await expect.poll(() => healthy(f.ports.backend)).toBe(true);
+    await expect.poll(() => healthy(f.ports.frontend)).toBe(true);
+    const external = [await f.marker('backend'), await f.marker('frontend')];
+    const result = await manager(f); app = result.app; const page = result.page;
+    await running(page);
+    await page.getByRole('button', { name: '백엔드 중지', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    expect(await alive(external[0].pid)).toBe(true);
+    await page.getByRole('dialog').getByRole('button', { name: '서버 중지', exact: true }).click();
+    await expect(page.locator('#service-backend')).toHaveAttribute('data-phase', 'stopped');
+    await dead([external[0]]);
+    expect(await alive(external[1].pid)).toBe(true);
+    await page.locator('#stop').click();
+    await expect(page.locator('#stop-targets')).toContainText('프론트엔드');
+    await page.getByRole('dialog').getByRole('button', { name: '서버 중지', exact: true }).click();
+    await stopped(page); await dead(external);
+    await page.reload(); await stopped(page);
+    await page.getByRole('button', { name: '서버 시작', exact: true }).click(); await running(page);
+    await expect(page.locator('#service-backend')).toHaveAttribute('data-owner', 'managed');
+    await expect(page.locator('#service-frontend')).toHaveAttribute('data-owner', 'managed');
+  } finally { if (app) await app.close(); await f.dispose(); }
+});
+
+test('unrelated port owners show a reason and cannot be confirmed', async () => {
+  const f = await fixture(); let app;
+  const foreign = createServer((_req, res) => res.end('unrelated'));
+  await new Promise(done => foreign.listen(f.ports.backend, '127.0.0.1', done));
+  try {
+    const result = await manager(f); app = result.app; const page = result.page;
+    await expect(page.locator('body')).toHaveAttribute('data-phase', 'error');
+    await page.getByRole('button', { name: '백엔드 중지', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.locator('#stop-blocked')).toContainText('중지 불가');
+    await expect(page.locator('#confirm-stop')).toBeDisabled();
+    await page.getByRole('button', { name: '닫기', exact: true }).click();
+    expect(foreign.listening).toBe(true);
+  } finally { if (app) await app.close(); await new Promise(done => foreign.close(done)); await f.dispose(); }
+});
+
+test('force stop is offered only after timeout and needs its own confirmation', async () => {
+  const f = await fixture(); let app;
+  try {
+    f.external('backend', { env: { TICKLANE_FIXTURE_IGNORE_TERM: 'backend' } });
+    await expect.poll(() => healthy(f.ports.backend)).toBe(true);
+    const result = await manager(f); app = result.app; const page = result.page;
+    await running(page); const external = await f.marker('backend');
+    await expect(page.getByRole('button', { name: '백엔드 강제 종료', exact: true })).toBeHidden();
+    await page.getByRole('button', { name: '백엔드 중지', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '서버 중지', exact: true }).click();
+    await expect(page.getByRole('button', { name: '백엔드 강제 종료', exact: true })).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: '백엔드 강제 종료', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('정상 종료에 응답하지 않은 프로세스');
+    expect(await alive(external.pid)).toBe(true);
+    await page.getByRole('dialog').getByRole('button', { name: '계속 실행', exact: true }).click();
+    expect(await alive(external.pid)).toBe(true);
+    await page.getByRole('button', { name: '백엔드 강제 종료', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '강제 종료', exact: true }).click();
+    await expect(page.locator('#service-backend')).toHaveAttribute('data-phase', 'stopped'); await dead([external]);
+    await expect(page.locator('#service-frontend')).toHaveAttribute('data-phase', 'running');
   } finally { if (app) await app.close(); await f.dispose(); }
 });
 

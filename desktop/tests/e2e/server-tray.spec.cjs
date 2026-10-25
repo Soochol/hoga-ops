@@ -133,9 +133,16 @@ test('tray preserves external servers and reports action errors without quitting
     const markers = [await f.marker('backend'), await f.marker('frontend')];
     const result = await launch(f); app = result.app; const page = result.page;
     await phase(page, 'running');
-    expect((await item(app, 'stop')).enabled).toBe(false);
+    expect((await item(app, 'stop')).enabled).toBe(true);
     expect((await item(app, 'start')).enabled).toBe(false);
     expect(await app.evaluate(() => globalThis.trayCapture.menu.items[0].label)).toContain('외부 실행');
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async (_window, options) => { globalThis.externalStopDialog = options; return { response: 1 }; };
+    });
+    await click(app, 'stop');
+    await expect.poll(() => app.evaluate(() => globalThis.externalStopDialog?.detail)).toContain(`PID ${markers[0].pid}`);
+    expect(await app.evaluate(() => globalThis.externalStopDialog.detail)).toContain(f.project);
+    await serversAlive(markers);
     await app.evaluate(({ shell, dialog }) => {
       shell.openPath = async () => 'fixture open failure';
       dialog.showMessageBox = async (_window, options) => { globalThis.errorDialog = options; return { response: 0 }; };
