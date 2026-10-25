@@ -27,6 +27,8 @@ export interface TradeTick {
   key: string;
   /** Cumulative quantity orders equal-second reports and joins REST/WS precisely. */
   cumVolume?: number | null;
+  /** Observed count for explicitly aggregated spot rows. */
+  count?: number;
 }
 
 export interface TradeTickView {

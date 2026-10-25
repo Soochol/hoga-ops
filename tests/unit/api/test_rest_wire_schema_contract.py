@@ -116,6 +116,11 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "TradeHistoryRow": frozenset({"event_id", "t_ms", "price", "qty", "side", "cum_volume"}),
     "TradeHistoryResponse": frozenset({"code", "date", "venue", "rows", "next_key",
                                         "latest_at_ms", "latest_volume", "prev_close"}),
+    "TradeSpotRow": frozenset({"event_id", "t_ms", "price", "qty", "side", "count"}),
+    "TradeSpotResponse": frozenset({"code", "date", "venue", "source_pref", "from_ms", "to_ms",
+                                    "source", "representation", "status", "coverage", "storage_error",
+                                    "rows", "prev_close", "revision", "has_more", "next_cursor",
+                                    "previous_observed_ms"}),
     "StockNewsItem": frozenset({"id", "title", "source", "published_at_ms", "related_codes"}),
     "StockNewsResponse": frozenset({"code", "date", "status", "items", "fetched_at_ms", "limit"}),
     "SecondTradeDatesResponse": frozenset({"dates"}),
@@ -617,6 +622,8 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "TradeSpotRepresentation": (frozenset(get_args(m.TradeSpotRepresentation)), "frontend/src/api/tradeSpot.ts"),
+    "TradeSpotStatus": (frozenset(get_args(m.TradeSpotStatus)), "frontend/src/api/tradeSpot.ts"),
     "ConfirmationState": (frozenset(get_args(ConfirmationState)), "frontend/src/api/screenerRecovery.ts"),
     "DailySessionScope": (frozenset(get_args(m.DailySessionScope)), "frontend/src/api/screener.ts"),
     "DailyConfirmationPolicy": (frozenset(get_args(m.DailyConfirmationPolicy)), "frontend/src/api/screener.ts"),

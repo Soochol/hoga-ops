@@ -1,11 +1,11 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
 import { apiCall } from './client';
 import { useSecondAggregates, type SecondAggregates } from './secondAggregates';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { regularSessionOpenMs, regularSessionCloseMs } from '../live/liveDateTime';
 import { isRegularSessionMs } from '../live/aggregateCandles';
-import { todayKstYyyymmdd } from '../live/liveDateTime';
+import { realMsToYyyymmdd, todayKstYyyymmdd } from '../live/liveDateTime';
 
 export const SECOND_INITIAL_BARS = 240;
 export const SECOND_HISTORY_PAGE_LIMIT = 64;
@@ -38,7 +38,29 @@ export function nextSecondPage(last: Page, dates: string[], regularSessionOnly =
   return previous ? { date: previous, endMs: null } : undefined;
 }
 
+/** A tape jump may cross a long unobserved interval or the ordinary 64-page
+ * scrollback budget. Read one bounded chart slice at that time, then let the
+ * existing prepend/viewport writer own its installation. */
+export async function loadSecondHistoryAt(client: QueryClient, code: string, venue: LiveVenueOption,
+  date: string, seconds: SecondAggregates['seconds'], regularSessionOnly: boolean, cursorMs: number) {
+  const key = ['second-history', code, venue, date, seconds, regularSessionOnly];
+  const pageParam = { date: realMsToYyyymmdd(cursorMs), endMs: cursorMs + seconds * 1000 };
+  const page = await client.fetchQuery({ queryKey: [...key, 'at', cursorMs],
+    queryFn: ({ signal }) => fetchSecondPage(code, venue, seconds, pageParam, signal, regularSessionOnly),
+    staleTime: Infinity, retry: false });
+  client.setQueryData<InfiniteData<Page, PageParam>>(key, old => {
+    if (!old || old.pageParams.some(p => p.date === pageParam.date && p.endMs === pageParam.endMs)) return old;
+    const entries = [...old.pages.map((value, i) => ({ page: value, param: old.pageParams[i] })), { page, param: pageParam }]
+      .sort((a, b) => b.param.date.localeCompare(a.param.date) || b.page.fromMs - a.page.fromMs);
+    return { pages: entries.map(e => e.page), pageParams: entries.map(e => e.param) };
+  });
+}
+
 export function useSecondHistory(code: string | null, venue: LiveVenueOption, date: string, seconds: SecondAggregates['seconds'], regularSessionOnly = false) {
+  const client = useQueryClient();
+  const loadAt = useCallback((cursorMs: number) => code
+    ? loadSecondHistoryAt(client, code, venue, date, seconds, regularSessionOnly, cursorMs) : Promise.resolve(),
+  [client, code, venue, date, seconds, regularSessionOnly]);
   const catalog = useQuery({ queryKey: ['second-trade-dates', code, venue], enabled: code !== null,
     queryFn: ({ signal }) => apiCall<SecondTradeDatesResponse>(`/api/live/second-trade-dates?${new URLSearchParams({ code: code!, venue })}`, { signal }),
     staleTime: 30_000 });
@@ -58,7 +80,7 @@ export function useSecondHistory(code: string | null, venue: LiveVenueOption, da
     return [...merged.values()].filter(bar => !regularSessionOnly || isRegularSessionMs(bar.t_ms)).sort((a, b) => a.t_ms - b.t_ms);
   }, [history.data, regularSessionOnly]);
   const bars = useMemo(() => mergeSecondBars(historicalBars, live.data?.bars ?? []), [historicalBars, live.data?.bars]);
-  return { ...history, bars, catalogPending: catalog.isPending, catalogError: catalog.isError,
+  return { ...history, bars, loadAt, catalogPending: catalog.isPending, catalogError: catalog.isError,
     source: first?.result.source, storageError: live.data?.storage_error ?? first?.result.storage_error };
 }
 

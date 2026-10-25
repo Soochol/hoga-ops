@@ -475,6 +475,7 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({
       code: '005930',
+      cursorMs: CURSOR_MS,
       timeframe: '1m',
       // venue 는 백엔드 필수(ADR-0140) — 창의 venue 선택을 그대로 넘겨야 한다.
       // 빠지면 라우트가 422 라 호버 내내 "호가 데이터 없음" 이 뜬다.
@@ -490,7 +491,7 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
       windowId: 'cw1', group: 1, code: '005930', timeframe,
     });
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
-    expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({ code: '005930', timeframe, venue: 'KRX' });
+    expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({ code: '005930', timeframe, cursorMs: CURSOR_MS, venue: 'KRX' });
     expect(screen.getByText('저장 호가')).toBeInTheDocument();
   });
 
@@ -501,6 +502,7 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({
       code: null,
+      cursorMs: null,
       timeframe: null,
       venue: 'KRX',
     });
@@ -513,6 +515,7 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(vi.mocked(useLiveOrderbookAtCursor)).toHaveBeenLastCalledWith({
       code: null,
+      cursorMs: CURSOR_MS,
       timeframe: null,
       venue: 'KRX',
     });

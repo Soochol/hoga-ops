@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { LiveTimeframe } from '../state/livePage';
 import type { RangeSyncBars, RangeSyncPublication } from '../chart/rangeSync';
 import type { JumpPublication } from '../chart/timeframeJump';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 /**
  * sidebarCursorMs 발행 출처 (ADR-0119 PR-D 크로스헤어 버스).
@@ -17,6 +18,11 @@ export interface SidebarCursorOrigin {
   /** 발행 차트의 code — 주식=6자리, 지수=`index:ID`(LiveChartRoot prop 그대로). */
   code: string | null;
   timeframe: LiveTimeframe;
+  /** Effective market of the publishing chart, including saved-view KRX pin. */
+  venue?: LiveVenueOption;
+  /** Actual candle anchor, before legacy sidebar bucket alignment. */
+  barStartMs?: number;
+  regularSessionOnly?: boolean;
 }
 
 interface State {
@@ -137,7 +143,7 @@ function ownedBy(origin: SidebarCursorOrigin | null, windowId: string | null): b
   return origin === null || origin.windowId === windowId;
 }
 
-function sameOrigin(a: SidebarCursorOrigin | null, b: SidebarCursorOrigin | null): boolean {
+export function sameSidebarCursorOrigin(a: SidebarCursorOrigin | null, b: SidebarCursorOrigin | null): boolean {
   if (a === b) return true;
   if (a === null || b === null) return false;
   return (
@@ -145,8 +151,13 @@ function sameOrigin(a: SidebarCursorOrigin | null, b: SidebarCursorOrigin | null
     a.group === b.group &&
     a.code === b.code &&
     a.timeframe === b.timeframe
+    && a.venue === b.venue
+    && a.barStartMs === b.barStartMs
+    && a.regularSessionOnly === b.regularSessionOnly
   );
 }
+
+const sameOrigin = sameSidebarCursorOrigin;
 
 /**
  * /live page hover cursor.

@@ -299,6 +299,12 @@ def panel_flow_job(
 
 # ── 부모 쪽 진입점 ──────────────────────────────────────────────────────────────
 
+@_picklable_errors
+def trade_spot_job(data_dir: str, params: dict, snapshot: dict):
+    from hoga.live.trade_spot import read_trade_spot  # noqa: PLC0415 — worker-owned read
+    return read_trade_spot(Path(data_dir), params, snapshot)
+
+
 async def run_job(
     executor: ComputeExecutor, fn: Callable[..., T], /, *args: object,
     background: bool = False, admitted: bool = False,

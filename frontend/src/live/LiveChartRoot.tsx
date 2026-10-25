@@ -35,7 +35,7 @@ import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
 import { NO_DAY_BOUNDARY_TICKS, resolveDayBoundaryTicks, sameDayBoundaryTicks, type DayBoundaryTick } from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import { createPersistentCrosshairChart } from '../chart/persistentCrosshair';
-import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
+import { hasSyntheticCrosshair, releaseSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
@@ -60,8 +60,10 @@ import { useViewportBackfill } from './useViewportBackfill';
 import { createWindowedChart, flushWindowedChart, setWindowedChartTimeMapping } from '../chart/windowedChart';
 import { viewportFromRanges, computeRestoreRange, realMsToVirtualSeconds, type TabViewport } from './viewportAnchor';
 import { useWheelInteractions } from './useWheelInteractions';
-import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
-import { alignSidebarCursorMs, shouldPublishSidebarCursor, sidebarCursorPublishDelayMs, LIVE_SIDEBAR_CURSOR_THROTTLE_MS } from './sidebarCursorRateLimit';
+import { useLiveCursorStore, sameSidebarCursorOrigin, type SidebarCursorOrigin } from './useLiveCursorStore';
+import { useTradeBrowseStore } from './tradeBrowse';
+import { TradeBrowseCrosshair } from '../chart/TradeBrowseCrosshair';
+import { alignSidebarCursorMs, sidebarCursorPublishDelayMs, LIVE_SIDEBAR_CURSOR_THROTTLE_MS } from './sidebarCursorRateLimit';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import BollingerOverlay from './indicators/BollingerOverlay';
 import EnvelopeOverlay from './indicators/EnvelopeOverlay';
@@ -241,6 +243,7 @@ interface Props {
   /** The owning chart toolbar uses this viewport for image export. */
   imageViewportRef?: RefObject<HTMLDivElement>;
   hoverLinked?: boolean;
+  regularSessionOnly?: boolean;
   indicatorLegendsVisible?: boolean;
   code: string | null;
   timeframe: LiveTimeframe;
@@ -461,6 +464,7 @@ interface Props {
  * timeScale is shared across candle/volume/(hoga) panes. */
 export function LiveChartRoot({
   hoverLinked = true,
+  regularSessionOnly = false,
   indicatorLegendsVisible = true,
   imageViewportRef,
   code,
@@ -880,11 +884,11 @@ export function LiveChartRoot({
   const winCtxWindowId = winCtx?.windowId ?? null;
   const winCtxGroup = winCtx?.group ?? null;
   const cursorOriginRef = useRef<SidebarCursorOrigin>({
-    windowId: winCtxWindowId, group: winCtxGroup, code, timeframe,
+    windowId: winCtxWindowId, group: winCtxGroup, code, timeframe, venue: candleVenue, regularSessionOnly,
   });
   useEffect(() => {
-    cursorOriginRef.current = { windowId: winCtxWindowId, group: winCtxGroup, code, timeframe };
-  }, [winCtxWindowId, winCtxGroup, code, timeframe]);
+    cursorOriginRef.current = { windowId: winCtxWindowId, group: winCtxGroup, code, timeframe, venue: candleVenue, regularSessionOnly };
+  }, [winCtxWindowId, winCtxGroup, code, timeframe, candleVenue, regularSessionOnly]);
   const publishedCursorMsRef = useRef<number | null>(null);
   const publishedBasisDateRef = useRef<string | null>(null);
   const publishedCursorActiveRef = useRef<boolean | null>(null);
@@ -945,6 +949,7 @@ export function LiveChartRoot({
 
   const scheduleSidebarCursor = useCallback((cursorMs: number) => {
     if (!hoverLinkedRef.current) return;
+    cursorOriginRef.current = { ...cursorOriginRef.current, barStartMs: cursorMs };
     const aligned = alignSidebarCursorMs(cursorMs, bucketMsRef.current);
     if (sidebarCursorTimeoutRef.current !== null) {
       // Trailing timer already armed — refresh the pending value only. NOT
@@ -955,8 +960,9 @@ export function LiveChartRoot({
     }
     const publish = (next: number) => {
       if (!hoverLinkedRef.current) return;
-      const current = useLiveCursorStore.getState().sidebarCursorMs;
-      if (shouldPublishSidebarCursor(current, next)) {
+      if (useTradeBrowseStore.getState().session) return;
+      const state = useLiveCursorStore.getState();
+      if (state.sidebarCursorMs !== next || !sameSidebarCursorOrigin(state.sidebarCursorOrigin, cursorOriginRef.current)) {
         sidebarCursorLastPublishAtRef.current = performance.now();
         useLiveCursorStore.getState().setSidebarCursor(next, cursorOriginRef.current);
       }
@@ -2423,6 +2429,11 @@ export function LiveChartRoot({
       fromSyntheticCrosshair = false,
     ): void => {
       if (!chart) return;
+      if (useTradeBrowseStore.getState().session) {
+        if (!fromUserPointer) return;
+        releaseSyntheticCrosshair(chart);
+        useTradeBrowseStore.getState().end();
+      }
       const store = useLiveCursorStore.getState();
       // **옆 창의 호버가 sync 로 그려 준 크로스헤어는 발행하지 않는다.**
       //
@@ -2964,6 +2975,9 @@ export function LiveChartRoot({
               code={code}
             />
           )}
+          <TradeBrowseCrosshair chart={chart} axis={axis} candles={syncCandles} paneSeries={paneSeries}
+            windowId={winCtxWindowId} group={winCtxGroup} code={code} timeframe={timeframe} venue={candleVenue}
+            enabled={hoverLinked && cursorSyncCrosshair} />
           {/* 동시호가(15:20–15:30 KST) 배경 음영은 2026-08-09 에 삭제했다
               (사용자 결정). `auctionWindowMask` 토글은 그대로 살아 있고 —
               라벨이 "동시호가 구간 지표 숨김" 이라 계약도 변하지 않는다 —

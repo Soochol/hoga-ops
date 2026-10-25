@@ -9,12 +9,16 @@ import { createVirtualAxis, type VirtualAxis } from '../../util/virtualAxis';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useWorkspaceStore, type WorkspaceWindow, type GroupSymbol } from '../../state/workspace';
 import { RegularSessionAction } from './RegularSessionAction';
+import { CursorLinkAction } from './CursorLinkAction';
 import { TimeframeControl } from '../TimeframeControl';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useWindowIndicators } from './windowView';
 import { publishGroupChartLink, clearGroupChartLink } from './groupChartLinkSource';
 import { groupTargetChartWindow } from '../../state/workspace';
-import { useLiveCursorStore } from '../useLiveCursorStore';
+import { useLiveCursorStore, sameSidebarCursorOrigin } from '../useLiveCursorStore';
+import { useTradeBrowseStore } from '../tradeBrowse';
+import { releaseSyntheticCrosshair } from '../../chart/syntheticCrosshair';
+import { TradeBrowseCrosshair } from '../../chart/TradeBrowseCrosshair';
 import { createSidebarCursorThrottle } from '../sidebarCursorRateLimit';
 import { createSecondChartSeriesWriter } from './secondChartSeriesWriter';
 import type { LiveVenueOption } from '../../state/liveVenue';
@@ -55,6 +59,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const midnight = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00+09:00`).getTime();
   const seconds = bucketSeconds(timeframe) as 1 | 5 | 10 | 30;
   const regularSessionOnly = win.chart?.regularSessionOnly ?? false;
+  const regularSessionOnlyRef = useRef(regularSessionOnly);
+  regularSessionOnlyRef.current = regularSessionOnly;
   const horizontalGrid = useActivePrefs(p => p.horizontalGridLinesEnabled);
   const verticalGrid = useActivePrefs(p => p.verticalGridLinesEnabled);
   const candleOnlyScale = useActivePrefs(p => p.candlePaneCandleOnlyScale);
@@ -64,6 +70,9 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   gridRef.current = { horizontalGrid, verticalGrid };
   const [tooltipChart, setTooltipChart] = useState<{ chart: IChartApi; paneSeries: PaneSeriesMap } | null>(null);
   const query = useSecondHistory(code, venue, date, seconds, regularSessionOnly);
+  const [browseLoadError, setBrowseLoadError] = useState(false);
+  const browseActive = useTradeBrowseStore(s => s.session?.origin.windowId === win.id);
+  useEffect(() => { if (!browseActive) setBrowseLoadError(false); }, [browseActive]);
   const bars = query.bars;
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
   const axis = useMemo(() => {
@@ -155,13 +164,21 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     resize.observe(container.current);
     const throttle = createSidebarCursorThrottle(next => {
       if (!hoverLinkedRef.current) return false;
+      if (useTradeBrowseStore.getState().session) return false;
       const store = useLiveCursorStore.getState();
-      if (store.sidebarCursorMs === next && store.sidebarCursorOrigin?.windowId === win.id) return false;
-      store.setSidebarCursor(next, { windowId: win.id, group: win.group, code, timeframe });
+      const origin = { windowId: win.id, group: win.group, code, timeframe, venue,
+        barStartMs: next, regularSessionOnly: regularSessionOnlyRef.current };
+      if (store.sidebarCursorMs === next && sameSidebarCursorOrigin(store.sidebarCursorOrigin, origin)) return false;
+      store.setSidebarCursor(next, origin);
       return true;
     });
     cursorThrottle.current = throttle;
-    const onCursor = (event: { time?: Time }) => {
+    const onCursor = (event: { time?: Time; sourceEvent?: unknown }) => {
+      if (useTradeBrowseStore.getState().session) {
+        if (!event.sourceEvent) return;
+        releaseSyntheticCrosshair(chart);
+        useTradeBrowseStore.getState().end();
+      }
       if (hoverLinkedRef.current && typeof event.time === 'number') {
         throttle.schedule(axisRef.current.toReal(event.time * 1000));
       } else {
@@ -170,6 +187,10 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       }
     };
     chart.subscribeCrosshairMove(onCursor);
+    if (import.meta.env.DEV) {
+      const debug = window as unknown as { __liveCharts?: Map<string, IChartApi> };
+      (debug.__liveCharts ??= new Map()).set(win.id, chart);
+    }
     chartRef.current = chart;
     seriesRef.current = { candles, ma, volume };
     setTooltipChart({ chart, paneSeries: new Map<PaneId, ISeriesApi<SeriesType>>([['candle', candles], ['volume', volume]]) });
@@ -187,7 +208,11 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       throttle.cancel();
       cursorThrottle.current = null;
       useLiveCursorStore.getState().resetCursorFrom(win.id);
-      chart.remove();
+      if (import.meta.env.DEV) {
+        const debug = window as unknown as { __liveCharts?: Map<string, IChartApi> };
+        if (debug.__liveCharts?.get(win.id) === chart) debug.__liveCharts.delete(win.id);
+      }
+      queueMicrotask(() => chart.remove());
       chartRef.current = null;
       seriesRef.current = null;
       writeSeries.current = null;
@@ -248,6 +273,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap overflow-x-auto">
       <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index' && symbol?.kind !== 'us_stock'} /></span>
       <RegularSessionAction win={win} />
+      <CursorLinkAction win={win} showLabel />
     </div>
     <div className="relative min-h-0 flex-1">
       <div ref={container} className="absolute inset-0 font-data"
@@ -258,10 +284,18 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       <div className="absolute top-2 left-2 text-fg-dim pointer-events-none text-xs">MA 20 · 거래량</div>
       {tooltipEnabled && tooltipChart && <CandleTooltip chart={tooltipChart.chart} paneSeries={tooltipChart.paneSeries}
         bundle={tooltipBundle} axis={axis} timeframe={timeframe} />}
+      {tooltipChart && <TradeBrowseCrosshair chart={tooltipChart.chart} axis={axis}
+        candles={bars.map(bar => ({ ts_ms: bar.t_ms, close: bar.close }))} paneSeries={tooltipChart.paneSeries}
+        windowId={win.id} group={win.group} code={code} timeframe={timeframe} venue={venue} enabled={hoverLinked}
+        onNeedCandle={query.loadAt ? cursorMs => {
+          setBrowseLoadError(false);
+          void query.loadAt(cursorMs).catch(() => { setBrowseLoadError(true); });
+        } : undefined} />}
       {(!bars.length || !code) && <div className="absolute inset-0 flex items-center justify-center text-fg-dim bg-bg-card/80">
         {!code ? '주식 종목을 선택해주세요' : query.isError ? '초봉을 불러오지 못했습니다' : query.isPending ? '초봉 불러오는 중' : '선택한 날짜에 저장된 초봉이 없습니다'}
       </div>}
     </div>
+    {browseLoadError && <div role="alert" className="shrink-0 text-xs text-fg-dim">체결 탐색 초봉 조회 실패 · 다른 봉으로 이동하면 재시도합니다</div>}
     {query.hasNextPage && <button type="button" className="shrink-0 text-xs text-fg-dim hover:text-fg" disabled={query.isFetchingNextPage} onClick={() => loadMore.current()}>{query.isFetchingNextPage ? '이전 구간 불러오는 중' : '이전 구간 불러오기'}</button>}
     <div className="shrink-0 px-2 py-1 text-fg-dim text-xs" role="status">
       {query.storageError ? '저장 오류 · 일부 체결이 누락될 수 있습니다' : query.source === 'hogaplay' ? '과거 체결 원본 기준 · 미수집 구간은 포함되지 않습니다' : '수집된 체결 기준 · 미수집 구간은 포함되지 않습니다'}

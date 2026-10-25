@@ -10,9 +10,9 @@ const fixture = vi.hoisted(() => {
   let visits = 0;
   const t = Date.parse('2026-09-30T09:00:00+09:00');
   const bars = Array.from({length:10000},(_,i)=>({t_ms:t+i*1000,open:100,high:110,low:90,close:105,volume:10,count:1,trade_value:1000}));
-  return { get visits() {return visits;}, history: {data:{pages:[{fromMs:t,result:{get bars(){visits++;return bars;}}}]}}, live: {data:{bars:[bars.at(-1)!]}}, bars };
+  return { queryClient: {}, get visits() {return visits;}, history: {data:{pages:[{fromMs:t,result:{get bars(){visits++;return bars;}}}]}}, live: {data:{bars:[bars.at(-1)!]}}, bars };
 });
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({data:{dates:[]},isPending:false}), useInfiniteQuery: () => fixture.history }));
+vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => fixture.queryClient, useQuery: () => ({data:{dates:[]},isPending:false}), useInfiniteQuery: () => fixture.history }));
 vi.mock('../api/secondAggregates', () => ({useSecondAggregates: () => fixture.live}));
 const axis = createVirtualAxis([]);
 

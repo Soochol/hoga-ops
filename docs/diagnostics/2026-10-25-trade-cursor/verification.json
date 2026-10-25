@@ -1,0 +1,202 @@
+{
+  "verified_at_kst": "2026-10-25T11:00:57.133593+09:00",
+  "head_sha": "cf51438a22c5ebf483c6c563467fa56ef475487c",
+  "base_sha": "cf51438a22c5ebf483c6c563467fa56ef475487c",
+  "environment": {
+    "python": "3.14.7",
+    "pytest": "9.0.3",
+    "node": "24.13.1",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "vite": "8.0.16",
+    "e2e_backend_port": 20160,
+    "e2e_frontend_port": 21160,
+    "e2e_data": "/tmp/hoga-e2e-data-160",
+    "e2e_workers": 1,
+    "vendor_credentials": "blank in Playwright configuration; no real vendor verification"
+  },
+  "backend": {
+    "inputs": {
+      "sha256": "d3ecd0503a778467cd6215c45b97e825d1f8c4132e8c91c4620ca90512ae74da",
+      "file_count": 1020,
+      "roots": [
+        "hoga",
+        "tests",
+        "docs/adr"
+      ],
+      "extra_inputs": [
+        "pyproject.toml",
+        "uv.lock",
+        "ruff.toml",
+        ".python-version"
+      ]
+    },
+    "checks": [
+      {
+        "command": "uv run --extra dev ruff check .",
+        "result": "passed"
+      },
+      {
+        "command": "uv run --extra dev pytest -q -m 'not wallclock' --ignore=tests/unit/api/test_broker_trading.py",
+        "passed": 7108,
+        "skipped": 2,
+        "deselected": 13,
+        "seconds": 307.65
+      },
+      {
+        "command": "uv run --extra dev pytest -x -vv tests/unit/api/test_broker_trading.py",
+        "passed": 39,
+        "seconds": 1.44
+      },
+      {
+        "command": "uv run --extra dev pytest -q tests/unit/live/test_trade_spot.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/api/test_compute_pools.py",
+        "passed": 57
+      }
+    ],
+    "initial_run": "Interrupted after 1 failed / 3114 passed: existing canceled-waiter test exhausted sleep(0) polling before broker I/O and then blocked teardown. The complete broker file passed separately; all remaining tests passed in a fresh full invocation excluding that file. No order code or broker test was modified."
+  },
+  "frontend": {
+    "current_inputs": {
+      "sha256": "c5c49a66fbac5b4783ae264ab959c5117c2ac966e426c26b324512dfddfd25b8",
+      "file_count": 1897,
+      "roots": [
+        "frontend/src",
+        "frontend/tests",
+        "frontend/public"
+      ],
+      "extra_inputs": [
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/tsconfig.json",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.node.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json",
+        "frontend/playwright.config.ts",
+        "docs/agents/chart-sync-qa.driver.js"
+      ]
+    },
+    "checks": [
+      {
+        "command": "npm run typecheck",
+        "result": "passed; app, unit-test and e2e TypeScript projects"
+      },
+      {
+        "command": "npx vitest run",
+        "passed": 9048,
+        "files": 708,
+        "seconds": 52.76,
+        "inputs": {
+          "sha256": "c3944b23a76da39557757418f43c9971c80d7bd58125061643a24ea9bd0790c1",
+          "file_count": 1897,
+          "roots": [
+            "frontend/src",
+            "frontend/tests",
+            "frontend/public"
+          ],
+          "extra_inputs": [
+            "frontend/package.json",
+            "frontend/package-lock.json",
+            "frontend/vite.config.ts",
+            "frontend/tsconfig.json",
+            "frontend/tsconfig.app.json",
+            "frontend/tsconfig.node.json",
+            "frontend/tsconfig.test.json",
+            "frontend/tsconfig.e2e.json",
+            "frontend/playwright.config.ts",
+            "docs/agents/chart-sync-qa.driver.js"
+          ]
+        }
+      },
+      {
+        "command": "npx vitest run src/live/workspace/TradeWindow.spot.test.tsx src/live/workspace/TradeWindow.test.tsx src/live/workspace/DataWindow.test.tsx src/live/tradeSpotScope.test.ts",
+        "passed": 103,
+        "files": 4,
+        "seconds": 1.37,
+        "inputs": {
+          "sha256": "c5c49a66fbac5b4783ae264ab959c5117c2ac966e426c26b324512dfddfd25b8",
+          "file_count": 1897,
+          "roots": [
+            "frontend/src",
+            "frontend/tests",
+            "frontend/public"
+          ],
+          "extra_inputs": [
+            "frontend/package.json",
+            "frontend/package-lock.json",
+            "frontend/vite.config.ts",
+            "frontend/tsconfig.json",
+            "frontend/tsconfig.app.json",
+            "frontend/tsconfig.node.json",
+            "frontend/tsconfig.test.json",
+            "frontend/tsconfig.e2e.json",
+            "frontend/playwright.config.ts",
+            "docs/agents/chart-sync-qa.driver.js"
+          ]
+        }
+      },
+      {
+        "command": "npx vite build",
+        "result": "passed; also rebuilt by the final Playwright webServer"
+      }
+    ],
+    "reuse": "After the full 9048-test pass, only TradeWindow cursor-store selectors were narrowed to the matching group/Code. Both exact selector versions are fingerprinted. The affected TradeWindow/spot/DataWindow/scope tests (103) and all selected E2E tests were rerun against the final selectors; other frontend code, tests, fixtures and dependencies were unchanged."
+  },
+  "browser": {
+    "command": "npx playwright test tests/e2e/trade-cursor-spot.spec.ts tests/e2e/trade-history-window.spec.ts tests/e2e/second-candles.spec.ts --reporter=line",
+    "passed": 18,
+    "skipped": 1,
+    "seconds": 30.9,
+    "inputs": {
+      "sha256": "c5c49a66fbac5b4783ae264ab959c5117c2ac966e426c26b324512dfddfd25b8",
+      "file_count": 1897,
+      "roots": [
+        "frontend/src",
+        "frontend/tests",
+        "frontend/public"
+      ],
+      "extra_inputs": [
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/tsconfig.json",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.node.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json",
+        "frontend/playwright.config.ts",
+        "docs/agents/chart-sync-qa.driver.js"
+      ]
+    },
+    "skip_reason": "Existing explicit opt-in real ka10003 vendor session; offline default retained.",
+    "coverage": [
+      "actual 1m/5m candle hover",
+      "1s/5s/10s/30s hover and OFF/ON",
+      "pointer leave returns latest",
+      "historical date and half-open range",
+      "other-group isolation",
+      "settings UI flips hogaplay preference to WS aggregate",
+      "existing latest tape pagination/filter/WS joins",
+      "existing seconds/orderbook linkage"
+    ],
+    "mock_boundary": "Browser controls real chart and settings components; vendor/history/spot payloads are route fixtures. Backend selection, file reads and HTTP serialization are verified separately with temporary Parquet/journals and a real compute subprocess."
+  },
+  "synthetic_read_benchmark": {
+    "input_tick_rows": 200000,
+    "range_ms": 60000,
+    "returned_rows": 200,
+    "has_more": true,
+    "service_response_bytes": 20541,
+    "cold_ms": 17.41,
+    "warm_ms": 10.05,
+    "scope": "One synthetic direct read, excludes HTTP/IPC/network; not production p95 or maximum-Live-Set load."
+  },
+  "limitations": [
+    "WS spot rows are observed one-second price/side aggregates; per-execution filters/highlights pause.",
+    "Legacy ten-second rows cannot reconstruct candle boundaries and are excluded.",
+    "Hover preview shows the latest 200 rows; vendor-live opt-in test was not run.",
+    "No production server restart, desktop installation or deployment."
+  ]
+}

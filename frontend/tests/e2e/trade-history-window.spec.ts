@@ -26,8 +26,11 @@ async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty
   const ws = await installLiveWs(page);
   await page.route('**/api/live/series?**', route => {
     const params = new URL(route.request().url()).searchParams;
-    return route.fulfill({ json: { code: params.get('code'), date: params.get('date'), session_open_ms: Date.now(),
-      session_close_ms: null, is_open: true, snapshots: withBooks ? [{ kind: 'ob', venue: params.get('venue'), t_ms: Date.now(),
+    // Route handlers use Node's clock, which page.clock does not freeze.
+    const date = params.get('date')!;
+    const bookMs = Date.parse(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6)}T10:00:00+09:00`);
+    return route.fulfill({ json: { code: params.get('code'), date, session_open_ms: bookMs,
+      session_close_ms: null, is_open: true, snapshots: withBooks ? [{ kind: 'ob', venue: params.get('venue'), t_ms: bookMs,
         asks: Array.from({ length: 10 }, (_, i) => ({ price: 125600 + i * 100, qty: 100 + i })),
         bids: Array.from({ length: 10 }, (_, i) => ({ price: 125500 - i * 100, qty: 200 + i })),
         total_ask_qty: 1000, total_bid_qty: 2000 }] : [], trades: [], brokers: [], programs: [], after_hours: [],

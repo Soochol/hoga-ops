@@ -146,8 +146,10 @@ export interface LiveOrderbookSpotResult {
  * carried value belongs to an older key; `error` says the fetch failed and the
  * value was dropped rather than left to rot. See LiveOrderbookSpotResult.
  */
-export function useLiveOrderbookAtCursor(p: Omit<Params, 'timeframe'> & { timeframe: MinuteTimeframe | SecondTimeframe | null }): LiveOrderbookSpotResult {
-  const cursorMs = useLiveCursorStore((s) => p.code && p.timeframe ? s.sidebarCursorMs : null);
+export function useLiveOrderbookAtCursor(p: Omit<Params, 'timeframe'> & {
+  timeframe: MinuteTimeframe | SecondTimeframe | null; cursorMs?: number | null;
+}): LiveOrderbookSpotResult {
+  const cursorMs = useLiveCursorStore((s) => p.code && p.timeframe ? (p.cursorMs !== undefined ? p.cursorMs : s.sidebarCursorMs) : null);
   // 선택값이 아니라 이 종목의 **유효** venue 로 조회한다 — 근거는 VenueParam.
   // code=null 이면 해석이 항등이라 무조건 불러도 안전하다(훅 순서 고정).
   const venue = useEffectiveVenue(p.code, p.venue);

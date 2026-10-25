@@ -34,11 +34,15 @@ export default function TradeTickTable({
   view,
   highlight = null,
   emptyText = '체결 데이터 없음',
+  aggregate = false,
+  windowing,
 }: {
   view: TradeTickView;
   emptyText?: string;
   /** null = 강조 비활성(설정 토글 OFF). */
   highlight?: TradeHighlightConfig | null;
+  aggregate?: boolean;
+  windowing?: { start: number; end: number; before: number; after: number };
 }) {
   let price = 0, qty = 0;
   for (const tick of view.ticks) {
@@ -68,12 +72,14 @@ export default function TradeTickTable({
         className="trade-tick-row trade-tick-header sticky top-0 z-10 bg-bg-subtle py-1 text-2xs text-fg-dim"
       >
         <span role="columnheader">시각</span>
-        <span role="columnheader" className="text-right">체결가(원)</span>
-        <span role="columnheader" className="trade-quantity text-right">체결량(주)</span>
+        <span role="columnheader" className="text-right">{aggregate ? '가격(원)' : '체결가(원)'}</span>
+        <span role="columnheader" className="trade-quantity text-right">{aggregate ? '합산량(주)' : '체결량(주)'}</span>
       </div>
-      {view.ticks.map((t) => (
-        <Row key={t.key} tick={t} prevClose={view.prevClose} highlight={highlight} />
+      {windowing && <div aria-hidden style={{ height: windowing.before, gridColumn: '1 / -1' }} />}
+      {(windowing ? view.ticks.slice(windowing.start, windowing.end) : view.ticks).map((t) => (
+        <Row key={t.key} tick={t} prevClose={view.prevClose} highlight={highlight} aggregate={aggregate} />
       ))}
+      {windowing && <div aria-hidden style={{ height: windowing.after, gridColumn: '1 / -1' }} />}
     </div>
   );
 }
@@ -82,10 +88,12 @@ function Row({
   tick,
   prevClose,
   highlight,
+  aggregate,
 }: {
   tick: TradeTick;
   prevClose: number | null;
   highlight: TradeHighlightConfig | null;
+  aggregate: boolean;
 }) {
   const { tMs, price, qty, side } = tick;
   // side==0 은 동시호가·장전 체결 — 방향이 없으므로 글자색도 중립.
@@ -104,6 +112,7 @@ function Row({
         style={background ? { background } : undefined}
       >
         {qty.toLocaleString('ko-KR')}
+        {aggregate && <span className="ml-1 text-xs text-fg-dim">{tick.count ?? 0}건</span>}
       </span>
     </div>
   );

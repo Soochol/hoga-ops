@@ -33,6 +33,7 @@ import { useLiveRestOrderbook } from '../../api/liveRestOrderbook';
 import { hasBookPrices } from '../../api/livePreAuctionBook';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import { TradeWindow } from './TradeWindow';
+import { useTradeBrowseStore } from '../tradeBrowse';
 import { ProgramTradeTickWindow } from './ProgramTradeTickWindow';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
 import { SecondVolumeDistributionWindow } from './SecondVolumeDistributionWindow';
@@ -162,7 +163,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
     case 'broker':
       return <BrokerWindow win={win} code={code} />;
     case 'trade':
-      return <TradeWindow code={code} minAmountManwon={win.tradeMinAmountManwon ?? 0}
+      return <TradeWindow code={code} group={win.group} windowId={win.id} minAmountManwon={win.tradeMinAmountManwon ?? 0}
         onClearFilter={() => useWorkspaceStore.getState().setTradeMinAmountManwon(win.id, 0)} />;
     case 'program-trade':
       return <ProgramTradeTickWindow key={code} code={code} />;
@@ -216,9 +217,13 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // (useLiveOrderbookAtCursor)도 각자 `useEffectiveVenue` 로 같은 해석을 하므로
   // 데이터 경로에서는 미리 풀지 않는다 — 해석 지점이 둘로 갈리면 한쪽만 고쳐지는
   // 게 이 파일이 이미 겪은 실패다(useLiveCursor 의 VenueParam 주석).
-  const venue = useLiveVenueStore((s) => s.venue);
+  const selectedVenue = useLiveVenueStore((s) => s.venue);
+  const tape = useTradeBrowseStore(s => s.session?.origin.group === win.group && s.session.origin.code === code ? s.session : null);
+  const venue = tape?.seed.venue ?? selectedVenue;
   const live = useLiveSeries(code, venue);
-  const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
+  const chartCursor = useGroupCursor(win.group);
+  const cursorMs = tape?.cursorMs ?? chartCursor.cursorMs;
+  const cursorTimeframe = tape?.origin.timeframe ?? chartCursor.timeframe;
   const link = useGroupChartLink(win.group);
   // 초봉은 커서 이전 최근 호가, 분봉은 기존 봉 대표 호가를 조회한다.
   const scope = resolveOrderbookCursorScope({ cursorMs, timeframe: cursorTimeframe });
@@ -231,6 +236,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   } = useLiveOrderbookAtCursor({
     code: isSpot ? code : null,
     timeframe: spotTimeframe,
+    cursorMs,
     venue,
     // 파케이 스팟은 디스크 캡처(원주가)라 차트 지표와 같은 척도로 옮겨야 한다.
     // 아래 `bufferSnap`·`latestSnapshot` 은 **WS 실시간 = 오늘**이고 오늘 계수는
