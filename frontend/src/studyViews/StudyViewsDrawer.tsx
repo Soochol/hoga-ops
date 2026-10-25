@@ -17,9 +17,8 @@ import { DndContext, PointerSensor, useSensor, useSensors, type DraggableSynthet
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { StudyViewListRow } from '../api/studyViews';
 import { wantsNewTab } from '../live/useJumpToLive';
-import { activateLiveCode } from '../live/liveNavigate';
 import { useLivePageStore } from '../state/livePage';
-import { savedRangeFocusFromView } from './savedRangeFocus';
+import { openSavedRange } from './openSavedRange';
 import { openSavedViewInNewTab } from './studyDeepLink';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailGroupHeader, RailState, RailTreeRow } from '../ui/RailShell';
@@ -227,8 +226,7 @@ export function StudyViewsDrawer() {
    */
   function openSavedRangeInLive(row: StudyViewListRow) {
     cancelPendingStudyViewNavigation();
-    activateLiveCode(row.code, row.label);
-    useLivePageStore.getState().focusSavedRange(savedRangeFocusFromView(row));
+    openSavedRange(row);
     if (location.pathname !== '/live') navigate('/live');
   }
 

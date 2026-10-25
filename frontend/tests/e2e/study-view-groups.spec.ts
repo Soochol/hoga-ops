@@ -50,7 +50,8 @@ test('차트에서 새 그룹과 저장뷰를 만들고 같은 기간을 다시 
   await panel.getByRole('button', { name: '기간 A 행 메뉴' }).click();
   await page.getByRole('menuitem', { name: '그룹 이동' }).click();
   const move = page.getByRole('dialog', { name: '그룹 이동' });
-  await move.getByLabel('저장 그룹').selectOption({ label: '다음 복기' });
+  await move.getByLabel('저장 그룹').click();
+  await page.getByRole('option', { name: '다음 복기', exact: true }).click();
   await move.getByRole('button', { name: '이동', exact: true }).click();
   await expect(panel.getByRole('region', { name: '다음 복기 저장뷰' }).getByText('고영 · 기간 A')).toBeVisible();
   await page.reload();

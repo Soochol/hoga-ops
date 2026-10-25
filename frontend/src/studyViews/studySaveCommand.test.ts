@@ -3,6 +3,7 @@ import type { StudyViewReference } from '../api/studyViews';
 import type { RangeBundle } from '../api/types';
 import type { LiveStudySaveSource } from './studySaveCommand';
 import { makeStudySaveCommand, studySaveCommandBody } from './studySaveCommand';
+import { buildStudyReferenceSaveRequest } from './studySaveRequest';
 
 // 2년 보존 클램프(HOGAPLAY_RETENTION_YEARS)가 벽시계를 읽으므로 시간을 고정한다.
 // 고정하지 않으면 픽스처 날짜가 2년을 넘기는 순간 테스트가 조용히 뒤집힌다.
@@ -199,6 +200,20 @@ describe('makeStudySaveCommand', () => {
     const command = makeStudySaveCommand({ mode: 'create', source, existingSave: null });
 
     expect(command?.request.range).toMatchObject({ from_ms: BAR1, to_ms: BAR3 });
+  });
+
+  it('preserves old observed seconds instead of applying the hogaplay two-year retention floor', () => {
+    const old = Date.UTC(2023, 0, 10, 0, 30);
+    const source: LiveStudySaveSource = {
+      origin: 'live', code: '005930', label: '삼성전자', timeframe: '5s',
+      bundle: bundle({ bucket_ms: 5000, candles: [0, 5000, 10000].map(offset => ({
+        ts_ms: old + offset, open: 1, high: 2, low: 1, close: 2, vol_a: 1, vol_b: 0,
+      })) }),
+      captureViewport: () => ({ rightEdgeMs: old + 10000, leftEdgeMs: old, barSpan: 3, atLiveEdge: false }),
+    };
+    expect(makeStudySaveCommand({ mode: 'create', source, existingSave: null })?.request.range)
+      .toMatchObject({ from_ms: old, to_ms: old + 10000 });
+    expect(buildStudyReferenceSaveRequest(source)?.range).toMatchObject({ from_ms: old, to_ms: old + 10000 });
   });
 
   it('returns null when no viewport can be captured or inferred', () => {

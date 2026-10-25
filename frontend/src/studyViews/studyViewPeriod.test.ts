@@ -17,3 +17,10 @@ it('uses the end date for titles and keeps past years, with minute precision onl
     expect(studyViewPeriod(range, '1m')).toBe('2026-09-14 09:00:23–10:30:59 KST');
   } finally { vi.restoreAllMocks(); }
 });
+
+it('seconds periods keep second precision in both full and compact labels', () => {
+  const from = Date.parse('2026-09-28T10:00:05+09:00');
+  const range = { from_date: '20260928', to_date: '20260928', from_ms: from, to_ms: from + 10000 };
+  expect(studyViewPeriod(range, '5s')).toContain('10:00:05–10:00:15 KST');
+  expect(compactStudyViewPeriod(range, '5s')).toContain('10:00:05–10:00:15');
+});

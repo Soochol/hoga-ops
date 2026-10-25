@@ -145,3 +145,20 @@ describe('configure before adding an indicator', () => {
     expect(patch['indicator:indicatorLineVisibility']).toEqual({ bollingerUpper: false, fillStrengthBuy: false });
   });
 });
+
+it('seconds uses the common price/volume editor and identifies its own profile', () => {
+  const value: WindowViewValue = { windowId: 'seconds-panel', group: 1, code: '005930', timeframe: '5s', historicalFromDate: null };
+  render(<WindowViewContext.Provider value={value}><IndicatorPanel timeframe="5s" onClose={() => {}} /></WindowViewContext.Provider>);
+  expect(screen.getByText('현재: 초봉')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '지표 추가' }));
+  for (const name of ['이동평균선', '볼린저 밴드', '엔벨로프', '슈퍼트렌드', '거래량', '체결강도'])
+    expect(screen.getByRole('button', { name })).toBeInTheDocument();
+  for (const name of ['호가비', '일봉 이동평균선', '프로그램 순매수', '신규 거래원 등장'])
+    expect(screen.queryByRole('button', { name })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '볼린저 밴드' }));
+  changeNumber('볼린저 기간', '35');
+  add();
+  const buckets = useLivePageStore.getState().indicatorsByWindow['live:seconds-panel'];
+  expect(resolveIndicatorSettings(buckets, '30s').bollingerPeriod).toBe(35);
+  expect(resolveIndicatorSettings(buckets, '1m').bollingerEnabled).toBe(false);
+});

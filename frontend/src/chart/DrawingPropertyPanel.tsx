@@ -35,6 +35,7 @@ type Props = {
    * 게이트가 여기 중복되지 않는다.
    */
   onSearchPattern?: (fromRealMs: number, toRealMs: number) => void;
+  onInspectSeconds?: (fromRealMs: number, toRealMs: number) => void;
   /**
    * 그 구간의 **봉 수**와 허용 범위. 버튼을 누르기 전에 되는지 말하기 위한 것이다 —
    * 없으면 범위 밖 구간이 "눌렀는데 아무 일도 안 나는 버튼" 이 된다.
@@ -770,7 +771,7 @@ function MultiSelectionToolbar({
 
 
 export default function DrawingPropertyPanel({
-  scope, positionKey: windowPositionKey, resolveVisibleRightRealMs, resolveAlignCoords, onSearchPattern, patternBarCount,
+  scope, positionKey: windowPositionKey, resolveVisibleRightRealMs, resolveAlignCoords, onSearchPattern, patternBarCount, onInspectSeconds,
 }: Props) {
   const fallbackPositionKey = useId();
   const positionKey = windowPositionKey ?? fallbackPositionKey;
@@ -944,6 +945,9 @@ export default function DrawingPropertyPanel({
         <LineStylePopover popoverRef={popoverRef} current={drawing.lineStyle} onPick={pickLineStyle} />
       )}
 
+      {drawing.kind === 'measure' && onInspectSeconds && <button type="button" data-testid="drawing-inspect-seconds"
+        onClick={() => onInspectSeconds(drawing.a.realMs, drawing.b.realMs)}
+        className="h-7 px-2 inline-flex items-center gap-1.5 rounded text-xs hover:bg-bg-input-hover">초봉으로 확대</button>}
       {drawing.kind === 'measure' && onSearchPattern != null && (() => {
         const state = patternButtonState(patternBarCount?.(drawing.a.realMs, drawing.b.realMs));
         return (
