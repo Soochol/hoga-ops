@@ -3074,6 +3074,24 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   // historicalFromDate gate / default minute window. Seam limit (same as the
   // reposition tests above): setData is a no-op so we lock the CALL CONTRACT
   // (the reprojected target / live-edge pin), not the rendered pixels.
+  it('seats delayed saved calendar data once and leaves subsequent updates free to pan', () => {
+    const ts = makeTs([]);
+    ts.timeToIndex.mockReturnValue(20);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
+    const common = { code: '005930', timeframe: 'D' as const, viewIdentity: 'saved:late-daily',
+      savedRangeAnchorMs: TODAY_OPEN_MS, clampEngaged: false, captureFloorEngaged: false, isPastCandlesLoading: false };
+    const { rerender } = render(<LiveChartRoot {...common}
+      bundle={todayBundle([TODAY_OPEN_MS + 86400000])} restoreViewport={null} />, { wrapper });
+    const viewport = { rightEdgeMs: TODAY_OPEN_MS, barSpan: 12, atLiveEdge: false };
+    rerender(<LiveChartRoot {...common} bundle={todayBundle([TODAY_OPEN_MS, TODAY_OPEN_MS + 86400000])}
+      restoreViewport={viewport} />);
+    expect(ts.setVisibleLogicalRange).toHaveBeenLastCalledWith({ from: 8, to: 20 });
+    const afterSeat = ts.setVisibleLogicalRange.mock.calls.length;
+    rerender(<LiveChartRoot {...common} bundle={todayBundle([TODAY_OPEN_MS, TODAY_OPEN_MS + 86400000])}
+      restoreViewport={{ ...viewport }} />);
+    expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(afterSeat);
+  });
+
   it('restore: a scrolled-back tab reprojects its saved time anchor to a logical range', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);

@@ -50,6 +50,7 @@ function SecondChartContent({ win, symbol, timeframe, code, venue, today, saved 
   code: string | null; venue: ReturnType<typeof useEffectiveVenue>; today: string; saved: SavedRangeFocus | null;
 }) {
   const indicators = useWindowIndicators();
+  const savedRangeRequestSeq = useLivePageStore(s => s.savedRangeRequestSeq);
   const target = useWorkspaceStore(s => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id);
   const regularSessionOnly = win.chart?.regularSessionOnly ?? false;
   const seconds = bucketSeconds(timeframe) as 1 | 5 | 10 | 30;
@@ -147,7 +148,7 @@ function SecondChartContent({ win, symbol, timeframe, code, venue, today, saved 
     </div>
     <div className="relative min-h-0 flex-1">
       <ChartErrorBoundary><ChartDrawingShell>
-        <LiveChartRoot key={transfer ? 'transferred' : 'normal'} viewIdentity={saved ? `saved:${saved.viewId}` : navigation ? `seconds-range:${navigation.seq}` : undefined}
+        <LiveChartRoot key={transfer ? 'transferred' : 'normal'} viewIdentity={saved ? `saved:${saved.viewId}:${savedRangeRequestSeq}` : navigation ? `seconds-range:${navigation.seq}` : undefined}
           onNeedTradeBrowseCandle={!focusedRange ? onNeedTradeBrowseCandle : undefined} regularSessionOnly={regularSessionOnly}
           restoreViewport={restoreViewport} savedRangeBand={savedMarks} savedRangeFrozen={saved != null}
           onViewportCaptureReady={onCaptureReady} code={code} timeframe={timeframe} venue={venue} bundle={bundle} imageViewportRef={viewportRef}

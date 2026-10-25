@@ -109,6 +109,8 @@ export interface UseLiveChartDataArgs {
   /** 같은 그룹 데이터 창의 sidecar 강제 fetch 수요(ADR-0119 PR-D) — 그룹 링크
    *  발행 차트 창만 공급. useLiveBundle 로 그대로 전달된다. */
   sidecarDemands?: SidecarDemands;
+  /** Required D/W/M history for a saved period; keeps the normal source and end date. */
+  calendarFromDate?: string | null;
   /**
    * 저장뷰 구간에 **얼린** 창(2026-08-21 사용자 결정). `null` = 평소의 라이브 창.
    *
@@ -216,6 +218,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     candleVenue: args.candleVenue,
     sidecarDemands,
     frozenRangeFrom: freeze?.fromDate ?? null,
+    calendarFromDate: args.calendarFromDate,
     hogaplaySourceEnabled: args.hogaplaySource === true,
   });
   const liveInitial = live.initial?.code === activeCode ? live.initial : undefined;

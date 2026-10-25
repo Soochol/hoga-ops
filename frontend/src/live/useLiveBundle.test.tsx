@@ -3761,3 +3761,17 @@ it('calendar live price updates preserve reported turnover without double-counti
   expect(overlayLiveTradesOnCalendarCandles(updated, trades, 'D')[0].trade_value_won)
     .toBe(candle.trade_value_won);
 });
+
+it.each([false, true])('includes saved calendar context with rest bypass %s', rest_bypass_enabled => {
+  renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture, { calendarFromDate: '20200401' }),
+    { wrapper: createWrapper({ rest_bypass_enabled }) });
+  const spy = rest_bypass_enabled ? screenerDailyCandlesSpy : livePastDailyCandlesSpy;
+  expect(spy).toHaveBeenLastCalledWith('005930', '20200401', '20260527', ...(rest_bypass_enabled ? [] : ['KRX']));
+});
+
+it('does not apply a calendar lower bound to minute requests', () => {
+  renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture, { calendarFromDate: '20200401' }),
+    { wrapper: createWrapper() });
+  const args = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
+  expect(args[1]).not.toBe('20200401');
+});

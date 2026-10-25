@@ -365,6 +365,8 @@ type Store = Persisted & IndicatorSettings & {
   lastMinuteHistoricalTimeframe: MinuteTimeframe | null;
   /** `/live` 에서 열린 저장뷰의 기간 슬롯. **단일** — 다른 저장뷰를 열면 교체된다. */
   savedRangeFocus: SavedRangeFocus | null;
+  /** Explicit open commands, including reopening the same view. Runtime only. */
+  savedRangeRequestSeq: number;
   focusSavedRange: (focus: SavedRangeFocus) => void;
   clearSavedRange: () => void;
   projectActiveView: (view: ActiveViewProjection) => void;
@@ -776,6 +778,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     lastMinuteHistoricalFromDate: null,
     lastMinuteHistoricalTimeframe: null,
     savedRangeFocus: null,
+    savedRangeRequestSeq: 0,
 
     // 지표 도메인 변이 setter 55종 — 시맨틱 SSOT 는 indicatorOps.ts (ADR-0119
     // C2c-2a). 전역 백엔드 = 호출 시점 fresh get() + ambient 봉 버킷 patch.
@@ -1046,7 +1049,10 @@ export const useLivePageStore = create<Store>((set, get) => {
       });
     },
 
-    focusSavedRange: (focus) => set({ savedRangeFocus: focus }),
+    focusSavedRange: (focus) => set((state) => ({
+      savedRangeFocus: focus,
+      savedRangeRequestSeq: state.savedRangeRequestSeq + 1,
+    })),
 
     /**
      * 슬롯 해제. 호출부는 **명시적인 것만** 이어야 한다 — 칩 ×, 사용자의 종목 변경

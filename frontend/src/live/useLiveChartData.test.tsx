@@ -336,3 +336,9 @@ it.each([
   expect(ask[10]).toBe(true);
   expect(bid[10]).toBe(true);
 });
+
+it('passes required saved calendar history to the shared candle pipeline', () => {
+  renderForStock({ timeframe: 'D', calendarFromDate: '20200401' });
+  const options = (useLiveBundleSpy.mock.calls.at(-1) as unknown as unknown[])[4];
+  expect(options).toMatchObject({ calendarFromDate: '20200401' });
+});

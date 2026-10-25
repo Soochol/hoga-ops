@@ -369,11 +369,10 @@ interface Props {
    *  봉을 신경 쓰지 않아도 된다. */
   savedRangeBand?: StudySavedRangeMarks | null;
   /**
-   * 분봉 착석 앵커 — 저장 구간 끝(B)의 실시각. null(기본) = 착석 안 함.
+   * 저장 구간 끝(B)의 실시각. null(기본) = 착석 안 함.
    *
-   * 캘린더 봉은 `restoreViewport`(`studyDailyViewport`) 가 초기 커밋에서 앉히면 되지만,
-   * 분봉은 그 시점에 로드된 캔들이 **최근 5거래일**뿐이라(`INITIAL_MINUTE_TRADING_DAYS`)
-   * 몇 달 전 구간이 축에 없다. 그래서 이 값으로 **지연 착석**을 돌린다 — 아래 effect.
+   * 과거 구간이 초기 데이터 밖이면 도착한 뒤 한 번 적용한다. 캘린더 봉은
+   * `restoreViewport`의 맥락 배치를, 분봉은 B를 오른쪽 끝에 두는 배치를 사용한다.
    *
    * ⚠ ms 를 받는 것이 계약이다(논리 인덱스 아님) — `savedRangeAnchor.ts` 주석.
    */
@@ -1393,7 +1392,7 @@ export function LiveChartRoot({
   }, [chart, containerRef, markViewportUserAdjusted]);
 
   /**
-   * **분봉 지연 착석** — 저장 구간이 뒤늦게 도착하면 그때 앉힌다.
+   * **저장 구간 지연 착석** — 필요한 봉이 도착하면 한 번 앉힌다.
    *
    * 저장뷰를 분봉에서 열면 그 순간 로드된 캔들은 최근 5거래일뿐이라 몇 달 전 구간이
    * 축에 없다. 그러면 `restoreViewport` 착석이 `rightEdgeMs >= cb.candles[0].ts_ms`
@@ -1417,10 +1416,30 @@ export function LiveChartRoot({
     const seatKey = `${viewKey}|${savedRangeAnchorMs}`;
     if (savedRangeSeatedRef.current === seatKey) return;
     const candles = cb?.candles ?? [];
+    const ts = chart.timeScale();
+    if (isCalendarTimeframe(timeframe)) {
+      // A recent placeholder must not consume the saved period's one-shot.
+      // studyDailyViewport stays null until the saved calendar bucket exists.
+      if (!restoreViewport || candles.length === 0) return;
+      const index = ts.timeToIndex?.(
+        realMsToVirtualSeconds(axisRef.current, restoreViewport.rightEdgeMs) as Time,
+        true,
+      );
+      if (typeof index !== 'number' || !Number.isFinite(index)) return;
+      const range = computeRestoreRange(restoreViewport, candles.length, index);
+      if (!range) return;
+      try {
+        ts.setVisibleLogicalRange({ from: range.from, to: range.to });
+        savedRangeSeatedRef.current = seatKey;
+        lastAppliedCountRef.current = candles.length;
+      } catch {
+        /* chart torn down between effect runs */
+      }
+      return;
+    }
     const anchorTs = savedRangeAnchorTs(candles, savedRangeAnchorMs);
     // 아직 축에 없다 — 다음 캔들 갱신에서 다시 본다(백필은 진행 중이다).
     if (anchorTs === null) return;
-    const ts = chart.timeScale();
     const anchorIdx = ts.timeToIndex?.(
       realMsToVirtualSeconds(axisRef.current, anchorTs) as Time,
       true,
@@ -1447,7 +1466,7 @@ export function LiveChartRoot({
     } catch {
       /* chart torn down between effect runs */
     }
-  }, [chart, savedRangeAnchorMs, cb, viewKey, restoreViewport]);
+  }, [chart, savedRangeAnchorMs, cb, viewKey, restoreViewport, timeframe]);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands

@@ -450,6 +450,8 @@ type UseLiveBundleOptions = {
    * falls back to KRX for a currently NXT-disabled Code. */
   candleVenue?: LiveVenueOption;
   sidecarDemands?: SidecarDemands;
+  /** Required calendar history lower bound; does not freeze or change its source. */
+  calendarFromDate?: string | null;
   /**
    * 저장뷰 구간에 **얼린** 창의 시작일(YYYYMMDD KST). `null`/미지정 = 평소의 라이브 창.
    *
@@ -757,7 +759,8 @@ export function useLiveBundle(
 
   // 벤더 일봉 past-candles(키움 `ka10081`) — D/W/M, 우회 OFF에서만 (ADR-0048).
   const enableDaily = !!(code && !isMinute && !restBypassEnabled);
-  const dailyPastFrom = seedFrom;
+  const dailyPastFrom = !isMinute && options.calendarFromDate && options.calendarFromDate < seedFrom
+    ? options.calendarFromDate : seedFrom;
   const dailyPastTo = todayKstYyyymmdd;
   const pastDailyCandlesQuery = useLivePastDailyCandles(
     enableDaily ? code : null,

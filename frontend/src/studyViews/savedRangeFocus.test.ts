@@ -28,3 +28,13 @@ describe('savedRangeAppliesTo — freeze · venue 고정 · 기간 칩이 공유
     expect(savedRangeAppliesTo(f, '005930', '60m')).toBe(false);
   });
 });
+
+it('requests calendar context before an old saved date and leaves intraday paths alone', async () => {
+  const { savedRangeCalendarFrom } = await import('./savedRangeFocus');
+  const from = savedRangeCalendarFrom(focus({ fromDate: '20210422' }), 'D');
+  expect(from).not.toBeNull();
+  expect(from! < '20210422').toBe(true);
+  expect(savedRangeCalendarFrom(null, 'D')).toBeNull();
+  expect(savedRangeCalendarFrom(focus(), '1m')).toBeNull();
+  expect(savedRangeCalendarFrom(focus(), '5s')).toBeNull();
+});
