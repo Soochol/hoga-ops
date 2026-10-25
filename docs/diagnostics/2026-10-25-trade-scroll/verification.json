@@ -1,0 +1,174 @@
+{
+  "verified_at_kst": "2026-10-25T11:44:08.906341+09:00",
+  "head_sha": "cf51438a22c5ebf483c6c563467fa56ef475487c",
+  "base_sha": "cf51438a22c5ebf483c6c563467fa56ef475487c",
+  "environment": {
+    "python": "3.14.7",
+    "pytest": "9.0.3",
+    "node": "24.13.1",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "vite": "8.0.16",
+    "e2e_backend_port": 20160,
+    "e2e_frontend_port": 21160,
+    "e2e_data": "/tmp/hoga-e2e-data-160",
+    "e2e_workers": 1,
+    "vendor_credentials": "blank in Playwright configuration; no real vendor verification"
+  },
+  "fingerprint_method": "SHA-256 over sorted Git tracked/nonignored untracked input paths, NUL, file bytes, NUL. Source/test/fixtures, dependencies/locks, and verification configs included; ignored generated files excluded.",
+  "backend": {
+    "inputs": {
+      "sha256": "3d466b67efc2e15fe3261f34e44705bb99b07c5cac6f5bb87ccce22dd529fc15",
+      "file_count": 1020,
+      "roots": [
+        "hoga",
+        "tests",
+        "docs/adr"
+      ],
+      "extra_inputs": [
+        "pyproject.toml",
+        "uv.lock",
+        "ruff.toml",
+        ".python-version"
+      ]
+    },
+    "checks": [
+      {
+        "command": "uv run --extra dev ruff check .",
+        "result": "passed"
+      },
+      {
+        "command": "uv run --extra dev pytest -q tests/unit/live/test_trade_spot.py tests/unit/api/test_rest_wire_schema_contract.py",
+        "passed": 37,
+        "seconds": 3.41,
+        "scope": "Spot API, subprocess execution, source fallback, archive generation/cursors, raw amount filtering, WS disk/live/corrections, previous-observation pointers and wire fields."
+      }
+    ],
+    "baseline": "Prior feature full backend verification retained in ../2026-10-25-trade-cursor/verification.json; current Python delta is limited to previous_observed_ms in this route/read model and its contract/tests, so the affected 37 tests were rerun."
+  },
+  "frontend": {
+    "inputs": {
+      "sha256": "be1be5dbbac4276e897819fa54e1e4e265a5a19242f73823ffcf1c07d38f2015",
+      "file_count": 1903,
+      "roots": [
+        "frontend/src",
+        "frontend/tests"
+      ],
+      "extra_inputs": [
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/vitest.config.ts",
+        "frontend/tsconfig.json",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json",
+        "frontend/tsconfig.node.json",
+        "frontend/playwright.config.ts"
+      ]
+    },
+    "checks": [
+      {
+        "command": "npm run typecheck",
+        "result": "passed",
+        "scope": "app, unit tests and E2E TypeScript projects"
+      },
+      {
+        "command": "npx vitest run",
+        "passed": 9073,
+        "test_files": 710,
+        "seconds": 54.32,
+        "inputs_at_run": {
+          "sha256": "cbc6e4cc336b7efde8ad1d8e84fd5dc33aa512b55a8a7cd53a5e34831e7536ab",
+          "files": 1902,
+          "roots": [
+            "frontend/src/",
+            "frontend/tests/"
+          ],
+          "extra_inputs": [
+            "frontend/package.json",
+            "frontend/package-lock.json",
+            "frontend/vite.config.ts",
+            "frontend/vitest.config.ts",
+            "frontend/tsconfig.json",
+            "frontend/tsconfig.app.json",
+            "frontend/tsconfig.test.json",
+            "frontend/tsconfig.e2e.json",
+            "frontend/tsconfig.node.json",
+            "frontend/playwright.config.ts"
+          ],
+          "excluded": "frontend/src/api/tradeBrowse.test.tsx added after full-suite run"
+        },
+        "reuse": "Subsequent production changes were confined to archive generation/regular-session cache identity in api/tradeBrowse.ts and post-pan paint timing in chart/TradeBrowseCrosshair.tsx. Other passing full-suite results remain applicable. These affected paths plus the new generation regression test were rerun below."
+      },
+      {
+        "command": "npx vitest run src/api/tradeBrowse.test.tsx src/live/tradeBrowse.test.ts src/live/tradeSpotScope.test.ts src/chart/TradeBrowseCrosshair.test.tsx src/live/workspace/TradeWindow.spot.test.tsx",
+        "passed": 46,
+        "test_files": 5,
+        "seconds": 1.19,
+        "result": "passed on final source"
+      },
+      {
+        "command": "npx vite build",
+        "result": "passed as final Playwright webServer startup; existing chunk-size warning only"
+      }
+    ]
+  },
+  "e2e": {
+    "checks": [
+      {
+        "command": "npx playwright test trade-scroll-navigation.spec.ts trade-cursor-spot.spec.ts trade-history-window.spec.ts second-candles.spec.ts --reporter=line",
+        "passed": 28,
+        "skipped": 1,
+        "seconds": 84,
+        "skip_reason": "Real vendor ka10003 test is opt-in; configured vendor credentials remain blank.",
+        "reuse": "Before the final two narrow guards/paint fix. Existing hover/history/seconds cases do not enter the modified tape paint path; all tape-scroll scenarios rerun on final source below."
+      },
+      {
+        "command": "npx playwright test trade-scroll-navigation.spec.ts --reporter=line",
+        "passed": 10,
+        "seconds": 24.3,
+        "result": "passed on final source"
+      }
+    ],
+    "assertions": [
+      "Real candle pointer handoff and wheel input for 1m/5m/1s/5s/10s/30s",
+      "200-row current-candle page consumed before older observed candle; empty candle skipped",
+      "Exact scrollTop preservation on append and retry; first fully visible row chooses the active candle",
+      "Native lightweight-charts crosshairMove time equals the selected candle after pan and repaint, not merely the request/store or setCrosshairPosition call",
+      "Visible viewport contains the selected candle and retains its logical span",
+      "Orderbook request date/source/range semantics and actually rendered unique bid/ask quantities match the reading candle",
+      "Scroll back selects cached newer candle; native repaint cannot steal tape ownership",
+      "Source setting changes, hover retake, latest return, link OFF and group isolation",
+      "Failed page retry and 409 restart discard old pagination cursors without losing existing rows",
+      "Unloaded past second candle fetched with a bounded 240-bar range; no invented observations",
+      "Mounted tape rows remain below 70 across multiple loaded pages"
+    ],
+    "fixtures": "Deterministic mocked market data in real system Chrome; no authenticated vendor session."
+  },
+  "regression_evidence": [
+    {
+      "case": "Archive file replacement between candle scopes",
+      "before": "New generation test: 1 failed, 2 passed",
+      "after": "Final generation hook tests all passed; WS range revisions intentionally remain independent."
+    },
+    {
+      "case": "Native crosshair seated before viewport paint",
+      "before": "1m native crosshairMove reported 09:21 for a 09:23 tape selection even though the API-call marker and viewport check passed.",
+      "after": "Defer seating until the pan paints; all six supported test intervals match the actual native crosshair time. Screenshot shows 09:23 on tape and chart."
+    }
+  ],
+  "visual_qa": {
+    "screenshots": [
+      "trade-scroll-older.png",
+      "trade-scroll-linked.png"
+    ],
+    "result": "Viewed the real 1m screenshot after correction: tape reads 09:23, native crosshair time-axis label reads 09:23, book quantity is 2,380 for that fixture. Existing theme/table styling retained."
+  },
+  "limitations": [
+    "Same trading date only; no automatic previous-date transition.",
+    "No real authenticated market-data run or production deployment was performed.",
+    "A chart candle/observation absent from storage is not synthesized."
+  ]
+}

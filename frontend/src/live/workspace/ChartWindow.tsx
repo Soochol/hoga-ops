@@ -86,6 +86,7 @@ import { CollectButton } from './CollectButton';
 import { PatternAreaButton } from './PatternAreaButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
 import { RegularSessionAction } from './RegularSessionAction';
+import { CursorLinkAction } from './CursorLinkAction';
 import {
   HogaplaySourceButton,
   type HogaplaySourceDisabledReason,
@@ -889,12 +890,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
           />
           {isMinuteTimeframe(view.timeframe) && (
-            <IconToolbarButton aria-label="호버 연동" aria-pressed={hoverLinked}
-              title={`커서 연동 ${hoverLinked ? '끄기' : '켜기'} — 연결된 데이터 창이 분봉 커서 시점을 따라갑니다`}
-              onClick={() => useWorkspaceStore.getState().setChartHoverLinked(win.id, !hoverLinked)}
-              className="aria-pressed:text-accent"
-              icon={<span aria-hidden>↔</span>}
-            />
+            <CursorLinkAction win={win} />
           )}
           <HogaplaySourceButton enabled={hogaplaySourceEnabled} disabledReason={hogaplayDisabledReason}
             onToggle={toggleHogaplaySource} compact showLabel={false} />
@@ -931,6 +927,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               adjustFactors={d.adjustFactors}
               imageViewportRef={imageViewportRef}
               hoverLinked={hoverLinked}
+              regularSessionOnly={win.chart?.regularSessionOnly ?? false}
               indicatorLegendsVisible={indicatorLegendsVisible}
               code={d.workareaCode}
               timeframe={view.timeframe}

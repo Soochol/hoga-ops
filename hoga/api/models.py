@@ -463,6 +463,39 @@ class TradeHistoryResponse(BaseModel):
     prev_close: int | None
 
 
+TradeSpotRepresentation = Literal["ticks", "second_price_aggregate"]
+TradeSpotStatus = Literal["observed", "empty", "unavailable", "insufficient_resolution"]
+
+
+class TradeSpotRow(BaseModel):
+    event_id: str
+    t_ms: int
+    price: int
+    qty: int
+    side: int
+    count: int
+
+
+class TradeSpotResponse(BaseModel):
+    code: str
+    date: str
+    venue: str
+    source_pref: str
+    from_ms: int
+    to_ms: int
+    source: Literal["hogaplay", "kiwoom_live"] | None
+    representation: TradeSpotRepresentation | None
+    status: TradeSpotStatus
+    coverage: Literal["unverified"] = "unverified"
+    storage_error: str | None = None
+    rows: list[TradeSpotRow]
+    prev_close: int | None
+    revision: str
+    has_more: bool
+    next_cursor: str | None = None
+    previous_observed_ms: int | None = None
+
+
 CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",
