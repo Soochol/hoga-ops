@@ -136,6 +136,8 @@ else {
     try {
       tray = new ServerTray(window, {
         showWindow, start: async () => controller?.start(), stop: async () => controller?.stop(), openClient,
+        prepareStop: async () => { if (!controller) throw new Error('서버 설정을 확인해 주세요.'); return controller.prepareStop(); },
+        confirmStop: async token => controller?.confirmStop(token),
         openLogs: async () => { const error = await shell.openPath(logFolder); if (error) throw new Error(error); },
         quit: quitManager,
       }, state());
@@ -144,6 +146,16 @@ else {
     ipcMain.handle('server:refresh', async event => { trusted(event); return await controller?.refresh() ?? state(); });
     ipcMain.handle('server:start', async event => { trusted(event); return await controller?.start() ?? state(); });
     ipcMain.handle('server:stop', async event => { trusted(event); return await controller?.stop() ?? state(); });
+    ipcMain.handle('server:prepare-stop', async (event, ids, force) => {
+      trusted(event);
+      if (!controller) throw new Error('서버 실행 설정을 먼저 확인해 주세요.');
+      return controller.prepareStop(ids, force);
+    });
+    ipcMain.handle('server:confirm-stop', async (event, token) => {
+      trusted(event);
+      if (!controller) throw new Error('서버 실행 설정을 먼저 확인해 주세요.');
+      return controller.confirmStop(token);
+    });
     ipcMain.handle('server:logs', async event => { trusted(event); return shell.openPath(logFolder); });
     ipcMain.handle('server:open-client', event => { trusted(event); return openClient(); });
     ipcMain.handle('server:window-state', event => { trusted(event); return windowState(); });

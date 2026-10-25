@@ -1,4 +1,5 @@
 const api = window.serverManager;
+const supportsStopPlans = typeof api.prepareStop === 'function' && typeof api.confirmStop === 'function';
 const byId = id => document.getElementById(id);
 const phaseNames = { stopped: '중지됨', starting: '준비 중', running: '실행 중', stopping: '중지 중', error: '확인 필요' };
 const timeFormat = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
@@ -9,6 +10,8 @@ let previousPhase = savedUi.phase;
 let autoOpened = savedUi.autoOpened === true;
 let logText = '';
 let openingClient = false;
+let preparingStop = false;
+let stopPlan;
 let restoringUi = true;
 byId('log-details').open = savedUi.logsOpen === true;
 byId('follow').checked = savedUi.follow !== false;
@@ -82,13 +85,14 @@ function render(state) {
   byId('primary-icon').setAttribute('href', running ? '#icon-arrow' : '#icon-power');
   byId('primary').disabled = openingClient || (!running && !state.canStart);
   byId('stop').hidden = !state.canStop;
-  byId('stop').disabled = !state.canStop;
-  byId('stop').textContent = phase === 'starting' ? '시작 취소' : '서버 중지';
+  byId('stop').disabled = !state.canStop || preparingStop;
+  byId('stop').textContent = phase === 'starting' ? '시작 취소' : hasExternal ? '모두 중지…' : '서버 중지';
   byId('refresh').disabled = Boolean(state.action);
   const projectName = state.project.split(/[\\/]/).filter(Boolean).pop();
   byId('project').textContent = projectName ? `${projectName} · 로컬 프로젝트` : '로컬 프로젝트';
   byId('project').title = state.project;
   byId('external-note').hidden = !hasExternal;
+  byId('external-note').textContent = supportsStopPlans ? '다른 곳에서 실행한 서버입니다. 실행 정보를 확인한 뒤 중지할 수 있습니다.' : '외부 서버 중지를 사용하려면 관리 앱을 완전히 종료한 뒤 다시 실행해 주세요.';
   for (const service of state.services) {
     const row = byId(`service-${service.id}`);
     if (!row) continue;
@@ -98,11 +102,27 @@ function render(state) {
     row.querySelector('.address').textContent = `${service.label} · localhost:${service.port}`;
     row.querySelector('.detail').textContent = service.message;
     row.querySelector('.detail').hidden = service.phase !== 'error';
+    let actions = row.querySelector('.service-actions');
+    if (!actions) {
+      actions = document.createElement('div'); actions.className = 'service-actions';
+      const stop = document.createElement('button'); stop.className = 'service-stop'; stop.textContent = '중지…';
+      stop.setAttribute('aria-label', `${service.label} 중지`);
+      stop.addEventListener('click', () => { void prepareStop([service.id]); });
+      const force = document.createElement('button'); force.className = 'service-force danger'; force.textContent = '강제 종료…';
+      force.setAttribute('aria-label', `${service.label} 강제 종료`);
+      force.addEventListener('click', () => { void prepareStop([service.id], true); });
+      actions.append(stop, force); row.append(actions);
+    }
+    actions.hidden = !supportsStopPlans;
+    actions.querySelector('.service-stop').hidden = !service.owner;
+    actions.querySelector('.service-stop').disabled = Boolean(state.action) || preparingStop;
+    actions.querySelector('.service-force').hidden = !service.canForce;
+    actions.querySelector('.service-force').disabled = Boolean(state.action) || preparingStop;
   }
   if (phase === 'error' && previousPhase !== 'error') { byId('log-details').open = true; autoOpened = true; }
   else if (running && autoOpened) { byId('log-details').open = false; autoOpened = false; }
   previousPhase = phase;
-  if (!state.canStop && byId('stop-dialog').open) byId('stop-dialog').close();
+  if (state.action && byId('stop-dialog').open) byId('stop-dialog').close();
   renderLogs(state.logs);
   if (restoringUi) {
     restoringUi = false;
@@ -114,6 +134,38 @@ function run(action) {
   feedback('');
   void action().then(state => { if (state) render(state); }).catch(error => feedback(error.message));
 }
+async function prepareStop(ids, force = false) {
+  if (preparingStop || current?.action) return;
+  if (!supportsStopPlans) {
+    stopPlan = { legacy: true, targets: [{}] };
+    byId('stop-title').textContent = '로컬 서버를 중지할까요?';
+    byId('stop-description').textContent = '이 관리 앱에서 시작한 서버만 중지합니다. Ticklane의 서버 연결이 끊깁니다.';
+    byId('stop-targets').replaceChildren(); byId('stop-blocked').textContent = '';
+    byId('confirm-stop').disabled = false; byId('confirm-stop').textContent = '서버 중지';
+    byId('stop-dialog').showModal(); return;
+  }
+  preparingStop = true; render(current); feedback('');
+  try {
+    stopPlan = await api.prepareStop(ids, force);
+    byId('stop-title').textContent = stopPlan.targets.length ? force ? '확인한 서버를 강제 종료할까요?' : '확인한 서버를 중지할까요?' : '중지할 서버를 확인하지 못했습니다';
+    byId('stop-description').textContent = force ? '정상 종료에 응답하지 않은 프로세스를 강제로 종료합니다. 진행 중인 작업이 유실될 수 있습니다.' : '연결된 Ticklane의 조회·수집·주문 처리가 중단됩니다.';
+    const targets = byId('stop-targets'); targets.replaceChildren();
+    for (const target of stopPlan.targets) {
+      const section = document.createElement('section'); section.className = 'stop-target';
+      const title = document.createElement('h3'); title.textContent = `${target.label} · localhost:${target.port} · ${target.owner === 'external' ? '외부 실행' : '앱에서 실행'}`;
+      const identity = document.createElement('p'); identity.textContent = `PID ${target.pid} · ${target.user} · ${target.processCount}개 프로세스${target.owner === 'managed' ? ' 및 자식 프로세스' : ''}`;
+      const cwd = document.createElement('p'); cwd.textContent = target.cwd;
+      const command = document.createElement('code'); command.textContent = target.command;
+      section.append(title, identity, cwd, command); targets.append(section);
+    }
+    byId('stop-blocked').textContent = stopPlan.blocked.map(b => `${b.label} 중지 불가: ${b.reason}`).join('\n\n');
+    byId('confirm-stop').disabled = !stopPlan.targets.length;
+    byId('confirm-stop').textContent = force ? '강제 종료' : stopPlan.blocked.length ? '확인된 서버 중지' : '서버 중지';
+    byId('cancel-stop').textContent = stopPlan.targets.length ? '계속 실행' : '닫기';
+    byId('stop-dialog').showModal();
+  } catch (error) { feedback(error.message); }
+  finally { preparingStop = false; render(current); }
+}
 byId('primary').addEventListener('click', () => {
   if (current?.phase !== 'running') { run(api.start); return; }
   openingClient = true; render(current); feedback('');
@@ -121,10 +173,14 @@ byId('primary').addEventListener('click', () => {
 });
 byId('stop').addEventListener('click', () => {
   if (current?.action === 'starting') run(api.stop);
-  else if (current?.canStop) byId('stop-dialog').showModal();
+  else if (current?.canStop) void prepareStop();
 });
 byId('cancel-stop').addEventListener('click', () => byId('stop-dialog').close());
-byId('confirm-stop').addEventListener('click', () => { byId('stop-dialog').close(); run(api.stop); });
+byId('confirm-stop').addEventListener('click', () => {
+  if (!stopPlan?.targets.length) return;
+  const plan = stopPlan; stopPlan = undefined;
+  byId('stop-dialog').close(); run(() => plan.legacy ? api.stop() : api.confirmStop(plan.token));
+});
 byId('refresh').addEventListener('click', () => run(api.refresh));
 byId('log-details').querySelector('summary').addEventListener('click', () => { autoOpened = false; });
 byId('open-logs').addEventListener('click', () => { void api.openLogs().then(error => { if (error) feedback('로그 폴더를 열지 못했습니다.'); }).catch(() => feedback('로그 폴더를 열지 못했습니다.')); });

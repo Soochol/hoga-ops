@@ -1,0 +1,76 @@
+{
+  "verifiedAt": "2026-10-25T04:43:35.878Z",
+  "head": "cd3a4f3523df606a734f425e226a51c23f82477a",
+  "base": "cd3a4f3523df606a734f425e226a51c23f82477a",
+  "state": "Uncommitted working tree; validated contents are identified by the input fingerprint.",
+  "inputs": {
+    "groups": [
+      "desktop/src",
+      "desktop/tests",
+      "desktop/scripts",
+      "desktop/assets"
+    ],
+    "extras": [
+      "desktop/package.json",
+      "desktop/package-lock.json",
+      "desktop/tsconfig.json",
+      "desktop/eslint.config.mjs",
+      "desktop/playwright.config.cjs",
+      "VERSION"
+    ],
+    "count": 63,
+    "sha256": "b417bd4a38449928f87947dce3f6267b218b29117142fab22ea07c9d7bc9be60",
+    "algorithm": "Sorted relative path + NUL + file bytes + NUL for every input, SHA-256."
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "electron": "44.8.0",
+    "playwright": "1.64.1",
+    "platform": "linux",
+    "arch": "x64",
+    "kernel": "7.0.0-38-generic",
+    "display": ":0",
+    "waylandDisplay": "wayland-0",
+    "chromiumSandbox": true
+  },
+  "checks": [
+    {
+      "command": "cd desktop && npm test",
+      "result": "passed",
+      "tests": 17,
+      "includesBuild": true
+    },
+    {
+      "command": "cd desktop && npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "command": "cd desktop && npm run lint",
+      "result": "passed"
+    },
+    {
+      "command": "cd desktop && npx playwright test server-manager.spec.cjs server-tray.spec.cjs server-ui-reload.spec.cjs",
+      "result": "passed",
+      "tests": 20,
+      "workers": 1
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "External server inspection and cancellation; manager shutdown preserves external servers.",
+    "Per-service and combined confirmed stop; child-process cleanup; managed restart.",
+    "Changed process/PID identity, another checkout, unrelated listener and non-loopback binding protection.",
+    "10-second graceful-stop deadline, separately confirmed force stop, cancellation and unaffected sibling service.",
+    "Reload launcher and opaque listener child cleanup; native tray confirmation; renderer-only live reload.",
+    "420x580 confirmation dialog: no horizontal overflow, cancel button visible; screenshot visually inspected."
+  ],
+  "limits": [
+    "External process discovery is Linux-only and fails closed when process identity cannot be established; systemd service cgroups require their original manager.",
+    "Tests use temporary projects, randomly allocated ports and fake servers. No installed launcher, user server, connection setting or production data was modified.",
+    "Source build verified; installed desktop-launcher deployment was outside this change."
+  ]
+}
