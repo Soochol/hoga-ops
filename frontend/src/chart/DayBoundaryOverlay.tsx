@@ -40,7 +40,7 @@ type Props = {
  * N 세그먼트 → N-1 경계(첫 세그먼트 앞에는 긋지 않는다).
  *
  * **prefs 를 읽지 않는다.** 색은 `--chart-day-boundary` 토큰을 primitive 가 draw
- * 시점에 해석하고, 두께는 1px 상수이며, 켜고 끄는 토글은 없다(분봉이면 항상
+ * 시점에 해석하고, 두께는 1px 상수이며, 켜고 끄는 토글은 없다(분봉·초봉이면 항상
  * 그린다) — 그 결정의 근거는 `DayBoundaryPrimitive` 의 docstring 참조.
  */
 function DayBoundaryOverlay({ paneSeries, boundaries }: Props) {

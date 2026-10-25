@@ -113,7 +113,8 @@ export function useSecondHistory(code: string | null, venue: LiveVenueOption, da
     for (const cell of live.data?.prices ?? []) cells.set(`${cell.t_ms}|${cell.price}|${cell.side}`, cell);
     return [...cells.values()].filter(p => !regularSessionOnly || isRegularSessionMs(p.t_ms)).sort((a, b) => a.t_ms - b.t_ms);
   }, [options.includePrices, history.data, live.data, date, liveFromMs, regularSessionOnly]);
-  return { ...history, bars, prices, loadAt, oldestLoadedMs: history.data?.pages.at(-1)?.fromMs ?? null, catalogPending: catalog.isPending, catalogError: catalog.isError,
+  return { ...history, bars, prices, loadAt, oldestLoadedMs: history.data?.pages.at(-1)?.fromMs ?? null,
+    catalogPending: catalog.isPending, catalogError: catalog.isError, refetchCatalog: catalog.refetch,
     source: first?.result.source, storageError: live.data?.storage_error ?? first?.result.storage_error };
 }
 

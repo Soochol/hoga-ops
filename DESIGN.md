@@ -1,5 +1,13 @@
 # Design System — hoga-ops
 
+2026-10-25 사용자 요청 — 초봉에도 분봉과 같은 거래일 날짜 구분선을 표시한다.
+기존 `DayBoundaryPrimitive`·`--chart-day-boundary`·1px 점선을 재사용하고 모든 패널에
+이어 표시한다. 날짜 라벨은 기존 시간축이 담당하며 별도 토글·색 설정은 추가하지 않는다.
+
+같은 날짜 후속 승인 — 초봉은 팬·축소 후 부족 범위를 연속으로 채우며 읽던 시점과
+배율을 유지한다. 기존 하단 보조 글씨에서 저장된 과거 데이터 끝·선택 구간 시작·
+64페이지 조회 한도·조회 실패를 구분하고 기존 추가 조회/재시도 버튼을 사용한다.
+
 2026-10-25 사용자 승인 — Electron 서버 관리 창의 외부 실행 서버에도 서비스별 `중지…`와
 전체 `모두 중지…`를 제공한다. 기존 서버 관리 창의 폰트·색·간격·버튼 스타일을 유지하며,
 확인창에 사용자·PID·프로젝트 경로·명령·프로세스 수와 연결 중단 영향을 표시한다.
@@ -403,7 +411,7 @@ with its label folded at narrow widths, rather than inside the More popup.
   | `--border` | `#232329` | `#E4E0D3` | Default borders, dividers |
   | `--border-strong` | `#33333C` | `#C9C3B2` | Active borders, vertical dividers |
   | `--chart-pane-divider` | `#3a3a42` | `#bcb4a0` | Chart pane separators only (lightweight-charts `layout.panes`); `--border-strong` 근처 톤으로 pane 경계는 남기되 소음은 억제(2026-07-15 완화 — 이전 다크 `#63636f`/라이트 `#9a917c`는 화면 최강 선이라 "분리는 톤+간격" 규칙과 충돌) |
-  | `--chart-day-boundary` | `#6d6d7b` | `#8a8271` | 분봉 차트의 거래일 경계 세로 점선(`DayBoundaryPrimitive`). **`--border` 계열을 재사용하지 않는다** — 아래 접근성 절 참조. `--bg-card` 대비 3:1 이상이 이 토큰의 계약이고(다크 3.67:1 / 라이트 3.71:1), 값을 바꿀 때 그 대비를 다시 잰다. 라이트는 종이 팔레트의 **따뜻한** 축을 따른다(차가운 슬레이트 블루 `#64748B` 가 겉돌던 것을 2026-08-27 에 교정) |
+  | `--chart-day-boundary` | `#6d6d7b` | `#8a8271` | 분봉·초봉 차트의 거래일 경계 세로 점선(`DayBoundaryPrimitive`). **`--border` 계열을 재사용하지 않는다** — 아래 접근성 절 참조. `--bg-card` 대비 3:1 이상이 이 토큰의 계약이고(다크 3.67:1 / 라이트 3.71:1), 값을 바꿀 때 그 대비를 다시 잰다. 라이트는 종이 팔레트의 **따뜻한** 축을 따른다(차가운 슬레이트 블루 `#64748B` 가 겉돌던 것을 2026-08-27 에 교정) |
   | `--fg` | `#ECECF1` | `#1E2732` | Primary text |
   | `--fg-dim` | `#9A9AA8` | `#5C6673` | Secondary text, dim labels |
   | `--fg-dimmer` | `#63636F` | `#8B94A0` | **비활성(disabled) 요소와 장식 글리프 전용.** 3차 *텍스트* 에는 쓰지 않는다 — 아래 대비 규칙 참조 |
