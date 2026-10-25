@@ -1,7 +1,7 @@
 /** Seconds keep their observed-trade source and paging; chart tools, series,
  * overlays and pane layout are shared with minute charts. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSecondHistory, SECOND_INITIAL_BARS } from '../../api/secondHistory';
+import { useSecondHistory, SECOND_INITIAL_BARS, SECOND_HISTORY_PAGE_LIMIT } from '../../api/secondHistory';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useWorkspaceStore, groupTargetChartWindow, type WorkspaceWindow, type GroupSymbol } from '../../state/workspace';
 import { bucketSeconds, useLivePageStore, type SavedRangeFocus, type SecondTimeframe } from '../../state/livePage';
@@ -70,7 +70,7 @@ function SecondChartContent({ win, symbol, timeframe, code, venue, today, saved 
   });
   const { bars, hasNextPage, isFetchingNextPage, fetchNextPage } = query;
   const loadOlder = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+    if (hasNextPage && !isFetchingNextPage) return fetchNextPage({ cancelRefetch: false });
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
   const needsOlder = requiredFromMs !== undefined ? query.oldestLoadedMs != null && query.oldestLoadedMs > requiredFromMs : bars.length < SECOND_INITIAL_BARS;
   const initialPending = needsOlder && (hasNextPage || query.catalogPending);
@@ -110,8 +110,9 @@ function SecondChartContent({ win, symbol, timeframe, code, venue, today, saved 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [headerFold, headerRef] = useChartHeaderFold();
   const [viewedDate, setViewedDate] = useState<{ date: string | null; returnToLive: () => void }>({ date: null, returnToLive: () => {} });
-  const pagedHistory = useMemo(() => ({ hasMore: hasNextPage, loading: isFetchingNextPage,
-    blocked: initialPending || query.isError, pagesPerGesture: 1, loadOlder }), [hasNextPage, isFetchingNextPage, initialPending, query.isError, loadOlder]);
+  const pagedHistory = useMemo(() => ({ hasMore: hasNextPage || query.catalogPending, loading: query.isFetching || query.catalogPending,
+    blocked: initialPending || query.isPending || query.isError || query.catalogError, fillViewport: true, loadOlder }),
+  [hasNextPage, query.catalogPending, query.catalogError, query.isFetching, query.isPending, initialPending, query.isError, loadOlder]);
 
   useEffect(() => {
     if (!target) return;
@@ -163,9 +164,13 @@ function SecondChartContent({ win, symbol, timeframe, code, venue, today, saved 
     {hasNextPage && <button type="button" className="shrink-0 text-xs text-fg-dim hover:text-fg" disabled={isFetchingNextPage}
       onClick={loadOlder}>{isFetchingNextPage ? '이전 구간 불러오는 중' : '이전 구간 불러오기'}</button>}
     <div className="shrink-0 px-2 py-1 text-fg-dim text-xs" role="status">
-      {query.isError && <button type="button" onClick={() => { void query.refetch(); }}>초봉 조회 실패 · 다시 조회</button>}
-      {requiredFromMs !== undefined && !initialPending && !query.isPending && query.oldestLoadedMs != null && query.oldestLoadedMs > requiredFromMs &&
-        (query.data?.pages.length ?? 0) >= 64 && <span>조회 한도 · 선택 구간 일부만 표시 · </span>}
+      {query.isError && <button type="button" onClick={() => { void (query.isFetchNextPageError ? loadOlder() : query.refetch()); }}>초봉 조회 실패 · 다시 조회</button>}
+      {query.catalogError && <button type="button" onClick={() => { void query.refetchCatalog(); }}>과거 날짜 조회 실패 · 다시 조회</button>}
+      {!query.isPending && !query.isError && !query.catalogError && !hasNextPage && !query.catalogPending && <span>
+        {(query.data?.pages.length ?? 0) >= SECOND_HISTORY_PAGE_LIMIT ? '조회 한도 · 최대 64페이지 · '
+          : requested?.fromMs !== undefined && query.oldestLoadedMs != null && query.oldestLoadedMs <= requested.fromMs
+            ? '선택 구간 시작 · ' : '저장된 과거 데이터 끝 · '}
+      </span>}
       {query.storageError ? '저장 오류 · 일부 체결이 누락될 수 있습니다' : query.source === 'hogaplay' ? '과거 체결 원본 기준 · 미수집 구간은 포함되지 않습니다' : '수집된 체결 기준 · 미수집 구간은 포함되지 않습니다'}
     </div>
   </div>;

@@ -33,6 +33,7 @@ import { INTER_SEGMENT_GAP_MS } from '../util/time';
 import { realMsToVirtualSeconds } from './viewportAnchor';
 import type { RangeBundle } from '../api/types';
 import { useChartPrefsStore } from '../state/chartPrefs';
+import { DayBoundaryPrimitive } from '../chart/DayBoundaryPrimitive';
 import { CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 
 /** 일봉 윈도잉 산식은 rightOffset(밀도 파생)을 더한다 — 기대값을 상수에서 유도해
@@ -131,6 +132,37 @@ describe('LiveChartRoot', () => {
       lastMinuteHistoricalFromDate: null,
       lastMinuteHistoricalTimeframe: null,
     });
+  });
+
+  it.each(['1m', '1s', '5s', '10s', '30s'] as const)('%s attaches day separators to every pane at the first observed candle', async timeframe => {
+    const factory = vi.mocked(createChartEx).getMockImplementation()!;
+    const chart = (factory as unknown as () => IChartApi)();
+    vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
+    const opens = ['2026-10-22', '2026-10-23'].map(date => Date.parse(`${date}T09:00:00+09:00`));
+    const bundle: RangeBundle = { ...DEFAULT_BUNDLE, from_date: '20261022', to_date: '20261023', bucket_ms: 1000,
+      segments: opens.map((open, i) => ({ date: i ? '20261023' : '20261022', session_open_ms: open, session_close_ms: open + 23400000 })),
+      candles: opens.flatMap(open => [5000, 10000].map(offset => ({ ts_ms: open + offset,
+        open: 100, high: 110, low: 90, close: 105, vol_a: 10, vol_b: 0 }))) };
+    const { unmount } = render(<LiveChartRoot code="005930" timeframe={timeframe} bundle={bundle}
+      clampEngaged={false} captureFloorEngaged={false} isPastCandlesLoading={false} />, { wrapper });
+    const primitives = () => vi.mocked(chart.addSeries).mock.results.flatMap(result => result.type === 'return'
+      ? vi.mocked(result.value.attachPrimitive).mock.calls.map(([primitive]) => primitive).filter(p => p instanceof DayBoundaryPrimitive) : []) as DayBoundaryPrimitive[];
+    await waitFor(() => expect(primitives().length).toBeGreaterThanOrEqual(2));
+    const expectedMs = opens[0] + 23400000 + INTER_SEGMENT_GAP_MS + 5000;
+    for (const primitive of primitives()) expect(primitive.snapshot()).toEqual([{ date: '20261023', virtualMs: expectedMs }]);
+    unmount();
+  });
+
+  it.each(['D', 'W', 'M'] as const)('%s keeps per-day separators disabled', timeframe => {
+    const factory = vi.mocked(createChartEx).getMockImplementation()!;
+    const chart = (factory as unknown as () => IChartApi)();
+    vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
+    const { unmount } = render(<LiveChartRoot code="005930" timeframe={timeframe} bundle={DEFAULT_BUNDLE}
+      clampEngaged={false} captureFloorEngaged={false} isPastCandlesLoading={false} />, { wrapper });
+    const primitives = vi.mocked(chart.addSeries).mock.results.flatMap(result => result.type === 'return'
+      ? vi.mocked(result.value.attachPrimitive).mock.calls.map(([primitive]) => primitive) : []);
+    expect(primitives.some(p => p instanceof DayBoundaryPrimitive)).toBe(false);
+    unmount();
   });
 
   it('publishes viewed-date changes without waking the parent for same-day pan/zoom', async () => {

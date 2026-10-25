@@ -693,7 +693,7 @@ export function LiveChartRoot({
   // 그리지 않으므로(아래 오버레이 마운트 게이트와 같은 조건) 계산도 건너뛴다.
   const nextDayBoundaryTicks = useMemo(
     () =>
-      cb && isMinuteTimeframe(timeframe)
+      cb && !isCalendarTimeframe(timeframe)
         ? resolveDayBoundaryTicks(cb.candles, axis)
         : NO_DAY_BOUNDARY_TICKS,
     [cb, axis, timeframe],
@@ -2964,7 +2964,7 @@ export function LiveChartRoot({
           {/* Day boundary lines only make sense on intraday timeframes —
               D/W/M's candles are already day/week/month units, so a
               per-day vertical line collapses onto each candle. */}
-          {isMinuteTimeframe(timeframe) && (
+          {!isCalendarTimeframe(timeframe) && (
             <DayBoundaryOverlay paneSeries={paneSeries} boundaries={dayBoundaryTicks} />
           )}
           {/* `/study` 저장 구간 밴드 — 캘린더 봉 전용. 분봉에선 저장 구간이 곧

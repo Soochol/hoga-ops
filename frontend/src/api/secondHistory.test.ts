@@ -1,8 +1,8 @@
 import { createElement, type ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi } from 'vitest';
-import { nextSecondPage, fetchSecondPage, SECOND_INITIAL_BARS, loadSecondHistoryAt, useSecondHistory } from './secondHistory';
+import { nextSecondPage, fetchSecondPage, SECOND_INITIAL_BARS, SECOND_HISTORY_PAGE_LIMIT, loadSecondHistoryAt, useSecondHistory } from './secondHistory';
 import { apiCall } from './client';
 vi.mock('./client', () => ({ apiCall: vi.fn() }));
 describe('second history paging', () => {
@@ -96,6 +96,34 @@ it('enriches every loaded page with trade quantities and retains that history wh
   hook.rerender({ includePrices: false });
   expect(hook.result.current.bars.map(b => b.t_ms)).toEqual([start, start + 240000]);
   expect(hook.result.current.prices).toEqual([]);
+  hook.unmount();
+  client.clear();
+});
+
+it.each(['page limit', 'selected floor'] as const)('stops cursor paging at the %s even when older observations exist', async stop => {
+  vi.mocked(apiCall).mockReset();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const start = Date.parse('2026-09-28T09:00:00+09:00'), date = '20260928';
+  const count = stop === 'page limit' ? SECOND_HISTORY_PAGE_LIMIT - 1 : 1;
+  const page = (fromMs: number) => ({ fromMs, result: { code: '005930', venue: 'KRX', date, seconds: 1,
+    source: 'second_trades', status: 'observed', coverage: 'unverified', storage_error: null,
+    first_observed_ms: start - 3600000, last_observed_ms: start + 20000000,
+    bars: [{ t_ms: fromMs, open: 10, high: 10, low: 10, close: 10, volume: 1, count: 1, trade_value: 10 }], prices: [] } });
+  const options = stop === 'selected floor' ? { fromMs: start, live: false } : { live: false };
+  const key = ['second-history', '005930', 'KRX', date, 1, false,
+    ...(stop === 'selected floor' ? [null, start, false] : [])];
+  client.setQueryData(['second-trade-dates', '005930', 'KRX'], { dates: ['20260925', date] });
+  const pages = Array.from({ length: count }, (_, i) => page(start + (count - i) * 240000));
+  client.setQueryData(key, { pages, pageParams: pages.map(p => ({ date, endMs: p.fromMs + 240000 })) });
+  vi.mocked(apiCall).mockResolvedValue(page(start).result);
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
+  const hook = renderHook(() => useSecondHistory('005930', 'KRX', date, 1, false, options), { wrapper });
+  expect(hook.result.current.hasNextPage).toBe(true);
+  await act(async () => { await hook.result.current.fetchNextPage(); });
+  await waitFor(() => expect(hook.result.current.hasNextPage).toBe(false));
+  expect(hook.result.current.data?.pages).toHaveLength(count + 1);
+  await act(async () => { await hook.result.current.fetchNextPage(); });
+  expect(apiCall).toHaveBeenCalledOnce();
   hook.unmount();
   client.clear();
 });
