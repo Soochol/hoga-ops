@@ -25,5 +25,6 @@ export function formatStudyViewTitle(row: { label: string; code: string; name: s
 
 
 export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string; from_ms?: number; to_ms?: number } }): string {
-  return `${studyTimeframeLabel(row.timeframe)} · ${compactStudyViewPeriod(row.range, row.timeframe)}`;
+  const period = compactStudyViewPeriod(row.range, row.timeframe);
+  return row.timeframe === 'D' ? period : `${studyTimeframeLabel(row.timeframe)} · ${period}`;
 }
