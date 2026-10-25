@@ -2,9 +2,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { LiveIndexCandlesResponse } from '../../src/api/liveIndices';
+import type { IndexHeaderQuoteResponse } from '../../src/api/indexHeaderQuote';
 import { installLiveMocks } from './helpers/liveMocks';
 
 const evidence = JSON.parse(readFileSync(new URL('../../../docs/research/2026-10-19-us-index-minute-app-live-probe.json', import.meta.url), 'utf8')) as { responses: LiveIndexCandlesResponse[] };
+const vixEvidence = JSON.parse(readFileSync(new URL('../../../docs/diagnostics/2026-10-25-vix/chart-replay.json', import.meta.url), 'utf8')) as { responses: LiveIndexCandlesResponse[]; header: IndexHeaderQuoteResponse };
+evidence.responses.push(...vixEvidence.responses);
 type ChartsWindow = Window & { __liveCharts?: Map<string, IChartApi> };
 const windowId = 'us-minute-test';
 
@@ -87,23 +90,34 @@ test('US index updates minute, D/W/M and header every two seconds without resett
   await expect(page.locator('.live-window-chart').getByRole('status')).toHaveCount(0);
 });
 
-for (const id of ['NASDAQ_COMPOSITE', 'SP500', 'SOX']) {
+for (const id of ['NASDAQ_COMPOSITE', 'SP500', 'SOX', 'VIX']) {
   test(`${id}: renders actual-provider minute fixture, period changes, restore and bounded polling`, async ({ page }, testInfo) => {
     let stale = false;
     await page.clock.install();
     await setup(page, { stale: () => stale });
+    if (id === 'VIX') await page.route(/\/api\/live\/index-header-quote\?index_id=VIX(?:&|$)/,
+      route => route.fulfill({ json: vixEvidence.header }));
     const requests: string[] = [], errors: string[] = [], wsMessages: string[] = [];
     page.on('request', request => requests.push(request.url()));
     page.on('pageerror', error => errors.push(error.message));
     page.on('websocket', ws => ws.on('framesent', event => wsMessages.push(String(event.payload))));
-    await page.goto(`/live?index=${id}`);
+    await page.goto(id === 'VIX' ? '/live' : `/live?index=${id}`);
+    if (id === 'VIX') {
+      // Discover VIX through the real credential-free catalog route as users do.
+      await page.keyboard.press('/');
+      await page.getByRole('combobox').fill('VIX');
+      await page.getByRole('option', { name: /VIX 지수/ }).click();
+    }
     const frame = page.locator('.live-window-chart');
     await expect.poll(async () => (await measurements(page)).count).toBe(102);
+    // Search selection leaves the pointer over a historical candle. Read the
+    // latest legend only after leaving the plot and advancing its paint timers.
+    await page.mouse.move(0, 0);
+    await page.clock.runFor(1_000);
     await expect(frame.getByRole('status')).toHaveCount(0);
     const expected = evidence.responses.find(r => r.index_id === id && r.timeframe === '1m')!.candles.at(-1)!;
     await expect(frame.getByText(`${expected.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} pt`, { exact: false }).first()).toBeVisible();
-    // Fake time must advance rAF/reveal timers before testing the painted chart.
-    await page.clock.runFor(1_000);
+    if (id === 'VIX') await expect(frame.getByTestId('titlebar-current-price')).toHaveText('19.45');
     await expect(frame.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
     const initial = await measurements(page);
     expect(initial.axisPrice).toBe('1,234,567.89');
@@ -137,11 +151,11 @@ for (const id of ['NASDAQ_COMPOSITE', 'SP500', 'SOX']) {
     await expect(frame.getByRole('button', { name: '분봉 선택 열기: 5분', exact: true })).toBeVisible();
     for (const label of ['일', '주', '월']) {
       await frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true }).click();
-      await expect(frame.getByText('121.23 pt', { exact: false }).first()).toBeVisible();
+      await expect(frame.getByText(id === 'VIX' ? '19.45 pt' : '121.23 pt', { exact: false }).first()).toBeVisible();
       await expect(frame.getByRole('status')).toHaveCount(0);
     }
     expect(requests.filter(url => /\/(past-candles|past-daily-candles|screener-daily-candles|index-investor-net|quotes|series)\?/.test(url) && new RegExp(id).test(url))).toEqual([]);
-    expect(wsMessages.filter(message => /NASDAQ_COMPOSITE|SP500|SOX/.test(message))).toEqual([]);
+    expect(wsMessages.filter(message => /NASDAQ_COMPOSITE|SP500|SOX|VIX/.test(message))).toEqual([]);
     expect(errors).toEqual([]);
   });
 }

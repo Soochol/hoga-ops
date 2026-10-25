@@ -1,0 +1,16 @@
+npm warn deprecated sliced@1.0.1: Unsupported
+
+added 558 packages, and audited 559 packages in 3s
+
+90 packages are looking for funding
+  run `npm fund` for details
+
+17 vulnerabilities (4 low, 4 moderate, 9 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.

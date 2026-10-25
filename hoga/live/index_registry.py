@@ -12,7 +12,7 @@ from typing import Literal
 from hoga.live.us_index_minutes import MINUTE_TIMEFRAMES
 
 LiveIndexId = Literal[
-    "KOSPI", "KOSDAQ", "KOSPI200", "KOSDAQ150", "KRX100", "KRX300", "NASDAQ_COMPOSITE", "SP500", "SOX",
+    "KOSPI", "KOSDAQ", "KOSPI200", "KOSDAQ150", "KRX100", "KRX300", "NASDAQ_COMPOSITE", "SP500", "SOX", "VIX",
 ]
 InvestorScope = Literal["market", "index", "none"]
 
@@ -84,6 +84,8 @@ _REPRESENTATIVE_INDICES: tuple[RepresentativeIndex, ...] = (
                         "US", "America/New_York", "kis", "SPX", (*MINUTE_TIMEFRAMES, "D", "W", "M")),
     RepresentativeIndex("SOX", "필라델피아 반도체지수", None, "none", True,
                         "US", "America/New_York", "kis", "SOX", (*MINUTE_TIMEFRAMES, "D", "W", "M")),
+    RepresentativeIndex("VIX", "VIX 지수", None, "none", True,
+                        "US", "America/New_York", "kis", "VIX", (*MINUTE_TIMEFRAMES, "D", "W", "M")),
 )
 
 

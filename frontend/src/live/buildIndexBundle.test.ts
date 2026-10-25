@@ -44,7 +44,7 @@ describe('buildIndexBundle', () => {
 });
 
 
-it.each(['NASDAQ_COMPOSITE', 'SP500', 'SOX'] as const)('%s minute candles survive KST midnight with real NY session instants', indexId => {
+it.each(['NASDAQ_COMPOSITE', 'SP500', 'SOX', 'VIX'] as const)('%s minute candles survive KST midnight with real NY session instants', indexId => {
   // NY July 10 10:59 / 11:00 = KST July 10 23:59 / July 11 00:00.
   const start = Date.UTC(2026, 6, 10, 14, 59);
   const bundle = buildIndexBundle({ indexId, from: '20260710', to: '20260710', bucketMs: 60_000,

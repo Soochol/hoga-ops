@@ -61,7 +61,7 @@ describe('US daily chart identity and capability boundaries', () => {
     expect(windows[1].pinned?.code).toBe('005930');
     expect(windows[1].chart?.timeframe).toBe('3m');
   });
-  it.each(['NASDAQ_COMPOSITE', 'SP500', 'SOX'] as const)('%s preserves supported minutes through group, pin and stock changes', id => {
+  it.each(['NASDAQ_COMPOSITE', 'SP500', 'SOX', 'VIX'] as const)('%s preserves supported minutes through group, pin and stock changes', id => {
     activateLiveInstrument(indexInstrument(id));
     for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m', '60m'] as const) {
       useWorkspaceStore.getState().setChartTimeframe('us-test', tf);
@@ -93,7 +93,7 @@ describe('US daily chart identity and capability boundaries', () => {
     }
   });
   it('disables domestic sidecars, collection, volume and turnover but allows price indicators', () => {
-    for (const instrument of [usStockInstrument('NASDAQ', 'NVDA'), indexInstrument('NASDAQ_COMPOSITE'), indexInstrument('SP500'), indexInstrument('SOX')]) {
+    for (const instrument of [usStockInstrument('NASDAQ', 'NVDA'), indexInstrument('NASDAQ_COMPOSITE'), indexInstrument('SP500'), indexInstrument('SOX'), indexInstrument('VIX')]) {
       expect(capabilitiesForInstrument(instrument)).toMatchObject({ hogaPanes: false, investorNet: 'none', studySave: false, tradeValue: false, volume: false });
     }
     expect(indicatorInstanceApplicable('moving-average', 'D', false, true)).toBe(true);
@@ -103,6 +103,14 @@ describe('US daily chart identity and capability boundaries', () => {
   it('finds the S&P 500 index when typed without its display space', () => {
     const catalog = buildLiveSearchCatalog([], [{ kind: 'index', id: 'SP500', label: 'S&P 500', investorScope: 'none' }]);
     expect(searchLiveCatalog(catalog, 'S&P500')[0]).toMatchObject({ kind: 'index', index: { id: 'SP500' } });
+  });
+  it('finds VIX by its code and preserves its index URL and subject identity', () => {
+    const catalog = buildLiveSearchCatalog([], [{ kind: 'index', id: 'VIX', label: 'VIX 지수', investorScope: 'none' }]);
+    expect(searchLiveCatalog(catalog, 'vix')[0]).toMatchObject({ kind: 'index', index: { id: 'VIX' } });
+    const index = indexInstrument('VIX', 'VIX 지수');
+    expect(instrumentToActiveCode(index)).toBeNull();
+    expect(instrumentToSubjectKey(index)).toBe('index:VIX');
+    expect(liveDeepLinkPath(index)).toBe('/live?index=VIX');
   });
   it('searches US symbols and Korean/English names with exchange identity', () => {
     const catalog = buildLiveSearchCatalog([], [], [{ exchange: 'NASDAQ', symbol: 'AAPL', label: '애플', english_name: 'APPLE INC', is_etf: false }]);
@@ -116,7 +124,7 @@ describe('US daily chart identity and capability boundaries', () => {
     expect(formatInstrumentPrice(121.6917, bundle.code)).toBe('121.69');
     expect(formatInstrumentPrice(120, bundle.code)).toBe('120.00');
     expect(formatInstrumentPrice(1234567.8912, bundle.code)).toBe('1,234,567.89');
-    for (const code of ['index:NASDAQ_COMPOSITE', 'index:SP500', 'index:SOX']) {
+    for (const code of ['index:NASDAQ_COMPOSITE', 'index:SP500', 'index:SOX', 'index:VIX']) {
       expect(formatInstrumentPrice(121.6917, code)).toBe('121.69');
       expect(formatInstrumentPrice(120, code)).toBe('120.00');
       expect(formatInstrumentPrice(1234567.8912, code)).toBe('1,234,567.89');

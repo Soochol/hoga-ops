@@ -12,7 +12,7 @@ export function usChartTimeframe(timeframe: LiveTimeframe): LiveTimeframe {
 
 export type UsExchange = 'NASDAQ' | 'NYSE' | 'AMEX';
 
-export type LiveIndexId = 'KOSPI' | 'KOSDAQ' | 'KOSPI200' | 'KOSDAQ150' | 'KRX100' | 'KRX300' | 'NASDAQ_COMPOSITE' | 'SP500' | 'SOX';
+export type LiveIndexId = 'KOSPI' | 'KOSDAQ' | 'KOSPI200' | 'KOSDAQ150' | 'KRX100' | 'KRX300' | 'NASDAQ_COMPOSITE' | 'SP500' | 'SOX' | 'VIX';
 
 export type LiveInstrument =
   | { kind: 'us_stock'; exchange: UsExchange; symbol: string; label: string }
@@ -100,7 +100,7 @@ export function isUsExchange(value: unknown): value is UsExchange {
   return value === 'NASDAQ' || value === 'NYSE' || value === 'AMEX';
 }
 export function isUsIndexId(value: unknown): boolean {
-  return value === 'NASDAQ_COMPOSITE' || value === 'SP500' || value === 'SOX';
+  return value === 'NASDAQ_COMPOSITE' || value === 'SP500' || value === 'SOX' || value === 'VIX';
 }
 export function isUsInstrument(instrument: LiveInstrument | null): boolean {
   return instrument?.kind === 'us_stock' || (instrument?.kind === 'index' && isUsIndexId(instrument.id));

@@ -1,0 +1,60 @@
+{
+  "checked_at_utc": "2026-10-25T12:56:16.666964+00:00",
+  "health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "8d93eafb6"
+  },
+  "capture_reason": "closed",
+  "watchlist_count": 348,
+  "live_set_count": 348,
+  "live_set_sha256": "c8c358fcac3d2edbcb8158df9577c95deb0ca7af19d94ddb74c80b47b2a65469",
+  "connected_accounts": 0,
+  "connection_allowed": false,
+  "collector": {
+    "pid": 12961,
+    "alive": true,
+    "ready": true,
+    "started_at_ms": 1792921425084,
+    "restarts": 0,
+    "forced_terminations": 0,
+    "storage_errors": []
+  },
+  "accounts": [
+    {
+      "account_id": 0,
+      "connected": false,
+      "sub_expected": 169,
+      "sub_acked": 0,
+      "connection_generation": 0
+    },
+    {
+      "account_id": 1,
+      "connected": false,
+      "sub_expected": 169,
+      "sub_acked": 0,
+      "connection_generation": 0
+    },
+    {
+      "account_id": 2,
+      "connected": false,
+      "sub_expected": 169,
+      "sub_acked": 0,
+      "connection_generation": 0
+    },
+    {
+      "account_id": 3,
+      "connected": false,
+      "sub_expected": 168,
+      "sub_acked": 0,
+      "connection_generation": 0
+    },
+    {
+      "account_id": 4,
+      "connected": false,
+      "sub_expected": 113,
+      "sub_acked": 0,
+      "connection_generation": 0
+    }
+  ]
+}
