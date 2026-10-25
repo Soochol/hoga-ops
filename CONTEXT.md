@@ -172,9 +172,33 @@ The **only kind** of **저장 학습뷰** (`schema_version: 2` — the sole valu
 _Avoid_: "snapshot", "fixed view", "captured chart"; saying it restores saved indicator state; calling it "v2" as if a v1 still existed.
 
 **공용 지표 셋업 (Shared Indicator Setup)**:
-The current analysis indicator setup. It is **not owned by a saved study view**: opening a 복기뷰 reloads the saved period and re-analyzes it with whatever this setup currently is. Since #699 (PR-A/PR-B) the **entire** setup — every drawer-visible toggle, parameter, and color — is profiled per **LiveTimeframe** group (분봉 / 일봉 / 주봉 / 월봉, 4 sparse buckets over factory defaults), and since ADR-0152 each chart window carries its own set. Storage is split across two blobs: indicator fields in `live.indicators.v2`, and drawer-visible chartPrefs sub-options (indicator-modal keys) in `hoga.chart.prefs.v1` under `indicatorModalByTimeframe`; chart-wide chartPrefs stay flat/global. The chart's current timeframe is the lookup key. The **page axis** (`IndicatorPageScope`) still exists in those blobs but has only one inhabitant since ADR-0157 — the `study` buckets are legacy data no surface writes to.
+The current analysis indicator setup. It is **not owned by a saved study view**: opening a 복기뷰 reloads the saved period and re-analyzes it with whatever this setup currently is. Since #699 (PR-A/PR-B) the **entire** setup — every drawer-visible toggle, parameter, and color — is profiled per **LiveTimeframe** group (초봉 / 분봉 / 일봉 / 주봉 / 월봉, 5 sparse buckets over factory defaults), and since ADR-0152 each chart window carries its own set. Storage is split across two blobs: indicator fields in `live.indicators.v2`, and drawer-visible chartPrefs sub-options (indicator-modal keys) in `hoga.chart.prefs.v1` under `indicatorModalByTimeframe`; chart-wide chartPrefs stay flat/global. The chart's current timeframe is the lookup key. The **page axis** (`IndicatorPageScope`) still exists in those blobs but has only one inhabitant since ADR-0157 — the `study` buckets are legacy data no surface writes to.
 같은 종류를 여러 개 추가한 항목은 `indicatorInstances`에서 각자의 설정·표시 상태·지표 전용 prefs를 소유한다. 기존 flat 필드는 첫 항목이며, 원본 시세 수요는 활성 항목들의 합집합이다.
 _Avoid_: saying a **복기뷰** restores or stores indicator state; treating the `study` bucket of `IndicatorPageScope` as a live axis.
+
+초봉 공통 분석 도구 확장(2026-10-25): 국내 주식 1·5·10·30초는 `seconds` 지표
+버킷을 공유하며 `minute`과 독립적으로 저장한다. 창별 지표 설정·추가 항목·스타일·
+숨김·삭제·초기화와 드로잉·캡처·레전드·패널 조절을 분봉과 같은 표시 경로로 사용한다.
+지원 지표는 관측 OHLCV 기반 이동평균선·볼린저·엔벨로프·슈퍼트렌드·거래량이며
+분봉·일별 원천을 초 단위로 보간하지 않는다. 초기 최근 관측 240봉·별도 원천·
+과거 탐색과 호가·매물대 커서 연결은 유지한다. 패널 높이는 `seconds` 프로필로
+분리하고 순서·병합·축 모드는 공용이다.
+
+초봉 구간 분석 확장(2026-10-25 후속): 분봉 화면 오른쪽 봉 또는 측정 도구의 선택
+구간을 같은 그룹·Code의 초봉 창으로 연다. 일치하는 창을 재사용하고 다른 고정
+종목은 교체하지 않는다. 선택 기간을 직접 조회하고 관측이 없는 초를 만들지 않는다.
+초봉도 현재 가시 기간·주기·뷰포트를 저장 학습뷰로 저장하며, 드로어와 `/live?view=`는
+저장된 초 주기로 복원한다. KRX 고정·현재 지표 설정 재분석 계약은 동일하다.
+원본의 방향별 1초 가격 셀이 있을 때만 매수·매도 체결량을 초봉 체결강도로 집계한다.
+방향 미확인·단일가 체결은 제외하며 당일 누적선은 제공하지 않는다. 초 단위 호가·
+프로그램은 추정하지 않는다. 초봉 저장은 hogaplay 누락 수집을 요청하지 않는다.
+
+초봉 주기 전환(2026-10-25 후속): 과거 화면에서 1·5·10·30초를 바꿔도 가시 구간의
+실제 양 끝 시각을 새 봉 경계로 옮겨 읽던 기간을 유지한다. 봉 개수는 새 주기에 맞춰
+바뀌며 밤·휴일 공백은 관측 인덱스로 처리한다. 전환 위치는 창별 일회성 런타임이고
+저장 설정·레이아웃에 포함하지 않는다. 종목·시장 변경에는 승계하지 않으며 새 구간
+명령이 우선한다. 범위를 제한해 읽은 과거의 마지막 봉을 실시간 최신 봉으로 간주하지 않는다.
+
 
 **엔벨로프 (Envelope)**:
 가격 차트 위의 보조지표. 선택한 기준가의 후행 N봉 단순이동평균을 중심선으로,
@@ -186,7 +210,7 @@ _Avoid_: saying a **복기뷰** restores or stores indicator state; treating the
 _Avoid_: 표준편차 밴드(볼린저 밴드와 계산식이 다르다); 이격률을 가격의 절대 차이로 해석.
 
 **Pane 크기 가중치 (Pane Stretch)**:
-The user-owned relative height weight of each chart pane kind (candle, volume, 호가비, …) inside the `/live` chart, adjusted by dragging the pane separator. It has four **LiveTimeframe** profiles (`minute` / D / W / M): all minute intervals share one profile, while daily, weekly, and monthly charts retain independent proportions. The profile is global across chart windows — it is not window-owned. It lives beside pane order in the persisted indicator slice and travels with layout presets; applying a legacy flat preset seeds all four profiles equally. Like pane order (layout, not indicator config), it is treated as user-owned layout: the indicator drawer's "기본값 복원" **preserves** it, and only the preset menu's "기본 레이아웃으로 초기화" restores the spec defaults. A pane kind the user never dragged keeps its spec default weight. ADR-0172.
+The user-owned relative height weight of each chart pane kind (candle, volume, 호가비, …) inside the `/live` chart, adjusted by dragging the pane separator. It has five **LiveTimeframe** profiles (`seconds` / `minute` / D / W / M): all seconds intervals share one profile and all minute intervals share another, while daily, weekly, and monthly charts retain independent proportions. The profile is global across chart windows — it is not window-owned. It lives beside pane order in the persisted indicator slice and travels with layout presets; applying a legacy flat preset seeds all five profiles equally. Like pane order (layout, not indicator config), it is treated as user-owned layout: the indicator drawer's "기본값 복원" **preserves** it, and only the preset menu's "기본 레이아웃으로 초기화" restores the spec defaults. A pane kind the user never dragged keeps its spec default weight. ADR-0172.
 _Avoid_: "pane height" in pixels (weights are relative; pixel height is derived), "per-window pane sizes" (profiles are shared by timeframe family), "separator position" as the stored state (the separator is chrome; the stored state is the adjacent panes' weights).
 
 **Stock-Date**:

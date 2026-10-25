@@ -23,7 +23,7 @@ function objectBucket(raw: unknown, key: IndicatorPaneProfileKey): unknown {
 
 /**
  * 봉별 pane 높이 저장값을 정규화한다. 새 필드가 없는 구 블롭은 기존 전역 값을
- * 네 프로필에 복제해 첫 로드의 시각적 레이아웃을 그대로 보존한다. 부분 저장값은
+ * 각 프로필에 복제해 첫 로드의 시각적 레이아웃을 그대로 보존한다. 부분 저장값은
  * 없는 프로필만 레거시 값으로 채운다(혼합 버전/점진 마이그레이션 안전).
  */
 export function normalizePaneStretchByTimeframe(

@@ -80,7 +80,7 @@ export function makeStudySaveCommand({
   const code = sourceCode(source);
   const label = sourceLabel(source);
   const timeframe = sourceTimeframe(source);
-  const window = saveWindow(bundle, viewport, todayKstYyyymmdd());
+  const window = saveWindow(bundle, viewport, todayKstYyyymmdd(), timeframe);
   const memo = mode === 'overwrite' ? existingSave?.memo ?? '' : '';
   const range = rangeForWindow(bundle, window.fromIndex, window.toIndex);
   if (!range) return null;

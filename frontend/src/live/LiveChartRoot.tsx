@@ -1,3 +1,4 @@
+import { useSecondViewport } from './workspace/useSecondViewport';
 import { usePagedChartHistory, type PagedChartHistory } from './usePagedChartHistory';
 import { isUsWorkareaCode } from './instrumentPriceFormat';
 import { peakWallInstancePoints } from './indicators/peakWallInstancePoints';
@@ -47,7 +48,7 @@ import { savedRangeAnchorTs } from './savedRangeAnchor';
 import { jumpPublicationRange, type JumpRange } from './minuteJumpDestination';
 import { viewedDateOf } from './viewedDate';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
-import { type CalendarTimeframe, type LiveMAConfig, type LiveTimeframe, isMinuteTimeframe, isCalendarTimeframe } from '../state/livePage';
+import { type CalendarTimeframe, type LiveMAConfig, type LiveTimeframe, isMinuteTimeframe, isSecondTimeframe, isCalendarTimeframe } from '../state/livePage';
 import { WindowViewContext, useHistoricalRangeActions, useIndicatorActions, useWindowIndicator, useWindowPaneAxisMode, useWindowPaneGroups, useWindowPaneGroupStretch, useWindowPaneStretch, useWindowScopeId, useWindowViewGuard } from './workspace/windowView';
 import { useActivePrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -254,6 +255,8 @@ interface Props {
    * 값이 없으면 속성 패널의 그 버튼도 없다.
    */
   onSearchPattern?: (fromRealMs: number, toRealMs: number) => void;
+  onInspectSeconds?: (fromRealMs: number, toRealMs: number) => void;
+  onNeedTradeBrowseCandle?: (cursorMs: number) => void;
   /** 그 구간의 봉 수와 허용 범위 — 속성 패널이 버튼을 누르기 전에 되는지 말한다. */
   patternBarCount?: (fromRealMs: number, toRealMs: number) => { bars: number; min: number; max: number };
   venue?: LiveVenueOption;
@@ -470,6 +473,8 @@ export function LiveChartRoot({
   code,
   timeframe,
   onSearchPattern,
+  onInspectSeconds,
+  onNeedTradeBrowseCandle,
   patternBarCount,
   venue = 'KRX',
   candleVenue = venue,
@@ -1234,7 +1239,7 @@ export function LiveChartRoot({
   // 반대**다 — 저쪽은 발행하는 캘린더 창, 이쪽은 소비하는 분봉 창이다. 뷰포트가 실제로
   // 움직일 때만, rAF 로 묶어서 민다(SSE 틱은 이 경로를 태우지 않는다).
   useEffect(() => {
-    if (!chart || !isMinuteTimeframe(timeframe) || !onViewedDateChange) return;
+    if (!chart || isCalendarTimeframe(timeframe) || !onViewedDateChange) return;
     let raf: number | null = null;
     let lastPublishedDate: string | null | undefined;
     const publish = () => {
@@ -1280,6 +1285,7 @@ export function LiveChartRoot({
   // render window before viewport repair reads/repositions the new time grid.
   useEffect(() => { flushWindowedChart(chart); });
 
+  useSecondViewport(chart, isSecondTimeframe(timeframe) ? cb?.candles : undefined);
   usePagedChartHistory(chart, axis, cb, pagedHistory, containerRef);
   const { sourceSwapClampNotice } = useViewportBackfill({
     chart,
@@ -1728,6 +1734,14 @@ export function LiveChartRoot({
         ) {
           historicalRange.extend(remembered);
         }
+      } else if (isSecondTimeframe(timeframe)) {
+        if (applied === null) {
+          ts.setVisibleLogicalRange({ from: Math.max(0, totalBars - 240), to: totalBars - 1 });
+          // Initial sparse pages keep accumulating until the existing 240-bar
+          // history loader settles. Later updates preserve the user's viewport.
+          if (!isInitialMinuteHistoryPending) lastAppliedCountRef.current = totalBars;
+        }
+        revealWhenSettled();
       } else if (isCalendarTimeframe(timeframe)) {
         // Calendar frames avoid fitContent's multi-step internal range settle.
         // Use a width-derived span with the standard rightOffset so D/W/M all
@@ -1820,13 +1834,13 @@ export function LiveChartRoot({
           }
           // 연도를 앞에 둔다 — 과거 구간을 스크롤하면 월/일만으로는 어느 해인지
           // 알 수 없다(캘린더 분기는 이미 YYYY 를 달고 있었다).
-          return `${d.getUTCFullYear()} ${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+          return `${d.getUTCFullYear()} ${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}${isSecondTimeframe(timeframeRef.current) ? `:${pad(d.getUTCSeconds())}` : ''}`;
         },
       },
       timeScale: {
         ...CHART_TIMESCALE_OPTIONS,
         timeVisible: true,
-        secondsVisible: false,
+        secondsVisible: isSecondTimeframe(timeframeRef.current),
         // 축 경계선 off (2026-07-22 구분선 최소화 C안) — 눈금·라벨은 유지되고
         // 축과 캔버스를 가르는 1px 선만 사라진다.
         borderVisible: false,
@@ -2074,9 +2088,9 @@ export function LiveChartRoot({
     ],
   );
   const candlePaneContext = useMemo<CandlePaneContext>(
-    () => ({ muteAuctionCandles: !isUsWorkareaCode(code) && candleVenue === 'KRX', swapColors: swapCandleColors,
+    () => ({ muteAuctionCandles: !isSecondTimeframe(timeframe) && !isUsWorkareaCode(code) && candleVenue === 'KRX', swapColors: swapCandleColors,
       ...(isUsWorkareaCode(code) ? { decimalPrices: true } : {}) }),
-    [candleVenue, code, swapCandleColors],
+    [candleVenue, code, swapCandleColors, timeframe],
   );
   const volumeFillStrengthCumulative = useActivePrefs((p) => p.volumeFillStrengthCumulative);
 
@@ -2899,7 +2913,7 @@ export function LiveChartRoot({
             onChartHoverPassthrough={handleDrawingOverlayHover}
             bucketMs={drawingBarMsFor(timeframe, cb?.bucket_ms ?? undefined)}
             candles={cb?.candles}
-            dayExtremesReady={(isMinuteTimeframe(timeframe) || timeframe === 'D') && !isPastCandlesLoading && !isInitialMinuteHistoryPending}
+            dayExtremesReady={(isMinuteTimeframe(timeframe) || isSecondTimeframe(timeframe) || timeframe === 'D') && !isPastCandlesLoading && !isInitialMinuteHistoryPending}
           />
           {/* After DrawingOverlay so the legend's ✕/eye buttons paint above the
               drawing canvas; the container is pointer-transparent so the
@@ -2943,6 +2957,7 @@ export function LiveChartRoot({
             positionKey={winCtxWindowId ?? undefined}
             resolveVisibleRightRealMs={resolveVisibleRightRealMs}
             resolveAlignCoords={resolveAlignCoords}
+            onInspectSeconds={onInspectSeconds}
             onSearchPattern={onSearchPattern}
             patternBarCount={patternBarCount}
           />
@@ -2975,9 +2990,9 @@ export function LiveChartRoot({
               code={code}
             />
           )}
-          <TradeBrowseCrosshair chart={chart} axis={axis} candles={syncCandles} paneSeries={paneSeries}
+          <TradeBrowseCrosshair chart={chart} axis={axis} candles={cb?.candles ?? EMPTY_SYNC_CANDLES} paneSeries={paneSeries}
             windowId={winCtxWindowId} group={winCtxGroup} code={code} timeframe={timeframe} venue={candleVenue}
-            enabled={hoverLinked && cursorSyncCrosshair} />
+            onNeedCandle={onNeedTradeBrowseCandle} enabled={hoverLinked && (cursorSyncCrosshair || isSecondTimeframe(timeframe))} />
           {/* 동시호가(15:20–15:30 KST) 배경 음영은 2026-08-09 에 삭제했다
               (사용자 결정). `auctionWindowMask` 토글은 그대로 살아 있고 —
               라벨이 "동시호가 구간 지표 숨김" 이라 계약도 변하지 않는다 —

@@ -3,7 +3,7 @@ import type { PersistedIndicators } from '../../state/liveIndicatorsPersistence'
 import type { PaneToggles } from '../paneSpecsForTimeframe';
 
 /**
- * Timeframe 프로파일 키(분/D/W/M 4버킷)와 pane 토글 7종의 어휘.
+ * Timeframe 프로파일 키(초/분/D/W/M 5버킷)와 pane 토글 7종의 어휘.
  *
  * PR-A(#699) 이후 per-timeframe 해석은 store 가 소유한다 — 최상위 지표 필드는
  * 항상 현재 봉으로 resolve 된 투영이므로, 이 모듈의 함수들은 병합 없이 그 투영을
@@ -11,7 +11,7 @@ import type { PaneToggles } from '../paneSpecsForTimeframe';
  * 프리셋 payload(PR-D 전 구 형식) 파싱용으로 남는다.
  */
 
-export type IndicatorPaneProfileKey = 'minute' | 'D' | 'W' | 'M';
+export type IndicatorPaneProfileKey = 'seconds' | 'minute' | 'D' | 'W' | 'M';
 
 export type IndicatorPanePrefs = {
   volumeEnabled: boolean;
@@ -37,7 +37,7 @@ export type PersistedPanePrefsByTimeframe =
   Partial<Record<IndicatorPaneProfileKey, Partial<IndicatorPanePrefs>>>;
 
 export const INDICATOR_PANE_PROFILE_KEYS: readonly IndicatorPaneProfileKey[] =
-  ['minute', 'D', 'W', 'M'] as const;
+  ['seconds', 'minute', 'D', 'W', 'M'] as const;
 
 export const INDICATOR_PANE_PREF_KEYS: readonly PanePrefKey[] = [
   'volumeEnabled',
@@ -58,7 +58,8 @@ function isProfileKey(value: string): value is IndicatorPaneProfileKey {
 }
 
 export function profileKeyForTimeframe(tf: LiveTimeframe): IndicatorPaneProfileKey {
-  return tf === 'D' || tf === 'W' || tf === 'M' ? tf : 'minute';
+  // Keep this leaf independent of the livePage runtime (store initialization).
+  return tf.endsWith('s') ? 'seconds' : tf === 'D' || tf === 'W' || tf === 'M' ? tf : 'minute';
 }
 
 /** per-timeframe boolean 오버라이드 맵의 공용 정규화기: 미지 프로파일·미지 키·

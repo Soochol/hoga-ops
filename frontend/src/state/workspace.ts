@@ -2,6 +2,7 @@ import { REFERENCE_CANVAS as REF_CANVAS } from '../workspace/referenceCanvas';
 import { normalizeZOrder } from '../workspace/zOrder';
 import { MAX_GROUP, MIN_GROUP, isGroupId, type GroupId } from '../workspace/groupId';
 import { create } from 'zustand';
+import { captureSecondTimeframeViewport, type SecondTimeframeViewport } from '../live/workspace/secondTimeframeViewport';
 import { persistJson, readJsonObject } from './persist';
 import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
 import { consumeWorkspaceTransfer } from './workspaceTransfer';
@@ -9,6 +10,7 @@ import {
   LIVE_TIMEFRAMES,
   MINUTE_TIMEFRAMES,
   isMinuteTimeframe,
+  isSecondTimeframe,
   type LiveTimeframe,
   type MinuteTimeframe,
 } from './livePage';
@@ -165,6 +167,10 @@ export interface ChartWindowRuntime {
    * 읽는 쪽은 전부 `?? false` 로 받는다.
    */
   hogaplaySource?: boolean;
+  /** Explicit seconds navigation; runtime only, cleared with symbol/group changes. */
+  secondRange?: { fromMs: number; toMs: number; seq: number };
+  /** One-shot, non-persisted viewport handoff between seconds resolutions. */
+  secondViewport?: SecondTimeframeViewport;
 }
 
 export interface WorkspaceWindow {
@@ -287,6 +293,7 @@ type Store = Persisted & {
    * 거치므로 항상 그룹 쓰기로 떨어진다.
    */
   setWindowSymbol: (id: string, symbol: GroupSymbol) => void;
+  pinWindowToSymbol: (id: string, symbol: GroupSymbol) => void;
   /** 전 창이 핀이라 클릭 종목 교체가 막힌 사건(비영속 · 토스트 트리거).
    *  `liveNavigate` 가 세우고 토스트 호스트가 소비한다. */
   blockedActivation: { name: string } | null;
@@ -303,6 +310,8 @@ type Store = Persisted & {
   // 버킷인가"만 정한다(`windowView` 의 `useIndicatorActions`).
   /** 봉 전환 — livePage setCandleTimeframe 의 창별 미러(분봉 기억·백필 리셋 포함). */
   setChartTimeframe: (id: string, tf: LiveTimeframe) => void;
+  setSecondChartRange: (id: string, range: { fromMs: number; toMs: number } | null) => void;
+  consumeSecondViewport: (id: string, expected: SecondTimeframeViewport) => void;
   setChartHoverLinked: (id: string, enabled: boolean) => void;
   setChartRegularSessionOnly: (id: string, enabled: boolean) => void;
   setChartIndicatorLegendsVisible: (id: string, visible: boolean) => void;
@@ -963,6 +972,13 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     });
   },
 
+  pinWindowToSymbol: (id, symbol) => set(state => {
+    if (!state.windows.some(w => w.id === id && w.kind !== 'market-indices')) return {};
+    const windows = state.windows.map(w => w.id === id ? normalizeUsWindow({ ...w, pinned: symbol }, symbol) : w);
+    persistFromState({ ...state, windows });
+    return { windows, chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
+  }),
+
   setWindowSymbol: (id, symbol) => {
     if (/^us-stock:(NASDAQ|NYSE|AMEX):/.test(symbol.code)) symbol = { ...symbol, kind: 'us_stock' };
     const win = get().windows.find((w) => w.id === id);
@@ -1122,6 +1138,11 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       // 미러 — 폴백 의미는 livePage 주석 참조).
       const rt = state.chartRuntime[id] ?? EMPTY_RUNTIME;
       const prevTf = prev.timeframe;
+      const secondsTarget = isSecondTimeframe(tf) ? tf : null;
+      const secondViewport = prevTf !== tf && isSecondTimeframe(prevTf) && secondsTarget
+        ? captureSecondTimeframeViewport(id, secondsTarget, windowSymbolOf(state, state.windows.find(w => w.id === id))?.code)
+          ?? (rt.secondViewport ? { ...rt.secondViewport, target: secondsTarget } : undefined)
+        : undefined;
       // 날짜와 **그 날짜를 만든 봉**은 한 쌍으로만 움직인다. 갈라지면 조용히 틀린다:
       // 분봉을 팬 없이 스쳐 지나가는 전환(1m 깊게 팬 → 60m 그냥 보기 → 1m)에서
       // 봉만 무조건 덮어쓰면 1m 이 만든 날짜에 '60m' 도장이 찍혀, 정작 1m 복귀 때
@@ -1148,12 +1169,30 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
           // (`useLiveBundle` 의 `enableScreenerDaily`) 켜 둔 채 두면 버튼이
           // 이름과 다른 것을 켜 놓은 상태가 된다.
           hogaplaySource: isMinuteTimeframe(tf) && rt.hogaplaySource === true,
+          ...(isSecondTimeframe(prevTf) && isSecondTimeframe(tf) && rt.secondRange ? { secondRange: rt.secondRange } : {}),
+          ...(secondViewport ? { secondViewport } : {}),
         },
       };
       persistFromState({ ...state, windows });
       return { windows, chartRuntime };
     });
   },
+
+  setSecondChartRange: (id, range) => set(state => {
+    const win = state.windows.find(w => w.id === id);
+    if (!win?.chart || !isSecondTimeframe(win.chart.timeframe)) return {};
+    if (range && (!Number.isFinite(range.fromMs) || !Number.isFinite(range.toMs) || range.fromMs > range.toMs)) return {};
+    const old = state.chartRuntime[id] ?? EMPTY_RUNTIME;
+    return { chartRuntime: { ...state.chartRuntime, [id]: { ...old,
+      secondViewport: undefined,
+      secondRange: range ? { ...range, seq: (old.secondRange?.seq ?? 0) + 1 } : undefined } } };
+  }),
+
+  consumeSecondViewport: (id, expected) => set(state => {
+    const runtime = state.chartRuntime[id];
+    if (runtime?.secondViewport !== expected) return {};
+    return { chartRuntime: { ...state.chartRuntime, [id]: { ...runtime, secondViewport: undefined } } };
+  }),
 
   extendChartHistoricalRange: (id, date) => {
     const state = get();

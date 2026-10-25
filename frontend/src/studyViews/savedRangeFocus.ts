@@ -10,7 +10,7 @@
  * 흔들린다.
  */
 import type { StudyViewListRow } from '../api/studyViews';
-import { isMinuteTimeframe, type LiveTimeframe, type SavedRangeFocus } from '../state/livePage';
+import { isMinuteTimeframe, isSecondTimeframe, type LiveTimeframe, type SavedRangeFocus } from '../state/livePage';
 import { STUDY_VENUE } from './studyVenuePolicy';
 
 /**
@@ -62,5 +62,5 @@ export function savedRangeAppliesTo(
   timeframe: LiveTimeframe,
 ): boolean {
   if (focus === null || code !== focus.code) return false;
-  return !(focus.dailyOnly && isMinuteTimeframe(timeframe));
+  return !(focus.dailyOnly && (isMinuteTimeframe(timeframe) || isSecondTimeframe(timeframe)));
 }

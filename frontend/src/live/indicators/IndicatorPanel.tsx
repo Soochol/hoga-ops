@@ -17,7 +17,7 @@ import { ListRow } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 import { WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS } from '../workspacePanel';
-import { isCalendarTimeframe, type LiveTimeframe } from '../../state/livePage';
+import { isCalendarTimeframe, isSecondTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { SettingsEditor } from '../settings/SettingsEditor';
 import { useSettingsUndo } from '../settings/useSettingsUndo';
 import { readIndicatorEditor, restoreIndicatorEditor, subscribeIndicatorEditor } from '../settings/editorSnapshots';
@@ -63,7 +63,7 @@ function timeframeLabel(tf: LiveTimeframe): string {
   if (tf === 'D') return '일봉';
   if (tf === 'W') return '주봉';
   if (tf === 'M') return '월봉';
-  return '분봉';
+  return isSecondTimeframe(tf) ? '초봉' : '분봉';
 }
 
 
@@ -246,6 +246,7 @@ export default function IndicatorPanel({
   }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
+    if (isSecondTimeframe(timeframe)) return ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(c.id);
     if (c.id === 'volume' && capabilities.volume === false) return false;
     if (c.id === 'trade-value') return capabilities.tradeValue === true && isCalendarTimeframe(timeframe);
     if (c.id === 'program-daily') return capabilities.investorNet === 'stock';

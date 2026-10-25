@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { lineVisible, type IndicatorLineVisibility } from '../../state/indicatorLineVisibility';
-import { useWindowIndicator } from '../../live/workspace/windowView';
+import { useWindowIndicator, useWindowIndicatorTimeframe } from '../../live/workspace/windowView';
 import {
   HistogramSeries,
   LineSeries,
@@ -400,11 +400,12 @@ export type FillStrengthPaneContext = {
 // data effect treats as a context change and re-projects (cheap but wasteful).
 // Same pattern as useRatioContext in ratio.ts.
 const useFillStrengthContext = (): FillStrengthPaneContext => {
+  const seconds = useWindowIndicatorTimeframe()?.endsWith('s') ?? false;
   const visibility = useWindowIndicator(s => s.indicatorLineVisibility);
   const prefs = useActivePrefs(
     useShallow((p): FillStrengthPaneContext => ({
-      cumulativeEnabled: p.fillStrengthCumulative,
-      auctionWindowMask: p.auctionWindowMask,
+      cumulativeEnabled: !seconds && p.fillStrengthCumulative,
+      auctionWindowMask: !seconds && p.auctionWindowMask,
     })),
   );
   return useMemo(() => ({ ...prefs, visibility }), [prefs, visibility]);

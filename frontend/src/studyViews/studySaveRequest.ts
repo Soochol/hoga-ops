@@ -7,7 +7,7 @@ import type {
 import type { RangeBundle } from '../api/types';
 import { realMsToYyyymmdd, todayKstYyyymmdd } from '../live/liveDateTime';
 import type { TabViewport } from '../live/viewportAnchor';
-import type { LiveTimeframe } from '../state/livePage';
+import { isSecondTimeframe, type LiveTimeframe } from '../state/livePage';
 
 export function defaultStudyViewName(row: StudyViewListRow | undefined, label: string, toDate: string): string {
   return row?.name ?? compactStudyViewName(label, toDate);
@@ -104,9 +104,10 @@ export function clampWindowToRetention(
   return { fromIndex, toIndex: window.toIndex };
 }
 
-/** 저장에 쓰는 최종 창 — 보이는 범위를 보존 기간으로 클램프한 결과. */
-export function saveWindow(bundle: RangeBundle, viewport: StudyViewport, todayYyyymmdd: string) {
-  return clampWindowToRetention(bundle, visibleWindow(bundle, viewport), todayYyyymmdd);
+/** 초봉은 로컬 관측 체결을 읽으므로 hogaplay의 보존 기간을 적용하지 않는다. */
+export function saveWindow(bundle: RangeBundle, viewport: StudyViewport, todayYyyymmdd: string, timeframe?: LiveTimeframe) {
+  const window = visibleWindow(bundle, viewport);
+  return timeframe && isSecondTimeframe(timeframe) ? window : clampWindowToRetention(bundle, window, todayYyyymmdd);
 }
 
 export function rangeForWindow(bundle: RangeBundle, fromIndex: number, toIndex: number) {
@@ -142,7 +143,7 @@ export type LiveStudySaveSource = {
 export function buildStudyReferenceSaveRequest(liveSource: LiveStudySaveSource): StudyViewWriteRequest | null {
   const viewport = viewportFromCapture(liveSource.captureViewport, fallbackViewport(liveSource.bundle));
   if (!viewport) return null;
-  const window = saveWindow(liveSource.bundle, viewport, todayKstYyyymmdd());
+  const window = saveWindow(liveSource.bundle, viewport, todayKstYyyymmdd(), liveSource.timeframe);
   const range = rangeForWindow(liveSource.bundle, window.fromIndex, window.toIndex);
   if (!range) return null;
   return {

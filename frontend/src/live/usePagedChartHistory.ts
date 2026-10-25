@@ -6,6 +6,8 @@ import { realMsToVirtualSeconds } from './viewportAnchor';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
 export interface PagedChartHistory {
+  /** Opt into gesture-only paging with this many pages per input. */
+  pagesPerGesture?: number;
   hasMore: boolean;
   loading: boolean;
   blocked: boolean;
@@ -18,7 +20,7 @@ export function usePagedChartHistory(chart: IChartApi | null, axis: VirtualAxis,
   bundle: RangeBundle | null, control: PagedChartHistory | undefined, containerRef: RefObject<HTMLDivElement | null>) {
   // Domestic backfill freezes a finite gesture budget too. Cursor pages must
   // not turn a large wheel zoom into an unbounded provider walk.
-  const allowance = useRef(3);
+  const allowance = useRef(control?.pagesPerGesture === undefined ? 3 : 0);
   const state = useRef(control);
   state.current = control;
   const previous = useRef<{ chart: IChartApi; axis: VirtualAxis; bundle: RangeBundle } | null>(null);
@@ -26,7 +28,7 @@ export function usePagedChartHistory(chart: IChartApi | null, axis: VirtualAxis,
   useLayoutEffect(() => {
     snap.current = null;
     const old = previous.current;
-    if (old?.chart !== chart) allowance.current = 3;
+    if (old?.chart !== chart) allowance.current = control?.pagesPerGesture === undefined ? 3 : 0;
     if (!control || !chart || !bundle?.candles.length) { previous.current = null; return; }
     if (old?.chart === chart && old.bundle.candles.length &&
       bundle.candles[0].ts_ms !== old.bundle.candles[0].ts_ms) {
@@ -76,7 +78,7 @@ export function usePagedChartHistory(chart: IChartApi | null, axis: VirtualAxis,
         }
       }, 150);
     };
-    const onInput = () => { allowance.current = 3; check(); };
+    const onInput = () => { allowance.current = state.current?.pagesPerGesture ?? 3; check(); };
     const element = containerRef.current;
     element?.addEventListener('wheel', onInput, { passive: true, capture: true });
     element?.addEventListener('pointerdown', onInput, true);

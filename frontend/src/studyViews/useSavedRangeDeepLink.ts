@@ -2,9 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useWorkspaceStore } from '../state/workspace';
 import { useQuery } from '@tanstack/react-query';
 import { getStudyView } from '../api/studyViews';
-import { activateLiveCode } from '../live/liveNavigate';
-import { useLivePageStore } from '../state/livePage';
-import { savedRangeFocusFromView } from './savedRangeFocus';
+import { openSavedRange } from './openSavedRange';
 
 /** `/live?view=<id>` 딥링크 한 건의 쿼리 키. 목록(`STUDY_VIEW_SAVES_QUERY`)과 **일부러
  *  다른 축**이다 — 딥링크는 행 하나만 필요하고, 목록을 끌어오면 드로어를 열지도 않은
@@ -56,8 +54,7 @@ export function useSavedRangeDeepLink(viewId: string | null): void {
   useEffect(() => {
     if (!viewId || !data || seededViewIdRef.current === viewId) return;
     seededViewIdRef.current = viewId;
-    activateLiveCode(data.code, data.label);
-    useLivePageStore.getState().focusSavedRange(savedRangeFocusFromView(data));
+    openSavedRange(data);
     useWorkspaceStore.getState().restoreTransferredPins();
   }, [viewId, data]);
 }

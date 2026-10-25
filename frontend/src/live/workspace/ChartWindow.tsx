@@ -20,8 +20,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { LiveChartRoot } from '../LiveChartRoot';
 import { isSecondTimeframe } from '../../state/livePage';
 import { SecondChartWindow } from './SecondChartWindow';
-import EyeGlyph from '../EyeGlyph';
-import { IconToolbarButton } from '../../ui/WorkspaceShell';
 import { ChartDrawingShell } from '../ChartDrawingShell';
 import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
 import { useLiveChartData } from '../useLiveChartData';
@@ -48,10 +46,9 @@ import {
   type GroupChartLink,
 } from './groupChartLinkSource';
 import { TimeframeControl } from '../TimeframeControl';
-import { DrawingMenu } from '../DrawingMenu';
-import { ChartCaptureActions } from '../../chart/ChartCaptureActions';
-import { IndicatorsButton } from '../LiveToolbar';
-import { requestIndicatorDrawer } from './indicatorDrawerControls';
+import { openSecondChartRange } from './secondChartNavigation';
+import { IconToolbarButton } from '../../ui/WorkspaceShell';
+import { ChartAnalysisActions } from './ChartAnalysisActions';
 import { useChartHeaderFold } from './useChartHeaderCompact';
 import {
   publishWindowWarnings,
@@ -86,7 +83,6 @@ import { CollectButton } from './CollectButton';
 import { PatternAreaButton } from './PatternAreaButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
 import { RegularSessionAction } from './RegularSessionAction';
-import { CursorLinkAction } from './CursorLinkAction';
 import {
   HogaplaySourceButton,
   type HogaplaySourceDisabledReason,
@@ -725,6 +721,15 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 저장뷰 소스 — 이 창의 것. 헤더 버튼에 직접 넘긴다(전역 1슬롯 발행 폐지).
   // 슬롯 시절엔 z-최상위 창만 발행해서 "어느 창을 저장하나" 를 추론해야 했는데,
   // 버튼이 창 안으로 들어오며 그 추론이 통째로 사라졌다(#759 와 같은 단순화).
+  const inspectSeconds = useCallback((fromMs: number, toMs: number) => {
+    if (!isIndex && isMinuteTimeframe(view.timeframe)) openSecondChartRange(win.id, fromMs, toMs);
+  }, [isIndex, view.timeframe, win.id]);
+  const inspectVisibleMinute = useCallback(() => {
+    const candles = d.workareaChartBundle?.candles ?? [];
+    const right = viewportCaptureRef.current()?.rightEdgeMs;
+    const candle = right == null ? candles.at(-1) : candles.findLast(c => c.ts_ms <= right);
+    if (candle) inspectSeconds(candle.ts_ms, Math.min(Date.now(), candle.ts_ms + (d.workareaChartBundle?.bucket_ms ?? 60000) - 1));
+  }, [d.workareaChartBundle, inspectSeconds]);
   const { liveSaveBundle, activeLabel, capabilities } = d;
   const studySaveSource: LiveStudySaveSource | null = useMemo(() => {
     if (!view.code || !liveSaveBundle || !capabilities.studySave) return null;
@@ -872,26 +877,17 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         )}
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1">
           <span aria-hidden className="live-chart-toolbar-divider" />
-          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} showLabel={false} />
-          <ChartCaptureActions key={`${d.workareaCode}|${view.timeframe}`} viewportRef={imageViewportRef}
-            code={d.workareaCode} timeframe={view.timeframe}
+          <ChartAnalysisActions win={win} code={d.workareaCode} timeframe={view.timeframe}
+            viewportRef={imageViewportRef}
             available={!!(d.workareaChartBundle ?? d.workareaBundle)?.candles.length && !d.workareaCandleEmpty} />
-          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} showLabel={false} />
+          {!isIndex && isMinuteTimeframe(view.timeframe) && <IconToolbarButton aria-label="초봉으로 확대"
+            title="초봉으로 확대 — 화면 오른쪽 봉을 초봉 창에서 엽니다. 측정 도구로 구간을 선택할 수도 있습니다."
+            onClick={inspectVisibleMinute} disabled={!d.workareaChartBundle?.candles.length}
+            icon={<span aria-hidden>↘</span>} />}
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
             destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
             showLabel={false} />}
           <RegularSessionAction win={win} disabled={usInstrument || !isMinuteTimeframe(view.timeframe)} showLabel={false} />
-          <IconToolbarButton
-            aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
-            title={`${indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'} — 시가·고가·저가·종가는 항상 표시`}
-            aria-pressed={indicatorLegendsVisible}
-            className="aria-pressed:text-accent"
-            onClick={() => useWorkspaceStore.getState().setChartIndicatorLegendsVisible(win.id, !indicatorLegendsVisible)}
-            icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
-          />
-          {isMinuteTimeframe(view.timeframe) && (
-            <CursorLinkAction win={win} />
-          )}
           <HogaplaySourceButton enabled={hogaplaySourceEnabled} disabledReason={hogaplayDisabledReason}
             onToggle={toggleHogaplaySource} compact showLabel={false} />
           {onSearchPattern != null && <PatternAreaButton showLabel={false} />}
@@ -931,6 +927,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               indicatorLegendsVisible={indicatorLegendsVisible}
               code={d.workareaCode}
               timeframe={view.timeframe}
+              onInspectSeconds={!isIndex && isMinuteTimeframe(view.timeframe) ? inspectSeconds : undefined}
               onSearchPattern={onSearchPattern}
               patternBarCount={patternBarCount}
               venue={venue}

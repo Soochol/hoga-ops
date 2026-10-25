@@ -1,3 +1,4 @@
+import { isSecondTimeframe } from '../state/livePage';
 import { studyTimeframeLabel } from './studyViewPeriod';
 import { persistJson, readJsonObject } from '../state/persist';
 import { useStudySaveNotice } from './StudyViewSaveToastHostHelpers';
@@ -25,11 +26,13 @@ import { TooltipButton } from '../ui/TextTooltip';
 export function LiveStudyViewSaveButton({
   source,
   showLabel = true,
+  disabledReason,
 }: {
   /** 이 창의 저장 소스. 아직 준비 안 됐으면(번들 미도착·미지원 종목) null. */
   source: LiveStudySaveSource | null;
   /** false 면 아이콘만 — 헤더가 좁을 때 라벨을 접는다(#762 접힘 정책). */
   showLabel?: boolean;
+  disabledReason?: string;
 }) {
   const mutations = useStudyViewMutations();
   const groupsQuery = useStudyViews();
@@ -47,7 +50,7 @@ export function LiveStudyViewSaveButton({
       start_date: range!.from_date,
       end_date: range!.to_date,
     }),
-    enabled: !!command && !!range,
+    enabled: !!command && !!range && !isSecondTimeframe(command.request.timeframe),
     staleTime: 30_000,
     retry: false,
   });
@@ -59,7 +62,7 @@ export function LiveStudyViewSaveButton({
     onSettled: () => queryClient.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY }),
   });
 
-  const coverage: SaveCoverage | null = command
+  const coverage: SaveCoverage | null = command && !isSecondTimeframe(command.request.timeframe)
     ? {
       isLoading: previewQuery.isLoading,
       isError: previewQuery.isError,
@@ -84,7 +87,7 @@ export function LiveStudyViewSaveButton({
         disabled={!source}
         onClick={openDialog}
         aria-label="현재 뷰 저장"
-        title="현재 뷰 저장"
+        title={disabledReason ?? "현재 뷰 저장"}
         className="inline-flex min-h-6 shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
         style={{ background: 'transparent', paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE }}
       >
@@ -113,7 +116,7 @@ export function LiveStudyViewSaveButton({
           errorMessage={createError}
           onCancel={() => setCommand(null)}
           onSubmit={({ name, memo, capture, ...group }) => {
-            const missing = previewQuery.data?.missing ?? [];
+            const missing = isSecondTimeframe(command.request.timeframe) ? [] : previewQuery.data?.missing ?? [];
             mutations.create.mutate(
               { ...studySaveCommandBody(command, { name, memo }), ...group },
               {

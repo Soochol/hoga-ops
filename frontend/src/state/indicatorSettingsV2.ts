@@ -36,7 +36,7 @@ import {
  *
  * 저장 모델: `live.indicators.v2` = { paneOrder(전역)·paneStretch(봉 프로필별 레이아웃)
  * + byTimeframe/studyByTimeframe(페이지 세트) + byWindow(창 세트) }. 각 세트는
- * 분/D/W/M 4버킷 sparse 오버라이드이고, 읽기 = 공장 기본값 ⊕ 그 봉 버킷이다.
+ * 초/분/D/W/M 5버킷 sparse 오버라이드이고, 읽기 = 공장 기본값 ⊕ 그 봉 버킷이다.
  * flat 상속과 `panePrefsByTimeframe` 병합(구 모델)은 폐지 — 기존 pane 토글 7종도
  * 버킷 안으로 흡수된다(#696). sparse 의 정의는 "공장값과의 diff"다: 공장값과 같은
  * 항목은 로드 시 제거되므로, 향후 공장값 개선이 안 만진 필드에 자동 반영된다(#697).

@@ -1,5 +1,5 @@
 import { bindPaneSpec } from '../chart/paneSpecs';
-import { type LiveTimeframe, isCalendarTimeframe } from '../state/livePage';
+import { type LiveTimeframe, isCalendarTimeframe, isMinuteTimeframe, isSecondTimeframe } from '../state/livePage';
 import { PANE_SPECS, type BoundPaneSpec } from '../chart/paneSpecs';
 import type { PaneId } from '../chart/drawing/types';
 import {
@@ -38,7 +38,7 @@ export type PaneToggles = {
 
 const NO_TOGGLES: PaneToggles = { foreignNet: false, institutionNet: false };
 
-const isMinute = (tf: LiveTimeframe): boolean => !isCalendarTimeframe(tf);
+const isMinute = isMinuteTimeframe;
 const hogaAllowed = (tf: LiveTimeframe, t: PaneToggles): boolean =>
   t.hogaPanes !== false && (t.forceHogaPanes === true || isMinute(tf));
 
@@ -64,7 +64,7 @@ const GATE_BY_NAME: Partial<Record<string, PaneGate>> = {
   volume: (_tf, t) => t.volumeEnabled !== false,
   'quote-totals': (tf, t) => hogaAllowed(tf, t) && t.quoteTotalsEnabled !== false,
   ratio: (tf, t) => hogaAllowed(tf, t) && t.ratioEnabled !== false,
-  'fill-strength': (tf, t) => hogaAllowed(tf, t) && t.fillStrengthEnabled !== false,
+  'fill-strength': (tf, t) => isSecondTimeframe(tf) ? t.fillStrengthEnabled === true : hogaAllowed(tf, t) && t.fillStrengthEnabled !== false,
   'program-trade': (tf, t) => hogaAllowed(tf, t) && t.programTradeEnabled !== false,
 };
 
