@@ -151,6 +151,11 @@ function renderDrawer(path: string) {
   );
 }
 
+function openRename() {
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '이름 변경' }));
+}
+
 function groupHeaderLabels(): string[] {
   return screen
     .getAllByRole('button')
@@ -244,14 +249,10 @@ it('matches watchlist list typography for stock headers and saved view names', (
   renderDrawer('/inventory');
 
   const groupHeader = screen.getByRole('button', { name: '삼성전자 접기' });
-  expect(groupHeader).toHaveClass('text-xs');
-  expect(groupHeader).toHaveClass('text-fg');
-  expect(groupHeader).not.toHaveClass('text-sm');
+  expect(groupHeader.parentElement).toHaveClass('text-sm', 'font-semibold', 'text-fg-dim');
 
   const savedViewName = screen.getByText('삼성전자 · 급등 이후');
-  expect(savedViewName).toHaveClass('text-xs');
-  expect(savedViewName).toHaveClass('text-fg');
-  expect(savedViewName).not.toHaveClass('text-sm');
+  expect(savedViewName).toHaveClass('text-xs', 'text-fg');
 });
 
 // 스토어가 URL 을 이긴다 — 이 드로어는 우측 레일의 **전역** 컴포넌트라 `?view=` 없이
@@ -263,9 +264,8 @@ it('highlights the saved-view row for the open saved view', () => {
 
   const activeRow = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
   expect(activeRow).toHaveAttribute('aria-current', 'true');
-  // 선택 표식은 배경 틴트(--tint-selection)만 — 좌측 accent 바는 관심·순위·스크리너와의
-  // 행 통일(2026-07-23)에서 의도적으로 제거됐다. 다시 넣지 말 것.
-  expect(activeRow).toHaveStyle({ background: 'var(--tint-selection)' });
+  expect(within(activeRow).getByText('SK하이닉스 · 눌림')).toHaveClass('text-accent', 'font-semibold');
+  expect(activeRow.style.background).toBe('');
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).not.toHaveAttribute('aria-current');
 });
 
@@ -534,10 +534,10 @@ it('does not render persistent row edit or delete buttons', () => {
   expect(screen.queryByRole('button', { name: '급등 이후 삭제' })).toBeNull();
 });
 
-it('double-clicking the saved view name opens inline edit mode and selects the name', async () => {
+it('renaming from the context menu opens inline edit mode and selects the name', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
+  openRename();
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
 
   expect(input.value).toBe('급등 이후');
@@ -546,10 +546,10 @@ it('double-clicking the saved view name opens inline edit mode and selects the n
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
 });
 
-it('renames a saved view from double-click edit mode and Enter', async () => {
+it('renames a saved view from the context menu and Enter', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
+  openRename();
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '새 이름{Enter}');
@@ -563,7 +563,7 @@ it('renames a saved view from double-click edit mode and Enter', async () => {
 it('commits saved view rename on blur', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
+  openRename();
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '블러 저장');
@@ -578,7 +578,7 @@ it('commits saved view rename on blur', async () => {
 it('cancels saved view rename on Escape', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
+  openRename();
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.type(input, '취소할 이름');
@@ -591,7 +591,7 @@ it('cancels saved view rename on Escape', async () => {
 it('starts inline rename without navigating from a non-study route', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
+  openRename();
 
   expect(screen.getByLabelText('저장뷰 이름 수정')).toBeTruthy();
   expect(screen.getByTestId('loc').textContent).toBe('/inventory');
@@ -600,7 +600,7 @@ it('starts inline rename without navigating from a non-study route', async () =>
 it('does not rename a saved view when the inline value is empty', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
+  openRename();
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.clear(input);
   await userEvent.keyboard('{Enter}');
@@ -612,7 +612,7 @@ it('does not rename a saved view when the inline value is empty', async () => {
 it('does not rename a saved view when the inline value is unchanged', async () => {
   renderDrawer('/study?view=a');
 
-  await userEvent.dblClick(screen.getByText('삼성전자 · 급등 이후'));
+  openRename();
   const input = screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement;
   await userEvent.type(input, '{Enter}');
 
@@ -673,32 +673,15 @@ it('Delete removes the selected set but inputs, nested controls and Backspace ar
   const row = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
   fireEvent.keyDown(row, { key: 'Backspace' });
   fireEvent.keyDown(screen.getByLabelText('저장뷰 검색'), { key: 'Delete' });
-  fireEvent.keyDown(screen.getByLabelText('급등 이후 행 메뉴'), { key: 'Delete' });
+  fireEvent.keyDown(screen.getByRole('button', { name: '삼성전자 접기' }), { key: 'Delete' });
   expect(useStudyViewDeletion.getState().batches).toHaveLength(0);
-  fireEvent.click(screen.getByLabelText('다중 선택'));
-  fireEvent.click(screen.getByLabelText('급등 이후 선택'));
-  fireEvent.click(screen.getByLabelText('눌림 선택'));
+  fireEvent.click(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { altKey: true });
+  fireEvent.click(screen.getByRole('button', { name: '눌림 저장뷰 열기' }), { altKey: true });
   fireEvent.keyDown(row, { key: 'Delete' });
   expect(screen.getByText('저장뷰 2개 삭제 대기 · 5초 남음')).toBeTruthy();
   expect(screen.queryAllByRole('button', { name: /저장뷰 열기$/ })).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: '실행 취소' }));
   expect(screen.getAllByRole('button', { name: /저장뷰 열기$/ })).toHaveLength(2);
-});
-
-it('releases edit state when bulk-deleting a view whose rename failed', () => {
-  vi.useFakeTimers();
-  updateMetadataMutate.mockImplementation((_body, opts) => opts.onError(new Error('offline')));
-  renderDrawer('/inventory');
-  fireEvent.click(screen.getByLabelText('다중 선택'));
-  fireEvent.click(screen.getByLabelText('급등 이후 선택'));
-  fireEvent.doubleClick(screen.getByText('삼성전자 · 급등 이후'));
-  const input = screen.getByLabelText('저장뷰 이름 수정');
-  fireEvent.change(input, { target: { value: '새 이름' } });
-  fireEvent.blur(input);
-  expect(screen.getByText('offline')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '선택 삭제' }));
-  expect(screen.queryByLabelText('저장뷰 이름 수정')).toBeNull();
-  expect(screen.getByRole('button', { name: '눌림 순서 이동' })).toBeEnabled();
 });
 
 it('releases failed edit state when deletion is retried from the global toast', async () => {
@@ -708,16 +691,16 @@ it('releases failed edit state when deletion is retried from the global toast', 
   renderDrawer('/inventory');
   fireEvent.keyDown(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }), { key: 'Delete' });
   await act(() => vi.advanceTimersByTimeAsync(5000));
-  fireEvent.doubleClick(within(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).getByText('삼성전자 · 급등 이후'));
+  openRename();
   const input = screen.getByLabelText('저장뷰 이름 수정');
   fireEvent.change(input, { target: { value: '새 이름' } });
   fireEvent.blur(input);
   expect(screen.getByText('rename offline')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '실패 항목 다시 시도' }));
   expect(screen.queryByLabelText('저장뷰 이름 수정')).toBeNull();
-  expect(screen.getByRole('button', { name: '눌림 순서 이동' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '눌림 저장뷰 열기' })).toHaveAttribute('data-draggable');
   await act(() => vi.advanceTimersByTimeAsync(5000));
-  expect(screen.getByRole('button', { name: '눌림 순서 이동' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '눌림 저장뷰 열기' })).toHaveAttribute('data-draggable');
 });
 
 it.each([['a', null], ['b', 'b']])('deleting a only clears the range when a is open (open: %s)', async (openId, expected) => {
@@ -731,10 +714,10 @@ it.each([['a', null], ['b', 'b']])('deleting a only clears the range when a is o
   expect(screen.getByTestId('loc').textContent).toBe('/live');
 });
 
-it('opens the full row menu from the hover ⋯ button without navigating', async () => {
+it('opens the full row menu from right-click without navigating', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
 
   const menu = screen.getByRole('menu', { name: '급등 이후 저장뷰 메뉴' });
   expect(within(menu).getByRole('menuitem', { name: '열기' })).toBeTruthy();
@@ -750,7 +733,7 @@ it('opens the full row menu from the hover ⋯ button without navigating', async
 it('opens the saved view from the row menu 열기 item', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
   await userEvent.click(screen.getByRole('menuitem', { name: '열기' }));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
@@ -760,24 +743,24 @@ it('opens the saved view from the row menu 열기 item', async () => {
 it('starts inline rename from the row menu', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
   await userEvent.click(screen.getByRole('menuitem', { name: '이름 변경' }));
 
   expect((screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement).value).toBe('급등 이후');
 });
 
-it('renders a one-line memo preview under the meta line', () => {
+it('keeps the memo in the tooltip without adding a third line', () => {
   mockedSaves = [{ ...saves[0], memo: '첫 줄 메모\n둘째 줄' }, saves[1]];
   renderDrawer('/inventory');
 
-  expect(screen.getByText('첫 줄 메모')).toBeTruthy();
-  expect(screen.queryByText(/둘째 줄/)).toBeNull();
+  expect(screen.queryByText('첫 줄 메모')).toBeNull();
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toHaveAttribute('data-tooltip', expect.stringContaining('첫 줄 메모\n둘째 줄'));
 });
 
 it('edits the memo inline from the row menu and commits with Enter', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
   await userEvent.click(screen.getByRole('menuitem', { name: '메모 편집' }));
 
   const textarea = screen.getByLabelText('저장뷰 메모 수정') as HTMLTextAreaElement;
@@ -794,7 +777,7 @@ it('edits the memo inline from the row menu and commits with Enter', async () =>
 it('cancels memo edit on Escape without saving', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByRole('button', { name: '급등 이후 행 메뉴' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
   await userEvent.click(screen.getByRole('menuitem', { name: '메모 편집' }));
   const textarea = screen.getByLabelText('저장뷰 메모 수정') as HTMLTextAreaElement;
   await userEvent.clear(textarea);
@@ -858,16 +841,16 @@ describe('formatStudyViewMeta', () => {
 
   // 같은 해 안의 범위는 `to` 쪽 연도를 접는다 — 메타행이 truncate 라 아낀 폭이
   // 그대로 `to` 날짜의 생존으로 돌아온다.
-  it('shows a date range when from != to, folding the repeated year', () => {
+  it('shows a daily date range without the timeframe, folding the repeated year', () => {
     expect(
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20260701', to_date: '20260708' } }),
-    ).toBe('일봉 · 07.01–07.08');
+    ).toBe('07.01–07.08');
   });
 
   it('keeps the past year when the range crosses a year boundary', () => {
     expect(
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20251228', to_date: '20260105' } }),
-    ).toBe('일봉 · 25.12.28–01.05');
+    ).toBe('25.12.28–01.05');
   });
 });
 
@@ -886,4 +869,93 @@ it.each([
   ['삼성전자우 비교', '삼성전자 · 삼성전자우 비교'],
 ])('formats saved title %s without losing stock identity', (name, expected) => {
   expect(formatStudyViewTitle({ label: '삼성전자', code: '005930', name })).toBe(expected);
+});
+
+it('opens immediately and uses context menus instead of double-click rename', () => {
+  renderDrawer('/inventory');
+  const row = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  fireEvent.click(row);
+  expect(savedRange()?.viewId).toBe('a');
+  fireEvent.doubleClick(screen.getByText('삼성전자 · 급등 이후'));
+  expect(screen.queryByLabelText('저장뷰 이름 수정')).toBeNull();
+  expect(screen.queryByRole('button', { name: '다중 선택' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /순서 이동|행 메뉴|그룹 메뉴/ })).toBeNull();
+  expect(screen.queryByRole('status', { name: '저장뷰 순서 안내' })).toBeNull();
+});
+
+it('selects a visible range across groups and toggles rows without changing the opened view', () => {
+  mockedSaves = [...saves, { ...saves[0], id: 'c', name: '다른 기간', updated_at_ms: 2 }];
+  renderDrawer('/live');
+  const a = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  const b = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
+  const c = screen.getByRole('button', { name: '다른 기간 저장뷰 열기' });
+  fireEvent.click(a);
+  fireEvent.click(b, { shiftKey: true });
+  expect(screen.getByText('3개 선택')).toBeTruthy();
+  expect(savedRange()?.viewId).toBe('a');
+  fireEvent.click(c, { altKey: true });
+  expect(screen.getByText('2개 선택')).toBeTruthy();
+  expect(c).toHaveAttribute('aria-pressed', 'false');
+  expect(a).toHaveStyle({ background: 'var(--tint-selection)' });
+  fireEvent.keyDown(b, { key: 'Escape' });
+  expect(screen.queryByTestId('saved-view-selection-actions')).toBeNull();
+  expect(savedRange()?.viewId).toBe('a');
+});
+
+it('extends keyboard selection and removes collapsed rows from the selection', () => {
+  renderDrawer('/live');
+  const a = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  const b = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
+  fireEvent.click(a);
+  fireEvent.keyDown(a, { key: 'ArrowDown', shiftKey: true });
+  expect(b).toHaveFocus();
+  expect(screen.getByText('2개 선택')).toBeTruthy();
+  expect(savedRange()?.viewId).toBe('a');
+  fireEvent.click(screen.getByRole('button', { name: 'SK하이닉스 접기' }));
+  expect(screen.getByText('1개 선택')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '전체 접기' }));
+  expect(screen.queryByTestId('saved-view-selection-actions')).toBeNull();
+});
+
+it('shows a bulk context menu for selected rows and a single menu outside the selection', () => {
+  renderDrawer('/live');
+  const a = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  const b = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
+  fireEvent.click(a, { altKey: true });
+  fireEvent.keyDown(a, { key: 'F10', shiftKey: true });
+  expect(screen.getByRole('menu', { name: '1개 저장뷰 선택' })).toBeTruthy();
+  fireEvent.contextMenu(b);
+  expect(screen.getByRole('menu', { name: '눌림 저장뷰 메뉴' })).toBeTruthy();
+  expect(screen.queryByTestId('saved-view-selection-actions')).toBeNull();
+  expect(savedRange()).toBeNull();
+});
+
+it('opens the group context menu from the keyboard', () => {
+  renderDrawer('/inventory');
+  fireEvent.keyDown(screen.getByRole('group', { name: '삼성전자 그룹' }), { key: 'F10', shiftKey: true });
+  expect(screen.getByRole('menu', { name: '삼성전자 그룹 메뉴' })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: '그룹 삭제' })).toBeTruthy();
+  expect(savedRange()).toBeNull();
+});
+
+it('keeps direct selection while ctrl-click opens a new browser tab', () => {
+  const open = vi.spyOn(window, 'open').mockReturnValue(null);
+  renderDrawer('/inventory');
+  const a = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  const b = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
+  fireEvent.click(a, { altKey: true });
+  fireEvent.click(b, { ctrlKey: true, shiftKey: true, altKey: true });
+  expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\/live\?view=b&workspaceTransfer=[\w-]+$/), '_blank', 'noopener');
+  expect(screen.getByText('1개 선택')).toBeTruthy();
+  expect(a).toHaveAttribute('aria-pressed', 'true');
+  expect(savedRange()).toBeNull();
+});
+
+it('returns focus to the next row when deleting from a keyboard menu', () => {
+  renderDrawer('/live');
+  const a = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  a.focus();
+  fireEvent.keyDown(a, { key: 'F10', shiftKey: true });
+  fireEvent.click(screen.getByRole('menuitem', { name: '삭제' }));
+  expect(screen.getByRole('button', { name: '눌림 저장뷰 열기' })).toHaveFocus();
 });

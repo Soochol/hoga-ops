@@ -1,10 +1,11 @@
 import { studyViewPeriod, studyTimeframeLabel } from './studyViewPeriod';
 import { StudyGroupDialog, type StudyGroupAction } from './StudyGroupDialog';
 import { useStudyViewReveal } from './studyViewReveal';
-import { useDismissablePopover } from '../util/useDismissablePopover';
 import { ClearSearchIcon } from '../ui/ClearSearchIcon';
-import { MoreIcon, GripIcon } from '../ui/RailActionIcons';
-import { RailSelectionControl } from '../rightrail/RailSelectionControl';
+import { PlusIcon } from '../ui/RailActionIcons';
+import { usePanelRowSelection } from '../rightrail/usePanelRowSelection';
+import { PanelContextMenu } from '../ui/PanelContextMenu';
+import { openPanelContextMenuFromKeyboard, panelDragListeners } from '../ui/panelRowInteractions';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStudyViewDeletion } from './studyViewDeletion';
@@ -16,12 +17,11 @@ import { useNavigate, useLocation } from 'react-router';
 import { DndContext, PointerSensor, useSensor, useSensors, type DraggableSyntheticListeners, type DragEndEvent, type DragStartEvent, type DragMoveEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { StudyViewListRow } from '../api/studyViews';
-import { wantsNewTab } from '../live/useJumpToLive';
 import { useLivePageStore } from '../state/livePage';
 import { openSavedRange } from './openSavedRange';
 import { openSavedViewInNewTab } from './studyDeepLink';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
-import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailGroupHeader, RailState, RailTreeRow } from '../ui/RailShell';
+import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState, RailTreeRow } from '../ui/RailShell';
 import { GroupToggleButton } from '../ui/GroupToggleButton';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { SortCycleButton } from '../ui/SortCycleButton';
@@ -39,6 +39,19 @@ const ignoreExpand = () => {};
 
 
 type TreeDragHandle = { listeners: DraggableSyntheticListeners; setActivatorNodeRef: (node: HTMLElement | null) => void };
+
+/** Modified clicks select rows or open a tab, and must never begin a drag. */
+function studyViewDragListeners(listeners: DraggableSyntheticListeners): DraggableSyntheticListeners {
+  const guarded = panelDragListeners(listeners);
+  if (!guarded) return undefined;
+  return {
+    ...guarded,
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      guarded.onPointerDown?.(event);
+    },
+  };
+}
 
 function SortableStudyViewGroup({ id, disabled, indicator, children }: {
   id: string; disabled: boolean; indicator?: DropIndicator;
@@ -71,9 +84,8 @@ export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();
   const mutations = useStudyViewMutations();
   const [groupAction, setGroupAction] = useState<StudyGroupAction | null>(null);
-  const [groupMenu, setGroupMenu] = useState<string | null>(null);
-  const groupMenuRef = useRef<HTMLDivElement>(null);
-  useDismissablePopover(!!groupMenu, groupMenuRef, () => setGroupMenu(null));
+  const [groupMenu, setGroupMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number } | null>(null);
   const [moveError, setMoveError] = useState('');
   const reveal = useStudyViewReveal((s) => s.target);
   const savedGroups = data?.groups ?? EMPTY_GROUPS;
@@ -82,8 +94,6 @@ export function StudyViewsDrawer() {
   const [memoState, setMemoState] = useState<{ id: string; value: string; error: string | null } | null>(null);
   const client = useQueryClient();
   const deletionBatches = useStudyViewDeletion((s) => s.batches);
-  const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ghost, setGhost] = useState<string | null>(null);
   const [destination, setDestination] = useState<{ id: string; side: DropIndicator; label: string } | null>(null);
   const pointRef = useRef<{ x: number; y: number } | null>(null);
@@ -93,7 +103,6 @@ export function StudyViewsDrawer() {
   const renameInputRef = useRef<HTMLInputElement>(null);
   const memoCommittingRef = useRef(false);
   const memoInputRef = useRef<HTMLTextAreaElement>(null);
-  const navigateClickTimerRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   // Pending rows stay in the order model and are hidden only in the rendered list.
@@ -114,7 +123,11 @@ export function StudyViewsDrawer() {
     placeRows, placeGroup, searching, orderMessage, canUndoOrder, undoReorder, useManualSort,
   } = useStudyViewTreeState(allSaves, savedGroups, data !== undefined);
   // Keep pending deletions in the order model so Undo also restores their exact position.
-  const visibleGroups = treeGroups.map((g) => ({ ...g, rows: g.rows.filter((r) => !hiddenIds.has(r.id)) }));
+  const visibleGroups = useMemo(() => treeGroups.map((g) => ({ ...g, rows: g.rows.filter((r) => !hiddenIds.has(r.id)) })), [treeGroups, hiddenIds]);
+  const visibleRows = visibleGroups.flatMap((g) => isCollapsed(g.key) ? [] : g.rows);
+  const visibleIds = visibleRows.map((r) => r.id);
+  const { selectedRows: selected, clear: clearSelection, select: selectRow } = usePanelRowSelection(visibleIds);
+  const selectedRows = visibleRows.filter((r) => selected.has(r.id));
   useEffect(() => {
     if (!reveal || !allSaves.some((r) => r.id === reveal.id)) return;
     revealGroup(reveal.groupId);
@@ -161,11 +174,6 @@ export function StudyViewsDrawer() {
   const savedRangeViewId = useLivePageStore((s) => s.savedRangeFocus?.viewId ?? null);
   const openStudyViewId = savedRangeViewId ?? currentStudyViewId;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  useEffect(() => () => {
-    if (navigateClickTimerRef.current === null) return;
-    window.clearTimeout(navigateClickTimerRef.current);
-    navigateClickTimerRef.current = null;
-  }, []);
 
   useEffect(() => {
     if (!renameState) return;
@@ -199,12 +207,6 @@ export function StudyViewsDrawer() {
     setMemoState(null);
   };
 
-  function cancelPendingStudyViewNavigation() {
-    if (navigateClickTimerRef.current === null) return;
-    window.clearTimeout(navigateClickTimerRef.current);
-    navigateClickTimerRef.current = null;
-  }
-
   /**
    * 저장뷰를 **`/live` 에서 연다** — 행 클릭의 목적지 (2026-08-21 사용자 결정,
    * `/study` 진입로를 대체한다).
@@ -225,17 +227,8 @@ export function StudyViewsDrawer() {
    * 새 탭이라 같은 행의 두 제스처가 다른 페이지로 갈라져 있었다.
    */
   function openSavedRangeInLive(row: StudyViewListRow) {
-    cancelPendingStudyViewNavigation();
     openSavedRange(row);
     if (location.pathname !== '/live') navigate('/live');
-  }
-
-  function scheduleStudyViewNavigation(row: StudyViewListRow) {
-    cancelPendingStudyViewNavigation();
-    navigateClickTimerRef.current = window.setTimeout(() => {
-      navigateClickTimerRef.current = null;
-      openSavedRangeInLive(row);
-    }, 180);
   }
 
   const commitRename = (row: StudyViewListRow) => {
@@ -283,26 +276,43 @@ export function StudyViewsDrawer() {
   };
 
   const requestDeleteRows = (rows: StudyViewListRow[]) => {
-    cancelPendingStudyViewNavigation();
     const removing = new Set(rows.map((r) => r.id));
     if (renameState && removing.has(renameState.id)) cancelRename();
     if (memoState && removing.has(memoState.id)) cancelMemoEdit();
-    const focused = document.activeElement?.closest<HTMLElement>('[data-saved-row]');
+    const nodes = [...document.querySelectorAll<HTMLElement>('#right-rail-saved-views-panel [data-saved-row]')];
+    const focused = document.activeElement?.closest<HTMLElement>('[data-saved-row]')
+      ?? (document.activeElement?.closest('[role="menu"]')
+        ? nodes.find((node) => removing.has(node.dataset.savedRow ?? '')) : undefined);
     if (focused && removing.has(focused.dataset.savedRow ?? '')) {
-      const nodes = [...document.querySelectorAll<HTMLElement>('#right-rail-saved-views-panel [data-saved-row]')];
       const at = nodes.indexOf(focused);
       const next = [...nodes.slice(at + 1), ...nodes.slice(0, at).reverse()].find((node) => !removing.has(node.dataset.savedRow ?? ''));
       next?.focus();
       if (!next) document.querySelector<HTMLInputElement>('[aria-label="저장뷰 검색"]')?.focus();
     }
     useStudyViewDeletion.getState().queue(rows, client);
-    setSelected(new Set());
+    clearSelection();
   };
   const requestDelete = (row: StudyViewListRow) => requestDeleteRows([row]);
-  const selectedRows = allSaves.filter((r) => selected.has(r.id) && !hiddenIds.has(r.id));
-  const toggleSelected = (id: string) => setSelected((old) => {
-    const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next;
-  });
+  const pickRow = (row: StudyViewListRow, event: { shiftKey?: boolean; altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => {
+    if (mutations.move.isPending) return;
+    if (selectRow(row.id, event)) return;
+    if (event.ctrlKey || event.metaKey) openSavedViewInNewTab(row.id);
+    else openSavedRangeInLive(row);
+  };
+  const showRowMenu = (row: StudyViewListRow, event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.focus();
+    setGroupMenu(null);
+    if (selected.has(row.id) && selectedRows.length) {
+      setRowMenu(null);
+      setSelectionMenu({ x: event.clientX, y: event.clientY });
+    } else {
+      clearSelection();
+      setSelectionMenu(null);
+      setRowMenu({ row, left: event.clientX, top: event.clientY });
+    }
+  };
   const getDestination = (event: DragMoveEvent | DragEndEvent) => {
     const intent = resolveStudyViewTreeDrag(event);
     if (!intent || !event.over) return null;
@@ -314,7 +324,6 @@ export function StudyViewsDrawer() {
     return { id: String(event.over.id), side, label: intent.type === 'row' && !intent.overId ? `${name ?? ''} 그룹으로 이동` : `${name ?? ''} ${side === 'after' ? '아래' : '위'}로 이동` };
   };
   const handleDragStart = (event: DragStartEvent) => {
-    cancelPendingStudyViewNavigation();
     pointRef.current = dropPoint({ activatorEvent: event.activatorEvent, delta: { x: 0, y: 0 } });
     const row = allSaves.find((r) => studyViewRowDndId(r.id) === String(event.active.id));
     dragIds.current = row ? selected.has(row.id) ? selectedRows.map((r) => r.id) : [row.id] : [];
@@ -338,7 +347,7 @@ export function StudyViewsDrawer() {
     } else {
       setMoveError('');
       mutations.move.mutate({ ids: dragIds.current, groupId: intent.groupKey }, {
-        onSuccess: () => { placeRows(intent.groupKey, dragIds.current, intent.overId, next.side); setSelected(new Set()); revealGroup(intent.groupKey); },
+        onSuccess: () => { placeRows(intent.groupKey, dragIds.current, intent.overId, next.side); clearSelection(); revealGroup(intent.groupKey); },
         onError: (e) => setMoveError(e instanceof Error ? e.message : '이동에 실패했습니다'),
       });
     }
@@ -351,54 +360,53 @@ export function StudyViewsDrawer() {
       <RailTreeRow
         key={row.id}
         data-saved-row={row.id}
-        data-tooltip={`${formatStudyViewTitle(row)} (${row.code}) · ${formatStudyViewMeta(row)}`}
-        className="group"
+        data-tooltip={`${formatStudyViewTitle(row)} (${row.code}) · ${formatStudyViewMeta(row)}${row.memo ? `\n${row.memo}` : ''}`}
+        ref={handle.setActivatorNodeRef}
+        {...studyViewDragListeners(canDrag ? handle.listeners : undefined)}
+        data-draggable={canDrag ? '' : undefined}
+        className={`group select-none touch-none ${canDrag ? ghost ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'}`}
         role={isEditing ? undefined : 'button'}
         tabIndex={isEditing ? undefined : 0}
         aria-label={isEditing ? undefined : `${row.name} 저장뷰 열기`}
         aria-current={isActive ? 'true' : undefined}
+        aria-pressed={isEditing ? undefined : selected.has(row.id)}
+        aria-haspopup={isEditing ? undefined : 'menu'}
+        aria-keyshortcuts={isEditing ? undefined : 'Delete Shift+F10 ContextMenu'}
+        data-selected={selected.has(row.id) ? 'true' : undefined}
         style={{
-          background: isActive ? 'var(--tint-selection)' : 'transparent',
+          background: selected.has(row.id) ? 'var(--tint-selection)' : undefined,
+          cursor: canDrag ? ghost ? 'grabbing' : 'grab' : 'pointer',
         }}
-        // Ctrl/⌘+클릭 = **브라우저** 새 탭. ADR-0149 가 없앤 것은 앱 안의 저장뷰 탭이고
-        // (그 disposition 은 되살리지 않는다), 여기서 타는 것은 같은 ADR §7 이 정식 경로로
-        // 못박은 `?view=` 딥링크다 — 새 상태가 0이라 결정과 충돌하지 않는다.
-        //
-        // 지연 스케줄(180ms — 이름 변경 더블클릭과의 모호성 해소)을 **거치지 않는다**:
-        // 수정자 클릭에는 그 모호성이 없고, 사용자 제스처 핸들러 안에서 동기로 열어야
-        // 팝업 차단에 걸리지 않는다. **이 탭은 아무것도 바뀌지 않는 것이 계약**이라
-        // `openSavedRangeInLive`(종목 활성화 + 기간 슬롯)를 부르지 않는다 — 새 탭이
-        // URL 로 자기 상태를 세운다.
-        onClick={isEditing ? undefined : (e) => {
-          if (wantsNewTab(e)) {
-            cancelPendingStudyViewNavigation();
-            openSavedViewInNewTab(row.id);
-            return;
-          }
-          scheduleStudyViewNavigation(row);
-        }}
-        onContextMenu={isEditing ? undefined : (e) => {
-          e.preventDefault();
-          setRowMenu({ row, left: e.clientX, top: e.clientY });
-        }}
+        onClick={isEditing ? undefined : (e) => pickRow(row, e)}
+        onContextMenu={isEditing ? undefined : (e) => showRowMenu(row, e)}
         onKeyDown={isEditing ? undefined : (e) => {
           if (e.target !== e.currentTarget) return;
+          if (openPanelContextMenuFromKeyboard(e)) return;
           if (e.key === 'Delete') {
             e.preventDefault();
-            requestDeleteRows(selected.has(row.id) ? selectedRows : [row]);
+            requestDeleteRows(selectedRows.length ? selectedRows : [row]);
             return;
           }
-          if (e.key !== 'Enter' && e.key !== ' ') return;
-          e.preventDefault();
-          openSavedRangeInLive(row);
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextId = visibleIds[visibleIds.indexOf(row.id) + (e.key === 'ArrowDown' ? 1 : -1)];
+            const next = allSaves.find((r) => r.id === nextId);
+            if (!next) return;
+            if (e.shiftKey && !selected.size) selectRow(row.id, {});
+            if (e.shiftKey) selectRow(next.id, { shiftKey: true, altKey: e.altKey });
+            else pickRow(next, e);
+            const node = Array.from(e.currentTarget.closest('aside')!.querySelectorAll<HTMLElement>('[data-saved-row]'))
+              .find((n) => n.dataset.savedRow === nextId);
+            node?.focus();
+            node?.scrollIntoView?.({ block: 'nearest' });
+            return;
+          }
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            pickRow(row, e);
+          }
         }}
       >
-        <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {selecting && <input type="checkbox" aria-label={`${row.name} 선택`} checked={selected.has(row.id)} onChange={() => toggleSelected(row.id)} />}
-          <button type="button" aria-label={`${row.name} 순서 이동`} disabled={!canDrag}
-            ref={handle.setActivatorNodeRef} {...handle.listeners}
-            className="grid place-items-center h-5 w-4 shrink-0 cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-30"><GripIcon /></button>
-        </span>
         {renameState?.id === row.id ? (
           <div className="min-w-0 flex-1 space-y-1">
             <input
@@ -448,45 +456,13 @@ export function StudyViewsDrawer() {
             {memoState.error && <div className="text-xs text-danger">{memoState.error}</div>}
           </div>
         ) : (
-          <div className="flex min-w-0 flex-1 items-center gap-2 leading-tight">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-border bg-bg" aria-hidden />
-            <div className="min-w-0 flex-1">
-              <div
-                className="truncate text-xs text-fg"
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  cancelPendingStudyViewNavigation();
-                  startRename(row);
-                }}
-              >
-                {formatStudyViewTitle(row)}
-              </div>
-              {/* 메타행 — 저장뷰 이름만으론 "무엇을 저장했나"를 알 수 없던 것 보완:
-                  타임프레임 · 복기 대상일(종목은 위 이름행에 표시). */}
-              <div className="truncate text-xs text-fg-dim font-data" data-tooltip={`${row.code} · ${studyTimeframeLabel(row.timeframe)} · ${studyViewPeriod(row.range, row.timeframe)}`}>
-                {formatStudyViewMeta(row)}
-              </div>
-              {/* 메모 미리보기(첫 줄) — 검색만 되고 화면엔 없던 복기 노트를 목록에서
-                  바로 훑을 수 있게 한다. 메타보다 한 단계 밝은 fg-dim 으로 구분. */}
-              {row.memo && (
-                <div className="truncate text-badge text-fg-dim">{row.memo.split('\n', 1)[0]}</div>
-              )}
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className={`truncate text-xs ${isActive ? 'font-semibold text-accent' : 'text-fg'}`}>
+              {formatStudyViewTitle(row)}
             </div>
-            {/* 메뉴는 항상 클릭 가능하게 두어 키보드와 포인터로 그룹 이동에 접근한다. */}
-            <button
-              type="button"
-              aria-label={`${row.name} 행 메뉴`}
-              aria-haspopup="menu"
-              onClick={(e) => {
-                e.stopPropagation();
-                cancelPendingStudyViewNavigation();
-                setRowMenu({ row, left: e.clientX, top: e.clientY });
-              }}
-              className="shrink-0 grid h-6 w-6 place-items-center rounded text-fg-dimmer hover:text-fg opacity-60 hover:opacity-100 focus-visible:opacity-100"
-            >
-              <MoreIcon />
-            </button>
+            <div className="truncate text-xs text-fg-dim font-data" data-tooltip={`${row.code} · ${row.timeframe === 'D' ? '' : `${studyTimeframeLabel(row.timeframe)} · `}${studyViewPeriod(row.range, row.timeframe)}`}>
+              {formatStudyViewMeta(row)}
+            </div>
           </div>
         )}
       </RailTreeRow>
@@ -494,12 +470,18 @@ export function StudyViewsDrawer() {
   };
 
   return (
-    <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장뷰">
+    <RailDrawer id="right-rail-saved-views-panel" ariaLabel="저장뷰" onKeyDown={(event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || ghost || rowMenu || groupMenu || selectionMenu
+        || (event.target as HTMLElement).closest('input, textarea, [role="dialog"]')) return;
+      if (selected.size) { event.preventDefault(); event.stopPropagation(); clearSelection(); }
+    }}>
       <RailDrawerHeader
         title="저장뷰"
-        actions={<button type="button" className="h-7 rounded px-2 text-xs text-accent" onClick={() => setGroupAction({ type: 'create' })}>+ 그룹</button>}
+        actions={<button type="button" aria-label="새 그룹 만들기" data-tooltip="새 그룹 만들기"
+          className="flex h-7 items-center gap-1 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg"
+          onClick={() => setGroupAction({ type: 'create' })}><PlusIcon /> 그룹</button>}
       />
-      <RailDrawerSection className="p-3">
+      <RailDrawerSection className="px-md py-sm">
           <div className="flex items-center gap-1">
             <div className="relative min-w-0 flex-1">
               <input
@@ -526,12 +508,13 @@ export function StudyViewsDrawer() {
               onToggle={toggleVisibleGroups} disabled={searching || visibleGroups.length === 0}
               title={searching ? '검색 해제 후 전체 접기 사용' : undefined} />
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-            <RailSelectionControl active={selecting} count={selectedRows.length}
-              onToggle={() => { setSelecting(!selecting); setSelected(new Set()); }} />
-            {selecting && <button type="button" disabled={!selectedRows.length} className="h-7 rounded px-2 text-xs text-accent disabled:opacity-40" onClick={() => setGroupAction({ type: 'move', ids: selectedRows.map((r) => r.id) })}>그룹 이동</button>}
-            {selecting && <button type="button" disabled={!selectedRows.length} className="h-7 rounded px-2 text-xs text-error disabled:opacity-40"
-              onClick={() => requestDeleteRows(selectedRows)}>선택 삭제</button>}
+          {selectedRows.length > 0 && <div className="mt-1.5 flex min-h-7 flex-wrap items-center gap-2 text-xs" data-testid="saved-view-selection-actions">
+            <span role="status" className="mr-auto text-fg-dim">{selectedRows.length}개 선택</span>
+            <button type="button" disabled={mutations.move.isPending} className="text-accent disabled:opacity-40" onClick={() => setGroupAction({ type: 'move', ids: selectedRows.map((r) => r.id) })}>이동</button>
+            <button type="button" disabled={mutations.move.isPending} className="text-accent disabled:opacity-40" onClick={() => requestDeleteRows(selectedRows)}>삭제</button>
+            <button type="button" className="text-fg-dim" onClick={clearSelection}>선택 해제</button>
+          </div>}
+          <div className="mt-1.5 flex items-center gap-1">
             <SortCycleButton onClick={cycleSortMode} direction={sortAction.direction === 'default' ? 'none' : sortAction.direction}
               label={sortAction.label} visibleLabel="이름" />
 
@@ -566,45 +549,32 @@ export function StudyViewsDrawer() {
                   <SortableStudyViewGroup key={group.key} id={group.key} disabled={!canDrag} indicator={destination?.id === studyViewGroupDndId(group.key) ? destination.side : undefined}>
                     {(groupHandle) => (
                       <section aria-label={`${group.label} 저장뷰`}>
-                        <div className="group sticky top-0 z-10 flex items-center bg-bg">
-                          <button type="button" aria-label={`${group.label} 그룹 이동`} disabled={!canDrag}
-                            ref={groupHandle.setActivatorNodeRef} {...groupHandle.listeners}
-                            className="ml-2 grid place-items-center h-5 w-4 shrink-0 cursor-grab touch-none text-fg-dimmer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-30"><GripIcon /></button>
-                        <RailGroupHeader
-                          type="button"
-                          aria-label={`${group.label} ${groupCollapsed ? '펼치기' : '접기'}`}
-                          aria-expanded={!groupCollapsed}
-                          data-tooltip={`${group.label}`}
-                          // Ctrl/⌘+클릭 = 그 종목의 최신 저장뷰를 앱 탭으로 열던 분기는
-                          // ADR-0149 로 사라졌다. 헤더 클릭은 이제 접기/펼치기 하나다.
-                          // 행에 생긴 브라우저 새 탭(ctrl/⌘+클릭)을 여기까지 넓히지 않은 것은
-                          // 의도다 — 헤더의 클릭 하나는 접기이고, 어느 뷰를 열지는 헤더가
-                          // 아니라 행이 정한다.
-                          onClick={() => {
-                            toggleGroup(group.key);
+                        <div
+                          ref={groupHandle.setActivatorNodeRef}
+                          {...studyViewDragListeners(canDrag ? groupHandle.listeners : undefined)}
+                          data-testid="saved-view-group-header"
+                          data-draggable={canDrag ? '' : undefined}
+                          role="group" tabIndex={0} aria-label={`${group.label} 그룹`} aria-haspopup="menu"
+                          aria-keyshortcuts="Shift+F10 ContextMenu"
+                          onContextMenu={(event) => {
+                            event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+                            setRowMenu(null); setSelectionMenu(null);
+                            setGroupMenu({ id: group.key, x: event.clientX, y: event.clientY });
                           }}
-                          className="flex-1 min-w-0"
-                          disabled={searching}
-                          leading={<span className="text-fg-dimmer"><ChevronIcon collapsed={groupCollapsed} /></span>}
-                          count={group.rows.length}
-                        >
-                          {group.label}
-                        </RailGroupHeader>
-                        {searching && <span className="text-xs text-fg-dim">전체 {allSaves.filter((r) => r.group_id === group.key).length}</span>}
-                        <div className="relative" ref={groupMenu === group.key ? groupMenuRef : undefined}>
-                          <button type="button" aria-label={`${group.label} 그룹 메뉴`} aria-haspopup="menu" className="h-7 w-7 text-fg-dim" onClick={() => setGroupMenu(groupMenu === group.key ? null : group.key)}><MoreIcon /></button>
-                          {groupMenu === group.key && <div role="menu" className="absolute right-0 z-30 w-32 rounded border bg-bg-card p-1 shadow-lg">
-                            {(['rename', 'delete'] as const).map((type) => <button type="button" role="menuitem" key={type} className="block w-full px-2 py-1 text-left text-xs hover:bg-bg-input-hover" onClick={() => {
-                              const found = savedGroups.find((g) => g.id === group.key);
-                              const rows = allSaves.filter((r) => r.group_id === group.key);
-                              if (found) {
-                                if (type === 'delete' && rows.length === 0) mutations.deleteGroup.mutate(found.id, { onError: (e) => setMoveError(e.message) });
-                                else setGroupAction({ type, group: found, count: rows.length, ids: rows.map((r) => r.id) });
-                              }
-                              setGroupMenu(null);
-                            }}>{type === 'rename' ? '이름 변경' : '그룹 삭제'}</button>)}
-                          </div>}
-                        </div>
+                          onKeyDown={openPanelContextMenuFromKeyboard}
+                          className={`group select-none touch-none sticky top-0 z-10 flex items-center gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim bg-bg hover:bg-bg-input-hover ${canDrag ? ghost ? 'cursor-grabbing' : 'cursor-grab' : ''}`}>
+                          <button type="button" aria-label={`${group.label} ${groupCollapsed ? '펼치기' : '접기'}`}
+                            aria-expanded={!groupCollapsed} onClick={() => toggleGroup(group.key)} disabled={searching}
+                            className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg disabled:opacity-40">
+                            <ChevronIcon collapsed={groupCollapsed} />
+                          </button>
+                          <button type="button" data-panel-drag-label data-tooltip={group.label} aria-label={`${group.label} ${group.rows.length}`}
+                            aria-expanded={!groupCollapsed} onClick={() => toggleGroup(group.key)} disabled={searching}
+                            className={`flex min-w-0 flex-1 items-baseline gap-1.5 text-left ${canDrag ? 'cursor-grab' : ''}`}>
+                            <span className="truncate">{group.label}</span>
+                            <span className="shrink-0 text-xs font-normal text-fg-dim">{group.rows.length}</span>
+                          </button>
+                          {searching && <span className="text-xs font-normal text-fg-dim">전체 {allSaves.filter((r) => r.group_id === group.key).length}</span>}
                         </div>
                         {!groupCollapsed && group.rows.length === 0 && <p className="px-4 py-3 text-xs text-fg-dim">캔들차트의 저장 버튼으로 추가</p>}
                         {!groupCollapsed && (
@@ -627,15 +597,34 @@ export function StudyViewsDrawer() {
             </RailDragOverlay>
           </DndContext>
         </RailDrawerBody>
-      <div role="status" aria-label="저장뷰 순서 안내" className="flex min-h-12 shrink-0 items-center gap-2 border-t border-border px-md py-1 text-xs text-fg-dim">
+      {(ghost || orderMessage || !dragEnabled) && <div role="status" aria-label="저장뷰 순서 안내" className="flex min-h-12 shrink-0 items-center gap-2 border-t border-border px-md py-1 text-xs text-fg-dim">
         <span className="line-clamp-3 flex-1">{ghost ? destination?.label ?? dragHint : !dragEnabled
           ? searching ? '검색 중에는 순서를 변경할 수 없습니다' : '이름 정렬 중에는 순서를 변경할 수 없습니다'
-          : orderMessage || '핸들로 순서 이동 · Delete 삭제 · 순서는 이 브라우저에 저장'}</span>
+          : orderMessage}</span>
         {!ghost && canUndoOrder && <button type="button" className="shrink-0 text-accent" onClick={undoReorder}>순서 되돌리기</button>}
         {!ghost && !dragEnabled && !searching && <button type="button" className="shrink-0 text-accent" onClick={useManualSort}>수동 정렬</button>}
-      </div>
+      </div>}
       {moveError && <p role="alert" className="p-3 text-xs text-error">{moveError}</p>}
-      {groupAction && <StudyGroupDialog action={groupAction} groups={savedGroups} onClose={() => { setGroupAction(null); setSelected(new Set()); }} />}
+      {groupAction && <StudyGroupDialog action={groupAction} groups={savedGroups} onClose={() => { setGroupAction(null); clearSelection(); }} />}
+      {groupMenu && <PanelContextMenu point={groupMenu} label={`${savedGroups.find((g) => g.id === groupMenu.id)?.name ?? ''} 그룹 메뉴`} onClose={() => setGroupMenu(null)}>
+        {(['rename', 'delete'] as const).map((type) => <button type="button" role="menuitem" key={type}
+          className="block w-full px-3 py-1.5 text-left text-sm hover:bg-bg-input-hover"
+          onClick={() => {
+            const found = savedGroups.find((g) => g.id === groupMenu.id);
+            const rows = allSaves.filter((r) => r.group_id === groupMenu.id);
+            if (found) {
+              if (type === 'delete' && rows.length === 0) mutations.deleteGroup.mutate(found.id, { onError: (e) => setMoveError(e.message) });
+              else setGroupAction({ type, group: found, count: rows.length, ids: rows.map((r) => r.id) });
+            }
+            setGroupMenu(null);
+          }}>{type === 'rename' ? '이름 변경' : '그룹 삭제'}</button>)}
+      </PanelContextMenu>}
+      {selectionMenu && selectedRows.length > 0 && <PanelContextMenu point={selectionMenu} label={`${selectedRows.length}개 저장뷰 선택`} onClose={() => setSelectionMenu(null)}>
+        <button type="button" role="menuitem" className="block w-full px-3 py-1.5 text-left text-sm hover:bg-bg-input-hover"
+          onClick={() => { setGroupAction({ type: 'move', ids: selectedRows.map((r) => r.id) }); setSelectionMenu(null); }}>그룹 이동</button>
+        <button type="button" role="menuitem" className="block w-full px-3 py-1.5 text-left text-sm text-error hover:bg-tint-error"
+          onClick={() => { requestDeleteRows(selectedRows); setSelectionMenu(null); }}>삭제</button>
+      </PanelContextMenu>}
       {rowMenu && (
         <StudyViewRowMenu
           x={rowMenu.left}

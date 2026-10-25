@@ -11,7 +11,7 @@ const saved = (id: string, code = A): StudyViewReference => ({
 });
 const panel = (page: Page) => page.getByRole('complementary', { name: '저장뷰', exact: true });
 const row = (page: Page, id: string) => page.getByTestId(`saved-view-item-${id}`);
-const handle = (page: Page, id: string) => row(page, id).getByRole('button', { name: `복기 ${id} 순서 이동`, exact: true });
+const surface = (page: Page, id: string) => row(page, id).locator('[data-saved-row]');
 const order = (page: Page, code = A) => page.getByTestId(`saved-view-group-${code}`).locator('[data-saved-row]').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-saved-row')));
 const notice = (page: Page) => panel(page).getByRole('status', { name: '저장뷰 순서 안내' });
 async function setup(page: Page, initial = [saved('a'), saved('b'), saved('c'), saved('d', B)]) {
@@ -27,7 +27,8 @@ async function setup(page: Page, initial = [saved('a'), saved('b'), saved('c'), 
     return r.fulfill({ json: { schema_version: 2, groups, saves } });
   });
   await page.route(apiPrefix('study-views/saves/'), (r) => {
-    const id = new URL(r.request().url()).pathname.split('/').at(-1)!;
+    const id = new URL(r.request().url()).pathname.split('/')[4]!;
+    if (r.request().method() === 'PATCH') saves = saves.map((s) => s.id === id ? { ...s, ...r.request().postDataJSON() } : s);
     if (r.request().method() !== 'DELETE') return r.fulfill({ json: saves.find((s) => s.id === id) });
     deleted.push(id);
     if (failing.has(id)) return r.fulfill({ status: 500, json: { detail: '일시적 오류' } });
@@ -68,29 +69,29 @@ test('검색은 접힌 결과를 임시로 펼치며 이름 정렬은 수동 정
   await page.getByRole('textbox', { name: '저장뷰 검색' }).fill('복기 b');
   await expect(row(page, 'b')).toBeVisible();
   await expect(row(page, 'a')).toHaveCount(0);
-  await expect(handle(page, 'b')).toBeDisabled();
+  await expect(surface(page, 'b')).not.toHaveAttribute('data-draggable');
   await expect(notice(page)).toContainText('검색 중에는');
   await page.getByRole('button', { name: '검색어 지우기' }).click();
   await expect(row(page, 'b')).toHaveCount(0);
   await page.getByRole('button', { name: '돌파 복기 펼치기' }).click();
   await page.getByRole('button', { name: '이름 오름차순 정렬' }).click();
-  await expect(handle(page, 'a')).toBeDisabled();
+  await expect(surface(page, 'a')).not.toHaveAttribute('data-draggable');
   await expect(notice(page)).toContainText('이름 정렬 중에는');
   await page.getByRole('button', { name: '수동 정렬', exact: true }).click();
-  await expect(handle(page, 'a')).toBeEnabled();
+  await expect(surface(page, 'a')).toHaveAttribute('data-draggable');
 });
 
 test('행 위아래 정확한 삽입과 기간 안내, 되돌리기 및 새로고침 후 순서 보존', async ({ page }) => {
   await setup(page);
-  await start(page, handle(page, 'a'));
+  await start(page, surface(page, 'a'));
   await over(page, row(page, 'b'), .8);
   await expect(notice(page)).toContainText('삼성전자 · 복기 b (5분봉 · 09.01–09.02) 아래로 이동');
-  await page.screenshot({ path: '/tmp/hoga-saved-view-drag.png' });
+  // Assert the insertion destination before releasing the pointer.
   await page.mouse.up();
   await expect.poll(() => order(page)).toEqual(['b', 'a', 'c']);
   await page.getByRole('button', { name: '순서 되돌리기' }).click({ delay: 80 });
   await expect.poll(() => order(page)).toEqual(['a', 'b', 'c']);
-  await move(page, handle(page, 'c'), row(page, 'b'), .2);
+  await move(page, surface(page, 'c'), row(page, 'b'), .2);
   await expect.poll(() => order(page)).toEqual(['a', 'c', 'b']);
   await page.reload();
   await expect.poll(() => order(page)).toEqual(['a', 'c', 'b']);
@@ -98,31 +99,29 @@ test('행 위아래 정확한 삽입과 기간 안내, 되돌리기 및 새로�
 
 test('다른 그룹으로 이동하고 패널 밖 드롭은 취소한다', async ({ page }) => {
   await setup(page);
-  await move(page, handle(page, 'a'), row(page, 'd'), .8);
+  await move(page, surface(page, 'a'), row(page, 'd'), .8);
   await expect.poll(() => order(page)).toEqual(['b', 'c']);
   await expect.poll(() => order(page, B)).toEqual(['d', 'a']);
-  await start(page, handle(page, 'b'));
+  await start(page, surface(page, 'b'));
   await page.mouse.move(20, 20, { steps: 10 }); await page.mouse.up();
   expect(await order(page)).toEqual(['b', 'c']);
-  await move(page, page.getByRole('button', { name: '돌파 복기 그룹 이동', exact: true }), page.getByTestId(`saved-view-group-${B}`), .8);
+  await move(page, panel(page).locator('[data-panel-drag-label]').filter({ hasText: '돌파 복기' }), page.getByTestId(`saved-view-group-${B}`), .8);
   await expect.poll(() => panel(page).locator('section[aria-label]').evaluateAll((nodes) => nodes.map((n) => n.getAttribute('aria-label')))).toEqual(['눌림목 복기 저장뷰', '돌파 복기 저장뷰']);
   await expect(page.getByRole('button', { name: '돌파 복기 접기' })).toBeVisible();
 });
 
 test('다중 선택 묶음 순서를 유지하고 여러 그룹의 항목도 함께 이동한다', async ({ page }) => {
   await setup(page, [saved('a'), saved('b'), saved('c'), saved('e'), saved('d', B)]);
-  await page.getByRole('button', { name: '다중 선택' }).click();
-  await page.getByRole('checkbox', { name: '복기 a 선택', exact: true }).check();
-  await page.getByRole('checkbox', { name: '복기 c 선택', exact: true }).check();
-  await start(page, handle(page, 'a'));
+  await surface(page, 'a').click({ modifiers: ['Alt'] });
+  await surface(page, 'c').click({ modifiers: ['Alt'] });
+  await start(page, surface(page, 'a'));
   await expect(page.getByTestId('saved-view-drag-ghost')).toContainText('2개 저장뷰');
   await over(page, row(page, 'e'), .8); await page.mouse.up();
   await expect.poll(() => order(page)).toEqual(['b', 'e', 'a', 'c']);
   // A real press/release outlasts dnd-kit's trailing-click suppression after a drop.
-  await page.getByRole('checkbox', { name: '복기 d 선택', exact: true }).click({ delay: 80 });
-  await expect(page.getByRole('button', { name: '선택 완료' })).toBeVisible();
+  await surface(page, 'd').click({ delay: 80, modifiers: ['Alt'] });
   await expect(panel(page).getByRole('status').filter({ hasText: '3개 선택' })).toBeVisible();
-  await start(page, handle(page, 'a'));
+  await start(page, surface(page, 'a'));
   await over(page, row(page, 'b'), .2);
   await expect(notice(page)).toContainText('위로 이동');
   await page.mouse.up();
@@ -146,10 +145,10 @@ test('Delete 후 다음 행에 포커스하며 패널을 닫아도 실행 취소
   expect(state.deleted).toEqual([]);
 });
 
-test('연속 삭제는 각각 취소할 수 있고 Delete는 검색 입력과 메뉴 버튼을 무시한다', async ({ page }) => {
+test('연속 삭제는 각각 취소할 수 있고 Delete는 검색 입력과 그룹 버튼을 무시한다', async ({ page }) => {
   const state = await setup(page);
   await page.getByRole('textbox', { name: '저장뷰 검색' }).press('Delete');
-  await row(page, 'a').getByRole('button', { name: '복기 a 행 메뉴' }).focus();
+  await page.getByRole('button', { name: '돌파 복기 접기' }).focus();
   await page.keyboard.press('Delete');
   await expect(row(page, 'a')).toBeVisible();
   await row(page, 'a').getByRole('button', { name: '복기 a 저장뷰 열기', exact: true }).focus();
@@ -164,10 +163,9 @@ test('연속 삭제는 각각 취소할 수 있고 Delete는 검색 입력과 �
 test('일괄 삭제 일부 실패를 안내하고 실패한 저장뷰만 재시도한다', async ({ page }) => {
   const state = await setup(page);
   state.failing.add('b');
-  await page.getByRole('button', { name: '다중 선택' }).click();
-  await page.getByRole('checkbox', { name: '복기 a 선택', exact: true }).check();
-  await page.getByRole('checkbox', { name: '복기 b 선택', exact: true }).check();
-  await page.getByRole('button', { name: '선택 삭제', exact: true }).click();
+  await surface(page, 'a').click({ modifiers: ['Alt'] });
+  await surface(page, 'b').click({ modifiers: ['Alt'] });
+  await panel(page).getByTestId('saved-view-selection-actions').getByRole('button', { name: '삭제', exact: true }).click();
   await expect(page.getByRole('status', { name: '저장뷰 삭제 안내' })).toContainText('1개 삭제 완료 · 1개 삭제 실패', { timeout: 10000 });
   await expect(row(page, 'a')).toHaveCount(0);
   await expect(row(page, 'b')).toBeVisible();
@@ -180,7 +178,7 @@ test('일괄 삭제 일부 실패를 안내하고 실패한 저장뷰만 재시�
 test('가장자리 자동 스크롤 중에도 목적지에 삽입하고 Escape는 취소한다', async ({ page }) => {
   await setup(page, [saved('a'), ...Array.from({ length: 45 }, (_, i) => saved(`v${i}`)), saved('d', B)]);
   const scroll = page.getByTestId('saved-views-scroll');
-  await start(page, handle(page, 'a'));
+  await start(page, surface(page, 'a'));
   const edge = await point(scroll, .98);
   await page.mouse.move(edge.x, edge.y);
   await expect(page.getByRole('status').filter({ hasText: '아래로 스크롤' })).toBeVisible();
@@ -189,7 +187,7 @@ test('가장자리 자동 스크롤 중에도 목적지에 삽입하고 Escape�
   await expect(page.getByTestId('saved-view-drag-ghost')).toHaveCount(0);
   expect((await order(page))[0]).toBe('a');
   await scroll.evaluate((el) => { el.scrollTop = 0; });
-  await start(page, handle(page, 'a'));
+  await start(page, surface(page, 'a'));
   await page.mouse.move(edge.x, edge.y);
   await expect.poll(() => scroll.evaluate((el) => el.scrollTop)).toBeGreaterThan(200);
   // Leave the edge to stop scrolling, then choose a currently visible row.
@@ -226,4 +224,61 @@ test('연속 삭제 안내는 화면 안에서 스크롤하며 최신 요청을 
   await newest.getByRole('button', { name: '실행 취소' }).click();
   await expect(row(page, 'q10')).toBeVisible();
   await expect(list.getByRole('status')).toHaveCount(11);
+});
+
+test('클릭은 즉시 열고 Shift 범위 선택·Alt 개별 선택은 차트를 유지한다', async ({ page }, testInfo) => {
+  await setup(page);
+  await expect(panel(page).getByRole('button', { name: '다중 선택' })).toHaveCount(0);
+  await expect(notice(page)).toHaveCount(0);
+  await surface(page, 'a').click();
+  await expect(surface(page, 'a')).toHaveAttribute('aria-current', 'true');
+  await surface(page, 'd').click({ modifiers: ['Shift'] });
+  const actions = panel(page).getByTestId('saved-view-selection-actions');
+  await expect(actions).toContainText('4개 선택');
+  await expect(surface(page, 'd')).not.toHaveAttribute('aria-current');
+  await surface(page, 'b').click({ modifiers: ['Alt'] });
+  await expect(actions).toContainText('3개 선택');
+  await surface(page, 'd').press('Shift+F10');
+  const menu = page.getByRole('menu', { name: '3개 저장뷰 선택' });
+  await expect(menu.getByRole('menuitem', { name: '그룹 이동' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(surface(page, 'd')).toBeFocused();
+  await expect(actions).toContainText('3개 선택');
+  await surface(page, 'd').press('Escape');
+  await expect(actions).toHaveCount(0);
+  await expect(surface(page, 'a')).toHaveAttribute('aria-current', 'true');
+  await surface(page, 'b').focus();
+  await surface(page, 'b').press('Shift+ArrowDown');
+  await expect(surface(page, 'c')).toBeFocused();
+  await expect(actions).toContainText('2개 선택');
+  await page.screenshot({ path: testInfo.outputPath('saved-views-selection.png') });
+});
+
+test('행·그룹 키보드 메뉴와 이름 변경은 차트를 열지 않고 입력은 드래그하지 않는다', async ({ page }, testInfo) => {
+  await setup(page);
+  const header = panel(page).getByRole('group', { name: '돌파 복기 그룹' });
+  await header.focus();
+  await header.press('Shift+F10');
+  const groupMenu = page.getByRole('menu', { name: '돌파 복기 그룹 메뉴' });
+  await expect(groupMenu.getByRole('menuitem', { name: '이름 변경' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(header).toBeFocused();
+  await surface(page, 'a').focus();
+  await surface(page, 'a').press('Shift+F10');
+  const menu = page.getByRole('menu', { name: '복기 a 저장뷰 메뉴' });
+  await expect(menu.getByRole('menuitem', { name: '열기', exact: true })).toBeFocused();
+  await menu.getByRole('menuitem', { name: '이름 변경' }).click();
+  const input = panel(page).getByRole('textbox', { name: '저장뷰 이름 수정' });
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('복기 a');
+  const p = await point(input);
+  await page.mouse.move(p.x, p.y); await page.mouse.down();
+  await page.mouse.move(p.x + 25, p.y); await page.mouse.up();
+  await expect(page.getByTestId('saved-view-drag-ghost')).toHaveCount(0);
+  await input.fill('돌파 확인');
+  await input.press('Enter');
+  await expect(panel(page).getByRole('button', { name: '돌파 확인 저장뷰 열기' })).toBeVisible();
+  await expect(surface(page, 'a')).not.toHaveAttribute('aria-current');
+  await page.screenshot({ path: testInfo.outputPath('saved-views-compact.png') });
 });

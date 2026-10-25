@@ -42,12 +42,12 @@ test('차트에서 새 그룹과 저장뷰를 만들고 같은 기간을 다시 
   expect(file.saves).toHaveLength(2);
   expect(file.saves[0].range).toEqual(file.saves[1].range);
   expect(file.saves[0].id).not.toEqual(file.saves[1].id);
-  await panel.getByRole('button', { name: '+ 그룹', exact: true }).click();
+  await panel.getByRole('button', { name: '새 그룹 만들기', exact: true }).click();
   const create = page.getByRole('dialog', { name: '그룹 만들기' });
   await create.getByLabel('그룹 이름').fill('다음 복기');
   await create.getByRole('button', { name: '저장' }).click();
   await expect(panel.getByText('캔들차트의 저장 버튼으로 추가')).toBeVisible();
-  await panel.getByRole('button', { name: '기간 A 행 메뉴' }).click();
+  await panel.getByRole('button', { name: '기간 A 저장뷰 열기' }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: '그룹 이동' }).click();
   const move = page.getByRole('dialog', { name: '그룹 이동' });
   await move.getByLabel('저장 그룹').click();
