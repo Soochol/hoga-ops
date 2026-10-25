@@ -10,7 +10,8 @@
  * 흔들린다.
  */
 import type { StudyViewListRow } from '../api/studyViews';
-import { isMinuteTimeframe, isSecondTimeframe, type LiveTimeframe, type SavedRangeFocus } from '../state/livePage';
+import { isCalendarTimeframe, isMinuteTimeframe, isSecondTimeframe, type LiveTimeframe, type SavedRangeFocus } from '../state/livePage';
+import { initialHistoricalDaysFor, subtractDaysKst } from '../live/liveDateTime';
 import { STUDY_VENUE } from './studyVenuePolicy';
 
 /**
@@ -31,6 +32,13 @@ import { STUDY_VENUE } from './studyVenuePolicy';
  * 선택과 어긋나므로 **칩에 「KRX 기준」을 병기**한다.
  */
 export const SAVED_RANGE_VENUE = STUDY_VENUE;
+
+/** Include the saved period and the usual amount of preceding chart context. */
+export function savedRangeCalendarFrom(focus: SavedRangeFocus | null, timeframe: LiveTimeframe): string | null {
+  return focus && isCalendarTimeframe(timeframe)
+    ? subtractDaysKst(focus.fromDate, initialHistoricalDaysFor(timeframe))
+    : null;
+}
 
 export function savedRangeFocusFromView(row: StudyViewListRow): SavedRangeFocus {
   return {

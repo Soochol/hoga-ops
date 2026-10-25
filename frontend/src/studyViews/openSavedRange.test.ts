@@ -42,3 +42,15 @@ it.each([null, { fromMs: start + 3600000, toMs: start + 3660000 }])('an explicit
     expect(useWorkspaceStore.getState().chartRuntime[win.id].secondViewport).toBeUndefined();
   } finally { cleanup(); }
 });
+
+it('reopening the same saved view issues a new runtime-only placement request', () => {
+  const before = useLivePageStore.getState().savedRangeRequestSeq;
+  openSavedRange(row);
+  expect(useLivePageStore.getState().savedRangeRequestSeq).toBe(before + 1);
+  openSavedRange(row);
+  expect(useLivePageStore.getState().savedRangeRequestSeq).toBe(before + 2);
+  useLivePageStore.getState().clearSavedRange();
+  openSavedRange(row);
+  expect(useLivePageStore.getState().savedRangeRequestSeq).toBe(before + 3);
+  expect(JSON.parse(localStorage.getItem('live.page.v1') ?? '{}')).not.toHaveProperty('savedRangeRequestSeq');
+});

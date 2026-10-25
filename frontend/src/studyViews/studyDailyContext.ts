@@ -17,6 +17,7 @@ import { realMsToYyyymmdd, todayKstYyyymmdd } from '../live/liveDateTime';
 import { isMinuteTimeframe } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
 import type { Candle } from '../api/types';
+import { calendarBucketKey } from '../live/aggregateCandles';
 
 export type StudyDailyContextWindow = { from: string; to: string } | null;
 
@@ -75,6 +76,21 @@ export type StudyDailyViewport = {
   atLiveEdge: boolean;
 };
 
+function candlesInSavedCalendarRange(
+  candles: readonly Candle[], fromMs: number, toMs: number, timeframe?: 'D' | 'W' | 'M',
+): readonly Candle[] {
+  const fromKey = timeframe ? calendarBucketKey(fromMs, timeframe) : null;
+  const toKey = timeframe ? calendarBucketKey(toMs, timeframe) : null;
+  return candles.filter((c) => {
+    if (c.ts_ms >= fromMs && c.ts_ms <= toMs) return true;
+    if (!timeframe) return false;
+    // Bucket keys are identities, not sortable strings. The first W/M candle
+    // can precede the saved day while still representing its calendar period.
+    const key = calendarBucketKey(c.ts_ms, timeframe);
+    return key === fromKey || key === toKey;
+  });
+}
+
 /**
  * 캘린더 봉 초기 뷰포트. 저장 구간의 마지막 캔들에서 이후 구간 쪽으로 조금 민 지점을
  * 우측 앵커로 잡고, span 은 저장 구간의 `CONTEXT_SPAN_RATIO` 배(가독 상한 클램프).
@@ -86,10 +102,11 @@ export function studyDailyViewport(
   candles: readonly Candle[],
   savedFromMs: number,
   savedToMs: number,
+  timeframe: 'D' | 'W' | 'M' = 'D',
 ): StudyDailyViewport | null {
   if (candles.length === 0) return null;
-  const inRange = candles.filter((c) => c.ts_ms >= savedFromMs && c.ts_ms <= savedToMs);
-  const lastInRange = inRange[inRange.length - 1] ?? candles[candles.length - 1];
+  const inRange = candlesInSavedCalendarRange(candles, savedFromMs, savedToMs, timeframe);
+  const lastInRange = inRange[inRange.length - 1];
   if (!lastInRange) return null;
   const savedBars = Math.max(1, inRange.length);
   const endIdx = candles.findIndex((c) => c.ts_ms === lastInRange.ts_ms);
@@ -119,10 +136,9 @@ export function studySavedRangeMarks(
    *  (`SavedRangeFocus`, 원시 필드 평탄화)이 쓸 수 없었다. 실제로 읽던 것도 이 둘뿐이다. */
   range: { from_ms: number; to_ms: number },
   candles: readonly Candle[],
+  timeframe?: 'D' | 'W' | 'M',
 ): StudySavedRangeMarks | null {
-  const inRange = candles.filter(
-    (c) => c.ts_ms >= range.from_ms && c.ts_ms <= range.to_ms,
-  );
+  const inRange = candlesInSavedCalendarRange(candles, range.from_ms, range.to_ms, timeframe);
   const first = inRange[0];
   const last = inRange[inRange.length - 1];
   if (!first || !last) return null;

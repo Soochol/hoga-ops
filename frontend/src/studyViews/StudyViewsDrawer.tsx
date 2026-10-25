@@ -593,7 +593,7 @@ export function StudyViewsDrawer() {
               })}
             </SortableContext>
             <RailDragOverlay droppedOnChart fitContentHeight>
-              {ghost && <li data-testid="saved-view-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">⠿ {ghost} 이동</li>}
+              {ghost && <li data-testid="saved-view-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">{ghost}</li>}
             </RailDragOverlay>
           </DndContext>
         </RailDrawerBody>

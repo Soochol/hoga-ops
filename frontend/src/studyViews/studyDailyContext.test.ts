@@ -205,3 +205,16 @@ describe('studySavedRangeCoverage', () => {
     });
   });
 });
+
+it('does not substitute recent candles when the saved calendar period is missing', () => {
+  const bars = candles(20);
+  expect(studyDailyViewport(bars, bars[0].ts_ms - 365 * DAY_MS, bars[0].ts_ms - 364 * DAY_MS)).toBeNull();
+  expect(studyDailyViewport(bars, bars.at(-1)!.ts_ms + DAY_MS, bars.at(-1)!.ts_ms + 2 * DAY_MS)).toBeNull();
+});
+
+it.each(['W', 'M'] as const)('seats a daily saved date inside its containing %s candle', timeframe => {
+  const anchor = Date.UTC(2021, 3, 19);
+  const bars = [{ ts_ms: anchor, open: 1, high: 2, low: 1, close: 2, vol_a: 1, vol_b: 0 }];
+  const savedDay = Date.UTC(2021, 3, 22);
+  expect(studyDailyViewport(bars, savedDay, savedDay, timeframe)?.rightEdgeMs).toBe(anchor);
+});

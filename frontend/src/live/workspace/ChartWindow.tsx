@@ -61,9 +61,10 @@ import { LiveStudyViewSaveButton } from '../../studyViews/LiveStudyViewSaveButto
 import {
   useLivePageStore,
   isMinuteTimeframe,
+  isCalendarTimeframe,
   type CalendarTimeframe,
 } from '../../state/livePage';
-import { SAVED_RANGE_VENUE, savedRangeAppliesTo } from '../../studyViews/savedRangeFocus';
+import { SAVED_RANGE_VENUE, savedRangeAppliesTo, savedRangeCalendarFrom } from '../../studyViews/savedRangeFocus';
 import {
   PATTERN_MAX_BARS,
   PATTERN_MIN_BARS,
@@ -200,6 +201,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 보는 게 아니라 같은 기간을 볼 뿐이다. 함께 풀면 저장뷰와 무관한 창까지 거래소가
   // 조용히 바뀐다.
   const savedRangeFocus = useLivePageStore((s) => s.savedRangeFocus);
+  const savedRangeRequestSeq = useLivePageStore((s) => s.savedRangeRequestSeq);
   /** 이 창이 저장뷰 **그 종목**을 그리는가 — venue 고정과 칩의 「KRX」 표기의 축. */
   // freeze · venue 고정 · 기간 칩이 **한 술어**를 쓴다 — 갈라지면 반쪽 상태가 생긴다.
   const isSavedRangeSubject = savedRangeAppliesTo(savedRangeFocus, view.code, view.timeframe);
@@ -345,6 +347,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     institutionInvestorEnabled: ind.institutionNetEnabled,
     sidecarDemands,
     savedRangeFreeze,
+    calendarFromDate: savedRangeCalendarFrom(savedRange, view.timeframe),
     hogaplaySource: hogaplaySourceEnabled,
     asOfDate: minuteJumpTarget.asOfDate,
   });
@@ -420,7 +423,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   );
 
   /**
-   * 저장 구간 백필은 **`useViewportBackfill` 3d 가 소유한다**(`savedRangeFromDate` prop).
+   * 분봉 저장 구간 백필은 **`useViewportBackfill` 3d 가 소유한다**(`savedRangeFromDate` prop).
+   * 캘린더 봉은 `calendarFromDate`로 필요한 기간을 첫 조회에 직접 포함한다.
    *
    * 여기서 `historicalRange.extend` 를 한 번 부르던 시절엔 3개월 전 저장뷰가 **영영
    * 착석하지 않았다**(2026-08-21 실측, 3분 20초 무변화). 단발 extend 는 백엔드에서
@@ -431,9 +435,10 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   /** 일봉 기간 밴드의 마크. 분봉에서는 `LiveChartRoot` 가 스스로 게이트한다. */
   const savedRangeBand = useMemo(
     () => (savedRange
-      ? studySavedRangeMarks({ from_ms: savedRange.fromMs, to_ms: savedRange.toMs }, savedRangeCandles)
+      ? studySavedRangeMarks({ from_ms: savedRange.fromMs, to_ms: savedRange.toMs }, savedRangeCandles,
+          isCalendarTimeframe(view.timeframe) ? view.timeframe : undefined)
       : null),
-    [savedRange, savedRangeCandles],
+    [savedRange, savedRangeCandles, view.timeframe],
   );
 
   /**
@@ -453,8 +458,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
    */
   const savedRangeViewport = useMemo((): TabViewport | null => {
     if (!savedRange) return null;
-    if (!isMinuteTimeframe(view.timeframe)) {
-      return studyDailyViewport(savedRangeCandles, savedRange.fromMs, savedRange.toMs);
+    if (isCalendarTimeframe(view.timeframe)) {
+      return studyDailyViewport(savedRangeCandles, savedRange.fromMs, savedRange.toMs, view.timeframe);
     }
     // 저장 `bar_span` 은 **봉이 일치할 때만** 유효하다(그 함수 주석). 아니면 구간의
     // 실제 봉 수에서 유도한다. 그릴 수 없는 크기는 `minuteRestoreGeometry` 가 접는다
@@ -466,7 +471,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   }, [savedRange, savedRangeCandles, view.timeframe]);
 
   /**
-   * 차트 정체성에 저장뷰를 섞는다 — viewKey 가 바뀌면 `lastAppliedCountRef` 가 리셋돼
+   * 차트 정체성에 저장뷰와 명시적 열기 순번을 섞는다 — 같은 항목을 다시 눌러도
+   * viewKey 가 바뀌면 `lastAppliedCountRef` 가 리셋돼
    * `restoreViewport` 의 **1회 적용이 다시 살아난다**(LiveChartRoot 의 그 effect).
    * 섞지 않으면 이미 마운트된 차트에서는 그 1회가 이미 소진돼 착석이 조용히 무시된다.
    *
@@ -506,7 +512,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const clearSavedRange = useLivePageStore((s) => s.clearSavedRange);
 
   const baseIdentity = d.workareaCode ? `${d.workareaCode}:${candleVenue}` : candleVenue;
-  const savedIdentity = savedRange ? `${baseIdentity}:sv=${savedRange.viewId}` : baseIdentity;
+  const savedIdentity = savedRange ? `${baseIdentity}:sv=${savedRange.viewId}:${savedRangeRequestSeq}` : baseIdentity;
   /**
    * 점프 조각을 섞는 것이 **착지 그 자체다.**
    *
@@ -942,7 +948,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               historyBackfillEnabled={!latestMinutesOnly}
               pagedHistory={savedRangeFreeze === null ? d.usStockHistory : undefined}
               savedRangeFrozen={savedRangeFreeze !== null}
-              savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
+              savedRangeAnchorMs={savedRange?.toMs ?? null}
               bundle={d.workareaBundle}
               chartBundle={d.workareaChartBundle}
               hogaPaneBundle={d.workareaHogaBundle}
