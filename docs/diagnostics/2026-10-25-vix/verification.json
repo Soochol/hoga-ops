@@ -1,0 +1,61 @@
+{
+  "recorded_at_utc": "2026-10-25T12:57:57.775620+00:00",
+  "branch": "codex/vix-index",
+  "base_sha": "041dca786f80ff9f9b9347d3f34dbad416c4ff11",
+  "latest_main_sha": "041dca786f80ff9f9b9347d3f34dbad416c4ff11",
+  "tested_state": "working tree before commit, bound by input fingerprints; no code changes after verification",
+  "input_count": 2623,
+  "input_digest": "4a0f0b6d7eb9c64afdd1d3c962e9751ba3b802b3408da0ba3fea3a3ec1e98337",
+  "runtime": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "playwright": "1.60.0"
+  },
+  "checks": [
+    {
+      "command": "uv run pytest -q tests/api/test_vix_routes.py tests/api/test_us_daily_routes.py tests/api/test_live_indices_routes.py tests/unit/live/test_us_index_minutes.py tests/unit/live/test_index_registry.py tests/unit/live/test_us_index_daily_transfer.py tests/unit/live/test_us_index_live_calendar.py tests/unit/live/test_index_header_quote.py tests/unit/live/test_us_daily_candles.py tests/unit/api/test_rest_wire_schema_contract.py -m \"not wallclock\"",
+      "result": "145 passed",
+      "log": "backend.txt"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/usDailyIntegration.test.ts src/live/buildIndexBundle.test.ts src/live/CandleTooltip.test.tsx src/live/indicators/useResolvedDailyCandles.test.tsx src/api/liveIndices.dailyTransfer.test.tsx src/api/indexRealtimeCandles.test.ts",
+      "result": "103 passed",
+      "log": "frontend.txt"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed",
+      "log": "typecheck.txt"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test us-index-minutes.spec.ts us-daily-candles.spec.ts --reporter=list",
+      "result": "13 passed; credential-free webServer vite build also passed",
+      "log": "e2e.txt"
+    },
+    {
+      "command": "ruff check on modified Python sources/tests",
+      "result": "passed",
+      "log": "ruff.txt"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "actual_broker_probes": {
+    "daily_initial_rows": 35,
+    "daily_pagination_pages": 3,
+    "daily_pagination_rows": 60,
+    "minute_rows": 102,
+    "latest_close": 19.45,
+    "probe_tokens_issued": 0,
+    "websockets_opened": 0,
+    "orders_sent": 0
+  },
+  "domestic_preserved": "348 targets; original collector pid 12961 alive/ready, restarts=0, storage_errors=[]; weekend closed; product domestic collection files unchanged",
+  "deployment": "not deployed; running production checkout untouched"
+}

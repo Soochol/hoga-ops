@@ -1,0 +1,56 @@
+{
+  "health_before": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "8d93eafb6"
+  },
+  "domestic_before": {
+    "target_count": null,
+    "connected_accounts": 0,
+    "expected_symbol_counts": null,
+    "collector_alive": null,
+    "status_keys": [
+      "provider_status",
+      "running",
+      "started_at_ms",
+      "last_tick_ms",
+      "cycle_lag_ms",
+      "watchlist_count",
+      "today_promote_last_ms",
+      "transport",
+      "ws_connected",
+      "live_set",
+      "degraded_accounts",
+      "capture_healthy",
+      "capture_reason",
+      "capture_missing_codes",
+      "rest_capacity_scheduler",
+      "cache_stats",
+      "rest_bypass_enabled",
+      "supervised_tasks",
+      "disk",
+      "kiwoom",
+      "writers"
+    ]
+  },
+  "existing_index_probe": {
+    "rows": 102,
+    "minute_metadata": {
+      "market_timezone": "America/New_York",
+      "source": "kis",
+      "history_scope": "latest_snapshot",
+      "delay_status": "unverified",
+      "session_scope": "vendor_regular_including_postclose_corrections",
+      "available_from_ms": 1792780440000,
+      "available_to_ms": 1792786500000,
+      "last_successful_check_at_ms": 1792932205223,
+      "refresh_status": "normal",
+      "messages": [
+        "Latest vendor window only; arbitrary date history is unavailable.",
+        "Delay is unverified. Post-close corrections are retained; the last bucket is provisional."
+      ],
+      "refresh_interval_ms": 60000,
+      "current_daily_candle": null
+    }
+  }
+}

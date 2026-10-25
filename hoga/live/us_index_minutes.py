@@ -119,7 +119,7 @@ class _Snapshot:
 
 
 class UsIndexMinuteService:
-    """Three index keys; one demand-driven snapshot shared across all consumers."""
+    """One demand-driven snapshot per supported index, shared across consumers."""
 
     def __init__(self, *, clock=time.monotonic, wall_clock=time.time) -> None:
         self.clock, self.wall_clock = clock, wall_clock
@@ -146,7 +146,7 @@ class UsIndexMinuteService:
             entry.manual_retry_at = now
 
     async def get(self, code: str, timeframe: str, *, client=None, bypass=False):
-        if code not in {"COMP", "SPX", "SOX"} or timeframe not in MINUTE_TIMEFRAMES:
+        if code not in {"COMP", "SPX", "SOX", "VIX"} or timeframe not in MINUTE_TIMEFRAMES:
             raise ValueError("unsupported US minute index/period")
         entry = self.entries.setdefault(code, _Snapshot())
         if client is not None and not bypass:

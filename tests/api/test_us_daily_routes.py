@@ -40,7 +40,9 @@ def test_live_index_http_preserves_poll_hint_and_provisional_day(monkeypatch):
     assert meta["current_daily_candle"]["trading_date"] == "20261022"
 
 
-@pytest.mark.parametrize("index_id,code", [("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX")])
+@pytest.mark.parametrize("index_id,code", [
+    ("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX"), ("VIX", "VIX"),
+])
 def test_us_index_http_preserves_dates_decimals_metadata_and_routes_only_to_kis(tmp_path, monkeypatch, index_id, code):
     calls = []
 
@@ -186,7 +188,9 @@ def test_us_favorites_roundtrip_and_stay_out_of_capture_and_heatmap_seed(tmp_pat
         assert client.delete(f"/api/watchlist/folders/{folder_id}/members/us-stock:NYSE:BRK.B").status_code == 204
 
 
-@pytest.mark.parametrize("index_id,code", [("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX")])
+@pytest.mark.parametrize("index_id,code", [
+    ("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX"), ("VIX", "VIX"),
+])
 @pytest.mark.parametrize("timeframe,aligned,count", [("W", "20240603", 2), ("M", "20240601", 1)])
 def test_us_index_week_month_http_aggregates_shared_daily_history(
     tmp_path, monkeypatch, index_id, code, timeframe, aligned, count
@@ -273,7 +277,9 @@ def test_us_stock_week_month_http_and_invalid_intraday(tmp_path, monkeypatch, ti
         assert client.get(url.replace(f"timeframe={timeframe}", "timeframe=1m")).status_code == 422
 
 
-@pytest.mark.parametrize("index_id,code", [("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX")])
+@pytest.mark.parametrize("index_id,code", [
+    ("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX"), ("VIX", "VIX"),
+])
 def test_us_minute_http_latest_window_metadata_and_shared_cache(tmp_path, monkeypatch, index_id, code):
     calls = []
 

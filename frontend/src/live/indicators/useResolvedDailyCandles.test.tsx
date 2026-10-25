@@ -55,7 +55,7 @@ describe('useResolvedDailyCandles', () => {
     } as never);
   });
 
-  it.each(['index:NASDAQ_COMPOSITE', 'index:SP500', 'index:SOX', 'index:KOSPI', 'us-stock:NASDAQ:AAPL'])('never sends %s to domestic daily or screener APIs', code => {
+  it.each(['index:NASDAQ_COMPOSITE', 'index:SP500', 'index:SOX', 'index:VIX', 'index:KOSPI', 'us-stock:NASDAQ:AAPL'])('never sends %s to domestic daily or screener APIs', code => {
     renderHook(() => useResolvedDailyCandles({ code, from: '20260616', to: '20260617', venue: 'KRX', enabled: true }), { wrapper });
     expect(mockUseKisDaily).toHaveBeenLastCalledWith(null, null, null, 'KRX');
     expect(mockUseScreenerDaily).toHaveBeenLastCalledWith(null, null, null);

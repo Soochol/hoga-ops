@@ -1,0 +1,855 @@
+[e2e] worktree=/home/dev/.codex/worktrees/da81/hoga-ops · slot=337 · backend=20337 · frontend=21337 · data=/tmp/hoga-e2e-data-337 · dist=/tmp/hoga-e2e-dist-337
+[2m[WebServer] [22m(node:212222) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m(node:212235) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22mvite v8.0.16 building client environment for production...
+[2m[WebServer] [22m[2K
+transforming...[2m[WebServer] [22m[32m✓[39m 3376 modules transformed.
+[2m[WebServer] [22mrendering chunks...
+[2m[WebServer] [22mcomputing gzip size...
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Excalifont/Excalifont-Regular-623ccf21b21ef6b3a0d87738f77eb071.woff2          [39m[2m[1m    0.82 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/ComicShanns/ComicShanns-Regular-6e066e8de2ac57ea9283adb9c24d7f0c.woff2        [39m[2m[1m    1.29 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Lilita/Lilita-Regular-i7dPIFZ9Zz-WBtRtedDbYE98RXi4EwSsbg.woff2                [39m[2m[1m    1.41 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Excalifont/Excalifont-Regular-3f2c5db56cc93c5a6873b1361d730c16.woff2          [39m[2m[1m    2.10 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Excalifont/Excalifont-Regular-349fac6ca4700ffec595a7150a0d1e1d.woff2          [39m[2m[1m    2.65 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/ComicShanns/ComicShanns-Regular-dc6a8806fa96795d7b3be5026f989a17.woff2        [39m[2m[1m    2.81 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mindex.html                                                                                     [39m[2m[1m    3.35 kB[0m[0m[2m │ gzip:   1.44 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTs3j6zbXWjgevT5.woff2  [39m[2m[1m    6.11 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.66-C3HqaDeY.woff2                                             [39m[2m[1m    8.25 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.64-CTbrgYF9.woff2                                             [39m[2m[1m    8.26 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTA3j6zbXWjgevT5.woff2  [39m[2m[1m    8.39 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Excalifont/Excalifont-Regular-41b173a47b57366892116a575a43e2b6.woff2          [39m[2m[1m    8.71 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/ComicShanns/ComicShanns-Regular-fcb0fc02dcbee4c9846b3e2508668039.woff2        [39m[2m[1m    9.85 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Lilita/Lilita-Regular-i7dPIFZ9Zz-WBtRtedDbYEF8RXi4EwQ.woff2                   [39m[2m[1m   10.67 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTk3j6zbXWjgevT5.woff2  [39m[2m[1m   11.10 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.65-B66rjuyf.woff2                                             [39m[2m[1m   11.10 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Excalifont/Excalifont-Regular-be310b9bcd4f1a43f571c46df7809174.woff2          [39m[2m[1m   12.22 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Excalifont/Excalifont-Regular-b9dcf9d2e50a1eaf42fc664b50a3fd0d.woff2          [39m[2m[1m   13.29 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTo3j6zbXWjgevT5.woff2  [39m[2m[1m   15.47 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.68-DS9B48d0.woff2                                             [39m[2m[1m   16.34 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTQ3j6zbXWjgeg.woff2    [39m[2m[1m   16.47 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7eb9fffd1aa890d07d0f88cc82e6cfe4.woff2                [39m[2m[1m   17.25 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/ComicShanns/ComicShanns-Regular-279a7b317d12eb88de06167bd672b4b4.woff2        [39m[2m[1m   17.48 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.73-DMrK970F.woff2                                             [39m[2m[1m   18.33 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.72-pYYGrEQR.woff2                                             [39m[2m[1m   19.50 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.75-CxKdrRNf.woff2                                             [39m[2m[1m   19.99 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mAssistant-SemiBold-SCI4bEL9.woff2                                                       [39m[2m[1m   20.21 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Assistant/Assistant-SemiBold.woff2                                            [39m[2m[1m   20.21 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mAssistant-Regular-DVxZuzxb.woff2                                                        [39m[2m[1m   20.23 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Assistant/Assistant-Regular.woff2                                             [39m[2m[1m   20.23 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mAssistant-Medium-DrcxCXg3.woff2                                                         [39m[2m[1m   20.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Assistant/Assistant-Medium.woff2                                              [39m[2m[1m   20.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mAssistant-Bold-gm-uSS1B.woff2                                                           [39m[2m[1m   20.38 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Assistant/Assistant-Bold.woff2                                                [39m[2m[1m   20.38 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.90-BF7RiZjm.woff2                                             [39m[2m[1m   20.85 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.67-BmuXdlDy.woff2                                             [39m[2m[1m   21.84 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.89-DOzqWPpX.woff2                                             [39m[2m[1m   21.86 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.74-D4tQnymK.woff2                                             [39m[2m[1m   22.39 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.84-Brb8EsYQ.woff2                                             [39m[2m[1m   24.49 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.87-Lzui2vbK.woff2                                             [39m[2m[1m   24.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.76-DhPm2b_q.woff2                                             [39m[2m[1m   24.92 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2          [39m[2m[1m   24.95 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.85-Byo_x2hf.woff2                                             [39m[2m[1m   25.10 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.88-CqX6JSgh.woff2                                             [39m[2m[1m   25.64 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.86-XG7lTN_6.woff2                                             [39m[2m[1m   25.71 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.77-DwaxqOC8.woff2                                             [39m[2m[1m   26.04 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-59e9ff77b0efaf684bc09274fb6908c9.woff2                [39m[2m[1m   26.05 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.79-XpoyPP38.woff2                                             [39m[2m[1m   26.22 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.81-BZzF9Hb3.woff2                                             [39m[2m[1m   26.30 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.82-BgAHe30u.woff2                                             [39m[2m[1m   26.50 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.78-DhqRbBzT.woff2                                             [39m[2m[1m   26.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.83-DF-zBLLe.woff2                                             [39m[2m[1m   26.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.70-BUXiAGMT.woff2                                             [39m[2m[1m   27.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.37-BD6FyOtY.woff2                                             [39m[2m[1m   27.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.71-DuPZj8us.woff2                                             [39m[2m[1m   28.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.80-DsV9Qp_h.woff2                                             [39m[2m[1m   28.79 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.63-B35xsm4O.woff2                                             [39m[2m[1m   28.81 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.40-BDaOfdUe.woff2                                             [39m[2m[1m   29.84 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.43-DHdpry7N.woff2                                             [39m[2m[1m   30.38 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.7-E2HaA55t.woff2                                              [39m[2m[1m   31.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.1-C-__qv6_.woff2                                              [39m[2m[1m   32.04 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.44-qHopVhdd.woff2                                             [39m[2m[1m   32.13 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.24-CmkE8Q8D.woff2                                             [39m[2m[1m   32.30 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.10-DzSWztS8.woff2                                             [39m[2m[1m   33.03 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.41-BUACvzZC.woff2                                             [39m[2m[1m   33.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.50-C8IyFH7L.woff2                                             [39m[2m[1m   33.22 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.54-Dt2-cQkx.woff2                                             [39m[2m[1m   33.34 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.5-K_MNGNCe.woff2                                              [39m[2m[1m   33.62 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.6-Bxhohlcm.woff2                                              [39m[2m[1m   33.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.9-Btb3bmS6.woff2                                              [39m[2m[1m   34.01 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.55-jFgflYjX.woff2                                             [39m[2m[1m   34.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.39-B_7wfth9.woff2                                             [39m[2m[1m   34.25 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.52-CNgqKOOJ.woff2                                             [39m[2m[1m   34.35 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.0-BHUkWNFR.woff2                                              [39m[2m[1m   34.56 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.53-BSRnyb-u.woff2                                             [39m[2m[1m   34.57 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.42-Dp-5mnyL.woff2                                             [39m[2m[1m   34.60 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.45-BniyRFfm.woff2                                             [39m[2m[1m   34.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.36-Dn5IBRQB.woff2                                             [39m[2m[1m   34.68 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.34-CaCS33Md.woff2                                             [39m[2m[1m   34.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.69-YT16ymcp.woff2                                             [39m[2m[1m   34.78 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.38-D4hu443z.woff2                                             [39m[2m[1m   34.80 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.62-DGSAWCfb.woff2                                             [39m[2m[1m   34.87 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.33--0OT__YQ.woff2                                             [39m[2m[1m   34.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.17-BfZSA-Xc.woff2                                             [39m[2m[1m   34.94 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.4-Bvh2YGoc.woff2                                              [39m[2m[1m   35.15 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.56-BwZdvJZQ.woff2                                             [39m[2m[1m   35.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.35-DWFYRGLp.woff2                                             [39m[2m[1m   35.35 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.27-CT6nuW9L.woff2                                             [39m[2m[1m   35.42 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.61-PUuTnod4.woff2                                             [39m[2m[1m   35.64 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.15-D04iXIE3.woff2                                             [39m[2m[1m   35.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.13-C42mj_j2.woff2                                             [39m[2m[1m   35.70 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.47-B-cWO2pw.woff2                                             [39m[2m[1m   35.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.57-BwFDg-Fs.woff2                                             [39m[2m[1m   35.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.51-Bxd0gTAs.woff2                                             [39m[2m[1m   36.02 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.49-BblQVys9.woff2                                             [39m[2m[1m   36.05 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.20-Ig1-z3n5.woff2                                             [39m[2m[1m   36.12 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.14-Bl512uUX.woff2                                             [39m[2m[1m   36.51 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.46-BMRq7xC-.woff2                                             [39m[2m[1m   36.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.8-CRbJhhyA.woff2                                              [39m[2m[1m   36.69 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.21-yKPEdLXC.woff2                                             [39m[2m[1m   37.26 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.11-CqVmlKJn.woff2                                             [39m[2m[1m   37.40 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-145aa02cdd91946e67dc934e1acffe75.woff2                [39m[2m[1m   37.41 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.48-Ct-fWrPO.woff2                                             [39m[2m[1m   37.77 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.60-CeHezjjf.woff2                                             [39m[2m[1m   37.77 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.16-BQUnS2GX.woff2                                             [39m[2m[1m   37.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.12-BHuZSgT0.woff2                                             [39m[2m[1m   37.94 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.91-Csm0YNoH.woff2                                             [39m[2m[1m   37.99 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-c4a687ac4f0c2766eefc9f77ed99cddf.woff2                [39m[2m[1m   38.41 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.30-CWDM1c0J.woff2                                             [39m[2m[1m   38.44 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.28-CpO0Y96p.woff2                                             [39m[2m[1m   38.46 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.22-CSqxKoOs.woff2                                             [39m[2m[1m   38.68 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.59-CMkWjhdo.woff2                                             [39m[2m[1m   38.97 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.29-D6hjrUWm.woff2                                             [39m[2m[1m   39.28 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-ec181b795ac1fb5a50d700b6e996d745.woff2                [39m[2m[1m   39.51 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.32-CGnFWD2i.woff2                                             [39m[2m[1m   40.21 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.23-DK80wi0t.woff2                                             [39m[2m[1m   40.28 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.26-Sozl8dw8.woff2                                             [39m[2m[1m   40.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.3-Dqw33sf4.woff2                                              [39m[2m[1m   40.64 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.58-DlucQts_.woff2                                             [39m[2m[1m   41.56 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.18-CwAxMC3C.woff2                                             [39m[2m[1m   41.60 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.31-CdmyZ5mm.woff2                                             [39m[2m[1m   41.89 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.25-CsoWBIZB.woff2                                             [39m[2m[1m   42.03 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.19-CJu4Zcdo.woff2                                             [39m[2m[1m   42.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.2-dCZkyKLw.woff2                                              [39m[2m[1m   43.92 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-cfb211578629b7e8153b37240de6a9d5.woff2                [39m[2m[1m   44.46 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-2b7441d46298788ac94e610ffcc709b6.woff2                [39m[2m[1m   46.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-f8ee5d36068a42b51d0e4a1116cfcec1.woff2                [39m[2m[1m   47.27 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-74e2263a91439c25b91d5132ce9f4d62.woff2                [39m[2m[1m   47.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-b7d203b051eff504ff59ddca7576b6a9.woff2                [39m[2m[1m   48.14 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-79d494361ae093b69e74ee9dbe65bfd4.woff2                [39m[2m[1m   48.73 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-739bc1a567439c7cffcd1614644593d2.woff2                [39m[2m[1m   49.49 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-08e0dc436ad0ad61ba5558db0674d762.woff2                [39m[2m[1m   49.73 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-72252d73220fa3cd856677888cee1635.woff2                [39m[2m[1m   49.97 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-9d81066dd2b337c938df6e90380a00dc.woff2                [39m[2m[1m   50.16 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5a1ce3117cfe90c48e8fb4a9a00f694d.woff2                [39m[2m[1m   50.22 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-dac48066b5883d8b4551fc584f0c2a3e.woff2                [39m[2m[1m   50.23 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-8d3bcabb847b56243b16afe62adaaf21.woff2                [39m[2m[1m   50.35 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-cf6ff4e0f491ca0cf3038187a997b9b4.woff2                [39m[2m[1m   50.60 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-0facdf1ea213ba40261022f5d5ed4493.woff2                [39m[2m[1m   50.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4806e761d750087c2d734fc64596eaff.woff2                [39m[2m[1m   50.70 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-450da755d5bcb70906e1295e559b9602.woff2                [39m[2m[1m   51.33 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-cdbce89e82cc1ab53a2decbf5819278f.woff2                [39m[2m[1m   51.42 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-9592bfc861f07bcb8d75c196b370e548.woff2                [39m[2m[1m   51.57 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-3756e81d3e149cf6099163ee79944fec.woff2                [39m[2m[1m   51.59 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-1ee544f0f1dac422545c505baa788992.woff2                [39m[2m[1m   51.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-2b77e8ebfb2367ab2662396a60e7d320.woff2                [39m[2m[1m   52.49 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-733171b4ffcd17ea1fe1c0ba627173bf.woff2                [39m[2m[1m   52.59 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-938d90c10ff8c20386af7f242c05d6b0.woff2                [39m[2m[1m   52.63 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-a1f916d6039285c4ffb900cd654e418f.woff2                [39m[2m[1m   52.88 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-15dc6d811c9cd078f9086a740d5a1038.woff2                [39m[2m[1m   53.16 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-33432927cd87d40cfe393c7482bf221f.woff2                [39m[2m[1m   53.21 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-670ba603758d94268e8606f240a42e12.woff2                [39m[2m[1m   53.52 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-e656f091b9dc4709722c9f4b84d3c797.woff2                [39m[2m[1m   53.56 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-0b5d723fdc4e249c140f0909e87d03b4.woff2                [39m[2m[1m   53.67 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-0986d134c05864f5025962eef9f994a0.woff2                [39m[2m[1m   53.76 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-353f33792a8f60dc69323ddf635a269e.woff2                [39m[2m[1m   54.16 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7ccce86603f80a099ddb0cb21d4ae3e3.woff2                [39m[2m[1m   54.43 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-be549ab72f0719d606a5c01e2c0219b6.woff2                [39m[2m[1m   54.43 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-dbea1af6dcd9860be40c3d18254338f5.woff2                [39m[2m[1m   54.47 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-642b26e2e5f5fb780b51b593dbc8c851.woff2                [39m[2m[1m   54.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5330a2119a716e4e7224ed108b085dac.woff2                [39m[2m[1m   54.60 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-3717077e38f98d89eae729b6c14e56dc.woff2                [39m[2m[1m   54.62 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7a07ddc0f0c0f5f4a9bad6ee3dda66b5.woff2                [39m[2m[1m   54.71 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-9cfb2a77a4e45025105ad29a1748b90d.woff2                [39m[2m[1m   54.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-23f228f3999c01983860012330e4be08.woff2                [39m[2m[1m   54.73 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7718fe60986d8b42b1be9c5ace5ccf25.woff2                [39m[2m[1m   54.87 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-aa5c9ca6cf4fba00433b7aa3fa10671a.woff2                [39m[2m[1m   54.89 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-968cffdc8ee679da094e77ebf50f58ef.woff2                [39m[2m[1m   54.95 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-9544732d2e62d1a429674f8ee41b5d3a.woff2                [39m[2m[1m   55.04 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-06c77b8c66e51ed6c63ccb502dd8b8af.woff2                [39m[2m[1m   55.10 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-f2b54d4e7be0eaefe1c2c56836fa5368.woff2                [39m[2m[1m   55.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-54acdfc2166ad7fcbd074f75fd4a56ba.woff2                [39m[2m[1m   55.29 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-6fe5c5973cc06f74b2387a631ea36b88.woff2                [39m[2m[1m   55.69 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-093b9ef39a46ceae95a1df18a0a3a326.woff2                [39m[2m[1m   55.71 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-e5f453bb04da18eed01675eeebd88bf8.woff2                [39m[2m[1m   55.83 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-cd145ce4a0ea18469358df53c207bc1b.woff2                [39m[2m[1m   55.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-ac9ceb44437becc3e9c4dbfebab7fc2d.woff2                [39m[2m[1m   55.98 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-1fdc0c67ed57263a80fd108c1f6ccf24.woff2                [39m[2m[1m   56.00 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-13ae07ed2e272d26d59bc0691cd7117a.woff2                [39m[2m[1m   56.14 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Virgil/Virgil-Regular.woff2                                                   [39m[2m[1m   56.15 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7ab2bed91166a9dca83a5ebfbe2a7f38.woff2                [39m[2m[1m   56.22 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-91ddb2969bf2d31ba02ad82998d1314c.woff2                [39m[2m[1m   56.27 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-99a16ef6a64934d5781933dbd9c46b2e.woff2                [39m[2m[1m   56.29 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5d2898fbc097a7e24c6f38d80587621e.woff2                [39m[2m[1m   56.34 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-e11567fd2accf9957cd0d3c2be937d87.woff2                [39m[2m[1m   56.44 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-6f3256af8454371776bc46670d33cc65.woff2                [39m[2m[1m   56.50 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-aa0d470430e6391eca720c7cfa44446f.woff2                [39m[2m[1m   56.53 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4f50e5136e136527280bc902c5817561.woff2                [39m[2m[1m   56.57 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-21430ee05a1248901da8d0de08744d47.woff2                [39m[2m[1m   56.65 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-c40533fdf4cc57177b12803598af7e59.woff2                [39m[2m[1m   56.69 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-87599f94b6cc129d505b375798d0d751.woff2                [39m[2m[1m   56.75 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-c16ed9740b85badf16e86ea782a3062f.woff2                [39m[2m[1m   56.80 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-d2666cbed13462c5dc36fa2f15c202ca.woff2                [39m[2m[1m   56.82 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-a0ca5df4258213d7fc9fce80f65ce760.woff2                [39m[2m[1m   56.84 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-20cc1bbf50e7efb442756cb605672c1f.woff2                [39m[2m[1m   56.93 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-684d65f1793cac449dde5d59cb3c47fb.woff2                [39m[2m[1m   56.99 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5572b3513ba8df57a3d5d7303ee6b11b.woff2                [39m[2m[1m   57.01 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-70e811fd7994e61f408c923de6ddd078.woff2                [39m[2m[1m   57.02 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-12b52b58eb3df36804b9a654ec9ee194.woff2                [39m[2m[1m   57.15 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-761d05e3cd968cf574166867998ef06a.woff2                [39m[2m[1m   57.27 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-1e6fd68f1f3902ce48ce8c69df385622.woff2                [39m[2m[1m   57.38 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-cf2cc71752631e579e35b0e423bf2638.woff2                [39m[2m[1m   57.42 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-774d4f764a1299da5d28ec2f2ffe0d69.woff2                [39m[2m[1m   57.50 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-56a32a7689abd0326e57c10c6c069bb4.woff2                [39m[2m[1m   57.70 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-51502f1206be09c565f1547c406e9558.woff2                [39m[2m[1m   57.74 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-98f2ad84457de7f3740d9920b8fa8667.woff2                [39m[2m[1m   57.78 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-3c9de2ae0ea4bc91a510942dfa4be8d2.woff2                [39m[2m[1m   58.04 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-2d43040e86ff03ba677f6f9c04cd0805.woff2                [39m[2m[1m   58.08 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-2adbc89c11e65905393d3dfc468b9d5b.woff2                [39m[2m[1m   58.25 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-95429962233afd82db1c27df1500a28c.woff2                [39m[2m[1m   58.35 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5a7fac4b8b23a6e4e5ba0c9bf1756c91.woff2                [39m[2m[1m   58.39 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-019d66dcad46dc156b162d267f981c20.woff2                [39m[2m[1m   58.58 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-ba3de316d63c7e339987b16f41a0b879.woff2                [39m[2m[1m   58.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-f0f13b5c60e0af5553bd359f5513be1b.woff2                [39m[2m[1m   58.78 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-b1220a3c61f85cc0408deedb4c5f57a2.woff2                [39m[2m[1m   58.92 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-e480d9c614742d05f0e78f274f1e69e6.woff2                [39m[2m[1m   58.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-58fd02350d0bc52cf1ca3bb32ce9766e.woff2                [39m[2m[1m   58.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-e2ead7ea7da0437f085f42ffc05f8d13.woff2                [39m[2m[1m   58.97 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5b0ed6971aaab9c8ad563230bd5471a7.woff2                [39m[2m[1m   58.98 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4a0fdb40036e87b40aa08dd30584cb85.woff2                [39m[2m[1m   59.27 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-e4bca6cfa53e499cae0a6be4894a90e9.woff2                [39m[2m[1m   59.35 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7197d6fda6cba7c3874c53d6381ca239.woff2                [39m[2m[1m   59.46 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-2cf96d082d35ea3d8106851223ad0d16.woff2                [39m[2m[1m   59.52 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-60a41c7e1c68f22424e6d22df544bc82.woff2                [39m[2m[1m   59.58 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4bfaa8ffa64c5ee560aa2daba7c9cbd3.woff2                [39m[2m[1m   59.83 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-544fc28abe2c5c30e62383fd4dac255f.woff2                [39m[2m[1m   59.88 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7e929f262f30c8ee78bf398150b1a7cd.woff2                [39m[2m[1m   59.98 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-b5c1596551c256e0e9cf02028595b092.woff2                [39m[2m[1m   60.13 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-e3fcf5180fd466c8915c4e8069491054.woff2                [39m[2m[1m   60.61 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-9eb5a99df4e76ac3363453ac9ca288b1.woff2                [39m[2m[1m   60.79 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-36925dfe329a45086cbb7fc5c20d45ac.woff2                [39m[2m[1m   60.89 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-112c051027b2d766c19a519f6ee1f4f7.woff2                [39m[2m[1m   61.16 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-b6d128682ee29e471486354d486a1b90.woff2                [39m[2m[1m   61.37 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-603aefd23e350ba7eb124273e3c9bcf1.woff2                [39m[2m[1m   61.51 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-903bb6865f3452e2fda42e3a25547bc5.woff2                [39m[2m[1m   61.53 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-d3716376641d615e2995605b29bca7b6.woff2                [39m[2m[1m   61.63 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-ee8bae97908d5147b423f77ad0d3c1bb.woff2                [39m[2m[1m   61.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-73e309718fd16cea44b4d54a33581811.woff2                [39m[2m[1m   61.80 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-c1f94158256bb1f3bf665b053d895af9.woff2                [39m[2m[1m   62.24 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-982b630266d87db93d2539affb1275c6.woff2                [39m[2m[1m   62.28 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-726303e0774b4e678bff8c2deb6ca603.woff2                [39m[2m[1m   62.37 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-56467a5c8840c4d23a60b2f935114848.woff2                [39m[2m[1m   62.45 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4aca6a43e59aceee2166b0c7e4e85ef1.woff2                [39m[2m[1m   62.67 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-a365e82ed54697a52f27adcea1315fe8.woff2                [39m[2m[1m   62.77 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-11c345711937f0ba4b8f7b6b919c8440.woff2                [39m[2m[1m   62.79 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-0f626226ba1272e832aea87bafd9720e.woff2                [39m[2m[1m   62.82 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-24476a126f129212beb33f66853ea151.woff2                [39m[2m[1m   62.84 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-a4c34be6d42152e64b0df90bc4607f64.woff2                [39m[2m[1m   62.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-c8b71798409ccc126ee264a00aadcf21.woff2                [39m[2m[1m   63.20 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-57862b464a55b18c7bf234ce22907d73.woff2                [39m[2m[1m   63.26 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-2a26d20a23b00898ce82f09d2ee47c3f.woff2                [39m[2m[1m   63.38 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-cbaaefaaf326668277aa24dfa93c4d28.woff2                [39m[2m[1m   63.46 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-70c2eb8d64e71a42a834eb857ea9df51.woff2                [39m[2m[1m   63.52 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-069e77aac84590e2e991d0a0176d34f2.woff2                [39m[2m[1m   63.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-8c2f33cee3993174f7e87c28e4bf42ee.woff2                [39m[2m[1m   64.16 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-bafff7a14c27403dcc6cf1432e8ea836.woff2                [39m[2m[1m   64.20 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-6ae5b42180ad70b971c91e7eefb8eba2.woff2                [39m[2m[1m   64.30 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-c69f61a4ab18d0488c8d1fc12e7028e8.woff2                [39m[2m[1m   64.31 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-79f007c1c6d07557120982951ea67998.woff2                [39m[2m[1m   64.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-13d2887ec8ee73c43acdabc52a05af7b.woff2                [39m[2m[1m   64.43 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-93fc8f28a33234bcadf1527cafabd502.woff2                [39m[2m[1m   64.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-66493ba5a8367f2928812f446f47b56a.woff2                [39m[2m[1m   64.58 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-1b611157cd46bb184d4fa4dae2d6a2b8.woff2                [39m[2m[1m   64.82 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-671a2c20b1eb9e4ef8a192833940e319.woff2                [39m[2m[1m   64.87 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-3cc70dbb64df5b21f1326cc24dee2195.woff2                [39m[2m[1m   64.93 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7e4bde7e9c7f84cd34d8a845e384c746.woff2                [39m[2m[1m   65.00 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-97f7f48ce90c9429bf32ae51469db74d.woff2                [39m[2m[1m   65.02 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-09850c4077f3fffe707905872e0e2460.woff2                [39m[2m[1m   65.04 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-8f476c4c99813d57cbe6eca4727388ad.woff2                [39m[2m[1m   65.08 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-69c09cc5fa3e55c74fc4821f76909cc3.woff2                [39m[2m[1m   65.16 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7494dc504ae00ee9cd0505f990f88c5d.woff2                [39m[2m[1m   65.45 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-ce4884f96f11589608b76b726a755803.woff2                [39m[2m[1m   65.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-a203b91dad570bf05a58c3c3ddb529bf.woff2                [39m[2m[1m   65.68 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Cascadia/CascadiaCode-Regular.woff2                                           [39m[2m[1m   65.73 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-25b7f38e18f035f96cb5e547bd2bd08c.woff2                [39m[2m[1m   65.83 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-0fa55a080fcd0f9dc2e0b0058b793df8.woff2                [39m[2m[1m   65.88 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-04b718e5623574919c8b0dea5f301444.woff2                [39m[2m[1m   65.92 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-a004ddfcb26e67bd6e678c8ed19e25ce.woff2                [39m[2m[1m   66.01 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-24a21c1e4449222e8d1898d69ff3a404.woff2                [39m[2m[1m   66.07 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4ddc14ed3eb0c3e46364317dfc0144a3.woff2                [39m[2m[1m   66.14 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-a7accba310e821da5505f71c03b76bdb.woff2                [39m[2m[1m   66.14 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-b96d9226ce77ec94ceca043d712182e6.woff2                [39m[2m[1m   66.24 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-543fa46ace099a7099dad69123399400.woff2                [39m[2m[1m   66.36 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-29cec36cd205b211da97acabaa62f055.woff2                [39m[2m[1m   66.50 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-72536a3d71b694a0d53dd90ddceae41e.woff2                [39m[2m[1m   67.26 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-f5d079153c99a25b9be5b8583c4cc8a7.woff2                [39m[2m[1m   67.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-8e9f97f01034820170065b2921b4fb5e.woff2                [39m[2m[1m   67.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4a38cc3e9cf104e69ba246d37f8cf135.woff2                [39m[2m[1m   67.88 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-b358f7a51ece39a3247942b1feabdb29.woff2                [39m[2m[1m   67.92 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-41521fade99856108931b4768b1b2648.woff2                [39m[2m[1m   68.20 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-23ad2d71b280f00b1363b95b7bea94eb.woff2                [39m[2m[1m   68.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4dc6d5f188d5c96d44815cd1e81aa885.woff2                [39m[2m[1m   68.58 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4535823663ad81405188a528d8f2b1a2.woff2                [39m[2m[1m   68.59 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4ee10ae43505e2e0bc62656ced49c0fa.woff2                [39m[2m[1m   68.76 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-10a7ae9a371830a80c3d844acf1c02d7.woff2                [39m[2m[1m   68.90 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-23686f7f29da6e8008c36dd3a80c83d6.woff2                [39m[2m[1m   68.95 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-3e1f8f654357353bf0e04ba5c34b5f7f.woff2                [39m[2m[1m   69.02 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5935a5775af3d5c6307ac667bd9ae74e.woff2                [39m[2m[1m   69.34 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-f56414bf9bced67990def8660e306759.woff2                [39m[2m[1m   69.36 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-2e33e8dc771ef5e1d9127d60a6b73679.woff2                [39m[2m[1m   69.77 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-095c169f3314805276f603a362766abd.woff2                [39m[2m[1m   69.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-583d166e56ba0de4b77eabb47ef67839.woff2                [39m[2m[1m   70.35 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Liberation/LiberationSans-Regular.woff2                                       [39m[2m[1m   70.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-8de5b863cb50dfefdd07cb11c774d579.woff2                [39m[2m[1m   70.71 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-95bfd249da4902577b4b7d76ebdd0b44.woff2                [39m[2m[1m   70.93 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-3eaa538115d76932653c21d8dc28f207.woff2                [39m[2m[1m   70.94 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-bd77e3c7f9e0b072d96af37f73d1aa32.woff2                [39m[2m[1m   71.26 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-452225341522a7942f0f6aab1a5c91a3.woff2                [39m[2m[1m   71.64 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-b57aaedfd8ebdf3931f25119dc6a5eb2.woff2                [39m[2m[1m   71.97 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-20e7bf72fa05de9adf7dbcc7bf51dde6.woff2                [39m[2m[1m   72.22 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-6e092f71c1e634059ada0e52abadce67.woff2                [39m[2m[1m   72.23 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-52a84a22fd1369bffeaf21da2d6158dc.woff2                [39m[2m[1m   72.43 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-866fa7613df6b3fd272bcfd4530c0bb9.woff2                [39m[2m[1m   72.99 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5a45d991244d4c7140217e1e5f5ca4f4.woff2                [39m[2m[1m   73.11 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-5882ffa04f32584d26109137e2da4352.woff2                [39m[2m[1m   73.28 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-d0cf73942fea1c74edbdf0b3011f4656.woff2                [39m[2m[1m   73.39 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-173945821411c09f70c95f98d590e697.woff2                [39m[2m[1m   73.57 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-3e63ed8162808a9e425ed80a8bc79114.woff2                [39m[2m[1m   73.70 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-e51ef413167c6e14e0c0fdcc585f2fc9.woff2                [39m[2m[1m   73.90 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-395c35dd584b56b0789f58a0559beaf1.woff2                [39m[2m[1m   73.93 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-60a3089806700d379f11827ee9843b6b.woff2                [39m[2m[1m   73.98 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-cb17fc3db95f6d139afc9d31a8e93293.woff2                [39m[2m[1m   74.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-203b0e569e3b14aac86a003dc3fa523e.woff2                [39m[2m[1m   75.21 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-0f7fb1e0d5015bb1371343153ecf7ce3.woff2                [39m[2m[1m   75.56 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-4095eb84ef3874e2600247bee0b04026.woff2                [39m[2m[1m   76.20 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-c99eda15fc26a2941579560f76c3a5cf.woff2                [39m[2m[1m   76.56 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-7f855356ab893b0d2b9c1c83b8116f0e.woff2                [39m[2m[1m   77.42 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-b6fd38ca30869792244804b04bc058da.woff2                [39m[2m[1m   77.46 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-829615148e6357d826b9242eb7fbbd1e.woff2                [39m[2m[1m   80.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-51a0e808bbc8361236ac521a119758a3.woff2                [39m[2m[1m   81.56 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[32mwhiteboard/fonts/Xiaolai/Xiaolai-Regular-f6032fc06eb20480f096199713f70885.woff2                [39m[2m[1m   84.02 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mHeatmapDrawer-CUi8DGcH.css                                                              [39m[2m[1m    0.07 kB[0m[0m[2m │ gzip:   0.08 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mRankingDrawer-BjQhOkZj.css                                                              [39m[2m[1m    0.33 kB[0m[0m[2m │ gzip:   0.17 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mResponsiveList-BKW5EvL2.css                                                             [39m[2m[1m    0.33 kB[0m[0m[2m │ gzip:   0.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mPatternDrawer-DmskWiXe.css                                                              [39m[2m[1m    0.65 kB[0m[0m[2m │ gzip:   0.29 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mSignalAlertsDrawer-DM8oVeqs.css                                                         [39m[2m[1m    0.76 kB[0m[0m[2m │ gzip:   0.29 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mReviewCanvas-DlT88B-h.css                                                               [39m[2m[1m    2.84 kB[0m[0m[2m │ gzip:   0.78 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mSentiment-CkWHRXJ5.css                                                                  [39m[2m[1m    2.85 kB[0m[0m[2m │ gzip:   0.89 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mresultLimitText-PGjeukC8.css                                                            [39m[2m[1m    4.52 kB[0m[0m[2m │ gzip:   1.09 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mHeatmap-tEkAotD_.css                                                                    [39m[2m[1m    4.89 kB[0m[0m[2m │ gzip:   1.16 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mMarket-gYqtOFz9.css                                                                     [39m[2m[1m    6.54 kB[0m[0m[2m │ gzip:   1.52 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mWhiteboard-DMrCW-Q2.css                                                                 [39m[2m[1m   11.78 kB[0m[0m[2m │ gzip:   2.38 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mLandingPage-BU6q5oTK.css                                                                [39m[2m[1m   25.14 kB[0m[0m[2m │ gzip:   5.44 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mlive-workspace-B9qreXu8.css                                                             [39m[2m[1m   26.76 kB[0m[0m[2m │ gzip:   5.09 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mlive-orders-DSeVfcnF.css                                                                [39m[2m[1m   42.87 kB[0m[0m[2m │ gzip:   7.33 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mindex-Z5vIJVo_.css                                                                      [39m[2m[1m  112.10 kB[0m[0m[2m │ gzip:  29.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mwhiteboard-AqN5Rmb4.css                                                                 [39m[2m[1m  148.95 kB[0m[0m[2m │ gzip:  23.67 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mprod-FuI9C74m.js                                                                        [39m[2m[1m    0.10 kB[0m[0m[2m │ gzip:   0.10 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36marray-BifhSqXX.js                                                                       [39m[2m[1m    0.10 kB[0m[0m[2m │ gzip:   0.11 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchannel-wAzyly1U.js                                                                     [39m[2m[1m    0.11 kB[0m[0m[2m │ gzip:   0.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpie-WAS4IAKB-DYJjb0bY.js                                                                [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36minfo-A6RAGUB7-BBq9NTIK.js                                                               [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mradar-RG4KPBEZ-DhUJqDvr.js                                                              [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpacket-AYTQ26CC-BR75APzN.js                                                             [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mcynefin-OW5HDTMX-v4r-IJ-F.js                                                            [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mtreemap-WGGIJYW6-D8Ac25-C.js                                                            [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mwardley-WFR3VGLG-CO0QFXYE.js                                                            [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mgitGraph-4MIJSDKK-CSRa5T3S.js                                                           [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrailroad-74A4TZTK-CtaS2plB.js                                                           [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mtreeView-Q6P3EWNA-mn-5izM0.js                                                           [39m[2m[1m    0.12 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrailroad-peg-WCYAUIDC-D3v-CFJk.js                                                       [39m[2m[1m    0.13 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36marchitecture-7GRP2DOG-DLdRAozc.js                                                       [39m[2m[1m    0.13 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrailroad-abnf-HS5TGJTU-BoExcix0.js                                                      [39m[2m[1m    0.13 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrailroad-ebnf-LZEXJU2U-BHwbLpnP.js                                                      [39m[2m[1m    0.13 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36meventmodeling-NTZA5JFV-DtwDh8rE.js                                                      [39m[2m[1m    0.13 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpercentages-BXMCSKIN-B6sdRC37.js                                                        [39m[2m[1m    0.13 kB[0m[0m[2m │ gzip:   0.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36minit-D6jRqBbL.js                                                                        [39m[2m[1m    0.14 kB[0m[0m[2m │ gzip:   0.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mimage-GAAHSSAO-8iks1yht.js                                                              [39m[2m[1m    0.14 kB[0m[0m[2m │ gzip:   0.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-Y2CYZVJY-DsF7k-Jl.js                                                              [39m[2m[1m    0.15 kB[0m[0m[2m │ gzip:   0.14 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msubset-shared.chunk-p3usvcCv.js                                                         [39m[2m[1m    0.18 kB[0m[0m[2m │ gzip:   0.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-2Q5K7J3B-C1jixKkw.js                                                              [39m[2m[1m    0.19 kB[0m[0m[2m │ gzip:   0.16 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mreact-tXevWbGm.js                                                                       [39m[2m[1m    0.19 kB[0m[0m[2m │ gzip:   0.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-JWPE2WC7-DVXcaiue.js                                                              [39m[2m[1m    0.22 kB[0m[0m[2m │ gzip:   0.17 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-XXDRQBXY-CdoxzcDt.js                                                              [39m[2m[1m    0.26 kB[0m[0m[2m │ gzip:   0.22 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-CLGD4ZFX-CeTmQmpg.js                                                              [39m[2m[1m    0.32 kB[0m[0m[2m │ gzip:   0.25 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mStatusChip-D4qqaHQ0.js                                                                  [39m[2m[1m    0.36 kB[0m[0m[2m │ gzip:   0.28 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-5VM5RSS4-ZNzvKenW.js                                                              [39m[2m[1m    0.36 kB[0m[0m[2m │ gzip:   0.27 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msubset-worker.chunk-BPkoh2Nm.js                                                         [39m[2m[1m    0.36 kB[0m[0m[2m │ gzip:   0.28 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mPageContainer-B6Duh0VT.js                                                               [39m[2m[1m    0.44 kB[0m[0m[2m │ gzip:   0.33 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mfile-open-7c801643-DZtJT5zp.js                                                          [39m[2m[1m    0.44 kB[0m[0m[2m │ gzip:   0.31 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mfile-open-002ab408-BHUWm0Sh.js                                                          [39m[2m[1m    0.52 kB[0m[0m[2m │ gzip:   0.32 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-POPQ4Y6H-CiO52loR.js                                                              [39m[2m[1m    0.57 kB[0m[0m[2m │ gzip:   0.40 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdirectory-open-01563666-D4xXyWb_.js                                                     [39m[2m[1m    0.58 kB[0m[0m[2m │ gzip:   0.36 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-SRAX5OIU-Bpn6XoyU.js                                                              [39m[2m[1m    0.59 kB[0m[0m[2m │ gzip:   0.39 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mflowDiagram-HODETNUW-BiDiGHcY.js                                                        [39m[2m[1m    0.61 kB[0m[0m[2m │ gzip:   0.32 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-Z3N5DIM6-D9TMVU7m.js                                                              [39m[2m[1m    0.64 kB[0m[0m[2m │ gzip:   0.42 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mStatusBadge-Bp004eU_.js                                                                 [39m[2m[1m    0.65 kB[0m[0m[2m │ gzip:   0.37 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36minfoDiagram-27XIBGKW-C5YHhl0h.js                                                        [39m[2m[1m    0.65 kB[0m[0m[2m │ gzip:   0.42 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mfile-save-3189631c-CO9S4HFW.js                                                          [39m[2m[1m    0.69 kB[0m[0m[2m │ gzip:   0.44 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mclassDiagram-ZZMXUADV-DHbUsRSJ.js                                                       [39m[2m[1m    0.78 kB[0m[0m[2m │ gzip:   0.45 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mclassDiagram-v2-VYDZK3BY-DHbUsRSJ.js                                                    [39m[2m[1m    0.78 kB[0m[0m[2m │ gzip:   0.45 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mstateDiagram-v2-MP3YSRHH-DjDOV7PB.js                                                    [39m[2m[1m    0.78 kB[0m[0m[2m │ gzip:   0.45 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mfile-save-745eba88-Bwdfz6OZ.js                                                          [39m[2m[1m    0.85 kB[0m[0m[2m │ gzip:   0.49 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mswimlanesDiagram-VR7AAH4N-CvmeUN9z.js                                                   [39m[2m[1m    0.87 kB[0m[0m[2m │ gzip:   0.49 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msizeCapture-INFHLROL-B0uUizjq.js                                                        [39m[2m[1m    0.87 kB[0m[0m[2m │ gzip:   0.51 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36men-B4ZKOASM-Boax1qIS.js                                                                 [39m[2m[1m    0.90 kB[0m[0m[2m │ gzip:   0.48 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mline-CaD6sejq.js                                                                        [39m[2m[1m    0.94 kB[0m[0m[2m │ gzip:   0.47 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrolldown-runtime-aKtaBQYM.js                                                            [39m[2m[1m    1.08 kB[0m[0m[2m │ gzip:   0.62 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mordinal-hYBb2elL.js                                                                     [39m[2m[1m    1.17 kB[0m[0m[2m │ gzip:   0.56 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mSortCycleButton-BCxbVPbA.js                                                             [39m[2m[1m    1.25 kB[0m[0m[2m │ gzip:   0.69 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mscreener-Bw04kCh2.js                                                                    [39m[2m[1m    1.34 kB[0m[0m[2m │ gzip:   0.61 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36museChartDropDrag-CVCnuj5c.js                                                            [39m[2m[1m    1.41 kB[0m[0m[2m │ gzip:   0.70 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-GVQU2GXP-DSqp8AZ4.js                                                              [39m[2m[1m    1.42 kB[0m[0m[2m │ gzip:   0.79 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mimages-DI_lztkg.js                                                                      [39m[2m[1m    1.44 kB[0m[0m[2m │ gzip:   0.86 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mliveRankings-LgbV_Ay3.js                                                                [39m[2m[1m    1.46 kB[0m[0m[2m │ gzip:   0.85 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdirectory-open-4ed118d0-1i309Asm.js                                                     [39m[2m[1m    1.51 kB[0m[0m[2m │ gzip:   0.76 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-ZUYEQ4TG-BzFOpW--.js                                                              [39m[2m[1m    1.57 kB[0m[0m[2m │ gzip:   0.88 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mmarketCardBits-3_U22E3x.js                                                              [39m[2m[1m    1.59 kB[0m[0m[2m │ gzip:   0.81 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrailroadDiagram-O6MQD6OU-TAyYhK5O.js                                                    [39m[2m[1m    1.66 kB[0m[0m[2m │ gzip:   0.77 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdrafts-CRqX-A2j.js                                                                      [39m[2m[1m    1.77 kB[0m[0m[2m │ gzip:   0.76 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mabnfDiagram-VCTEODGH-DZmNpLiR.js                                                        [39m[2m[1m    1.84 kB[0m[0m[2m │ gzip:   0.89 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-P2QGCYS3-CxQe-0Pf.js                                                              [39m[2m[1m    1.94 kB[0m[0m[2m │ gzip:   0.95 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-F27PBJKO-uzF_ISNb.js                                                              [39m[2m[1m    1.97 kB[0m[0m[2m │ gzip:   0.88 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpegDiagram-XKGWAZYB-CBuST56W.js                                                         [39m[2m[1m    2.00 kB[0m[0m[2m │ gzip:   0.94 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mebnfDiagram-PWID7BFC-C1cD_uC9.js                                                        [39m[2m[1m    2.06 kB[0m[0m[2m │ gzip:   0.89 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdist-qx0Iv9vM.js                                                                        [39m[2m[1m    2.17 kB[0m[0m[2m │ gzip:   0.98 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mreview-CpqLMWsV.js                                                                      [39m[2m[1m    2.25 kB[0m[0m[2m │ gzip:   1.17 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpath-BWPyau1x.js                                                                        [39m[2m[1m    2.31 kB[0m[0m[2m │ gzip:   0.99 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mChartToBoardDialog-K1MfnqEh.js                                                          [39m[2m[1m    2.44 kB[0m[0m[2m │ gzip:   1.24 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mroundRect-D01gJrlt.js                                                                   [39m[2m[1m    2.87 kB[0m[0m[2m │ gzip:   0.99 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36marc-DqK6O3qL.js                                                                         [39m[2m[1m    3.47 kB[0m[0m[2m │ gzip:   1.46 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mc[2m[WebServer] [22mhunk-TLUHSLCS-C9f1X8GF.js                                                              [39m[2m[1m    3.80 kB[0m[0m[2m │ gzip:   1.57 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36museCopyDragIntent-qlhhoWws.js                                                           [39m[2m[1m    4.04 kB[0m[0m[2m │ gzip:   1.82 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdiagram-Z3DM3KII-CQCMqhmq.js                                                            [39m[2m[1m    4.28 kB[0m[0m[2m │ gzip:   1.85 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdefaultLocale-C8Fc0cco.js                                                               [39m[2m[1m    4.64 kB[0m[0m[2m │ gzip:   2.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mSignalAlertsDrawer-BbARmVbg.js                                                          [39m[2m[1m    5.08 kB[0m[0m[2m │ gzip:   2.24 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mlinear-D3SejiGs.js                                                                      [39m[2m[1m    5.52 kB[0m[0m[2m │ gzip:   2.25 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-PWAF6VOD-Cd-h423R.js                                                              [39m[2m[1m    5.82 kB[0m[0m[2m │ gzip:   2.68 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdiagram-UQ7AKVKN-Ctr-blpi.js                                                            [39m[2m[1m    6.06 kB[0m[0m[2m │ gzip:   2.56 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpieDiagram-E7YTZNPT-DEcdWu1A.js                                                         [39m[2m[1m    6.23 kB[0m[0m[2m │ gzip:   2.60 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mBoardIcon-ByJzjDqF.js                                                                   [39m[2m[1m    7.25 kB[0m[0m[2m │ gzip:   2.93 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdiagram-S7CK7UJ4-BBnnRequ.js                                                            [39m[2m[1m    8.19 kB[0m[0m[2m │ gzip:   3.66 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msi-LK-N5RQ5JYF-BQNg_jHA.js                                                              [39m[2m[1m    8.58 kB[0m[0m[2m │ gzip:   3.36 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36maz-AZ-76LH7QW2-BanmmzZl.js                                                              [39m[2m[1m    8.61 kB[0m[0m[2m │ gzip:   3.59 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mzh-HK-E62DVLB3-By0weXcL.js                                                              [39m[2m[1m    9.08 kB[0m[0m[2m │ gzip:   4.10 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mReviewCanvas-C9MvWSW3.js                                                                [39m[2m[1m    9.20 kB[0m[0m[2m │ gzip:   3.93 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-L3NEJ4N5-Co9j3gcZ.js                                                              [39m[2m[1m    9.71 kB[0m[0m[2m │ gzip:   2.94 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mcynefinDiagram-5FMLGOSQ-BgKBVqpb.js                                                     [39m[2m[1m    9.90 kB[0m[0m[2m │ gzip:   3.51 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mkk-KZ-P5N5QNE5-Dtb9_W_T.js                                                              [39m[2m[1m   10.12 kB[0m[0m[2m │ gzip:   4.19 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mkaa-6HZHGXH3-HogrI5l2.js                                                                [39m[2m[1m   10.17 kB[0m[0m[2m │ gzip:   4.18 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-2E4U76K2-CKd08scs.js                                                              [39m[2m[1m   10.38 kB[0m[0m[2m │ gzip:   4.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mstateDiagram-D77RDMKH-B1CijdpQ.js                                                       [39m[2m[1m   10.64 kB[0m[0m[2m │ gzip:   3.74 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdiagram-VSXAHHWV-CgzxaD3N.js                                                            [39m[2m[1m   10.66 kB[0m[0m[2m │ gzip:   4.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdagre-GXQ25YYZ-7elL2yez.js                                                              [39m[2m[1m   10.96 kB[0m[0m[2m │ gzip:   4.14 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mScreenerDrawer-Dvg2ykh9.js                                                              [39m[2m[1m   11.95 kB[0m[0m[2m │ gzip:   5.11 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mLegacyWhiteboard-B_dYy55h.js                                                            [39m[2m[1m   12.04 kB[0m[0m[2m │ gzip:   4.11 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mes-CQiZGxU0.js                                                                          [39m[2m[1m   12.44 kB[0m[0m[2m │ gzip:   4.96 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mwhiteboard-BcOp9E44.js                                                                  [39m[2m[1m   12.50 kB[0m[0m[2m │ gzip:   5.20 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mlt-LT-XHIRWOB4-RPdyV_7p.js                                                              [39m[2m[1m   12.50 kB[0m[0m[2m │ gzip:   5.37 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mRankingDrawer-DWYiiIo5.js                                                               [39m[2m[1m   12.85 kB[0m[0m[2m │ gzip:   5.07 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mvi-VN-M7AON7JQ--RTGQlaN.js                                                              [39m[2m[1m   13.86 kB[0m[0m[2m │ gzip:   5.79 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mda-DK-5WZEPLOC-CK6a5-PJ.js                                                              [39m[2m[1m   14.41 kB[0m[0m[2m │ gzip:   6.08 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mth-TH-HPSO5L25-DBFIAUWk.js                                                              [39m[2m[1m   15.52 kB[0m[0m[2m │ gzip:   5.18 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-SVP7TREG-DUuEqDZn.js                                                              [39m[2m[1m   15.64 kB[0m[0m[2m │ gzip:   4.35 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdiagram-VX7I27RA-C-Iq-xyF.js                                                            [39m[2m[1m   15.74 kB[0m[0m[2m │ gzip:   5.51 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mnn-NO-6E72VCQL-B6QB31N3.js                                                              [39m[2m[1m   15.95 kB[0m[0m[2m │ gzip:   6.72 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mmermaid-parser.core-CCnxyB7z.js                                                         [39m[2m[1m   16.58 kB[0m[0m[2m │ gzip:   3.93 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mnl-NL-IS3SIHDZ-pq4rexDX.js                                                              [39m[2m[1m   16.73 kB[0m[0m[2m │ gzip:   6.92 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mishikawaDiagram-5VMMS53U-B-i89r7p.js                                                    [39m[2m[1m   17.34 kB[0m[0m[2m │ gzip:   6.54 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mmy-MM-5M5IBNSE-Q10JlVxz.js                                                              [39m[2m[1m   17.57 kB[0m[0m[2m │ gzip:   5.29 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mhu-HU-A5ZG7DT2-8WL43IqI.js                                                              [39m[2m[1m   18.08 kB[0m[0m[2m │ gzip:   7.58 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mfi-FI-Z5N7JZ37-DuJtcsOn.js                                                              [39m[2m[1m   18.40 kB[0m[0m[2m │ gzip:   7.53 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mkab-KAB-ZGHBKWFO-qODJe40j.js                                                            [39m[2m[1m   18.78 kB[0m[0m[2m │ gzip:   7.55 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mzh-TW-RAJ6MFWO-DzD8u9Zq.js                                                              [39m[2m[1m   18.99 kB[0m[0m[2m │ gzip:   8.86 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mzh-CN-LNUGB5OW-CtzyHHQM.js                                                              [39m[2m[1m   19.05 kB[0m[0m[2m │ gzip:   8.87 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mlv-LV-5QDEKY6T-CeoJE7c3.js                                                              [39m[2m[1m   19.14 kB[0m[0m[2m │ gzip:   7.79 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mLandingPage-D9pMV4_G.js                                                                 [39m[2m[1m   19.18 kB[0m[0m[2m │ gzip:   5.52 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mgl-ES-HMX3MZ6V-BCLvpf87.js                                                              [39m[2m[1m   19.39 kB[0m[0m[2m │ gzip:   7.73 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mtr-TR-DEFEU3FU-kfju4l2S.js                                                              [39m[2m[1m   19.51 kB[0m[0m[2m │ gzip:   7.96 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mcs-CZ-2BRQDIVT-C5IttjGJ.js                                                              [39m[2m[1m   19.52 kB[0m[0m[2m │ gzip:   8.40 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpt-PT-UZXXM6DQ-DtVpJ-mM.js                                                              [39m[2m[1m   19.65 kB[0m[0m[2m │ gzip:   7.79 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mid-ID-SAP4L64H-CVHsWB3W.js                                                              [39m[2m[1m   19.68 kB[0m[0m[2m │ gzip:   7.68 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mca-ES-6MX7JW3Y-Ce-mC8Le.js                                                              [39m[2m[1m   19.79 kB[0m[0m[2m │ gzip:   7.90 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36moc-FR-POXYY2M6-CpSHziel.js                                                              [39m[2m[1m   19.84 kB[0m[0m[2m │ gzip:   7.80 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mnb-NO-T6EIAALU-Bd8wZusD.js                                                              [39m[2m[1m   20.10 kB[0m[0m[2m │ gzip:   8.19 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mInventory-DVyJ5MSo.js                                                                   [39m[2m[1m   20.13 kB[0m[0m[2m │ gzip:   6.71 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mhe-IL-6SHJWFNN-C7LtfbKa.js                                                              [39m[2m[1m   20.32 kB[0m[0m[2m │ gzip:   7.54 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mkanban-definition-UXKFOSKX-C3OVd2XP.js                                                  [39m[2m[1m   20.35 kB[0m[0m[2m │ gzip:   7.18 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mbg-BG-XCXSNQG7-CNoHpulr.js                                                              [39m[2m[1m   20.76 kB[0m[0m[2m │ gzip:   7.39 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpt-BR-5N22H2LF-C6PhCoZM.js                                                              [39m[2m[1m   21.04 kB[0m[0m[2m │ gzip:   8.22 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36meu-ES-A7QVB2H4-DQvZM2Ew.js                                                              [39m[2m[1m   21.20 kB[0m[0m[2m │ gzip:   8.23 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mes-ES-U4NZUMDT-u-AjVvml.js                                                              [39m[2m[1m   21.35 kB[0m[0m[2m │ gzip:   8.49 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msl-SI-NN7IZMDC-DjSgCsh0.js                                                              [39m[2m[1m   21.36 kB[0m[0m[2m │ gzip:   8.59 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msv-SE-XGPEYMSR-ZW1ZTkc6.js                                                              [39m[2m[1m   21.51 kB[0m[0m[2m │ gzip:   8.56 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mit-IT-JPQ66NNP-CGWJ-ggt.js                                                              [39m[2m[1m   22.06 kB[0m[0m[2m │ gzip:   8.58 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msk-SK-C5VTKIMK-DV-NI8B-.js                                                              [39m[2m[1m   22.31 kB[0m[0m[2m │ gzip:   9.11 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-6U3AYISY-C6-Mtja1.js                                                              [39m[2m[1m   22.44 kB[0m[0m[2m │ gzip:   8.62 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpl-PL-T2D74RX3-qhaGLRNJ.js                                                              [39m[2m[1m   22.50 kB[0m[0m[2m │ gzip:   9.23 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msankeyDiagram-P5KCCOFB-VNgGLlgt.js                                                      [39m[2m[1m   22.82 kB[0m[0m[2m │ gzip:   8.26 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mWhiteboard-D64zJze4.js                                                                  [39m[2m[1m   22.86 kB[0m[0m[2m │ gzip:   7.52 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mro-RO-JPDTUUEW-BPyoL-x7.js                                                              [39m[2m[1m   23.15 kB[0m[0m[2m │ gzip:   8.94 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mjourneyDiagram-3NMN7TZE-bgsCQ0lN.js                                                     [39m[2m[1m   23.20 kB[0m[0m[2m │ gzip:   8.18 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mde-DE-XR44H4JA-Dj9_g0KR.js                                                              [39m[2m[1m   23.34 kB[0m[0m[2m │ gzip:   8.97 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mja-JP-DBVTYXUO-BQ52sVjV.js                                                              [39m[2m[1m   23.40 kB[0m[0m[2m │ gzip:   8.79 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mfr-FR-RHASNOE6-C8c05zVc.js                                                              [39m[2m[1m   23.45 kB[0m[0m[2m │ gzip:   8.87 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mmindmap-definition-YA3MSWOX-Dtnb-ASz.js                                                 [39m[2m[1m   23.49 kB[0m[0m[2m │ gzip:   8.03 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mbn-BD-2XOGV67Q-ClxPGgJn.js                                                              [39m[2m[1m   23.60 kB[0m[0m[2m │ gzip:   6.68 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mko-KR-MTYHY66A-DHnGxFiW.js                                                              [39m[2m[1m   23.88 kB[0m[0m[2m │ gzip:   9.18 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mgraphlib-B8gBHxth.js                                                                    [39m[2m[1m   23.90 kB[0m[0m[2m │ gzip:   8.31 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mfa-IR-HGAKTJCU-CIyJhh-1.js                                                              [39m[2m[1m   24.24 kB[0m[0m[2m │ gzip:   8.44 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mwardleyDiagram-VM6X3IG4-WV1S-lAr.js                                                     [39m[2m[1m   25.22 kB[0m[0m[2m │ gzip:   6.55 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mar-SA-G6X2FPQ2-gmQ0sqUV.js                                                              [39m[2m[1m   25.67 kB[0m[0m[2m │ gzip:   9.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mCapture-g89dIpQk.js                                                                     [39m[2m[1m   25.90 kB[0m[0m[2m │ gzip:   9.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mSentiment-9U8VQdCo.js                                                                   [39m[2m[1m   25.98 kB[0m[0m[2m │ gzip:   7.85 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrough.esm-CSKSodPl.js                                                                   [39m[2m[1m   27.10 kB[0m[0m[2m │ gzip:   8.85 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpa-IN-N4M65BXN-CQD1aMM3.js                                                              [39m[2m[1m   27.98 kB[0m[0m[2m │ gzip:   7.98 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mgitGraphDiagram-WWUBYQGX-CjvwwnIH.js                                                    [39m[2m[1m   29.01 kB[0m[0m[2m │ gzip:   8.57 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mStudyViewsDrawer-ClfHR7XF.js                                                            [39m[2m[1m   29.06 kB[0m[0m[2m │ gzip:   9.86 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mku-TR-6OUDTVRD-DxzL3_hu.js                                                              [39m[2m[1m   29.32 kB[0m[0m[2m │ gzip:   9.27 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mel-GR-BZB4AONW-BQgL2fhh.js                                                              [39m[2m[1m   29.67 kB[0m[0m[2m │ gzip:   9.61 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mHeatmapDrawer-V2kpi2yW.js                                                               [39m[2m[1m   29.76 kB[0m[0m[2m │ gzip:  10.47 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mtimeline-definition-24CTP7MA-CqgI0MaE.js                                                [39m[2m[1m   30.42 kB[0m[0m[2m │ gzip:   9.98 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36merDiagram-RLTQ6QDP-DddqC-bz.js                                                          [39m[2m[1m   30.72 kB[0m[0m[2m │ gzip:  10.57 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mru-RU-B4JR7IUQ-C2-Ortyw.js                                                              [39m[2m[1m   30.74 kB[0m[0m[2m │ gzip:   9.87 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-75Z2AOVW-DeDkpnXM.js                                                              [39m[2m[1m   30.87 kB[0m[0m[2m │ gzip:   8.52 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrequirementDiagram-BXWQKSXE-Dq_7xWwO.js                                                 [39m[2m[1m   31.03 kB[0m[0m[2m │ gzip:   9.78 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36muk-UA-QMV73CPH-CKYaJ9WU.js                                                              [39m[2m[1m   31.64 kB[0m[0m[2m │ gzip:  10.11 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mquery-ccYcUIU3.js                                                                       [39m[2m[1m   31.66 kB[0m[0m[2m │ gzip:   9.33 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mpica-BICel2fH.js                                                                        [39m[2m[1m   32.09 kB[0m[0m[2m │ gzip:  12.53 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mhi-IN-IWLTKZ5I-BMHouFZC.js                                                              [39m[2m[1m   32.35 kB[0m[0m[2m │ gzip:   9.08 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mquadrantDiagram-AXDQQJYC-BsdRCHoY.js                                                    [39m[2m[1m   33.54 kB[0m[0m[2m │ gzip:   9.74 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mta-IN-2NMHFXQM-IdwMbxCh.js                                                              [39m[2m[1m   35.27 kB[0m[0m[2m │ gzip:   8.50 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-OSK3NFVY-CN2MO_Al.js                                                              [39m[2m[1m   36.46 kB[0m[0m[2m │ gzip:   7.96 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mkm-KH-HSX4SM5Z-mZRhpSZ2.js                                                              [39m[2m[1m   36.65 kB[0m[0m[2m │ gzip:   9.21 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdagre-BJJUWK_n.js                                                                       [39m[2m[1m   36.85 kB[0m[0m[2m │ gzip:  13.22 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-IMKFNOWR-D8C3jplZ.js                                                              [39m[2m[1m   37.71 kB[0m[0m[2m │ gzip:  12.29 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mPatternDrawer-CDOUynPE.js                                                               [39m[2m[1m   38.06 kB[0m[0m[2m │ gzip:  12.65 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mHeatmap-Ba9IExcx.js                                                                     [39m[2m[1m   40.29 kB[0m[0m[2m │ gzip:  14.75 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mvennDiagram-4TSXK5OY-D9srVpmt.js                                                        [39m[2m[1m   41.19 kB[0m[0m[2m │ gzip:  15.12 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mblockDiagram-I7D4REHJ-BCt-VeY7.js                                                       [39m[2m[1m   41.46 kB[0m[0m[2m │ gzip:  13.34 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrouter-TyghqFB7.js                                                                      [39m[2m[1m   42.16 kB[0m[0m[2m │ gzip:  15.05 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mmr-IN-CRQNXWMA-DNY1aRAe.js                                                              [39m[2m[1m   42.25 kB[0m[0m[2m │ gzip:  10.67 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mxychartDiagram-S5SC5T6Z-B1WMQBic.js                                                     [39m[2m[1m   44.19 kB[0m[0m[2m │ gzip:  12.22 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mimage-blob-reduce.esm-NzmDxm1v.js                                                       [39m[2m[1m   45.46 kB[0m[0m[2m │ gzip:  16.31 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msrc-DZ-ENaP_.js                                                                         [39m[2m[1m   45.73 kB[0m[0m[2m │ gzip:  16.03 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mMarket-Cc0sOUE2.js                                                                      [39m[2m[1m   45.90 kB[0m[0m[2m │ gzip:  14.06 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-LNGE3PJU-OosUmKKA.js                                                              [39m[2m[1m   46.39 kB[0m[0m[2m │ gzip:  15.54 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mresultLimitText-DInsW6td.js                                                             [39m[2m[1m   47.07 kB[0m[0m[2m │ gzip:  14.82 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdnd-DJkCnzDd.js                                                                         [39m[2m[1m   47.30 kB[0m[0m[2m │ gzip:  15.47 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-TICWLB2K-WxDlYOIK.js                                                              [39m[2m[1m   48.85 kB[0m[0m[2m │ gzip:  15.76 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-GMAD6QVW-Bjf3ivR0.js                                                              [39m[2m[1m   51.88 kB[0m[0m[2m │ gzip:  16.69 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mScreener-iX4NmilN.js                                                                    [39m[2m[1m   57.46 kB[0m[0m[2m │ gzip:  18.99 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-SHT3W25Y-DO2zoIHk.js                                                              [39m[2m[1m   61.29 kB[0m[0m[2m │ gzip:  19.85 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mc4Diagram-7LVT6UL2-CjRYvlEK.js                                                          [39m[2m[1m   64.76 kB[0m[0m[2m │ gzip:  18.54 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mganttDiagram-EL5Y4UJY-DmxvBb7E.js                                                       [39m[2m[1m   69.43 kB[0m[0m[2m │ gzip:  22.77 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mcose-bilkent-JH36ORCC-mhSlW-qU.js                                                       [39m[2m[1m   81.44 kB[0m[0m[2m │ gzip:  21.59 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdist-DRkZ34Wt.js                                                                        [39m[2m[1m   88.32 kB[0m[0m[2m │ gzip:  29.13 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-4HAMMTFA-CzRH8ZW7.js                                                              [39m[2m[1m  104.85 kB[0m[0m[2m │ gzip:  25.62 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mswimlanes-42K2YHIH-DnN588Eu.js                                                          [39m[2m[1m  111.16 kB[0m[0m[2m │ gzip:  38.02 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36msequenceDiagram-WJ2MYXX4-9IJRr74b.js                                                    [39m[2m[1m  115.86 kB[0m[0m[2m │ gzip:  30.63 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36marchitectureDiagram-5GKGNRK7-DonZM_85.js                                                [39m[2m[1m  149.33 kB[0m[0m[2m │ gzip:  41.21 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mindex-rNl6BYTG.js                                                                       [39m[2m[1m  168.64 kB[0m[0m[2m │ gzip:  51.54 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mcharts-DcLh-Qcg.js                                                                      [39m[2m[1m  170.76 kB[0m[0m[2m │ gzip:  55.19 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-DU6HZSFF-CIWpKNI7.js                                                              [39m[2m[1m  237.90 kB[0m[0m[2m │ gzip:  39.06 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mkatex-Vhh-h91d.js                                                                       [39m[2m[1m  258.88 kB[0m[0m[2m │ gzip:  77.46 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mcytoscape.esm-B3ydfrDM.js                                                               [39m[2m[1m  435.71 kB[0m[0m[2m │ gzip: 137.98 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mlive-orders-Hyr1sx9C.js                                                                 [39m[2m[1m  437.21 kB[0m[0m[2m │ gzip: 132.83 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-K2UTITRG-BnOcoYv_.js                                                              [39m[2m[1m  533.27 kB[0m[0m[2m │ gzip: 178.87 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mfiles-CH-FnSE3.js                                                                       [39m[2m[1m  584.69 kB[0m[0m[2m │ gzip: 178.57 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-FOHPRMQF-Crrb2Aik.js                                                              [39m[2m[1m  662.67 kB[0m[0m[2m │ gzip: 143.23 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mlive-workspace-BjcVGQ9i.js                                                              [39m[33m[1m1,079.20 kB[0m[39m[2m │ gzip: 325.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mchunk-EIO257PC-Dt-y2JKs.js                                                              [39m[33m[1m1,821.04 kB[0m[39m[2m │ gzip: 744.22 kB[0m
+[2m[WebServer] [22m
+[2m[WebServer] [22m✓ built in 3.13s
+[2m[WebServer] [22m[plugin builtin:vite-reporter] [33m[1m
+[2m[WebServer] [22m(!) Some chunks are larger than 700 kB after minification. Consider:
+[2m[WebServer] [22m- Using dynamic import() to code-split the application
+[2m[WebServer] [22m- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[2m[WebServer] [22m- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[0m[39m
+[2m[WebServer] [22mprepare-dist: /tmp/hoga-e2e-dist-337 ready (same-origin config.json)
+[2m[WebServer] [22mINFO:     Started server process [212805]
+[2m[WebServer] [22mINFO:     Waiting for application startup.
+[2m[WebServer] [22mINFO:     Application startup complete.
+[2m[WebServer] [22mINFO:     Uvicorn running on http://127.0.0.1:20337 (Press CTRL+C to quit)
+[2m[WebServer] [22mINFO:     127.0.0.1:34666 - "GET /health HTTP/1.1" 200 OK
+[2m[WebServer] [22m
+[2m[WebServer] [22m> frontend@0.0.0 dev
+[2m[WebServer] [22m> vite --host 127.0.0.1 --port 21337 --strictPort
+[2m[WebServer] [22m
+[2m[WebServer] [22m(node:213076) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+[2m[WebServer] [22m
+[2m[WebServer] [22m  VITE v8.0.16  ready in 117 ms
+[2m[WebServer] [22m
+[2m[WebServer] [22m  ➜  Local:   http://127.0.0.1:21337/
+[2m[WebServer] [22mINFO:     127.0.0.1:34676 - "GET /api/test/whoami HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34680 - "POST /api/test/add-stockdate?code=005930&date=20260521 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34676 - "POST /api/test/add-stockdate?code=000660&date=20260521 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34680 - "POST /api/test/seed-trading-days?year=2026&month=10 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34676 - "POST /api/test/seed-trading-days?year=2026&month=9 HTTP/1.1" 200 OK
+
+Running 13 tests using 1 worker
+
+(node:213352) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:213352) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/da81/hoga-ops · slot=337 · backend=20337 · frontend=21337 · data=/tmp/hoga-e2e-data-337 · dist=/tmp/hoga-e2e-dist-337
+[2m[WebServer] [22mINFO:     127.0.0.1:34694 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:34704 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34704 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34720 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34746 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34704 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34730 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:34748 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     127.0.0.1:34704 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:34704 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34746 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34720 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34730 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34760 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓   1 [chromium] › tests/e2e/us-daily-candles.spec.ts:55:3 › NASDAQ_COMPOSITE: URL and restore use daily REST candles with decimal prices (4.1s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:34766 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:34772 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34772 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34788 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34822 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34810 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34794 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:34836 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:34794 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34794 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34822 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34788 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34810 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34772 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓   2 [chromium] › tests/e2e/us-daily-candles.spec.ts:55:3 › SP500: URL and restore use daily REST candles with decimal prices (1.6s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:34852 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:34860 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34860 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34872 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34910 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34894 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34886 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48602 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:34886 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34886 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34910 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34872 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34894 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:34860 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓   3 [chromium] › tests/e2e/us-daily-candles.spec.ts:55:3 › SOX: URL and restore use daily REST candles with decimal prices (1.7s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48608 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48614 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48614 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48626 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48626 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48626 - "GET /api/heatmap HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48614 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48634 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48614 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48614 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48626 - "GET /api/heatmap HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48636 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48648 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48658 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓   4 [chromium] › tests/e2e/us-daily-candles.spec.ts:89:1 › US stock search preserves exchange/ticker and never requests domestic stock data (1.5s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48660 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48670 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48670 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48672 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48688 - "GET /api/heatmap HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48702 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48676 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48716 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     127.0.0.1:48676 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48702 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48688 - "GET /api/heatmap HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48672 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48670 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48726 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓   5 [chromium] › tests/e2e/us-daily-candles.spec.ts:126:1 › preferred-share URL keeps broker case and underscore across restore (1.2s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48734 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48742 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48748 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48748 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48742 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48748 - "GET /api/heatmap HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48762 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+  ✓   6 [chromium] › tests/e2e/us-daily-candles.spec.ts:141:1 › US daily partial data keeps its retry action and removes the notice after recovery (905ms)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48778 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48788 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48788 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48810 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48822 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48800 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48788 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48828 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓   7 [chromium] › tests/e2e/us-index-minutes.spec.ts:57:1 › US index updates minute, D/W/M and header every two seconds without resetting the viewport (1.8s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48834 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48842 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48848 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48848 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48842 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48860 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48866 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48842 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48860 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48860 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48860 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48860 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48860 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48882 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48860 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48842 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48866 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48848 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48860 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48902 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48886 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48842 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓   8 [chromium] › tests/e2e/us-index-minutes.spec.ts:94:3 › NASDAQ_COMPOSITE: renders actual-provider minute fixture, period changes, restore and bounded polling (2.5s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48916 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48922 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48922 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48928 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48936 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48938 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48922 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48944 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48942 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:48942 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48942 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48942 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48942 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53308 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:48942 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48942 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48944 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48922 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48928 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48938 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48936 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:48942 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓   9 [chromium] › tests/e2e/us-index-minutes.spec.ts:94:3 › SP500: renders actual-provider minute fixture, period changes, restore and bounded polling (2.4s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:53320 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:53336 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53336 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53352 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53360 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53362 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53336 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53374 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53380 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:53380 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53380 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53380 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53380 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53394 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:53380 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53374 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53336 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53374 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53360 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53352 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53380 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53362 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓  10 [chromium] › tests/e2e/us-index-minutes.spec.ts:94:3 › SOX: renders actual-provider minute fixture, period changes, restore and bounded polling (2.4s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:53396 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:53406 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53406 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53420 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53426 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53442 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53444 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53444 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:53444 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53444 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53444 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53460 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:53444 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53444 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53442 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53426 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53420 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53406 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53462 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓  11 [chromium] › tests/e2e/us-index-minutes.spec.ts:94:3 › VIX: renders actual-provider minute fixture, period changes, restore and bounded polling (2.6s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:53466 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:53468 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53468 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53470 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53482 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53486 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53468 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53506 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53496 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓  12 [chromium] › tests/e2e/us-index-minutes.spec.ts:163:1 › US minute candles cross KST midnight without losing the next-date candles (1.0s)
+[2m[WebServer] [22mINFO:     connection closed
+[2m[WebServer] [22mINFO:     127.0.0.1:53522 - "WebSocket /api/ws" [accepted]
+[2m[WebServer] [22mINFO:     connection open
+[2m[WebServer] [22mINFO:     127.0.0.1:53536 - "GET /api/live/settings HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53544 - "GET /api/live/indices HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53560 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53560 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53544 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53582 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53570 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+[2m[WebServer] [22mINFO:     127.0.0.1:53536 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+  ✓  13 [chromium] › tests/e2e/us-index-minutes.spec.ts:173:1 › SP500 60m explains incomplete contiguous data instead of fabricating candles (829ms)
+[2m[WebServer] [22mINFO:     connection closed
+
+  13 passed (30.4s)

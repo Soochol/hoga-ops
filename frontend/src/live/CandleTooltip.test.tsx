@@ -65,7 +65,7 @@ function renderTip(chart: never) {
 }
 
 describe('CandleTooltip', () => {
-  it.each(['us-stock:NASDAQ:NVDA', 'index:NASDAQ_COMPOSITE', 'index:SP500', 'index:SOX'])(
+  it.each(['us-stock:NASDAQ:NVDA', 'index:NASDAQ_COMPOSITE', 'index:SP500', 'index:SOX', 'index:VIX'])(
     'shows %s OHLC and price changes with exactly two decimals', (code) => {
       const { chart, fire } = makeChart();
       const candles = [C(1_000_000, 120, 121, 119, 120, 10), C(1_060_000, 120, 121.6917, 118.022, 120.888, 20)];
