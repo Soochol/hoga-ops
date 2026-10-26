@@ -1,7 +1,7 @@
 /**
  * `/study` 캘린더 봉(D/W/M)의 **맥락 창**과 저장 구간 표시 좌표.
  *
- * 복기뷰가 캘린더 봉으로 전환됐을 때 저장 구간만 그리면 일봉의 존재 이유가 없다 —
+ * 다른 봉 주기에서 캘린더 봉으로 전환됐을 때 저장 구간만 그리면 맥락이 부족하다 —
  * 10분봉 7주 저장뷰를 일봉으로 바꾸면 캔들 35개가 화면을 채우고 "이 구간이 큰 그림
  * 어디였나" 를 답할 수 없다. 그래서 저장 구간 **앞뒤로** 창을 넓히고, 저장 구간은
  * 밴드로 표시한다(`StudySavedRangeBand`).
@@ -14,7 +14,7 @@
  * 복기의 목적이 결과 확인이라 스포일러 회피보다 맥락이 우선이라는 판단이다.
  */
 import { realMsToYyyymmdd, todayKstYyyymmdd } from '../live/liveDateTime';
-import { isMinuteTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, type SavedRangeFocus } from '../state/livePage';
 import type { StudyViewReference } from '../api/studyViews';
 import type { Candle } from '../api/types';
 import { calendarBucketKey } from '../live/aggregateCandles';
@@ -92,8 +92,8 @@ function candlesInSavedCalendarRange(
 }
 
 /**
- * 캘린더 봉 초기 뷰포트. 저장 구간의 마지막 캔들에서 이후 구간 쪽으로 조금 민 지점을
- * 우측 앵커로 잡고, span 은 저장 구간의 `CONTEXT_SPAN_RATIO` 배(가독 상한 클램프).
+ * 같은 봉 주기는 저장 배율로 구간 끝에 복원한다. 다른 봉 주기(또는 배율 없음)는
+ * 구간 끝보다 이후를 우측 앵커로 잡고 구간의 `CONTEXT_SPAN_RATIO` 배로 맥락을 보여준다.
  *
  * `atLiveEdge: false` 가 핵심이다 — true 면 `computeRestoreRange` 가 최신 봉을
  * 따라가 저장 구간이 화면 밖으로 밀린다.
@@ -103,11 +103,15 @@ export function studyDailyViewport(
   savedFromMs: number,
   savedToMs: number,
   timeframe: 'D' | 'W' | 'M' = 'D',
+  saved?: Pick<SavedRangeFocus, 'savedTimeframe' | 'savedBarSpan'>,
 ): StudyDailyViewport | null {
   if (candles.length === 0) return null;
   const inRange = candlesInSavedCalendarRange(candles, savedFromMs, savedToMs, timeframe);
   const lastInRange = inRange[inRange.length - 1];
   if (!lastInRange) return null;
+  if (saved?.savedTimeframe === timeframe && Number.isFinite(saved.savedBarSpan) && saved.savedBarSpan > 0) {
+    return { rightEdgeMs: lastInRange.ts_ms, barSpan: saved.savedBarSpan, atLiveEdge: false };
+  }
   const savedBars = Math.max(1, inRange.length);
   const endIdx = candles.findIndex((c) => c.ts_ms === lastInRange.ts_ms);
   const anchor = endIdx >= 0

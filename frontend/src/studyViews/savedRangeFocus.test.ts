@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { savedRangeAppliesTo } from './savedRangeFocus';
+import { savedRangeAppliesTo, savedRangeCalendarFrom, savedRangeFocusFromView } from './savedRangeFocus';
+import type { StudyViewListRow } from '../api/studyViews';
 import type { SavedRangeFocus } from '../state/livePage';
 
 const focus = (extra: Partial<SavedRangeFocus> = {}): SavedRangeFocus => ({
@@ -37,4 +38,19 @@ it('requests calendar context before an old saved date and leaves intraday paths
   expect(savedRangeCalendarFrom(null, 'D')).toBeNull();
   expect(savedRangeCalendarFrom(focus(), '1m')).toBeNull();
   expect(savedRangeCalendarFrom(focus(), '5s')).toBeNull();
+});
+
+it('includes a wide saved viewport left edge only for its own timeframe', () => {
+  const savedLeftEdgeMs = Date.UTC(2015, 0, 1);
+  const f = focus({ fromDate: '20210422', savedLeftEdgeMs });
+  expect(savedRangeCalendarFrom(f, 'D')).toBe('20150101');
+  expect(savedRangeCalendarFrom(f, 'W')).toBe(savedRangeCalendarFrom(focus({ fromDate: '20210422' }), 'W'));
+});
+
+it('carries an optional saved left edge without adding one to legacy rows', () => {
+  const row = { id: 'v', code: '005930', label: '삼성전자', timeframe: 'D',
+    range: { from_ms: 1, to_ms: 2, from_date: '20210422', to_date: '20210422' },
+    viewport: { bar_span: 191.47, right_edge_ms: 2, at_live_edge: false } } as StudyViewListRow;
+  expect(savedRangeFocusFromView(row)).not.toHaveProperty('savedLeftEdgeMs');
+  expect(savedRangeFocusFromView({ ...row, viewport: { ...row.viewport, left_edge_ms: 1 } })).toHaveProperty('savedLeftEdgeMs', 1);
 });

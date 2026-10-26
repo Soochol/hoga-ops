@@ -449,7 +449,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
    * 저장 구간이 도로 밀려난다.
    *
    * 봉에 따라 **다른 규칙**을 쓴다:
-   * - 캘린더 봉: `studyDailyViewport` — 구간이 우측 45% 를 차지하고 이후 맥락이 보인다.
+   * - 캘린더 봉: 같은 봉 주기는 저장 배율로 구간 끝에 복원하고, 다른 주기만 맥락을 계산한다.
    * - 분봉: **B 를 오른쪽 끝**에 두고 줌은 저장 당시 그대로(2026-08-21 사용자 결정).
    *   저장 시점 화면을 가장 가깝게 재현한다.
    *
@@ -459,7 +459,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   const savedRangeViewport = useMemo((): TabViewport | null => {
     if (!savedRange) return null;
     if (isCalendarTimeframe(view.timeframe)) {
-      return studyDailyViewport(savedRangeCandles, savedRange.fromMs, savedRange.toMs, view.timeframe);
+      return studyDailyViewport(savedRangeCandles, savedRange.fromMs, savedRange.toMs, view.timeframe, savedRange);
     }
     // 저장 `bar_span` 은 **봉이 일치할 때만** 유효하다(그 함수 주석). 아니면 구간의
     // 실제 봉 수에서 유도한다. 그릴 수 없는 크기는 `minuteRestoreGeometry` 가 접는다
