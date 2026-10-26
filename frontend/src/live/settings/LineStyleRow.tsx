@@ -1,7 +1,7 @@
 import {
   lineStyleDescription,
   useScopedChartPrefs,
-  useChartPrefsStore,
+  useChartLineStyleActions,
   type ChartLineStyleKey,
   type ChartLineWidth,
   type LineStylePrefDef,
@@ -23,7 +23,7 @@ import { SettingsRow } from './SettingsRow';
  */
 export default function LineStyleRow({ def }: { def: LineStylePrefDef }) {
   const prefs = useScopedChartPrefs();
-  const setLineStyle = useChartPrefsStore((s) => s.setLineStyle);
+  const setLineStyle = useChartLineStyleActions();
   const key = def.key as ChartLineStyleKey;
   const gateOpen = prefs[def.enabledBy];
   const stored = prefs[`${key}Color` as keyof typeof prefs] as string;

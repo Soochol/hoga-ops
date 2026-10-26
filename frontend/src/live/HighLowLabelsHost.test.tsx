@@ -15,6 +15,8 @@ import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { RangeBundle } from '../api/types';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { useChartPrefsStore } from '../state/chartPrefs';
+import { useWindowSettingsStore } from '../state/windowSettings';
+import { WindowViewContext } from './workspace/windowViewContext';
 
 const OPEN = Date.UTC(2026, 5, 12, 0, 0, 0);
 const axis = createVirtualAxis(
@@ -25,7 +27,7 @@ const bundle = {
   candles: [{ ts_ms: OPEN + 60_000, open: 100, close: 100, high: 110, low: 90, vol_a: 0, vol_b: 0 }],
 } as unknown as RangeBundle;
 
-function renderHost(element: HTMLElement | null = null) {
+function renderHost(element: HTMLElement | null = null, windowId?: string) {
   const attachPrimitive = vi.fn();
   const series = {
     attachPrimitive,
@@ -36,14 +38,17 @@ function renderHost(element: HTMLElement | null = null) {
   // chartElement 가 Element 가 아니면 레전드 실측은 조용히 건너뛴다(teardown 경로와 동일).
   const chart = { chartElement: () => element } as never;
 
-  render(
+  const host = (
     <HighLowLabelsHost
       chart={chart}
       bundle={bundle}
       axis={axis}
       paneSeries={paneSeries}
-    />,
+    />
   );
+  render(windowId ? <WindowViewContext.Provider value={{ windowId, group: 1, code: '005930', timeframe: '1m', historicalFromDate: null }}>
+    {host}
+  </WindowViewContext.Provider> : host);
   const prim = attachPrimitive.mock.calls[0]?.[0] as HighLowLabelsPrimitive | undefined;
   return { attachPrimitive, prim };
 }
@@ -59,6 +64,24 @@ function onFlags(prim: HighLowLabelsPrimitive | undefined) {
 
 describe('HighLowLabelsHost — 수평선 배선', () => {
   afterEach(cleanup);
+  it('attaches, styles and removes the primitive independently in sibling charts', () => {
+    const store = useWindowSettingsStore.getState();
+    store.patch('high-low-a', 'chart', { highLowLabelsEnabled: true, highLowHighLineEnabled: true,
+      highLowHighLineColor: '#22C55E', highLowHighLineWidth: 4 });
+    store.patch('high-low-b', 'chart', { highLowLabelsEnabled: false });
+    const a = renderHost(null, 'high-low-a');
+    const b = renderHost(null, 'high-low-b');
+    expect(a.prim?.snapshot()?.levelLines.high).toEqual({ on: true, color: '#22C55E', width: 4 });
+    expect(b.attachPrimitive).not.toHaveBeenCalled();
+    act(() => store.patch('high-low-b', 'chart', { highLowLabelsEnabled: true, highLowHighLineEnabled: true,
+      highLowHighLineColor: '#123456', highLowHighLineWidth: 2 }));
+    const other = b.attachPrimitive.mock.calls[0]?.[0] as HighLowLabelsPrimitive;
+    expect(other.snapshot()?.levelLines.high).toEqual({ on: true, color: '#123456', width: 2 });
+    act(() => store.patch('high-low-a', 'chart', { highLowLabelsEnabled: false }));
+    expect(a.prim?.snapshot()).toBeNull();
+    expect(other.snapshot()?.levelLines.high).toEqual({ on: true, color: '#123456', width: 2 });
+    store.drop(['high-low-a', 'high-low-b']);
+  });
   it('measures only changed row geometry and observes newly added legend rows', async () => {
     useChartPrefsStore.setState({ highLowLabelsEnabled: true });
     const wrapper = document.createElement('div');

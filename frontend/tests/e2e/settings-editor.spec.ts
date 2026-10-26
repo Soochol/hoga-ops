@@ -73,7 +73,7 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await expect(editor.getByText('API URL', { exact: true })).toBeVisible();
     await expect(editor.getByText('Version', { exact: true })).toBeVisible();
     await editor.getByTestId('settings-nav-chart').click();
-    const movedLabels = ['캔들 기준 Y축', '캔들이 항상 위', '동시호가 구간 지표 숨김', '캔들 정보 툴팁', '가로 구분선', '세로 구분선'];
+    const movedLabels = ['캔들 기준 Y축', '캔들이 항상 위', '동시호가 구간 지표 숨김', '캔들 정보 툴팁', '가로 구분선', '세로 구분선', '고저 극값 라벨', '고가 가격선', '저가 가격선', '이전일 고가선', '이전일 저가선'];
     for (const name of movedLabels) await expect(editor.getByRole('switch', { name, exact: true })).toHaveCount(0);
     await expect(editor.getByRole('heading', { name: '캔들 · 지표', exact: true })).toHaveCount(0);
     await expect(editor.getByRole('heading', { name: '격자 · 구분선', exact: true })).toHaveCount(0);
@@ -88,7 +88,8 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await expect(editor.getByText(/에 맞는 설정이 없습니다/)).toBeVisible();
     await expect(editor.getByRole('switch')).toHaveCount(0);
     await search.fill('이전일 고가선');
-    await expect(editor.getByTestId('settings-linestyle-highLowPriorHighLine')).toBeVisible();
+    await expect(editor.getByText(/에 맞는 설정이 없습니다/)).toBeVisible();
+    await expect(editor.getByTestId('settings-linestyle-highLowPriorHighLine')).toHaveCount(0);
     await search.press('Escape');
     await expect(search).toHaveValue('');
     await editor.getByTestId('settings-nav-data-source').click();
@@ -111,6 +112,7 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await expect(editor).toHaveCount(0);
     await page.getByRole('button', { name: '차트 설정', exact: true }).first().click();
     const popover = page.getByRole('dialog', { name: '차트 설정', exact: true });
+    await popover.getByLabel('고저 극값 라벨 세부 설정').click();
     for (const name of movedLabels) await expect(popover.getByRole('switch', { name, exact: true })).toBeVisible();
   });
 }

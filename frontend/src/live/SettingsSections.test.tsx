@@ -169,13 +169,14 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     }
   });
 
-  it('차트 섹션에 동기화·가격 표시와 체결창의 강조 소그룹만 남는다', () => {
+  it('앱 설정에는 동기화·저장 기간·체결 강조만 남는다', () => {
     renderSettings();
-    for (const label of ['창 간 동기화', '가격 표시', '체결 강조']) {
+    for (const label of ['창 간 동기화', '저장 기간', '체결 강조']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
     expect(screen.queryByText('캔들 · 지표')).toBeNull();
     expect(screen.queryByText('격자 · 구분선')).toBeNull();
+    expect(screen.queryByText('가격 표시')).toBeNull();
   });
 
   it('체결창 — 토글·기준 금액·배경색 피커가 문서에 보인다', () => {
@@ -185,21 +186,19 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(screen.getByLabelText('대량 체결 강조 배경색 선택')).toBeTruthy();
   });
 
-  it('하위 토글(극값 가격선)은 부모 아래 **한 번만** 렌더된다', () => {
-    // 소그룹 렌더는 최상위 토글만 순회한다(`gatedByOf` 있는 것 제외). 하위 토글을
-    // 빼지 않으면 같은 행이 두 번(부모 아래 + 자기 차례) 나온다.
+  it('극값 가격선과 스타일은 앱 설정에서 제거된다', () => {
     renderSettings();
     for (const key of [
       'highLowHighLineEnabled', 'highLowLowLineEnabled',
       'highLowPriorHighLineEnabled', 'highLowPriorLowLineEnabled',
     ]) {
-      expect(screen.getAllByTestId(`settings-toggle-${key}`)).toHaveLength(1);
+      expect(screen.queryByTestId(`settings-toggle-${key}`)).toBeNull();
     }
-    // 색·두께 행도 각 선 아래 한 번씩.
+    // 하위 색·두께 행도 차트 설정으로 함께 이동한다.
     for (const key of [
       'highLowHighLine', 'highLowLowLine', 'highLowPriorHighLine', 'highLowPriorLowLine',
     ]) {
-      expect(screen.getAllByTestId(`settings-linestyle-${key}`)).toHaveLength(1);
+      expect(screen.queryByTestId(`settings-linestyle-${key}`)).toBeNull();
     }
   });
 
@@ -294,14 +293,13 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(row.querySelector('mark')?.textContent).toBe('기간 동기화');
   });
 
-  it('필터는 유닛 단위다 — 하위 행이 걸리면 부모째 남는다', () => {
-    // 렌더러가 부모+하위를 한 덩어리로 그리므로(부모 없는 하위는 맥락을 잃는다),
-    // 하위 토글 라벨로 검색해도 부모 토글이 함께 보이는 것이 계약이다.
+  it('앱 설정 검색에서도 차트로 옮긴 가격선을 찾지 않는다', () => {
     renderSettings();
     fireEvent.change(screen.getByLabelText('설정 필터'), { target: { value: '이전일 고가선' } });
 
-    expect(screen.getByTestId('settings-toggle-highLowLabelsEnabled')).toBeTruthy();
-    expect(screen.getByTestId('settings-toggle-highLowPriorHighLineEnabled')).toBeTruthy();
+    expect(screen.queryByTestId('settings-toggle-highLowLabelsEnabled')).toBeNull();
+    expect(screen.queryByTestId('settings-toggle-highLowPriorHighLineEnabled')).toBeNull();
+    expect(screen.getByText(/에 맞는 설정이 없습니다/)).toBeTruthy();
     expect(screen.queryByTestId('settings-toggle-horizontalGridLinesEnabled')).toBeNull();
   });
 

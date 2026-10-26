@@ -1,0 +1,84 @@
+{
+  "date_kst": "2026-10-26",
+  "start_head_sha": "80842d8ba9b14e601496a601ff9f3c5ead44a837",
+  "base_sha": "80842d8ba9b14e601496a601ff9f3c5ead44a837",
+  "scope": "고저 극값 라벨과 네 가격선의 토글·색상·두께를 차트별 설정으로 이동. 앱 설정/검색에서 제거. 구 창 설정·백업의 누락 필드만 기존 전역값으로 이관.",
+  "inputs": {
+    "roots": [
+      "frontend/src",
+      "frontend/tests",
+      "hoga",
+      "tests/fixtures"
+    ],
+    "extra_files": "frontend 최상위 package/lock/index 및 tsconfig/vite/vitest/playwright/postcss/tailwind 설정, .python-version, pyproject.toml, uv.lock, VERSION",
+    "file_count": 2287,
+    "sha256": "826b6596466b5984183192d49d2b429bf2605f87bf83bbb496fdafdd7de3eff6",
+    "algorithm": "정렬된 파일 SHA256 + 두 공백 + 저장소 상대 경로 + LF 목록을 UTF-8로 이어 붙인 문자열의 SHA256. __pycache__와 .pyc/.pyo 제외."
+  },
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "vite": "8.0.16",
+    "python": "3.14.7"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/state/windowSettings.test.tsx src/state/settingsTransfer.test.ts src/live/workspace/ChartDisplaySettings.test.tsx src/live/SettingsSections.test.tsx src/live/HighLowLabelsHost.test.tsx src/state/chartPrefs.test.ts src/state/chartPrefs.windowScope.test.tsx src/live/settings/IndicatorPrefRows.test.tsx src/chart/HighLowLabelsPrimitive.test.ts src/chart/highLowLabelLayout.test.ts",
+      "result": "passed",
+      "files": 10,
+      "tests": 183
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/chart-window-settings.spec.ts --reporter=list",
+      "result": "passed",
+      "tests": 14
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/settings-editor.spec.ts --reporter=list",
+      "result": "passed",
+      "tests": 5
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build",
+      "result": "passed",
+      "reuse": "상기 E2E webServer 기동에서 동일 프론트 입력으로 빌드. 검증 후 소스 변경 없음."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "고저 라벨 기본 접힘 및 공통 세부 설정 UI",
+    "색상·두께의 창별 쓰기와 직전 필드 되돌리기",
+    "같은 종목의 형제 차트에서 실제 가격선 픽셀 변경·다른 창 불변",
+    "초봉/분봉/D/W/M 기존 표시 설정 및 가격축 동작",
+    "새 창 복사·새로고침·프리셋·백업",
+    "구 window settings 및 백업의 전역값 이관과 명시값 보존",
+    "앱 설정/검색에서 고저 항목 제거"
+  ],
+  "isolation": {
+    "backend_port": 20229,
+    "frontend_port": 21229,
+    "data_dir": "/tmp/hoga-e2e-data-229",
+    "credentials": "Playwright의 빈 벤더 환경변수 유지",
+    "user_servers": "5173/8000 변경 없음"
+  },
+  "notes": [
+    "백엔드/API 변경 없음.",
+    "실행 중인 사용자 앱·기본 체크아웃에는 아직 적용하지 않음."
+  ]
+}
