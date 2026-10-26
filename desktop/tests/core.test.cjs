@@ -6,6 +6,7 @@ const { join } = require('node:path');
 const { canonicalOrigin, validateProfile, sessionKey, readSettings, saveSettings, fitBounds } = require('../dist/profiles');
 const { appNavigation, networkAllowed, externalLink } = require('../dist/navigation');
 const { probeServer } = require('../dist/connection');
+const { nextZoomFactor, validZoomFactor, zoomCommand } = require('../dist/zoom');
 const remote = validateProfile({ name: '원격', mode: 'server', origin: 'http://hoga-prod:8000' });
 
 test('rejects credentials, paths, fragments and executable URLs', () => {
@@ -40,6 +41,35 @@ test('atomic settings roundtrip and corrupt original preservation', () => {
 });
 test('off-screen bounds are restored inside the available monitor', () => {
   assert.deepEqual(fitBounds({ x: 9000, y: -1000, width: 2000, height: 1500 }, [{ x: 0, y: 0, width: 1280, height: 720 }]), { x: 0, y: 0, width: 1280, height: 720 });
+});
+test('zoom steps include reset, numeric-keyboard shortcuts and bounded factors', () => {
+  assert.equal(nextZoomFactor(1, 'in'), 1.1);
+  assert.equal(nextZoomFactor(1.1, 'out'), 1);
+  assert.equal(nextZoomFactor(1.1, 'in'), 1.25);
+  assert.equal(nextZoomFactor(3, 'in'), 3);
+  assert.equal(nextZoomFactor(0.5, 'out'), 0.5);
+  assert.equal(nextZoomFactor(0.67, 'reset'), 1);
+  for (const value of [0, -1, 3.1, Infinity, NaN, '1.1']) assert.equal(validZoomFactor(value), false);
+  const input = { type: 'keyDown', key: '=', control: true, meta: false, alt: false };
+  for (const key of ['=', '+', 'Add']) assert.equal(zoomCommand({ ...input, key }), 'in');
+  assert.equal(zoomCommand({ ...input, key: '-', control: false, meta: true }), 'out');
+  assert.equal(zoomCommand({ ...input, key: '0' }), 'reset');
+  for (const change of [{ control: false }, { alt: true }, { type: 'keyUp' }, { key: 'w' }]) assert.equal(zoomCommand({ ...input, ...change }), null);
+});
+test('zoom settings preserve legacy connections and ignore only invalid zoom entries', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hoga-desktop-zoom-')); const path = join(dir, 'connections.json');
+  const key = sessionKey(remote), other = sessionKey({ ...remote, origin: 'http://other-server:8000' });
+  const legacy = { version: 1, profiles: [remote], activeId: remote.id, bounds: {} };
+  try {
+    saveSettings(path, legacy);
+    assert.deepEqual(readSettings(path).settings.zoomFactors, {});
+    saveSettings(path, { ...legacy, zoomFactors: { [key]: 1.25, [other]: '0.8', invalid: 1.1 } });
+    const saved = readSettings(path).settings;
+    assert.equal(saved.activeId, remote.id);
+    assert.deepEqual(saved.zoomFactors, { [key]: 1.25 });
+    saveSettings(path, saved);
+    assert.deepEqual(readSettings(path).settings.zoomFactors, { [key]: 1.25 });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 function request(config = { api_url: '' }, health = { status: 'ok', version: '1', commit: 'abc' }) {
   const calls = [];

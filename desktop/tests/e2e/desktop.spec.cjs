@@ -1,6 +1,6 @@
 const { test, expect, _electron: electron } = require('@playwright/test');
 const { createServer } = require('node:http');
-const { mkdtemp, mkdir, rm, writeFile } = require('node:fs/promises');
+const { mkdtemp, mkdir, rm, writeFile, readFile } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
 const root = resolve(__dirname, '../..');
@@ -27,7 +27,7 @@ async function launch(userData, executablePath, extraEnv = {}) {
   const platform = process.env.HOGA_DESKTOP_TEST_PLATFORM;
   const args = executablePath ? [] : [root];
   if (platform) args.push(`--ozone-platform=${platform}`);
-  return electron.launch({ executablePath, args, cwd: root, env, chromiumSandbox: true });
+  return electron.launch({ executablePath: executablePath ?? process.env.HOGA_DESKTOP_ELECTRON_BINARY, args, cwd: root, env, chromiumSandbox: true });
 }
 async function connect(launcher, origin) {
   await launcher.locator('#origin').fill(origin);
@@ -106,4 +106,86 @@ test('invalid remote config stays on recovery screen', async () => {
     const next = app.waitForEvent('window'); await launcher.getByRole('button', { name: '연결', exact: true }).click();
     await expect((await next).getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
   } finally { if (app) await app.close(); await server.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('page zoom keys, menus, same-server children and restart share the saved factor', async () => {
+  const server = await fixture(); const otherServer = await fixture();
+  const dir = await mkdtemp(join(tmpdir(), 'ticklane-zoom-'));
+  let app;
+  try {
+    app = await launch(dir, process.env.HOGA_DESKTOP_EXECUTABLE);
+    const next = app.waitForEvent('window');
+    await connect(await app.firstWindow(), server.origin);
+    const content = await next;
+    await expect(content.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    const zoom = async page => (await app.browserWindow(page)).evaluate(win => win.webContents.getZoomFactor());
+    // CDP page.keyboard bypasses Electron's before-input-event. Send native
+    // WebContents input so the real app shortcut handler is exercised.
+    const pressZoomKey = async (page, key, modifiers = ['control']) => (await app.browserWindow(page)).evaluate((win, input) => {
+      win.focus(); win.webContents.focus();
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: input.key, modifiers: input.modifiers });
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: input.key, modifiers: input.modifiers });
+    }, { key, modifiers });
+    await content.bringToFront();
+    expect(await zoom(content)).toBeCloseTo(1);
+    await pressZoomKey(content, '=');
+    await expect.poll(() => zoom(content)).toBeCloseTo(1.1);
+    await pressZoomKey(content, '+', ['control', 'shift']);
+    await expect.poll(() => zoom(content)).toBeCloseTo(1.25);
+    await pressZoomKey(content, '-');
+    await expect.poll(() => zoom(content)).toBeCloseTo(1.1);
+    const childPromise = app.waitForEvent('window');
+    await content.getByRole('button', { name: '종목 새 창' }).click();
+    const child = await childPromise;
+    await expect(child.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    await expect.poll(() => zoom(child)).toBeCloseTo(1.1);
+    await child.bringToFront();
+    await pressZoomKey(child, '0');
+    await expect.poll(() => zoom(child)).toBeCloseTo(1);
+    await expect.poll(() => zoom(content)).toBeCloseTo(1);
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find(item => item.label === '보기').submenu.items.find(item => item.label === '확대').click());
+    await expect.poll(() => zoom(child)).toBeCloseTo(1.1);
+    const contextLabel = await app.evaluate(({ BrowserWindow, Menu }, url) => {
+      const win = BrowserWindow.getAllWindows().find(win => win.webContents.getURL() === url);
+      const original = Menu.buildFromTemplate;
+      let items;
+      try {
+        Menu.buildFromTemplate = template => { items = template; return { popup() {} }; };
+        win.webContents.emit('context-menu', {}, { linkURL: '', isEditable: false });
+      } finally { Menu.buildFromTemplate = original; }
+      const zoom = items.find(item => item.label?.startsWith('화면 배율'));
+      zoom.submenu.find(item => item.label === '축소').click();
+      return zoom.label;
+    }, child.url());
+    expect(contextLabel).toBe('화면 배율 110%');
+    await expect.poll(() => zoom(child)).toBeCloseTo(1);
+    await pressZoomKey(child, '=');
+    await expect.poll(() => zoom(child)).toBeCloseTo(1.1);
+    const saved = JSON.parse(await readFile(join(dir, 'connections.json'), 'utf8'));
+    expect(Object.values(saved.zoomFactors)).toEqual([1.1]);
+    expect(saved.profiles[0].origin).toBe(server.origin);
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().every(win => !win.isMenuBarVisible()))).toBe(true);
+    await app.close(); app = undefined;
+    app = await launch(dir, process.env.HOGA_DESKTOP_EXECUTABLE);
+    await expect.poll(() => app.windows().some(page => page.url().startsWith(server.origin))).toBe(true);
+    const restored = app.windows().find(page => page.url().startsWith(server.origin));
+    await expect(restored.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    await expect.poll(() => zoom(restored)).toBeCloseTo(1.1);
+    await restored.reload();
+    await expect.poll(() => zoom(restored)).toBeCloseTo(1.1);
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items[0].submenu.items.find(item => item.label === '서버 선택').click());
+    const launcher = app.windows().find(page => page.url().startsWith('app:'));
+    // Keep the recovery launcher visible while closing the old workspace, then
+    // connect the next server after Electron has finished closing its window.
+    await restored.close();
+    await expect.poll(() => app.windows().some(page => page.url().startsWith(server.origin))).toBe(false);
+    const switchedPromise = app.waitForEvent('window');
+    await connect(launcher, otherServer.origin);
+    const switched = await switchedPromise;
+    await expect(switched.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    await expect.poll(() => zoom(switched)).toBeCloseTo(1);
+    const factors = Object.values(JSON.parse(await readFile(join(dir, 'connections.json'), 'utf8')).zoomFactors);
+    expect(factors).toContain(1.1);
+    expect((await fetch(server.origin + '/health')).ok).toBe(true);
+  } finally { if (app) await app.close(); await server.close(); await otherServer.close(); await rm(dir, { recursive: true, force: true }); }
 });
