@@ -178,6 +178,16 @@ _Avoid_: automatic grouping by Code; conflating these groups with Watchlist grou
 The **only kind** of **저장 학습뷰** (`schema_version: 2` — the sole value on both sides of the wire). It stores one **Code**, **Timeframe**, saved period, viewport zoom/scroll, memo, and tags so the chart can reload that period and analyze it with the current **공용 지표 셋업 (Shared Indicator Setup)**. Reproducibility means "the same saved period", not "the same indicator output" (ADR-0077, upheld by ADR-0157). The window it opens in is **pinned to KRX** regardless of the global venue selector (ADR-0144), and shows a 「KRX 기준」 chip because that differs from the global choice.
 _Avoid_: "snapshot", "fixed view", "captured chart"; saying it restores saved indicator state; calling it "v2" as if a v1 still existed.
 
+저장뷰 분봉 부분 보충(2026-10-27 사용자 승인): KRX 저장 구간은 로컬 봉의 실제
+시각과 날짜별 세션 경계를 비교해, 빈 날짜뿐 아니라 날짜 안의 선행·내부·후행 공백도
+키움 분봉으로 확인한다. 공백은 조회 후보이며 무체결이나 수집 실패를 확정하지 않는다.
+기존 로컬 봉의 OHLCV를 보존하고 없는 표시 버킷에 공급자가 제공한 봉만 추가한다.
+거래량 0인 원본 봉도 유지하며 가격·거래량을 추정하지 않는다. 수정계수 불일치·미확인
+날짜는 기존과 같이 제외한다. 같은 날 부분 보충은 저장뷰 칩으로 알리고, 기존 호가
+지표는 보존하되 보충 봉에 호가 지표를 생성하지 않는다. 조회 예산·메모리 캐시·당일 제외·
+HogaPlay 전용 모드의 디스크 전용 계약은 유지한다. 과거 하루짜리 저장뷰의 보충 기준일은
+저장 끝일이 아니라 실제 KST 오늘이며 최초 구간 배치는 보충 후 한 번 적용한다.
+
 **공용 지표 셋업 (Shared Indicator Setup)**:
 The current analysis indicator setup. It is **not owned by a saved study view**: opening a 복기뷰 reloads the saved period and re-analyzes it with whatever this setup currently is. Since #699 (PR-A/PR-B) the **entire** setup — every drawer-visible toggle, parameter, and color — is profiled per **LiveTimeframe** group (초봉 / 분봉 / 일봉 / 주봉 / 월봉, 5 sparse buckets over factory defaults), and since ADR-0152 each chart window carries its own set. Storage is split across two blobs: indicator fields in `live.indicators.v2`, and drawer-visible chartPrefs sub-options (indicator-modal keys) in `hoga.chart.prefs.v1` under `indicatorModalByTimeframe`; chart-wide chartPrefs stay flat/global. The chart's current timeframe is the lookup key. The **page axis** (`IndicatorPageScope`) still exists in those blobs but has only one inhabitant since ADR-0157 — the `study` buckets are legacy data no surface writes to.
 같은 종류를 여러 개 추가한 항목은 `indicatorInstances`에서 각자의 설정·표시 상태·지표 전용 prefs를 소유한다. 기존 flat 필드는 첫 항목이며, 원본 시세 수요는 활성 항목들의 합집합이다.

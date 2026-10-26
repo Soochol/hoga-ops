@@ -377,6 +377,9 @@ interface Props {
    * ⚠ ms 를 받는 것이 계약이다(논리 인덱스 아님) — `savedRangeAnchor.ts` 주석.
    */
   savedRangeAnchorMs?: number | null;
+  /** Wait for initial candle supplements before consuming the saved placement.
+   * Later queries must not reset an already-seated viewport. */
+  savedRangeCandlesPending?: boolean;
   /** 열린 저장뷰의 구간 **시작일**(YYYYMMDD) — 백필이 그 날까지 워크백하게 한다
    *  (`useViewportBackfill` 3d). 봉 무관하게 넘긴다. */
   savedRangeFromDate?: string | null;
@@ -511,6 +514,7 @@ export function LiveChartRoot({
   dailyMaWindowFloorDate = null,
   savedRangeBand = null,
   savedRangeAnchorMs = null,
+  savedRangeCandlesPending = false,
   savedRangeFromDate = null,
   savedRangeFrozen = false,
   historyBackfillEnabled = true,
@@ -1411,6 +1415,7 @@ export function LiveChartRoot({
     }
     const seatKey = `${viewKey}|${savedRangeAnchorMs}`;
     if (savedRangeSeatedRef.current === seatKey) return;
+    if (savedRangeCandlesPending) return;
     const candles = cb?.candles ?? [];
     const ts = chart.timeScale();
     if (isCalendarTimeframe(timeframe)) {
@@ -1462,7 +1467,7 @@ export function LiveChartRoot({
     } catch {
       /* chart torn down between effect runs */
     }
-  }, [chart, savedRangeAnchorMs, cb, viewKey, restoreViewport, timeframe]);
+  }, [chart, savedRangeAnchorMs, savedRangeCandlesPending, cb, viewKey, restoreViewport, timeframe]);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands

@@ -55,6 +55,7 @@ function dotted(yyyymmdd: string): string {
 export interface SavedRangeGapFill {
   /** 실제로 보충된 거래일 수. */
   filledCount: number;
+  partialFilledCount?: number;
   /** 수정주가 척도가 달라(계수 ≠ 1) 보충을 포기한 거래일 수. */
   rescaledCount: number;
   /** 키움 분봉 보유(약 1년) 밖이라 요청조차 하지 않은 거래일 수. */
@@ -111,8 +112,8 @@ export function savedRangeNotice(args: {
     // 결손 문구를 함께 내면 채워지는 중인 구간을 "없다" 고 단언하게 된다.
     if (gapFill?.pending) {
       return {
-        text: '빈 거래일 보충 중',
-        detail: `저장 구간 ${from}~${to} 에서 캡처되지 않은 거래일을 키움 분봉으로 채우는 중입니다. 보충된 날짜는 캔들만 있고 호가 파생 지표는 없습니다.`,
+        text: '캔들 공백 확인 중',
+        detail: `저장 구간 ${from}~${to} 의 비어 있는 날짜와 시간대를 키움 분봉으로 확인하고 있습니다. 공급자가 제공하는 봉만 추가하며 기존 봉은 보존합니다. 보충 봉에는 호가 파생 지표가 추가되지 않습니다.`,
       };
     }
 
@@ -135,7 +136,13 @@ export function savedRangeNotice(args: {
     if (gapFill && gapFill.unfillableCount > 0) {
       return {
         text: `보유 기간 밖 ${gapFill.unfillableCount}일`,
-        detail: `저장 구간 ${from}~${to} 중 ${gapFill.unfillableCount}일은 캡처가 없고 키움 분봉 보유 기간(약 1년)도 지나 채울 수 없습니다.`,
+        detail: `저장 구간 ${from}~${to} 중 ${gapFill.unfillableCount}일은 로컬 캔들에 공백이 있지만 키움 분봉 보유 기간(약 1년)이 지나 추가 봉을 확인할 수 없습니다. 공백만으로 무체결 여부를 단정하지 않습니다.`,
+      };
+    }
+    if (gapFill?.partialFilledCount) {
+      return {
+        text: `키움 부분 보충 ${gapFill.partialFilledCount}일`,
+        detail: `저장 구간 ${from}~${to} 중 ${gapFill.partialFilledCount}일은 기존 저장 봉을 보존하면서 빈 시간대에 키움 원본 봉을 추가했습니다. 거래량 0인 원본 봉도 보존하며, 공급자에게 없는 봉은 추정하지 않습니다. 보충 봉에는 호가 파생 지표가 추가되지 않습니다.`,
       };
     }
     return null;

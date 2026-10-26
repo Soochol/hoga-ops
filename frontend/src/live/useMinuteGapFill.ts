@@ -1,5 +1,5 @@
 /**
- * **디스크로 읽는 분봉 창의 미캡처 거래일을 키움으로 보충**한다.
+ * **저장뷰 분봉의 빈 날짜와 날짜 안의 캔들 공백을 키움으로 확인·보충**한다.
  *
  * 현재 소비자는 고정 구간인 저장뷰 얼림(`frozenRangeFrom`)이다.
  * 창별 HogaPlay 모드는 디스크만 표시하므로 이 보충을 실행하지 않는다.
@@ -26,12 +26,11 @@
  * 역스케일(÷factor)로 디스크 척도에 맞추는 길도 있지만 벤더 캐시 슬롯에 척도 축을
  * 추가해야 해서(지금은 `(tic_scope, date)` 뿐) 비용이 다르다 — 별도 작업이다.
  *
- * ## 이 훅이 채운 날짜는 **캔들만** 있다
+ * ## 이 훅이 추가한 봉은 **캔들만** 있다
  *
  * 호가 파생(호가비·체결강도·매물대·최대벽·depth)은 그 순간 받아 두지 않으면 영원히
- * 없는 데이터라 소급할 수 없다(`hogaMissingNotice` 가 그 사실을 설명한다). 보충일의
- * 소스를 `kiwoom_gapfill` 로 표시하는 이유가 그것이다 — 배지가 "이 날은 다른 소스" 라고
- * 말해야 사용자가 지표 pane 이 빈 것을 고장으로 읽지 않는다.
+ * 없는 데이터라 소급할 수 없다. 통째로 보충한 날은 `kiwoom_gapfill` 소스이고,
+ * 부분 보충일은 기존 소스·호가 지표를 유지하고 저장뷰 칩에서 보충 사실을 알린다.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -53,14 +52,17 @@ import {
   TIMEFRAME_TO_MS,
   type Candle,
   type RangeMissingDate,
+  type RangeSegment,
   type Timeframe,
 } from '../api/types';
 import { aggregateCandles, keepMinuteSessionCandles } from './aggregateCandles';
 import { realMsToYyyymmdd } from './liveDateTime';
 import { gapFillRunKey, planMinuteGapFill, type GapFillRun } from './minuteGapFillPlan';
+import { partialCandleGapDates, supplementalCandles } from './partialCandleGaps';
 
 const EMPTY_CANDLES: readonly Candle[] = [];
 const EMPTY_DATES: readonly string[] = [];
+const EMPTY_MISSING: readonly RangeMissingDate[] = [];
 const EMPTY_DATE_SET: ReadonlySet<string> = new Set<string>();
 
 /** 계수 동일성 판정 여유. 계수는 `일봉 종가 비율`이라 부동소수 잔차가 남는다. */
@@ -71,6 +73,8 @@ export interface MinuteGapFillResult {
   candles: readonly Candle[];
   /** 실제로 채워진 거래일. 소스 표기(`kiwoom_gapfill`)가 이 집합을 쓴다. */
   filledDates: ReadonlySet<string>;
+  /** Dates mixing preserved disk bars and observed provider supplements. */
+  partialFilledDates: ReadonlySet<string>;
   /** 척도가 달라(계수 ≠ 1) 보충을 포기한 거래일. */
   rescaledDates: readonly string[];
   /** 키움 보유(1년) 밖이라 애초에 요청하지 않은 거래일 수. */
@@ -86,6 +90,7 @@ export interface MinuteGapFillResult {
 const IDLE: MinuteGapFillResult = {
   candles: EMPTY_CANDLES,
   filledDates: EMPTY_DATE_SET,
+  partialFilledDates: EMPTY_DATE_SET,
   rescaledDates: EMPTY_DATES,
   unfillableCount: 0,
   deferredCount: 0,
@@ -119,8 +124,8 @@ function toCandle(b: LivePastCandle): Candle {
  * 한 run 의 응답을 누적기에 흩뿌린다. **요청한 날짜만** 취한다.
  *
  * 벤더 walk 는 커서 프로토콜상 요청 구간 밖의 날짜도 함께 실어 오는데(수확분), 그것을
- * 그대로 받으면 **디스크에 이미 있는 날짜를 키움 봉으로 덮는다** — 이 기능은 union 이지
- * 우선순위 병합이 아니므로 그 순간 계약이 깨진다.
+ * 그대로 받으면 요청하지 않은 날짜의 봉이 화면에 붙는다. 요청 날짜만 누적하고,
+ * 표시 직전에 현재 디스크에 없는 버킷만 선택한다.
  */
 function absorbRun(acc: Accumulator, run: GapFillRun, res: LivePastCandlesResponse): void {
   const wanted = new Set(run.dates);
@@ -183,20 +188,32 @@ export interface UseMinuteGapFillArgs {
   venue: LiveVenueOption;
   timeframe: LiveTimeframe;
   todayKstYyyymmdd: string;
-  /** `/api/range` 응답의 `missing_dates` — 구멍 날짜의 유일 출처. */
+  /** `/api/range` 응답의 날짜 전체 결손. 부분 공백은 디스크 봉·세션으로 확인한다. */
   missingDates: readonly RangeMissingDate[] | undefined;
+  diskCandles?: readonly Candle[];
+  diskSegments?: readonly RangeSegment[];
 }
 
 export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResult {
   const { enabled, code, venue, timeframe, todayKstYyyymmdd, missingDates } = args;
   const active = enabled && !!code && isMinuteTimeframe(timeframe) && venue === 'KRX';
   const bucketMs = isMinuteTimeframe(timeframe) ? fetchBucketMsFor(timeframe) : 60_000;
+  const displayBucketMs = isMinuteTimeframe(timeframe) ? TIMEFRAME_TO_MS[timeframe] : 60_000;
+  const diskCandles = args.diskCandles ?? EMPTY_CANDLES;
+  const candidates = useMemo<readonly RangeMissingDate[]>(() => {
+    if (!active) return EMPTY_MISSING;
+    const dates = new Map((missingDates ?? []).map(m => [m.date, m]));
+    for (const date of partialCandleGapDates(diskCandles, args.diskSegments ?? [], displayBucketMs)) {
+      if (!dates.has(date)) dates.set(date, { date, reason: 'not_captured' });
+    }
+    return [...dates.values()];
+  }, [active, missingDates, diskCandles, args.diskSegments, displayBucketMs]);
 
   const plan = useMemo(
     () => (active
-      ? planMinuteGapFill({ missingDates, todayKstYyyymmdd, bucketMs })
+      ? planMinuteGapFill({ missingDates: candidates, todayKstYyyymmdd, bucketMs })
       : { runs: [], unfillable: [], deferred: [] }),
-    [active, missingDates, todayKstYyyymmdd, bucketMs],
+    [active, candidates, todayKstYyyymmdd, bucketMs],
   );
 
   /**
@@ -264,9 +281,9 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
    * 만들었는데, 그건 보장이 아니라 낭비의 부산물이었다).
    */
   const unfilledMissing = useMemo(
-    () => (missingDates ?? []).filter((m) => !processedDatesRef.current.has(m.date)),
+    () => candidates.filter((m) => !processedDatesRef.current.has(m.date)),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- absorbed 가 processedDatesRef 의 버전
-    [missingDates, absorbed, seenIdentity],
+    [candidates, absorbed, seenIdentity],
   );
   const runPlan = useMemo(
     () => (active
@@ -333,14 +350,18 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
   // 끝날 때마다 정확히 한 번 오르므로 그 값이 곧 "몇 번 흡수했는가" 다.
   // 셋 다 `wantedDates` 로 거른다 — 누적은 창보다 오래 살고 화면은 창을 따른다.
   const candles = useMemo(
-    () => foldToTimeframe(accRef.current, timeframe, wantedDates),
+    () => supplementalCandles(diskCandles,
+      foldToTimeframe(accRef.current, timeframe, wantedDates), displayBucketMs),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- absorbed 가 accRef 의 버전
-    [absorbed, identity, timeframe, wantedDates],
+    [absorbed, identity, timeframe, wantedDates, diskCandles, displayBucketMs],
   );
   const filledDates = useMemo<ReadonlySet<string>>(
-    () => new Set([...accRef.current.byDate.keys()].filter((d) => wantedDates.has(d))),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 위와 같은 이유
-    [absorbed, identity, wantedDates],
+    () => new Set(candles.map(c => realMsToYyyymmdd(c.ts_ms))),
+    [candles],
+  );
+  const partialFilledDates = useMemo<ReadonlySet<string>>(
+    () => new Set(diskCandles.map(c => realMsToYyyymmdd(c.ts_ms)).filter(d => filledDates.has(d))),
+    [diskCandles, filledDates],
   );
   const rescaledDates = useMemo<readonly string[]>(
     () => [...accRef.current.rescaled].filter((d) => wantedDates.has(d)).sort(),
@@ -364,6 +385,7 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
       ? {
           candles,
           filledDates,
+          partialFilledDates,
           rescaledDates,
           unfillableCount: plan.unfillable.length,
           deferredCount: plan.deferred.length,
@@ -372,7 +394,7 @@ export function useMinuteGapFill(args: UseMinuteGapFillArgs): MinuteGapFillResul
         }
       : IDLE),
     [
-      active, candles, filledDates, rescaledDates,
+      active, candles, filledDates, partialFilledDates, rescaledDates,
       plan.unfillable.length, plan.deferred.length, remainingRuns, isFetching,
     ],
   );

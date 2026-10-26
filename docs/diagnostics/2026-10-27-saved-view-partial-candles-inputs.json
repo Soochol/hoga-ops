@@ -1,0 +1,52 @@
+{
+  "head": "768648b3407a2eabb1bdc9b6ffed942dd1cee21b",
+  "base": "768648b3407a2eabb1bdc9b6ffed942dd1cee21b",
+  "node": "v24.13.1",
+  "python": "Python 3.14.7",
+  "checks": {
+    "typecheck": "passed",
+    "vitest": "445 passed (7 files)",
+    "playwright": "11 passed (3 specs); final screenshot assertion: 1 passed",
+    "vite_build": "passed during E2E startup",
+    "diff_check": "passed",
+    "eslint": "0 errors; pre-existing warnings remain; new helper has 0 warnings"
+  },
+  "sha256": {
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    "CONTEXT.md": "e4fa7880607af7ed8a56cdb1516e2e39f9a45ad4b00a053909b19690c6fbb2b9",
+    "docs/adr/0157-retire-study-route.md": "bc2818f9c2ef7d9e95b4748aca6c3441b86e64ec90febbb31dda338178aa5442",
+    "docs/diagnostics/2026-10-27-saved-view-partial-candles.md": "fed1aaf35b19b1bbfce9ffffe7b2c3ca402a8f735ed492408b3a431139bb2e4b",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/src/live/LiveChartRoot.tsx": "d710e914d7d22bf0b4d530b84c84de021bb2040f68c1024af9551e1d667620ba",
+    "frontend/src/live/LivePage.test.tsx": "17eecc7b386dd7625e299ed685fcfad1b08cf5aecbc807f69b715e863408b12b",
+    "frontend/src/live/partialCandleGaps.test.ts": "340f141a8c9feade3656db7a6185d4151df803a2bf6d01e3f8dde55bc145c8ff",
+    "frontend/src/live/partialCandleGaps.ts": "320207e408f5a8e1cfdd3d0a5cdd4413d187b72e389053d009b3d96908656709",
+    "frontend/src/live/savedRangeNotice.test.ts": "393d58160ccf44bb86c0d81ad63ceee5a27bc91d38cb7f10efe7534d46dedb0b",
+    "frontend/src/live/savedRangeNotice.ts": "3629fb351403585a3a57e748b2eceda3407b9d505d39aa81f243dffce3851705",
+    "frontend/src/live/useLiveBundle.ts": "2d1f1b5092309ae5afadb90574b603b3453c9e0dcaf7a62744440cd53495904a",
+    "frontend/src/live/useMinuteGapFill.test.tsx": "1d7ef8a727177cae3e3bbe7cbf00aa914ce86adf0e0c895c099a07e3312143a0",
+    "frontend/src/live/useMinuteGapFill.ts": "6db88e2db72266bb1605736bd519fef3ad872871696cd15d94f247a4b47f8af5",
+    "frontend/src/live/workspace/ChartWindow.tsx": "6d09916221a899a7abf3c26524488117a33272416d2d2bd13987b093d30f6375",
+    "frontend/tests/e2e/saved-view-partial-candles.spec.ts": "c8731c39aa65073d18c0989dced93e851ec50152d26f907d9f1483b11c9306b6",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  },
+  "real_data_merge": {
+    "code": "046970",
+    "date": "20261016",
+    "disk": 500,
+    "provider": 620,
+    "added": 141,
+    "total": 641,
+    "morningCount": 58,
+    "firstMorning": "2026-10-16T00:02:00.000Z",
+    "lastMorning": "2026-10-16T00:59:00.000Z",
+    "preservedEveryDiskCandle": true,
+    "factor": 1
+  }
+}

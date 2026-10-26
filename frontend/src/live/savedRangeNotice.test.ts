@@ -122,7 +122,7 @@ describe('savedRangeNotice — 키움 보충', () => {
       gapFill: { ...noGapFill, pending: true, unfillableCount: 3 },
     });
 
-    expect(n?.text).toBe('빈 거래일 보충 중');
+    expect(n?.text).toBe('캔들 공백 확인 중');
   });
 
   it('앞부분이 보유 기간 밖이면 그 이유를 말한다', () => {
@@ -181,6 +181,16 @@ describe('savedRangeNotice — 키움 보충', () => {
       earliestCandleDate: '20260102',
       gapFill: { ...noGapFill, filledCount: 12 },
     })).toBeNull();
+  });
+
+  it('같은 날짜에 다른 소스가 보충되면 기존 봉과 보충 봉의 차이를 알린다', () => {
+    const notice = savedRangeNotice({
+      ...base, timeframe: '3m', earliestCandleDate: base.fromDate,
+      gapFill: { ...noGapFill, filledCount: 1, partialFilledCount: 1 },
+    });
+    expect(notice?.text).toBe('키움 부분 보충 1일');
+    expect(notice?.detail).toContain('기존 저장 봉을 보존');
+    expect(notice?.detail).toContain('호가 파생 지표가 추가되지 않습니다');
   });
 });
 
