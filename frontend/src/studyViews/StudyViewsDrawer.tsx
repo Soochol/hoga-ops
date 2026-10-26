@@ -1,4 +1,3 @@
-import { studyViewPeriod, studyTimeframeLabel } from './studyViewPeriod';
 import { StudyGroupDialog, type StudyGroupAction } from './StudyGroupDialog';
 import { useStudyViewReveal } from './studyViewReveal';
 import { ClearSearchIcon } from '../ui/ClearSearchIcon';
@@ -360,7 +359,6 @@ export function StudyViewsDrawer() {
       <RailTreeRow
         key={row.id}
         data-saved-row={row.id}
-        data-tooltip={`${formatStudyViewTitle(row)} (${row.code}) · ${formatStudyViewMeta(row)}${row.memo ? `\n${row.memo}` : ''}`}
         ref={handle.setActivatorNodeRef}
         {...studyViewDragListeners(canDrag ? handle.listeners : undefined)}
         data-draggable={canDrag ? '' : undefined}
@@ -460,7 +458,7 @@ export function StudyViewsDrawer() {
             <div className={`truncate text-xs ${isActive ? 'font-semibold text-accent' : 'text-fg'}`}>
               {formatStudyViewTitle(row)}
             </div>
-            <div className="truncate text-xs text-fg-dim font-data" data-tooltip={`${row.code} · ${row.timeframe === 'D' ? '' : `${studyTimeframeLabel(row.timeframe)} · `}${studyViewPeriod(row.range, row.timeframe)}`}>
+            <div className="truncate text-xs text-fg-dim font-data">
               {formatStudyViewMeta(row)}
             </div>
           </div>
@@ -568,7 +566,7 @@ export function StudyViewsDrawer() {
                             className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg disabled:opacity-40">
                             <ChevronIcon collapsed={groupCollapsed} />
                           </button>
-                          <button type="button" data-panel-drag-label data-tooltip={group.label} aria-label={`${group.label} ${group.rows.length}`}
+                          <button type="button" data-panel-drag-label aria-label={`${group.label} ${group.rows.length}`}
                             aria-expanded={!groupCollapsed} onClick={() => toggleGroup(group.key)} disabled={searching}
                             className={`flex min-w-0 flex-1 items-baseline gap-1.5 text-left ${canDrag ? 'cursor-grab' : ''}`}>
                             <span className="truncate">{group.label}</span>
