@@ -27,6 +27,16 @@ body {
   font-family: var(--font-ui);
   font-size: var(--text-base);
   line-height: 1.45;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Editing and explicitly copyable content opt out of the app's gesture UI,
+   including dialogs/tooltips rendered through body portals. Keep specificity
+   low so local select-none controls inside copyable documents still win. */
+:where(input, textarea, [contenteditable]:not([contenteditable="false"]), [role="alert"], [role="status"], .select-text) {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* 키보드 포커스 링 — DESIGN.md 색 규율에서 focus ring 은 --accent 소유인데,

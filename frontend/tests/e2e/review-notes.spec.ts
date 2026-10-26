@@ -91,7 +91,15 @@ test('날짜 목록·이전 다음·표시 옵션을 유지하고 기존 글을 
   await expect(page.getByRole('button', { name: '연필', exact: true })).toBeEnabled();
   expect((await read(request, middle.id)).scene.elements.map(el => el.id)).toEqual(ids);
   await page.getByRole('button', { name: '기존 기록 원문', exact: true }).click();
-  await expect(page.getByTestId('review-document').getByText('당시의 하루 결론', { exact: true })).toBeVisible();
+  const summary = page.getByTestId('review-document').getByText('당시의 하루 결론', { exact: true });
+  await expect(summary).toBeVisible();
+  const summaryBox = (await summary.boundingBox())!;
+  await page.mouse.move(summaryBox.x + 1, summaryBox.y + summaryBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(summaryBox.x + summaryBox.width - 1, summaryBox.y + summaryBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('하루 결론');
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   await page.getByRole('button', { name: '캔버스로 돌아가기', exact: true }).click();
   await expect(page.getByTestId('review-canvas')).toBeVisible();
   await page.getByRole('button', { name: '목록 표시 방식', exact: true }).click(); await page.getByRole('button', { name: /자세히/ }).click();
