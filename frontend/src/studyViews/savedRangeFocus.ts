@@ -11,7 +11,7 @@
  */
 import type { StudyViewListRow } from '../api/studyViews';
 import { isCalendarTimeframe, isMinuteTimeframe, isSecondTimeframe, type LiveTimeframe, type SavedRangeFocus } from '../state/livePage';
-import { initialHistoricalDaysFor, subtractDaysKst } from '../live/liveDateTime';
+import { initialHistoricalDaysFor, realMsToYyyymmdd, subtractDaysKst } from '../live/liveDateTime';
 import { STUDY_VENUE } from './studyVenuePolicy';
 
 /**
@@ -35,9 +35,12 @@ export const SAVED_RANGE_VENUE = STUDY_VENUE;
 
 /** Include the saved period and the usual amount of preceding chart context. */
 export function savedRangeCalendarFrom(focus: SavedRangeFocus | null, timeframe: LiveTimeframe): string | null {
-  return focus && isCalendarTimeframe(timeframe)
-    ? subtractDaysKst(focus.fromDate, initialHistoricalDaysFor(timeframe))
-    : null;
+  if (!focus || !isCalendarTimeframe(timeframe)) return null;
+  const contextFrom = subtractDaysKst(focus.fromDate, initialHistoricalDaysFor(timeframe));
+  const left = focus.savedLeftEdgeMs;
+  if (focus.savedTimeframe !== timeframe || left === undefined || !Number.isFinite(left)) return contextFrom;
+  const savedFrom = realMsToYyyymmdd(left);
+  return savedFrom < contextFrom ? savedFrom : contextFrom;
 }
 
 export function savedRangeFocusFromView(row: StudyViewListRow): SavedRangeFocus {
@@ -51,6 +54,7 @@ export function savedRangeFocusFromView(row: StudyViewListRow): SavedRangeFocus 
     toDate: row.range.to_date,
     savedTimeframe: row.timeframe,
     savedBarSpan: row.viewport.bar_span,
+    ...(row.viewport.left_edge_ms != null ? { savedLeftEdgeMs: row.viewport.left_edge_ms } : {}),
   };
 }
 

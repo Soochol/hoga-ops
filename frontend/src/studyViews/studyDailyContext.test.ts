@@ -96,6 +96,25 @@ describe('studyDailyViewport', () => {
   const fromMs = bars[100].ts_ms;
   const toMs = bars[139].ts_ms; // 저장 구간 40봉
 
+  it.each(['D', 'W', 'M'] as const)('restores saved %s zoom for a one-bucket range without the context cap', (timeframe) => {
+    const vp = studyDailyViewport([bars[100]], fromMs, fromMs, timeframe, { savedTimeframe: timeframe, savedBarSpan: 191.47 });
+    expect(vp).toEqual({ rightEdgeMs: fromMs, barSpan: 191.47, atLiveEdge: false });
+  });
+
+  it('uses calendar context when switching from a different saved timeframe', () => {
+    expect(studyDailyViewport(bars, fromMs, toMs, 'D', { savedTimeframe: '10m', savedBarSpan: 191.47 }))
+      .toEqual(studyDailyViewport(bars, fromMs, toMs, 'D'));
+  });
+
+  it.each([0, -1, NaN, Infinity])('falls back to calendar context for invalid saved span %s', (savedBarSpan) => {
+    expect(studyDailyViewport(bars, fromMs, toMs, 'D', { savedTimeframe: 'D', savedBarSpan }))
+      .toEqual(studyDailyViewport(bars, fromMs, toMs, 'D'));
+  });
+
+  it('waits for the saved bucket even when its saved zoom is available', () => {
+    expect(studyDailyViewport(bars, 1, 2, 'D', { savedTimeframe: 'D', savedBarSpan: 191.47 })).toBeNull();
+  });
+
   it('저장 구간 끝보다 오른쪽에 앵커를 둔다 — 이후 구간이 화면에 들어오게', () => {
     const vp = studyDailyViewport(bars, fromMs, toMs)!;
     expect(vp.rightEdgeMs).toBeGreaterThan(toMs);

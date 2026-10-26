@@ -249,6 +249,8 @@ export type SavedRangeFocus = {
   savedTimeframe: LiveTimeframe;
   /** 저장 당시 가시 봉 수. 봉이 일치할 때만 유효하다(봉 수는 봉 종류에 상대적이다). */
   savedBarSpan: number;
+  /** 같은 봉 주기의 넓은 저장 배율을 복원할 때 필요한 조회 하한. 구 저장뷰에는 없을 수 있다. */
+  savedLeftEdgeMs?: number;
   /** **이 구간은 일봉에만 있다** — 분봉 창은 이 슬롯을 무시한다.
    *
    *  저장뷰(`/study`)의 구간은 사용자가 직접 본 자리라 분봉도 디스크에 있고, 그래서

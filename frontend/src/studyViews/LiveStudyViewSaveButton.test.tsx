@@ -145,6 +145,17 @@ it('previews hogaplay coverage for the saved range', async () => {
   expect(await screen.findByLabelText('빠진 기간 수집')).toBeChecked();
 });
 
+it.each(['D', 'W', 'M', '5s'] as const)('does not offer or enqueue hogaplay capture for %s saves', async (timeframe) => {
+  createMutate.mockImplementation((_body, opts) => opts?.onSuccess?.({ id: 'new', group_id: 'g' }));
+  render(<LiveStudyViewSaveButton source={{ ...liveSource(), timeframe }} />, { wrapper });
+  await userEvent.click(screen.getByRole('button', { name: '현재 뷰 저장' }));
+  expect(screen.queryByLabelText('빠진 기간 수집')).not.toBeInTheDocument();
+  expect(coveragePreviewMock).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: '저장' }));
+  await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
+  expect(bulkItemsMock).not.toHaveBeenCalled();
+});
+
 // missing 만 넘긴다 — 이미 COMPLETE 인 날짜를 다시 넣으면 already_complete 스킵이
 // fail_streak 를 태워(ATTEMPT_CAP=5) 반복 저장이 자기 종목을 막는다.
 it('enqueues only the missing dates after a successful save', async () => {
