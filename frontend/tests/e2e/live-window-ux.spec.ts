@@ -1,6 +1,40 @@
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 
+test('앱 공통 메뉴·설정·포털 툴팁은 선택되지 않고 입력창은 마우스 선택·교체를 허용한다', async ({ page }) => {
+  await installLiveMocks(page);
+  await page.goto('/live');
+  const menu = page.getByRole('navigation', { name: '주요 메뉴' });
+  await expect(menu).toHaveCSS('user-select', 'none');
+  await menu.getByRole('button', { name: '설정', exact: true }).click();
+  const settings = page.getByTestId('settings-shell');
+  const scope = settings.getByText('앱 전체에 적용', { exact: true });
+  await expect(scope).toHaveCSS('user-select', 'none');
+  const labelBox = (await scope.boundingBox())!;
+  await page.mouse.move(labelBox.x + 1, labelBox.y + labelBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(labelBox.x + labelBox.width - 1, labelBox.y + labelBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('');
+
+  const input = settings.getByRole('textbox', { name: '설정 필터' });
+  await expect(input).toHaveCSS('user-select', 'text');
+  await input.fill('선택검증');
+  const inputBox = (await input.boundingBox())!;
+  await page.mouse.move(inputBox.x + 2, inputBox.y + inputBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(inputBox.x + inputBox.width - 2, inputBox.y + inputBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => input.evaluate((el: HTMLInputElement) => el.value.slice(el.selectionStart!, el.selectionEnd!))).toBe('선택검증');
+  await input.press('Backspace');
+  await expect(input).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await expect(settings).toHaveCount(0);
+  await page.getByRole('link', { name: 'Ticklane 홈' }).hover();
+  await expect(page.getByRole('tooltip')).toHaveText('홈으로 이동');
+  await expect(page.getByRole('tooltip')).toHaveCSS('user-select', 'none');
+});
+
 test('창 최대화·Escape 복원은 원래 배치를 보존한다', async ({ page }) => {
   await installLiveMocks(page);
   await page.goto('/live');

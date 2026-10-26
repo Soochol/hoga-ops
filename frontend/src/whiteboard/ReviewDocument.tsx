@@ -46,7 +46,7 @@ export function ReviewDocument({ session, save, editing, server, onError, previo
     if (!writePreference(key, next)) onError('읽기 위치를 기억하지 못했습니다. 노트 내용은 별도로 자동 저장합니다');
   }
   const allOpen = note.records.length > 0 && note.records.every(r => view.expanded.includes(r.id));
-  return <article className="rn-document" ref={body} data-testid="review-document" onScroll={() => {
+  return <article className="rn-document select-text" ref={body} data-testid="review-document" onScroll={() => {
     currentView.current = { ...currentView.current, scroll: body.current?.scrollTop ?? 0 };
     clearTimeout(timer.current);
     timer.current = setTimeout(() => writePreference(key, currentView.current), 250);

@@ -25,18 +25,11 @@
 .live-workspace > [data-testid="workspace-live-toolbar"] button { font-size: var(--text-sm); }
 .live-window {
   container-type: inline-size;
-  -webkit-user-select: none;
-  user-select: none;
   /* Investor estimate is the reference: data 11.5px, metadata 10.5px.
      Keep these roles local so shared sidebar cards retain their other layouts. */
   --live-text-data: var(--text-sm);
   --live-text-meta: var(--text-xs);
   font-size: var(--live-text-data);
-}
-/* Keep editing and copyable content available inside otherwise gesture-driven windows. */
-.live-window :is(input, textarea, [contenteditable]:not([contenteditable="false"]), [role="alert"], [role="status"], .select-text) {
-  -webkit-user-select: text;
-  user-select: text;
 }
 .live-window .live-window-titlebar {
   height: auto;

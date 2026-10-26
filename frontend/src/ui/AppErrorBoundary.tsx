@@ -71,7 +71,7 @@ export default class AppErrorBoundary extends Component<Props, State> {
               : '예기치 못한 오류로 화면 렌더링이 중단되었습니다. 아래 내용을 복사해 두시면 원인 파악에 도움이 됩니다'}
           </p>
 
-          <div className="text-xs font-data break-all bg-bg-subtle border border-border rounded p-3 text-error">
+          <div className="select-text text-xs font-data break-all bg-bg-subtle border border-border rounded p-3 text-error">
             {error.message || String(error)}
           </div>
 
@@ -80,7 +80,7 @@ export default class AppErrorBoundary extends Component<Props, State> {
               <summary className="cursor-pointer text-fg-dim select-none">
                 컴포넌트 스택
               </summary>
-              <pre className="mt-2 whitespace-pre-wrap break-all font-data bg-bg-subtle border border-border rounded p-3 max-h-64 overflow-auto">
+              <pre className="select-text mt-2 whitespace-pre-wrap break-all font-data bg-bg-subtle border border-border rounded p-3 max-h-64 overflow-auto">
                 {componentStack}
               </pre>
             </details>
