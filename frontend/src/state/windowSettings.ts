@@ -1,6 +1,6 @@
 import { createContext } from 'react';
 import { create } from 'zustand';
-import { normalizeChartDisplayPrefs } from './chartDisplayPrefs';
+import { HIGH_LOW_WINDOW_PREF_KEYS, normalizeChartDisplayPrefs } from './chartDisplayPrefs';
 import { persistJson, readJsonObject } from './persist';
 
 /** Add a typed section here to share validation, persistence and preset transport.
@@ -24,12 +24,21 @@ export function normalizeWindowSettings(raw: unknown, kind?: string, fillDefault
     .map(([key, def]) => [key, def.normalize(source[key])])) as WindowSettings;
 }
 
-export function normalizeWindowSettingsSnapshot(raw: unknown): { schema_version: 1; byWindow: Record<string, WindowSettings> } {
+export function normalizeWindowSettingsSnapshot(raw: unknown, legacyChartPrefs?: unknown): { schema_version: 1; byWindow: Record<string, WindowSettings> } {
   const source = object(raw);
   const entries = source.schema_version === 1 ? Object.entries(object(source.byWindow)) : [];
   return { schema_version: 1, byWindow: Object.fromEntries(entries
     .filter(([id, value]) => id && !['__proto__', 'prototype', 'constructor'].includes(id) && value && typeof value === 'object' && !Array.isArray(value))
-    .slice(0, 1024).map(([id, value]) => [id, normalizeWindowSettings(value)])) };
+    .slice(0, 1024).map(([id, value]) => {
+      const settings = object(value);
+      const chart = object(settings.chart);
+      // Existing chart sections predate these fields. Inherit only absent keys;
+      // explicit false, theme colors and widths always win over legacy globals.
+      const inherited = Object.fromEntries(HIGH_LOW_WINDOW_PREF_KEYS
+        .filter(key => !Object.hasOwn(chart, key)).map(key => [key, object(legacyChartPrefs)[key]]));
+      return [id, normalizeWindowSettings(Object.hasOwn(settings, 'chart')
+        ? { ...settings, chart: { ...inherited, ...chart } } : settings)];
+    })) };
 }
 
 type WindowSettingsStore = {
@@ -41,7 +50,7 @@ type WindowSettingsStore = {
 };
 
 export const useWindowSettingsStore = create<WindowSettingsStore>((set, get) => ({
-  byWindow: normalizeWindowSettingsSnapshot(readJsonObject(WINDOW_SETTINGS_KEY)).byWindow,
+  byWindow: normalizeWindowSettingsSnapshot(readJsonObject(WINDOW_SETTINGS_KEY), readJsonObject('hoga.chart.prefs.v1')).byWindow,
   seed: (id, defaults, sourceId) => {
     const current = get().byWindow[id];
     if (current && Object.keys(defaults).every(section => Object.hasOwn(current, section))) return;
@@ -88,7 +97,7 @@ if (import.meta.hot) import.meta.hot.dispose(stop);
 export function subscribeToWindowSettingsStorage(): () => void {
   const onStorage = (event: StorageEvent) => {
     if (event.key !== WINDOW_SETTINGS_KEY) return;
-    useWindowSettingsStore.setState({ byWindow: normalizeWindowSettingsSnapshot(readJsonObject(WINDOW_SETTINGS_KEY)).byWindow });
+    useWindowSettingsStore.setState({ byWindow: normalizeWindowSettingsSnapshot(readJsonObject(WINDOW_SETTINGS_KEY), readJsonObject('hoga.chart.prefs.v1')).byWindow });
   };
   window.addEventListener('storage', onStorage);
   return () => window.removeEventListener('storage', onStorage);

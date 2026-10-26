@@ -28,6 +28,7 @@ async function open(page: Page, id: string) {
   const panel = page.getByRole('dialog', { name: '차트 설정', exact: true });
   await expect(panel.getByText('이 차트에 적용', { exact: true })).toBeVisible();
   await panel.getByLabel('차트 거꾸로 보기 세부 설정').click();
+  await panel.getByLabel('고저 극값 라벨 세부 설정').click();
   const volumeDetails = panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정');
   if (await volumeDetails.isVisible()) await volumeDetails.click();
   return panel;
@@ -274,7 +275,9 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   await scaleFixtures(page);
   await page.goto('/live');
   const a = await open(page, 'a');
-  for (const def of CHART_DISPLAY_TOGGLES) {
+  const editOrder = [...CHART_DISPLAY_TOGGLES.filter(def => def.key !== 'highLowLabelsEnabled'),
+    ...CHART_DISPLAY_TOGGLES.filter(def => def.key === 'highLowLabelsEnabled')];
+  for (const def of editOrder) {
     const toggle = a.getByRole('switch', { name: def.label, exact: true });
     await expect(toggle).toHaveAttribute('aria-checked', String(initial[def.key]));
     await toggle.click();
@@ -531,3 +534,104 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
     expect(errors).toEqual([]);
   });
 }
+
+test('고저 라벨과 가격선 스타일은 실제 캔버스·되돌리기·저장에서 차트별로 독립적이다', async ({ page }, info) => {
+  await setup(page, 'D');
+  await scaleFixtures(page);
+  await page.goto('/live');
+  await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts?.get('b')?.panes()[0]
+    .getSeries().find(s => s.seriesType() === 'Candlestick')?.data().length ?? 0)).toBeGreaterThan(3);
+  await page.evaluate(async () => {
+    for (const chart of (window as ChartsWindow).__liveCharts!.values()) {
+      const candle = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
+      chart.timeScale().setVisibleLogicalRange({ from: -1, to: candle.data().length + 2 });
+    }
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+  const pixels = (id: string) => page.evaluate(id => {
+    const chart = (window as ChartsWindow).__liveCharts!.get(id)!;
+    const candle = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick') as ISeriesApi<'Candlestick'>;
+    const low = Math.min(...candle.data().filter(r => 'low' in r).map(r => r.low));
+    const canvas = chart.takeScreenshot(), box = chart.chartElement().getBoundingClientRect();
+    const sx = canvas.width / box.width, sy = canvas.height / box.height;
+    const x = Math.round(chart.timeScale().width() * .35 * sx);
+    const y = Math.max(0, Math.round(candle.priceToCoordinate(low)! * sy) - 6);
+    const bytes = canvas.getContext('2d')!.getImageData(x, y, Math.round(chart.timeScale().width() * .4 * sx), 12).data;
+    let hash = 2166136261;
+    for (const byte of bytes) hash = Math.imul(hash ^ byte, 16777619);
+    return hash >>> 0;
+  }, id);
+  const before = { a: await pixels('a'), b: await pixels('b') };
+  let panel = await open(page, 'a');
+  await expect(panel.getByRole('heading', { name: '가격 표시', exact: true })).toBeVisible();
+  await panel.getByRole('switch', { name: '저가 가격선', exact: true }).click();
+  await expect.poll(() => pixels('a')).not.toBe(before.a);
+  expect(await pixels('b')).toBe(before.b);
+  await panel.getByRole('button', { name: '저가 가격선 스타일 선택', exact: true }).click();
+  await page.getByRole('button', { name: '저가 가격선 색상 #22C55E', exact: true }).click();
+  const colored = await pixels('a');
+  await panel.getByRole('button', { name: '저가 가격선 스타일 선택', exact: true }).click();
+  await page.getByRole('button', { name: '저가 가격선 굵기 4px', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeVisible();
+  await expect.poll(() => pixels('a')).not.toBe(colored);
+  expect(await pixels('b')).toBe(before.b);
+  await panel.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await expect.poll(() => pixels('a')).toBe(colored);
+  await panel.getByRole('button', { name: '저가 가격선 스타일 선택', exact: true }).click();
+  await page.getByRole('button', { name: '저가 가격선 굵기 3px', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('hoga.window.settings.v1')!).byWindow;
+    return [saved.a.chart.highLowLowLineColor, saved.a.chart.highLowLowLineWidth,
+      saved.b.chart.highLowLowLineColor, saved.b.chart.highLowLowLineWidth];
+  })).toEqual(['#22C55E', 3, '', 1]);
+  await panel.getByRole('switch', { name: '고저 극값 라벨', exact: true }).click();
+  await expect.poll(() => pixels('a')).toBe(before.a);
+  expect(await pixels('b')).toBe(before.b);
+  await page.keyboard.press('Escape');
+  await page.reload();
+  panel = await open(page, 'a');
+  await expect(panel.getByRole('switch', { name: '고저 극값 라벨', exact: true })).toHaveAttribute('aria-checked', 'false');
+  await expect(panel.getByRole('switch', { name: '저가 가격선', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await panel.getByRole('switch', { name: '고저 극값 라벨', exact: true }).click();
+  await panel.getByRole('button', { name: '저가 가격선 스타일 선택', exact: true }).click();
+  await expect(page.getByRole('button', { name: '저가 가격선 색상 #22C55E', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: '저가 가격선 굵기 3px', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+  await page.screenshot({ path: info.outputPath('per-chart-high-low-settings.png') });
+  const legacy = await page.evaluate(() => JSON.parse(localStorage.getItem('hoga.chart.prefs.v1')!));
+  expect(legacy.highLowLabelsEnabled).toBe(true);
+  expect(legacy.highLowLowLineEnabled).toBe(false);
+});
+
+test('기존 차트 설정에 없던 고저 필드는 전역값을 한 번만 이관한다', async ({ page }) => {
+  await setup(page);
+  await scaleFixtures(page);
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('highlow-migration-fixture')) return;
+    sessionStorage.setItem('highlow-migration-fixture', '1');
+    const legacy = JSON.parse(localStorage.getItem('hoga.chart.prefs.v1')!);
+    Object.assign(legacy, { highLowLabelsEnabled: false, highLowLowLineEnabled: true,
+      highLowLowLineColor: '#22C55E', highLowLowLineWidth: 3 });
+    localStorage.setItem('hoga.chart.prefs.v1', JSON.stringify(legacy));
+    const chart = Object.fromEntries(Object.entries(legacy).filter(([key]) => !key.startsWith('highLow')));
+    localStorage.setItem('hoga.window.settings.v1', JSON.stringify({ schema_version: 1, byWindow: { a: { chart }, b: { chart } } }));
+  });
+  await page.goto('/live');
+  const panel = await open(page, 'a');
+  await expect(panel.getByRole('switch', { name: '고저 극값 라벨', exact: true })).toHaveAttribute('aria-checked', 'false');
+  await expect(panel.getByRole('switch', { name: '저가 가격선', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await panel.getByRole('switch', { name: '고저 극값 라벨', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page.reload();
+  let restored = await open(page, 'a');
+  await expect(restored.getByRole('switch', { name: '고저 극값 라벨', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  restored = await open(page, 'b');
+  await expect(restored.getByRole('switch', { name: '고저 극값 라벨', exact: true })).toHaveAttribute('aria-checked', 'false');
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('hoga.window.settings.v1')!).byWindow;
+    return ['a', 'b'].map(id => [saved[id].chart.highLowLowLineColor, saved[id].chart.highLowLowLineWidth]);
+  })).toEqual([['#22C55E', 3], ['#22C55E', 3]]);
+});

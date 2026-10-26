@@ -28,7 +28,7 @@ function safeTree(value: unknown, depth = 0): void {
     }
   }
 }
-function normalizeEntry(key: string, value: unknown): unknown {
+function normalizeEntry(key: string, value: unknown, legacyChartPrefs?: unknown): unknown {
   if (!object(value)) throw new Error(`설정 형식이 올바르지 않습니다: ${key}`);
   if (key === WORKSPACE_STORAGE_KEY) {
     if (value.schema_version !== WORKSPACE_SCHEMA_VERSION || !Array.isArray(value.windows) || !value.windows.length || value.windows.length > 64 || !Array.isArray(value.zOrder)) {
@@ -42,7 +42,7 @@ function normalizeEntry(key: string, value: unknown): unknown {
   if (key === INDICATORS_V2_STORAGE_KEY) return normalizeIndicatorsV2(value);
   if (key === WINDOW_SETTINGS_KEY) {
     if (value.schema_version !== 1) throw new Error('지원하지 않는 창 설정 버전입니다.');
-    return normalizeWindowSettingsSnapshot(value);
+    return normalizeWindowSettingsSnapshot(value, legacyChartPrefs);
   }
   if (key === CHART_PREFS_KEY) return { ...mergePrefs(value), indicatorModalByTimeframe: mergeIndicatorModalByTimeframe(value), indicatorModalByWindow: mergeIndicatorModalByWindow(value) };
   if (key === 'ui.themePreference.v1') {
@@ -77,7 +77,7 @@ export function parseSettingsArchive(text: string): SettingsArchive {
   if (!keys.length || keys.length > 1000) throw new Error('설정 항목 수가 올바르지 않습니다.');
   for (const key of keys) {
     if (!FIXED_KEYS.has(key) && !DRAWING_KEY.test(key)) throw new Error(`이전할 수 없는 설정입니다: ${key}`);
-    entries[key] = normalizeEntry(key, raw.entries[key]);
+    entries[key] = normalizeEntry(key, raw.entries[key], raw.entries[CHART_PREFS_KEY]);
   }
   return { format: 'hoga-user-settings', version: 1, origin: raw.origin, appVersion: raw.appVersion, createdAt: raw.createdAt, entries };
 }
@@ -87,7 +87,7 @@ export function exportSettings(storage: Storage, origin: string, appVersion: str
   for (const key of Object.keys(storage)) {
     if (!FIXED_KEYS.has(key) && !DRAWING_KEY.test(key)) continue;
     const raw = storage.getItem(key);
-    if (raw !== null) entries[key] = normalizeEntry(key, JSON.parse(raw));
+    if (raw !== null) entries[key] = normalizeEntry(key, JSON.parse(raw), JSON.parse(storage.getItem(CHART_PREFS_KEY) ?? 'null'));
   }
   if (!Object.keys(entries).length) throw new Error('내보낼 화면 설정이 없습니다.');
   return { format: 'hoga-user-settings', version: 1, origin, appVersion, createdAt: new Date().toISOString(), entries };

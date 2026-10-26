@@ -10,6 +10,17 @@ function archive(entries: Record<string, unknown>): SettingsArchive {
 }
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks(); });
 describe('settings transfer boundary', () => {
+  it('imports old window sections using the archive globals for missing high/low fields', () => {
+    const input = archive({
+      [WINDOW_SETTINGS_KEY]: { schema_version: 1, byWindow: { a: { chart: { candleLogScale: true } } } },
+      'hoga.chart.prefs.v1': { highLowLabelsEnabled: false, highLowPriorHighLineColor: '#123456', highLowPriorHighLineWidth: 3 },
+    });
+    applySettings(localStorage, input);
+    const imported = JSON.parse(localStorage.getItem(WINDOW_SETTINGS_KEY)!);
+    expect(imported.byWindow.a.chart).toMatchObject({ candleLogScale: true, highLowLabelsEnabled: false,
+      highLowPriorHighLineColor: '#123456', highLowPriorHighLineWidth: 3 });
+    expect(exportSettings(localStorage, 'http://new-server:8000', '0.16.6.0').entries[WINDOW_SETTINGS_KEY]).toEqual(imported);
+  });
   it('roundtrips window settings while preserving explicitly disabled options', () => {
     const entry = { schema_version: 1, byWindow: { a: { chart: { ...DEFAULT_CHART_DISPLAY_PREFS, auctionWindowMask: false } } } };
     applySettings(localStorage, archive({ [WINDOW_SETTINGS_KEY]: entry }));

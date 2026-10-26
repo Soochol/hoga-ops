@@ -10,6 +10,29 @@ beforeEach(() => useWindowSettingsStore.setState({ byWindow: {} }));
 afterEach(() => useChartPrefsStore.setState(initial, true));
 
 describe('chart display settings', () => {
+  it('owns high/low line styles and their undo in the edited chart only', async () => {
+    useWindowSettingsStore.getState().patch('b', 'chart', { highLowHighLineColor: '#123456', highLowHighLineWidth: 2 });
+    render(<ChartDisplaySettings windowId="a" />);
+    const details = screen.getByLabelText('고저 극값 라벨 세부 설정');
+    expect(details.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(details);
+    expect(screen.getByRole('switch', { name: '고가 가격선' })).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(screen.getByRole('switch', { name: '고가 가격선' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 스타일 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 색상 #22C55E' }));
+    await waitFor(() => expect(useWindowSettingsStore.getState().byWindow.a.chart!.highLowHighLineColor).toBe('#22C55E'));
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 스타일 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 굵기 4px' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    expect(useWindowSettingsStore.getState().byWindow.a.chart!.highLowHighLineWidth).toBe(4);
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    await waitFor(() => expect(useWindowSettingsStore.getState().byWindow.a.chart!.highLowHighLineWidth).toBe(1));
+    expect(useWindowSettingsStore.getState().byWindow.a.chart!.highLowHighLineColor).toBe('#22C55E');
+    expect(useWindowSettingsStore.getState().byWindow.b.chart).toMatchObject({ highLowHighLineColor: '#123456', highLowHighLineWidth: 2 });
+    expect(useChartPrefsStore.getState()).toMatchObject({ highLowHighLineEnabled: false, highLowHighLineColor: '', highLowHighLineWidth: 1 });
+  });
   it('shows overlay styles only when on, applies them locally and undoes color edits through the palette portal', async () => {
     render(<ChartDisplaySettings windowId="a" />);
     expect(screen.queryByRole('slider', { name: '거래량 투명도' })).toBeNull();
@@ -57,7 +80,10 @@ describe('chart display settings', () => {
   it('edits window prefs without changing global values and undoes only the last changed field', async () => {
     render(<ChartDisplaySettings windowId="a" />);
     fireEvent.click(screen.getByLabelText('차트 거꾸로 보기 세부 설정'));
-    const definitions = CHART_DISPLAY_TOGGLES;
+    fireEvent.click(screen.getByLabelText('고저 극값 라벨 세부 설정'));
+    // Edit dependent lines while the master is on, then test turning it off.
+    const definitions = [...CHART_DISPLAY_TOGGLES.filter(def => def.key !== 'highLowLabelsEnabled'),
+      ...CHART_DISPLAY_TOGGLES.filter(def => def.key === 'highLowLabelsEnabled')];
     expect(screen.getAllByRole('switch')).toHaveLength(definitions.length);
     for (const def of definitions) {
       const original = useWindowSettingsStore.getState().byWindow.a.chart![def.key];

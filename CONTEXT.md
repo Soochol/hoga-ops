@@ -486,6 +486,10 @@ _Avoid_: **등락률** / **전일대비** (vs 전일종가) and **봉대비** (v
 
 **High/Low Extreme Labels (고저 극값 라벨)**:
 Red highest-high and blue lowest-low annotations within the visible chart range, showing price and **극값 대비율** against the rightmost visible candle's close. Labels preserve candle visibility by shortening to price or a small extreme mark when space is limited; hovering reveals price, gap and time, while optional **극값 가격선** remain independently visible.
+2026-10-26: 차트 헤더의 `차트 설정 → 가격 표시`에서 창별로 편집한다. 라벨과
+고가·저가·이전일 고저선의 표시·색상·두께는 모두 같은 창 설정에 저장하며 종목·봉과
+독립적이다. 구 창 설정에는 누락 필드만 종전 전역값에서 한 번 이관한다. 앱 설정에는
+해당 항목과 하위 가격선·스타일을 노출하지 않는다.
 _Avoid_: calling the gap **등락률** (that means change against the previous close); treating the basis as the global live quote when viewing history; assuming price, percentage and time must always remain on the canvas; accepting opaque label overlap with candles or legends as the space-shortage fallback.
 
 **Watchlist Folder**:

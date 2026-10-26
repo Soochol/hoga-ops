@@ -1,4 +1,4 @@
-import { CHART_DISPLAY_TOGGLES, DEFAULT_VOLUME_OVERLAY_STYLE, isChartDisplayPrefKey, normalizeChartDisplayPrefs, type ChartDisplayPrefs, type VolumeOverlayStyle } from './chartDisplayPrefs';
+import { CHART_DISPLAY_TOGGLES, CHART_DISPLAY_LINE_STYLES, DEFAULT_VOLUME_OVERLAY_STYLE, isChartDisplayPrefKey, normalizeChartDisplayPrefs, type ChartDisplayPrefs, type VolumeOverlayStyle } from './chartDisplayPrefs';
 import { useWindowSettingsStore, WindowSettingsScope } from './windowSettings';
 /**
  * Declarative registry of boolean chart toggles. Each entry surfaces in the
@@ -68,42 +68,6 @@ export const CHART_TOGGLES = [
     description: '같은 창 번호·봉 종류끼리 이동·배율을 맞춥니다. 분봉은 제외하며, 종목 범위는 위 설정을 따릅니다. 직접 이동할 때만 동기화합니다.',
     default: true,
     group: 'sync',
-  },
-  // ── 차트 › 가격 표시 ───────────────────────────────────────────────
-  {
-    key: 'highLowLabelsEnabled',
-    label: '고저 극값 라벨',
-    description: '보이는 구간의 최고·최저가와 마지막 봉 종가의 대비율을 표시합니다. 자세한 값은 마우스를 올려 확인합니다.',
-    default: true,
-    group: 'price',
-  },
-  {
-    key: 'highLowHighLineEnabled',
-    label: '고가 가격선',
-    description: '보이는 구간의 최고가에 수평 점선을 표시합니다.',
-    default: false,
-    enabledBy: 'highLowLabelsEnabled',
-  },
-  {
-    key: 'highLowLowLineEnabled',
-    label: '저가 가격선',
-    description: '보이는 구간의 최저가에 수평 점선을 표시합니다.',
-    default: false,
-    enabledBy: 'highLowLabelsEnabled',
-  },
-  {
-    key: 'highLowPriorHighLineEnabled',
-    label: '이전일 고가선',
-    description: '보이는 구간에서 마지막 거래일을 뺀 이전 날들의 최고가를 표시합니다.',
-    default: false,
-    enabledBy: 'highLowLabelsEnabled',
-  },
-  {
-    key: 'highLowPriorLowLineEnabled',
-    label: '이전일 저가선',
-    description: '보이는 구간에서 마지막 거래일을 뺀 이전 날들의 최저가를 표시합니다.',
-    default: false,
-    enabledBy: 'highLowLabelsEnabled',
   },
   {
     key: 'surgeMarkerEnabled',
@@ -250,7 +214,7 @@ export const CHART_TOGGLE_GROUPS = [
 export type ChartToggleGroupId = (typeof CHART_TOGGLE_GROUPS)[number]['id'];
 
 /** These groups appear only in the candle chart title-bar settings popover. */
-export const CHART_DISPLAY_GROUP_IDS: readonly ChartToggleGroupId[] = ['candle', 'grid'];
+export const CHART_DISPLAY_GROUP_IDS: readonly ChartToggleGroupId[] = ['candle', 'grid', 'price'];
 
 /** Resolve a CHART_TOGGLES entry's settings-modal subgroup, or undefined for
  *  entries that don't render as top-level settings rows (indicator-modal
@@ -488,36 +452,7 @@ export type LineStylePrefDef = {
   readonly defaultWidth: ChartLineWidth;
 };
 
-export const CHART_LINE_STYLES = [
-  {
-    key: 'highLowHighLine',
-    label: '고가 가격선',
-    enabledBy: 'highLowHighLineEnabled',
-    direction: 'up',
-    defaultWidth: 1,
-  },
-  {
-    key: 'highLowLowLine',
-    label: '저가 가격선',
-    enabledBy: 'highLowLowLineEnabled',
-    direction: 'down',
-    defaultWidth: 1,
-  },
-  {
-    key: 'highLowPriorHighLine',
-    label: '이전일 고가선',
-    enabledBy: 'highLowPriorHighLineEnabled',
-    direction: 'up',
-    defaultWidth: 1,
-  },
-  {
-    key: 'highLowPriorLowLine',
-    label: '이전일 저가선',
-    enabledBy: 'highLowPriorLowLineEnabled',
-    direction: 'down',
-    defaultWidth: 1,
-  },
-] as const satisfies readonly LineStylePrefDef[];
+export const CHART_LINE_STYLES = CHART_DISPLAY_LINE_STYLES satisfies readonly LineStylePrefDef[];
 
 export type ChartLineStyleKey = (typeof CHART_LINE_STYLES)[number]['key'];
 
@@ -987,6 +922,20 @@ function useDisplayWindowId(): string | null {
 function useWindowDisplayPrefs(): ChartDisplayPrefs | undefined {
   const id = useDisplayWindowId();
   return useWindowSettingsStore(state => id ? state.byWindow[id]?.chart : undefined);
+}
+
+/** Price-line styles use the same window owner as their enable toggles. */
+export function useChartLineStyleActions(): ChartPrefsStore['setLineStyle'] {
+  const windowId = useDisplayWindowId();
+  return (key, patch) => {
+    if (!windowId) return useChartPrefsStore.getState().setLineStyle(key, patch);
+    const settings = useWindowSettingsStore.getState();
+    settings.seed(windowId, { chart: normalizeChartDisplayPrefs(useChartPrefsStore.getState()) });
+    settings.patch(windowId, 'chart', {
+      ...(patch.color !== undefined ? { [`${key}Color`]: patch.color } : {}),
+      ...(patch.lineWidth !== undefined ? { [`${key}Width`]: patch.lineWidth } : {}),
+    });
+  };
 }
 
 /** 창 스코프로 resolve 된 prefs 전체 — 드로어의 설정 행처럼 여러 키를 한꺼번에

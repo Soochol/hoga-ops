@@ -79,6 +79,73 @@ export const CHART_DISPLAY_TOGGLES = [
     default: true,
     group: 'grid',
   },
+  // ── 차트 › 가격 표시 ───────────────────────────────────────────────
+  {
+    key: 'highLowLabelsEnabled',
+    label: '고저 극값 라벨',
+    description: '보이는 구간의 최고·최저가와 마지막 봉 종가의 대비율을 표시합니다. 자세한 값은 마우스를 올려 확인합니다.',
+    default: true,
+    group: 'price',
+  },
+  {
+    key: 'highLowHighLineEnabled',
+    label: '고가 가격선',
+    description: '보이는 구간의 최고가에 수평 점선을 표시합니다.',
+    default: false,
+    enabledBy: 'highLowLabelsEnabled',
+  },
+  {
+    key: 'highLowLowLineEnabled',
+    label: '저가 가격선',
+    description: '보이는 구간의 최저가에 수평 점선을 표시합니다.',
+    default: false,
+    enabledBy: 'highLowLabelsEnabled',
+  },
+  {
+    key: 'highLowPriorHighLineEnabled',
+    label: '이전일 고가선',
+    description: '보이는 구간에서 마지막 거래일을 뺀 이전 날들의 최고가를 표시합니다.',
+    default: false,
+    enabledBy: 'highLowLabelsEnabled',
+  },
+  {
+    key: 'highLowPriorLowLineEnabled',
+    label: '이전일 저가선',
+    description: '보이는 구간에서 마지막 거래일을 뺀 이전 날들의 최저가를 표시합니다.',
+    default: false,
+    enabledBy: 'highLowLabelsEnabled',
+  },
+] as const;
+
+export const CHART_DISPLAY_LINE_STYLES = [
+  {
+    key: 'highLowHighLine',
+    label: '고가 가격선',
+    enabledBy: 'highLowHighLineEnabled',
+    direction: 'up',
+    defaultWidth: 1,
+  },
+  {
+    key: 'highLowLowLine',
+    label: '저가 가격선',
+    enabledBy: 'highLowLowLineEnabled',
+    direction: 'down',
+    defaultWidth: 1,
+  },
+  {
+    key: 'highLowPriorHighLine',
+    label: '이전일 고가선',
+    enabledBy: 'highLowPriorHighLineEnabled',
+    direction: 'up',
+    defaultWidth: 1,
+  },
+  {
+    key: 'highLowPriorLowLine',
+    label: '이전일 저가선',
+    enabledBy: 'highLowPriorLowLineEnabled',
+    direction: 'down',
+    defaultWidth: 1,
+  },
 ] as const;
 
 export type ChartDisplayPrefKey = (typeof CHART_DISPLAY_TOGGLES)[number]['key'];
@@ -89,11 +156,23 @@ export const DEFAULT_VOLUME_OVERLAY_STYLE = {
   volumeOverlayDownColor: '',
 };
 export type VolumeOverlayStyle = typeof DEFAULT_VOLUME_OVERLAY_STYLE;
-export type ChartDisplayPrefs = Record<ChartDisplayPrefKey, boolean> & VolumeOverlayStyle;
+export type ChartDisplayLineStyleKey = (typeof CHART_DISPLAY_LINE_STYLES)[number]['key'];
+export type ChartDisplayLineStyles = { [K in ChartDisplayLineStyleKey as `${K}Color`]: string }
+  & { [K in ChartDisplayLineStyleKey as `${K}Width`]: 1 | 2 | 3 | 4 };
+export const CHART_DISPLAY_LINE_DEFAULTS = Object.fromEntries(CHART_DISPLAY_LINE_STYLES.flatMap(def => [
+  [`${def.key}Color`, ''], [`${def.key}Width`, def.defaultWidth],
+])) as ChartDisplayLineStyles;
+export type ChartDisplayPrefs = Record<ChartDisplayPrefKey, boolean> & VolumeOverlayStyle & ChartDisplayLineStyles;
+/** Only these newly window-owned fields inherit legacy values in old snapshots. */
+export const HIGH_LOW_WINDOW_PREF_KEYS = [
+  ...CHART_DISPLAY_TOGGLES.filter(def => def.key.startsWith('highLow')).map(def => def.key),
+  ...Object.keys(CHART_DISPLAY_LINE_DEFAULTS),
+] as readonly (keyof ChartDisplayPrefs)[];
 export const CHART_DISPLAY_PREF_KEYS: readonly ChartDisplayPrefKey[] = CHART_DISPLAY_TOGGLES.map(def => def.key);
 export const DEFAULT_CHART_DISPLAY_PREFS = {
   ...Object.fromEntries(CHART_DISPLAY_TOGGLES.map(def => [def.key, def.default])),
   ...DEFAULT_VOLUME_OVERLAY_STYLE,
+  ...CHART_DISPLAY_LINE_DEFAULTS,
 } as ChartDisplayPrefs;
 
 export function isChartDisplayPrefKey(key: string): key is ChartDisplayPrefKey {
@@ -109,7 +188,14 @@ export function normalizeChartDisplayPrefs(raw: unknown): ChartDisplayPrefs {
   };
   const color = (key: 'volumeOverlayUpColor' | 'volumeOverlayDownColor') =>
     typeof source[key] === 'string' && /^#[0-9a-f]{6}$/i.test(source[key]) ? source[key].toUpperCase() : '';
-  return { ...Object.fromEntries(CHART_DISPLAY_TOGGLES.map(def => [def.key,
+  const lines = Object.fromEntries(CHART_DISPLAY_LINE_STYLES.flatMap(def => {
+    const rawColor = source[`${def.key}Color`], rawWidth = source[`${def.key}Width`];
+    return [
+      [`${def.key}Color`, typeof rawColor === 'string' && /^#[0-9a-f]{6}$/i.test(rawColor) ? rawColor.toUpperCase() : ''],
+      [`${def.key}Width`, typeof rawWidth === 'number' && [1, 2, 3, 4].includes(rawWidth) ? rawWidth : def.defaultWidth],
+    ];
+  }));
+  return { ...lines, ...Object.fromEntries(CHART_DISPLAY_TOGGLES.map(def => [def.key,
     typeof source[def.key] === 'boolean' ? source[def.key] : def.default,
   ])),
   volumeOverlayTransparency: integer('volumeOverlayTransparency', 0, 100),

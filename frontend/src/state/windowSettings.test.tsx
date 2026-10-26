@@ -17,6 +17,37 @@ beforeEach(() => {
 });
 
 describe('typed window settings lifecycle', () => {
+  it('migrates missing high/low settings once while preserving existing chart and explicit line choices', () => {
+    const legacy = { highLowLabelsEnabled: false, highLowHighLineEnabled: true,
+      highLowHighLineColor: '#abcdef', highLowHighLineWidth: 4 };
+    const migrated = normalizeWindowSettingsSnapshot({ schema_version: 1, byWindow: {
+      a: { chart: { candleLogScale: true } },
+      b: { chart: { highLowLabelsEnabled: true, highLowHighLineEnabled: false,
+        highLowHighLineColor: '', highLowHighLineWidth: 2 } },
+    } }, legacy);
+    expect(migrated.byWindow.a.chart).toMatchObject({ candleLogScale: true, highLowLabelsEnabled: false,
+      highLowHighLineEnabled: true, highLowHighLineColor: '#ABCDEF', highLowHighLineWidth: 4 });
+    expect(migrated.byWindow.b.chart).toMatchObject({ highLowLabelsEnabled: true,
+      highLowHighLineEnabled: false, highLowHighLineColor: '', highLowHighLineWidth: 2 });
+    expect(normalizeWindowSettingsSnapshot(migrated, { highLowLabelsEnabled: true }).byWindow).toEqual(migrated.byWindow);
+    expect(normalizeChartDisplayPrefs({ highLowHighLineColor: 'red', highLowHighLineWidth: 8 })).toMatchObject({
+      highLowHighLineColor: '', highLowHighLineWidth: 1,
+    });
+  });
+
+  it('clones and restores high/low toggles, colors and widths through the existing window preset', () => {
+    const prefs = { highLowLabelsEnabled: false, highLowLowLineEnabled: true,
+      highLowLowLineColor: '#123456', highLowLowLineWidth: 3 as const };
+    seedSettingsForWindow(chart('a'));
+    useWindowSettingsStore.getState().patch('a', 'chart', prefs);
+    const added = useWorkspaceStore.getState().addWindow('chart');
+    expect(useWindowSettingsStore.getState().byWindow[added].chart).toMatchObject(prefs);
+    const payload = capturePresetPayload();
+    useWindowSettingsStore.getState().patch('a', 'chart', { highLowLowLineWidth: 1 });
+    expect(useWindowSettingsStore.getState().byWindow[added].chart!.highLowLowLineWidth).toBe(3);
+    applyPresetPayload(payload, null);
+    expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject(prefs);
+  });
   it('validates overlay styles and transports them through persistence, cloning and presets', () => {
     expect(normalizeChartDisplayPrefs({ volumeOverlayHeight: 0, volumeOverlayTransparency: 101,
       volumeOverlayUpColor: 'red', volumeOverlayDownColor: '#12345678' })).toMatchObject({
