@@ -3,7 +3,10 @@
 - 검증 시각: 2026-10-26 17:10 KST.
 - 작업 트리: `/home/dev/.codex/worktrees/0af5/hoga-ops`.
 - HEAD/base 및 최종 fetch한 origin/main: `ef63ac158ec4047131e96526efe741a10f4e4dda`.
-  최종 검증 후 재확인한 차이는 `0 0`이다. 변경은 이 SHA 위의 미커밋 작업 파일이다.
+  최종 검증 후 재확인한 차이는 `0 0`이다. 검증한 구현은
+  `7ff728620` (`feat(live): add full-price order ladder navigation`)에 커밋했다.
+  PR 생성 전 같은 입력 지문을 재계산해 일치함을 확인했으며, 검사 입력 변경 없이
+  이 문서의 커밋 연결 정보만 추가하므로 앞선 통과 결과를 재사용한다.
 - Node v24.13.1, npm 11.8.0, TypeScript 6.0.3, Vitest 4.1.7,
   Vite 8.0.16, Playwright 1.60.0, 시스템 Chrome 156.0.8078.47,
   Python 3.14.7. 의존성은 워크트리 안에 `npm ci`, `uv sync --extra dev --frozen`으로 설치했다.
