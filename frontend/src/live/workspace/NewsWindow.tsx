@@ -38,8 +38,7 @@ export function NewsWindow({ code, name }: { code: string; name: string }) {
 function NewsList({ code, name, date, dateControls }: { code: string; name: string; date: string | null; dateControls: ReactNode }) {
   const query = useStockNews(code, date);
   const [snapshot, setSnapshot] = useState<StockNewsResponse | null>(null);
-  const [linkedOnly, setLinkedOnly] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [linkedOnly, setLinkedOnly] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   // 첫 결과(실패 시 보존된 기사 포함)만 수용한다. 이후 배치는 읽던 목록을 밀지 않는다.
   if (!snapshot && query.data && (query.data.status === 'ok' || query.data.items.length > 0)) setSnapshot(query.data);
@@ -55,7 +54,6 @@ function NewsList({ code, name, date, dateControls }: { code: string; name: stri
   const accept = () => {
     if (fresh) {
       setSnapshot(fresh);
-      setSelected(null);
       if (listRef.current) listRef.current.scrollTop = 0;
     }
   };
@@ -90,25 +88,18 @@ function NewsList({ code, name, date, dateControls }: { code: string; name: stri
             : date ? '선택일 기사 없음 · 한국투자 조회 범위 기준' : '한국투자 조회 결과에 뉴스가 없습니다.'}
         </p>}
         {shown.map((item) => (
-          <article key={item.id} className="border-b border-border">
-            <button type="button" aria-expanded={selected === item.id} onClick={() => setSelected(selected === item.id ? null : item.id)}
-              className={`w-full px-3 py-2 text-left hover:bg-bg-subtle ${selected === item.id ? 'bg-tint-selection' : ''}`}>
-              <p className="mb-1 break-words text-sm font-medium leading-relaxed">{item.title}</p>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-dim">
-                <span>{item.source}</span>
-                <time dateTime={item.published_at_ms === null ? undefined : new Date(item.published_at_ms).toISOString()}>
-                  {item.published_at_ms === null ? '시각 미상' : timeFormat.format(item.published_at_ms)}
-                </time>
-                <span className={relation(item, code, name) === '조회 결과' ? 'text-fg-dim' : 'text-accent'}
-                  data-tooltip="한국투자 응답의 종목코드·제목 기준입니다. 기사 내용의 관련성과는 다를 수 있습니다.">
-                  {relation(item, code, name)}
-                </span>
-              </div>
-            </button>
-            {selected === item.id && <div className="px-3 pb-2 text-sm text-fg-dim">
-              제공 종목코드: {item.related_codes.join(' · ') || '없음'}
-              <p className="mt-1">제목만 제공되는 뉴스입니다. 원문·본문은 제공되지 않습니다.</p>
-            </div>}
+          <article key={item.id} className="select-text border-b border-border px-3 py-2">
+            <p className="mb-1 break-words text-sm font-medium leading-relaxed">{item.title}</p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-dim">
+              <span>{item.source}</span>
+              <time dateTime={item.published_at_ms === null ? undefined : new Date(item.published_at_ms).toISOString()}>
+                {item.published_at_ms === null ? '시각 미상' : timeFormat.format(item.published_at_ms)}
+              </time>
+              <span className={relation(item, code, name) === '조회 결과' ? 'text-fg-dim' : 'text-accent'}
+                data-tooltip="한국투자 응답의 종목코드·제목 기준입니다. 기사 내용의 관련성과는 다를 수 있습니다.">
+                {relation(item, code, name)}
+              </span>
+            </div>
           </article>
         ))}
       </div>
