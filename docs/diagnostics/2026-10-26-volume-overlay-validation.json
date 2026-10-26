@@ -1,7 +1,7 @@
 {
   "date_kst": "2026-10-26",
-  "head_sha": "1a39947bdc143f946049adf78f0e35318e7c1bc4",
-  "base_sha": "1a39947bdc143f946049adf78f0e35318e7c1bc4",
+  "head_sha": "cd54ff938649185d50bdf248265f529b5638c377",
+  "base_sha": "6b1d3c29a6e883d4119ec6b0918b262627acf3de",
   "scope": "창별 기본 거래량 오버레이와 거래량 내 누적 체결강도 제거. 프론트 변경, 백엔드/API 무변경.",
   "inputs": {
     "roots": [
@@ -12,7 +12,7 @@
     ],
     "extra_files": "frontend 최상위 package/lock/index 및 tsconfig/vite/vitest/playwright/postcss/tailwind 설정, .python-version, pyproject.toml, uv.lock, VERSION",
     "file_count": 2287,
-    "sha256": "2bb641748e4738f97239bc91b0972aebdf4a47ab58a23f6c613202635d441bb2",
+    "sha256": "85e8164b5b5567370f43107500a951e16fe9b88fffa2cb620b4cc959d05ebc80",
     "algorithm": "정렬한 각 파일의 SHA256 + 두 공백 + 저장소 상대 경로 + LF를 이어 붙인 UTF-8 문자열의 SHA256. __pycache__와 .pyc/.pyo 제외."
   },
   "environment": {
@@ -34,18 +34,17 @@
     },
     {
       "cwd": "frontend",
-      "command": "npx vitest run src/chart/projectors/volume.test.ts src/state/windowSettings.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx src/state/chartPrefs.test.ts src/live/indicators/VolumeConfig.test.tsx src/live/workspace/secondsIndicatorSettings.test.tsx src/live/LiveChartRoot.paneToggles.test.tsx src/live/indicators/IndicatorPanel.test.tsx src/live/PaneLegendOverlay.test.tsx src/live/SettingsSections.test.tsx",
+      "command": "npx vitest run src/chart/projectors/volume.test.ts src/state/windowSettings.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx src/state/chartPrefs.test.ts src/live/indicators/VolumeConfig.test.tsx src/live/workspace/secondsIndicatorSettings.test.tsx src/live/LiveChartRoot.paneToggles.test.tsx src/live/indicators/IndicatorPanel.test.tsx src/live/PaneLegendOverlay.test.tsx src/live/SettingsSections.test.tsx src/chart/StudySavedRangeBandPrimitive.test.ts src/studyViews/StudySavedRangeBandHost.test.tsx",
       "result": "passed",
-      "test_files": 10,
-      "tests": 330
+      "test_files": 12,
+      "tests": 350
     },
     {
       "cwd": "frontend",
-      "command": "npx playwright test tests/e2e/chart-window-settings.spec.ts tests/e2e/second-chart-tools.spec.ts --reporter=list",
+      "command": "npx playwright test tests/e2e/chart-window-settings.spec.ts tests/e2e/second-chart-tools.spec.ts tests/e2e/saved-view-date-restore.spec.ts tests/e2e/settings-editor.spec.ts --reporter=list",
       "result": "passed",
-      "tests": 13,
-      "workers": 1,
-      "duration_seconds": 43.5
+      "tests": 26,
+      "workers": 1
     },
     {
       "cwd": "frontend",
@@ -77,5 +76,28 @@
   "limits": [
     "라이브 벤더 실데이터·실행 중인 사용자 앱에는 적용하지 않음.",
     "반복 추가한 거래량 항목은 승인된 초기 제안대로 별도 pane 유지."
-  ]
+  ],
+  "previous_validation": {
+    "head_sha": "1a39947bdc143f946049adf78f0e35318e7c1bc4",
+    "base_sha": "1a39947bdc143f946049adf78f0e35318e7c1bc4",
+    "inputs": {
+      "roots": [
+        "frontend/src",
+        "frontend/tests",
+        "hoga",
+        "tests/fixtures"
+      ],
+      "extra_files": "frontend 최상위 package/lock/index 및 tsconfig/vite/vitest/playwright/postcss/tailwind 설정, .python-version, pyproject.toml, uv.lock, VERSION",
+      "file_count": 2287,
+      "sha256": "2bb641748e4738f97239bc91b0972aebdf4a47ab58a23f6c613202635d441bb2",
+      "algorithm": "정렬한 각 파일의 SHA256 + 두 공백 + 저장소 상대 경로 + LF를 이어 붙인 UTF-8 문자열의 SHA256. __pycache__와 .pyc/.pyo 제외."
+    },
+    "unit_tests": 330,
+    "e2e_tests": 13
+  },
+  "merge_validation": "main의 #2299(저장 기간 채움 농도)를 반영하고 공통 chartPrefs·설정 편집·저장 기간 밴드의 영향을 포함해 타입 검사·단위 350개·E2E 26개·빌드를 재실행했다.",
+  "open_pr_overlap": {
+    "1927": [],
+    "1726": []
+  }
 }
