@@ -36,7 +36,8 @@ vi.mock('../../api/trading', () => ({
 }));
 vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => i < mock.askCount ? { price: 67300 + mock.priceOffset + i * 100, qty: 100 + i } : { price: 0, qty: 0 }), bids: Array.from({ length: 10 }, (_, i) => i < mock.bidCount ? { price: 67200 + mock.priceOffset - i * 100, qty: 200 + i } : { price: 0, qty: 0 }), total_ask_qty: 1000, total_bid_qty: 2000, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }, trade: [], afterHours: [] })) }));
 vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }]])) }));
-vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 70000, low_250: 50000 } }) }));
+const stockLimitsState = vi.hoisted(() => ({ code: '005930', dateOffset: 0, lower: 46200 as number | null }));
+vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { code: stockLimitsState.code, fetched_at_ms: mock.now + stockLimitsState.dateOffset, base_price: 66000, upper_limit: 85800, lower_limit: stockLimitsState.lower, high_250: 70000, low_250: 50000 } }) }));
 vi.mock('../../api/liveKrxClose', () => ({ useLiveKrxClose: () => ({ data: { date: '20261013', price: 67100 } }) }));
 vi.mock('../../api/liveKrxPreviousClose', () => ({ useLiveKrxPreviousClose: (code: string | null, asOf: string) => (
   { data: code ? { code, as_of: asOf, session_date: asOf, date: '20261012', price: 65000 } : undefined }
@@ -68,6 +69,7 @@ function enableReceiptSound() {
   fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
 }
 beforeEach(() => {
+  stockLimitsState.code = '005930'; stockLimitsState.dateOffset = 0; stockLimitsState.lower = 46200;
   restBookQuery.data = undefined; restBookQuery.isLoading = false; restBookQuery.isError = false;
   restBookQuery.refetch.mockReset();
   afterHoursBook.data = undefined;
@@ -81,6 +83,74 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it.each(['missing', 'wrong-code', 'yesterday'])('상하한가가 %s이면 전체 호가를 임의 생성하지 않는다', condition => {
+    if (condition === 'missing') stockLimitsState.lower = null;
+    if (condition === 'wrong-code') stockLimitsState.code = '000660';
+    if (condition === 'yesterday') stockLimitsState.dateOffset = -86_400_000;
+    show();
+    expect(screen.getByRole('button', { name: '전체 호가' })).toBeDisabled();
+  });
+
+  it('시장을 전환했다가 돌아와도 전체 호가 모드를 자동으로 복원하지 않는다', () => {
+    show();
+    const toggle = screen.getByRole('button', { name: '전체 호가' });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    act(() => useLiveVenueStore.setState({ venue: 'NXT' }));
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    act(() => useLiveVenueStore.setState({ venue: 'KRX' }));
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('전체 호가를 기존 입력 줄에서 켜고 잔량 없는 가격에 동일한 수량으로 지정가 주문한다', async () => {
+    const { container } = show();
+    const toggle = screen.getByRole('button', { name: '전체 호가' });
+    expect(toggle.closest('.order-input-controls')).toContainElement(screen.getByLabelText('신규 주문 수량'));
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.wheel(screen.getByRole('region', { name: '실시간 호가 주문 사다리' }), { deltaY: 480 });
+    const row = container.querySelector('[data-order-price="66200"]')!;
+    expect(row).toBeInTheDocument();
+    expect(row.querySelectorAll('.order-depth')[0].textContent).toBe('');
+    expect(row.querySelectorAll('.order-depth')[1].textContent).toBe('');
+    fireEvent.doubleClick(within(row as HTMLElement).getByRole('button', { name: /매수 66,200원 주문 추가/ }));
+    await waitFor(() => expect(mock.command).toHaveBeenCalledWith('/orders', expect.objectContaining({ price: 66200, quantity: 25, side: 'BUY' }), 'live'));
+  });
+
+  it('전체 호가의 탐색 위치는 새 시세에도 유지되고 현재가 버튼만 재중앙화한다', () => {
+    const { container } = show();
+    fireEvent.click(screen.getByRole('button', { name: '전체 호가' }));
+    const region = screen.getByRole('region', { name: '실시간 호가 주문 사다리' });
+    fireEvent.wheel(region, { deltaY: 480 });
+    const before = container.querySelector('[data-order-price]')?.getAttribute('data-order-price');
+    mock.priceOffset = 5000; mock.quotePrice = 72200;
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
+    expect(container.querySelector('[data-order-price]')).toHaveAttribute('data-order-price', before);
+    fireEvent.click(screen.getByRole('button', { name: '현재가' }));
+    expect(container.querySelector('[data-order-price="72200"] .order-current')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '전체 호가' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '전체 호가' }));
+    expect(container.querySelectorAll('[data-order-price]')).toHaveLength(20);
+  });
+
+  it('전체 호가의 키보드 탐색은 상하한가를 넘지 않고 오래된 호가의 신규 주문은 계속 차단한다', () => {
+    mock.snapshotAt = mock.now - 60_000;
+    const { container } = show();
+    fireEvent.click(screen.getByRole('button', { name: '전체 호가' }));
+    const region = screen.getByRole('region', { name: '실시간 호가 주문 사다리' });
+    fireEvent.keyDown(region, { key: 'Home' });
+    fireEvent.keyDown(region, { key: 'ArrowUp' });
+    expect(container.querySelector('[data-order-price]')).toHaveAttribute('data-order-price', '85800');
+    fireEvent.keyDown(region, { key: 'End' });
+    fireEvent.keyDown(region, { key: 'ArrowDown' });
+    const rows = container.querySelectorAll('[data-order-price]');
+    expect(rows[rows.length - 1]).toHaveAttribute('data-order-price', '46200');
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 46,200원 주문 추가/ }));
+    expect(mock.command).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('최신 호가를 기다리고 있습니다');
+  });
+
   const restoredBook = (): RestOrderbookResponse => ({
     code: '005930', venue: 'KRX', source: 'kiwoom_rest', fetched_at_ms: mock.now, checked_at_ms: mock.now,
     refresh_failed: false, storage_failed: false,
