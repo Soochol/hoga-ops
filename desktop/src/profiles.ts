@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { validZoomFactor } from './zoom';
 
 export interface Profile { id: string; name: string; mode: 'server' | 'development'; origin: string; apiOrigin?: string }
 export interface Bounds { x: number; y: number; width: number; height: number; maximized?: boolean }
-export interface Settings { version: 1; profiles: Profile[]; activeId?: string; bounds: Record<string, Bounds> }
-export const emptySettings = (): Settings => ({ version: 1, profiles: [], bounds: {} });
+export interface Settings { version: 1; profiles: Profile[]; activeId?: string; bounds: Record<string, Bounds>; zoomFactors: Record<string, number> }
+export const emptySettings = (): Settings => ({ version: 1, profiles: [], bounds: {}, zoomFactors: {} });
 
 export function canonicalOrigin(input: unknown): string {
   if (typeof input !== 'string' || input.length > 2048) throw new Error('서버 주소를 입력하세요.');
@@ -49,10 +50,14 @@ export function readSettings(path: string): { settings: Settings; warning?: stri
     const profiles = raw.profiles.map((p: unknown) => validateProfile(p));
     if (new Set(profiles.map((p: Profile) => p.id)).size !== profiles.length) throw new Error('duplicate');
     const bounds: Record<string, Bounds> = {};
+    const zoomFactors: Record<string, number> = {};
     if (raw.bounds && typeof raw.bounds === 'object') {
       for (const [key, value] of Object.entries(raw.bounds)) if (/^[a-f0-9]{32}$/.test(key) && validateBounds(value)) bounds[key] = value;
     }
-    return { settings: { version: 1, profiles, bounds, activeId: profiles.some((p: Profile) => p.id === raw.activeId) ? raw.activeId : undefined } };
+    if (raw.zoomFactors && typeof raw.zoomFactors === 'object') {
+      for (const [key, value] of Object.entries(raw.zoomFactors)) if (/^[a-f0-9]{32}$/.test(key) && validZoomFactor(value)) zoomFactors[key] = value;
+    }
+    return { settings: { version: 1, profiles, bounds, zoomFactors, activeId: profiles.some((p: Profile) => p.id === raw.activeId) ? raw.activeId : undefined } };
   } catch {
     // Keep the original bytes in a recoverable sibling before future writes.
     const backup = `${path}.corrupt-${Date.now()}`;

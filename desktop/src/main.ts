@@ -7,6 +7,7 @@ import { appNavigation, externalLink, networkAllowed } from './navigation';
 import { emptySettings, fitBounds, readSettings, saveSettings, sessionKey, validateProfile } from './profiles';
 import type { Profile, Settings } from './profiles';
 import { probeServer } from './connection';
+import { nextZoomFactor, zoomCommand, type ZoomCommand } from './zoom';
 
 const LAUNCHER_URL = 'app://desktop/index.html';
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
@@ -26,10 +27,30 @@ let connecting: AbortController | undefined;
 let connectionId = 0;
 let quitting = false;
 const contentWindows = new Set<BrowserWindow>();
+const windowProfileKeys = new Map<BrowserWindow, string>();
 const configuredSessions = new Set<string>();
 const build = JSON.parse(readFileSync(join(__dirname, 'build.json'), 'utf8')) as { sourceVersion: string; commit: string };
 
 function persist(): void { saveSettings(settingsPath, settings); }
+function changeZoom(win: BrowserWindow | null | undefined, command: ZoomCommand): void {
+  if (!win || win.isDestroyed()) return;
+  const key = windowProfileKeys.get(win);
+  if (!key) return;
+  const factor = nextZoomFactor(win.webContents.getZoomFactor(), command);
+  for (const [other, otherKey] of windowProfileKeys) {
+    if (otherKey === key && !other.isDestroyed()) other.webContents.setZoomFactor(factor);
+  }
+  if (settings.zoomFactors[key] === factor) return;
+  settings.zoomFactors[key] = factor;
+  try { persist(); } catch { warning = '화면 배율을 저장하지 못했습니다.'; }
+}
+function zoomMenu(target: () => BrowserWindow | null | undefined): Electron.MenuItemConstructorOptions[] {
+  return [
+    { label: '확대', accelerator: 'CommandOrControl+Plus', click: () => changeZoom(target(), 'in') },
+    { label: '축소', accelerator: 'CommandOrControl+-', click: () => changeZoom(target(), 'out') },
+    { label: '100%로 복귀', accelerator: 'CommandOrControl+0', click: () => changeZoom(target(), 'reset') },
+  ];
+}
 function updateMenu(serverVersion = ''): void {
   Menu.setApplicationMenu(createMenu(serverVersion));
   // Keep native edit/reload shortcuts without reserving a menu row in Linux windows.
@@ -87,10 +108,19 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
     title: `Ticklane · ${profile.name}`,
     webPreferences: { session: configureSession(profile), preload: join(__dirname, 'preload/content.cjs'),
       additionalArguments: [`--hoga-api-origin=${profile.apiOrigin ?? profile.origin}`],
-      nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, zoomFactor: 1 },
+      nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, zoomFactor: settings.zoomFactors[key] ?? 1 },
   });
   win.setMenuBarVisibility(false);
   contentWindows.add(win);
+  windowProfileKeys.set(win, key);
+  win.webContents.on('before-input-event', (event, input) => {
+    const command = zoomCommand(input);
+    if (!command) return;
+    // Prevent the renderer and the native menu accelerator from handling it twice.
+    event.preventDefault();
+    changeZoom(win, command);
+  });
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(settings.zoomFactors[key] ?? 1));
   win.webContents.on('page-title-updated', event => { event.preventDefault(); win.setTitle(`Ticklane · ${profile.name}`); });
   const guard = (event: Electron.Event, target: string) => { if (!appNavigation(target, profile)) event.preventDefault(); };
   win.webContents.on('will-navigate', guard);
@@ -104,6 +134,8 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
     const items: Electron.MenuItemConstructorOptions[] = [
       { label: '서버 선택', accelerator: 'CommandOrControl+Alt+S', click: () => showLauncher() },
       { label: '새 작업 창', click: () => { if (active) openContent(active, `${active.origin}/live`); } },
+      { type: 'separator' },
+      { label: `화면 배율 ${Math.round(win.webContents.getZoomFactor() * 100)}%`, submenu: zoomMenu(() => win) },
     ];
     if (externalLink(params.linkURL) && !appNavigation(params.linkURL, profile)) {
       items.push({ type: 'separator' }, { label: '링크를 외부 브라우저로 열기', click: () => {
@@ -131,6 +163,7 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
   });
   win.on('closed', () => {
     contentWindows.delete(win);
+    windowProfileKeys.delete(win);
     if (!quitting && contentWindows.size === 0) {
       // A visible connection window keeps a failed connection recoverable.
       if (!launcher?.isVisible()) app.quit();
@@ -180,7 +213,9 @@ function createMenu(serverVersion = ''): Electron.Menu {
       { type: 'separator' }, { role: 'quit', label: '종료' },
     ] },
     { label: '편집', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-    { label: '보기', submenu: [{ role: 'reload', label: '화면 새로고침' }, ...(!app.isPackaged ? [{ role: 'toggleDevTools' as const }] : []), { role: 'togglefullscreen', label: '전체 화면' }] },
+    { label: '보기', submenu: [{ role: 'reload', label: '화면 새로고침' }, ...(!app.isPackaged ? [{ role: 'toggleDevTools' as const }] : []),
+      { type: 'separator' }, ...zoomMenu(() => BrowserWindow.getFocusedWindow()),
+      { type: 'separator' }, { role: 'togglefullscreen', label: '전체 화면' }] },
   ]);
 }
 
