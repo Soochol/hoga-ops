@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
+import { useChartPrefsStore } from '../state/chartPrefs';
 import type { ISeriesApi } from 'lightweight-charts';
 import StudySavedRangeBandHost from './StudySavedRangeBandHost';
 import { StudySavedRangeBandPrimitive } from '../chart/StudySavedRangeBandPrimitive';
@@ -30,7 +31,20 @@ function makePaneSeries(...paneIds: string[]) {
 }
 
 describe('StudySavedRangeBandHost', () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); useChartPrefsStore.getState().resetToDefaults(); });
+
+  it('updates and repaints every pane immediately when the global fill setting changes', () => {
+    const repaint = vi.spyOn(StudySavedRangeBandPrimitive.prototype, 'requestUpdate');
+    const { map, series } = makePaneSeries('candle', 'volume');
+    render(<StudySavedRangeBandHost axis={axis} paneSeries={map} marks={marks} />);
+    const prim = series[0].attachPrimitive.mock.calls[0][0] as StudySavedRangeBandPrimitive;
+    expect(prim.snapshot()?.fillOpacity).toBe(0.4);
+    repaint.mockClear();
+    act(() => useChartPrefsStore.getState().setNumericPref('savedRangeFillPercent', 0));
+    expect(prim.snapshot()?.fillOpacity).toBe(0);
+    expect(repaint).toHaveBeenCalledTimes(2);
+    for (const s of series) expect(s.attachPrimitive).toHaveBeenCalledTimes(1);
+  });
 
   // 밴드는 캔들 pane 바닥에서 끊기면 안 된다 — 옛 DOM 오버레이는 차트 전체 높이를
   // 덮어 거래량·보조지표 pane 까지 이어졌고, primitive 는 자기가 달린 pane 캔버스에만

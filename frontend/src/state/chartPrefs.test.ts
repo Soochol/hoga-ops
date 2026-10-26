@@ -1,6 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useChartPrefsStore, DEFAULT_PREFS } from './chartPrefs';
 
+describe('saved period fill persistence validation', () => {
+  it('defaults to the softened 40% and accepts 0–100% including the endpoints', () => {
+    expect(mergePrefs({}).savedRangeFillPercent).toBe(40);
+    for (const value of [0, 40, 75, 100]) expect(mergePrefs({ savedRangeFillPercent: value }).savedRangeFillPercent).toBe(value);
+    for (const value of [-1, 101, 0.5, NaN, Infinity, '40', null]) {
+      expect(mergePrefs({ savedRangeFillPercent: value }).savedRangeFillPercent).toBe(40);
+    }
+  });
+});
+
 describe('useChartPrefsStore', () => {
   beforeEach(() => {
     useChartPrefsStore.getState().resetToDefaults();

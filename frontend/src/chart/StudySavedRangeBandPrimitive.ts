@@ -29,6 +29,7 @@ const TOKEN_SPEC = {
 export type StudySavedRangeBandSnapshot = {
   axis: VirtualAxis;
   marks: StudySavedRangeMarks;
+  fillOpacity: number;
 };
 
 export type StudySavedRangeBandSource = () => StudySavedRangeBandSnapshot | null;
@@ -107,9 +108,13 @@ class StudySavedRangeBandRenderer implements IPrimitivePaneRenderer {
       const tokens = resolveTokensThemed(TOKEN_SPEC);
       ctx.save();
 
-      if (geom.width > 0) {
+      if (geom.width > 0 && snap.fillOpacity > 0) {
+        // Keep the saved interval subtle over candles; edges retain full contrast.
+        ctx.save();
+        ctx.globalAlpha *= snap.fillOpacity;
         ctx.fillStyle = tokens.fill;
         ctx.fillRect(geom.left, 0, geom.width, paneHeight);
+        ctx.restore();
       }
 
       // 양끝 1px 실선. 0.5 오프셋으로 픽셀 격자에 앉혀 흐릿함을 막는다.

@@ -13,9 +13,12 @@ import {
   type ChartToggleCategory,
   type ChartToggleGroupId,
   type ChartToggleKey,
+  type NumericPrefDef,
+  type NumericPrefKey,
 } from '../state/chartPrefs';
 import ColorSwatchPicker from './indicators/ColorSwatchPicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
+import NumericPrefRow from './settings/NumericPrefRow';
 import { SettingsRow } from './settings/SettingsRow';
 import { highlightLabel } from './settings/SettingsRowHelpers';
 import { DataSourceDetail } from './settings/DataSourceDetail';
@@ -89,14 +92,13 @@ const CUSTOM_ROW_TEXT: Partial<Record<ChartToggleKey, string>> = {
  *  실제 렌더러(`IndicatorPrefRows`)는 부모+하위를 한 덩어리로 그리고 부모 없는
  *  하위 행은 맥락을 잃으므로 유닛 단위가 정직하다(의도된 이탈). */
 type FilterUnit = {
-  key: ChartToggleKey;
   category: ChartToggleCategory;
   group: ChartToggleGroupId;
   corpus: string;
-};
+} & ({ kind: 'toggle'; key: ChartToggleKey } | { kind: 'numeric'; key: NumericPrefKey; def: NumericPrefDef });
 
 function buildFilterUnits(): FilterUnit[] {
-  return CHART_TOGGLES.flatMap((t) => {
+  const toggles = CHART_TOGGLES.flatMap<FilterUnit>((t) => {
     const group = groupOf(t);
     if (group === undefined || CHART_DISPLAY_GROUP_IDS.includes(group) || gatedByOf(t) !== undefined) return [];
     const children = CHART_TOGGLES.filter((c) => gatedByOf(c) === t.key);
@@ -109,8 +111,15 @@ function buildFilterUnits(): FilterUnit[] {
       ...lines.map((l) => l.label),
       CUSTOM_ROW_TEXT[t.key] ?? '',
     ].join(' ');
-    return [{ key: t.key, category: categoryOf(t), group, corpus }];
+    return [{ kind: 'toggle', key: t.key, category: categoryOf(t), group, corpus }];
   });
+  const numerics = CHART_NUMERIC_PREFS.flatMap<FilterUnit>((def) => {
+    const numeric: NumericPrefDef = def;
+    if (numeric.group === undefined || CHART_DISPLAY_GROUP_IDS.includes(numeric.group) || numeric.enabledBy !== undefined) return [];
+    return [{ kind: 'numeric', key: def.key, def, category: numeric.category ?? 'chart',
+      group: numeric.group, corpus: `${def.label} ${def.description}` }];
+  });
+  return [...toggles, ...numerics];
 }
 
 function GroupHead({ label }: { label: string }) {
@@ -322,7 +331,9 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
                     {!filtering && <GroupHead label={group.label} />}
                     {group.units.map((unit) => (
                       <Fragment key={unit.key}>
-                        <IndicatorPrefRows toggleKeys={[unit.key]} highlight={filtering ? trimmed : undefined} />
+                        {unit.kind === 'numeric'
+                          ? <NumericPrefRow def={unit.def} />
+                          : <IndicatorPrefRows toggleKeys={[unit.key]} highlight={filtering ? trimmed : undefined} />}
                         {unit.key === 'tradeHighlightEnabled' && <TradeHighlightColorRow highlight={filtering ? trimmed : undefined} />}
                       </Fragment>
                     ))}
