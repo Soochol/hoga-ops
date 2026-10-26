@@ -5,6 +5,7 @@ import { normalizeChartDisplayPrefs } from '../../state/chartDisplayPrefs';
 import { seedSettingsForWindow } from '../../state/windowSettingsLifecycle';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { VolumeOverlaySettings } from './VolumeOverlaySettings';
+import { SettingsDescriptionTooltipContext } from '../settings/SettingsRow';
 import { SettingsUndoContext } from '../settings/settingsUndoContext';
 import { useSettingsUndo, type SettingsSnapshot } from '../settings/useSettingsUndo';
 import '../settings/SettingsEditor.css';
@@ -20,6 +21,7 @@ export function ChartDisplaySettings({ windowId }: { windowId: string }) {
   const restore = (patch: SettingsSnapshot) => useWindowSettingsStore.getState().patch(windowId, 'chart', patch);
   const undo = useSettingsUndo({ scopeKey: `chart-display:${windowId}`, read, restore, subscribe });
   return <WindowSettingsScope.Provider value={windowId}><SettingsUndoContext.Provider value={undo.record}>
+    <SettingsDescriptionTooltipContext.Provider value>
     <div className="settings-editor window-settings-editor chart-display-settings" {...undo.captureProps}>
       <div className="settings-editor-content">
         {groups.map(group => <section key={group.id} className="settings-editor-group" aria-label={group.label}>
@@ -37,5 +39,6 @@ export function ChartDisplaySettings({ windowId }: { windowId: string }) {
           onClick={() => void undo.undo()}>{undo.busy ? '되돌리는 중…' : '되돌리기'}</button></div>
       </footer>
     </div>
+    </SettingsDescriptionTooltipContext.Provider>
   </SettingsUndoContext.Provider></WindowSettingsScope.Provider>;
 }

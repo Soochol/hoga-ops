@@ -1,4 +1,3 @@
-import { tooltipQueries } from '../../tests/tooltipQueries';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -236,7 +235,7 @@ it('renders saved views as Code-keyed stock-name tree groups', () => {
 
   const samsung = screen.getByRole('region', { name: '삼성전자 저장뷰' });
   expect(within(samsung).getByRole('button', { name: '삼성전자 접기' })).toHaveAttribute('aria-expanded', 'true');
-  expect(tooltipQueries(samsung).getByText('삼성전자')).toBeTruthy();
+  expect(within(samsung).getByText('삼성전자', { exact: true })).toBeTruthy();
   expect(within(samsung).getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   expect(within(samsung).queryByText('삼성전자 · 5m')).toBeNull();
   expect(within(samsung).getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
@@ -749,12 +748,15 @@ it('starts inline rename from the row menu', async () => {
   expect((screen.getByLabelText('저장뷰 이름 수정') as HTMLInputElement).value).toBe('급등 이후');
 });
 
-it('keeps the memo in the tooltip without adding a third line', () => {
+it('keeps saved rows free of hover tooltips without adding a memo line', () => {
   mockedSaves = [{ ...saves[0], memo: '첫 줄 메모\n둘째 줄' }, saves[1]];
   renderDrawer('/inventory');
 
   expect(screen.queryByText('첫 줄 메모')).toBeNull();
-  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toHaveAttribute('data-tooltip', expect.stringContaining('첫 줄 메모\n둘째 줄'));
+  const row = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  expect(row).not.toHaveAttribute('data-tooltip');
+  expect(row).not.toHaveAttribute('title');
+  expect(row.querySelector('[data-tooltip], [title]')).toBeNull();
 });
 
 it('edits the memo inline from the row menu and commits with Enter', async () => {

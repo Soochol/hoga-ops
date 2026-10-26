@@ -1,5 +1,7 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { createContext, useContext, type ButtonHTMLAttributes, type ReactNode } from 'react';
 
+/** The chart popover uses the app's delegated tooltip; other editors keep prose. */
+export const SettingsDescriptionTooltipContext = createContext(false);
 
 export function SettingsRow({
   label,
@@ -16,14 +18,16 @@ export function SettingsRow({
   children: ReactNode;
   testId?: string;
 }) {
+  const useTooltip = useContext(SettingsDescriptionTooltipContext);
+  const tooltip = useTooltip && typeof description === 'string' ? description : undefined;
   return (
     <div
       data-testid={testId}
       className={`settings-row flex items-start justify-between gap-4 border-b border-border py-2 last:border-b-0 ${disabled ? 'opacity-50' : ''} ${className}`.trim()}
     >
       <div className="min-w-0 flex-1">
-        <div className="text-fg text-sm">{label}</div>
-        {description !== undefined && (
+        <div className="text-fg text-sm" data-tooltip={tooltip} tabIndex={tooltip ? 0 : undefined}>{label}</div>
+        {!tooltip && description !== undefined && (
           typeof description === 'string' && description.length > 110
             ? <details className="mt-0.5 text-xs text-fg-dim"><summary className="cursor-pointer leading-relaxed">{description.slice(0, 76)}…</summary><p className="mt-1 leading-relaxed">{description}</p></details>
             : <div className="settings-row-description text-fg-dim text-xs mt-0.5">{description}</div>

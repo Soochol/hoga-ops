@@ -635,3 +635,31 @@ test('기존 차트 설정에 없던 고저 필드는 전역값을 한 번만 �
     return ['a', 'b'].map(id => [saved[id].chart.highLowLowLineColor, saved[id].chart.highLowLowLineWidth]);
   })).toEqual([['#22C55E', 3], ['#22C55E', 3]]);
 });
+
+test('캔들 차트 설정 설명은 공통 툴팁으로 호버·키보드 포커스에서 표시된다', async ({ page }, info) => {
+  await setup(page);
+  await scaleFixtures(page);
+  await page.goto('/live');
+  const panel = await open(page, 'a');
+  await expect(panel.locator('.settings-row-description')).toHaveCount(0);
+  const label = panel.getByText('캔들 기준 Y축', { exact: true });
+  const description = '캔들 고가·저가에 맞춰 가격축을 조절합니다. 보조지표는 제외합니다.';
+  await expect(label).toHaveAttribute('data-tooltip', description);
+  await expect(label).not.toHaveAttribute('title');
+  await label.hover();
+  const tooltip = page.getByRole('tooltip');
+  await expect(tooltip).toHaveText(description);
+  await expect(tooltip).toHaveClass(/tooltip-surface/);
+  await expect(label).toHaveAttribute('aria-describedby', await tooltip.getAttribute('id') as string);
+  await page.screenshot({ path: info.outputPath('chart-settings-description-tooltip.png') });
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toHaveCount(0);
+  await panel.getByRole('switch', { name: '캔들 기준 Y축', exact: true }).focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(label).toBeFocused();
+  await expect(tooltip).toHaveText(description);
+  await panel.getByRole('switch', { name: '캔들 기준 Y축', exact: true }).click();
+  await expect(tooltip).toHaveCount(0);
+  await panel.getByText('반전 시 캔들·거래량 색상 교환', { exact: true }).hover();
+  await expect(tooltip).toHaveText('거꾸로 볼 때 캔들 몸통·꼬리와 거래량 봉의 상승·하락 색상을 서로 바꿉니다. 실제 가격·등락률은 유지합니다.');
+});

@@ -10,6 +10,19 @@ beforeEach(() => useWindowSettingsStore.setState({ byWindow: {} }));
 afterEach(() => useChartPrefsStore.setState(initial, true));
 
 describe('chart display settings', () => {
+  it('uses shared label tooltips for descriptions, including nested price line styles', () => {
+    render(<ChartDisplaySettings windowId="a" />);
+    const definition = CHART_DISPLAY_TOGGLES.find(def => def.key === 'candleLogScale')!;
+    expect(screen.queryByText(definition.description)).toBeNull();
+    const label = screen.getByText(definition.label, { exact: true });
+    expect(label).toHaveAttribute('data-tooltip', definition.description);
+    expect(label).toHaveAttribute('tabindex', '0');
+    expect(label).not.toHaveAttribute('title');
+    fireEvent.click(screen.getByLabelText('고저 극값 라벨 세부 설정'));
+    expect(screen.getByText('고가 가격선 스타일', { exact: true })).toHaveAttribute('data-tooltip',
+      '선 색상·두께를 정합니다. 기본 색상은 테마의 상승색을 따릅니다.');
+    expect(document.querySelector('.chart-display-settings .settings-row-description')).toBeNull();
+  });
   it('owns high/low line styles and their undo in the edited chart only', async () => {
     useWindowSettingsStore.getState().patch('b', 'chart', { highLowHighLineColor: '#123456', highLowHighLineWidth: 2 });
     render(<ChartDisplaySettings windowId="a" />);

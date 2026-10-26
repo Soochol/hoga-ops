@@ -13,7 +13,7 @@ export function studyViewPeriod(range: { from_date: string; to_date: string; fro
   return `${date(range.from_date)}–${range.from_date.slice(0, 4) === range.to_date.slice(0, 4) ? date(range.to_date).slice(5) : date(range.to_date)}`;
 }
 
-/** Compact list dates use KST's current year; full precision remains in the tooltip. */
+/** Compact list dates use KST's current year. */
 export function shortStudyDate(value: string, currentYear = new Date(Date.now() + 9 * 3600_000).getUTCFullYear()): string {
   const date = value.replaceAll('-', '');
   return `${Number(date.slice(0, 4)) === currentYear ? '' : date.slice(2, 4) + '.'}${date.slice(4, 6)}.${date.slice(6, 8)}`;
