@@ -40,6 +40,8 @@ function changeZoom(win: BrowserWindow | null | undefined, command: ZoomCommand)
   for (const [other, otherKey] of windowProfileKeys) {
     if (otherKey === key && !other.isDestroyed()) other.webContents.setZoomFactor(factor);
   }
+  // Only the window where the user adjusted zoom displays the transient status.
+  win.webContents.send('desktop:zoom-changed', factor);
   if (settings.zoomFactors[key] === factor) return;
   settings.zoomFactors[key] = factor;
   try { persist(); } catch { warning = '화면 배율을 저장하지 못했습니다.'; }

@@ -118,6 +118,10 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
     await connect(await app.firstWindow(), server.origin);
     const content = await next;
     await expect(content.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    const overlay = content.locator('#ticklane-desktop-zoom');
+    const status = overlay.getByRole('status');
+    await expect(overlay).toHaveCount(0);
+    await content.addStyleTag({ content: ':root { --bg-card: #121811; --fg: #e7eddf; --fg-dim: #a7b39b; }' });
     const zoom = async page => (await app.browserWindow(page)).evaluate(win => win.webContents.getZoomFactor());
     // CDP page.keyboard bypasses Electron's before-input-event. Send native
     // WebContents input so the real app shortcut handler is exercised.
@@ -127,24 +131,59 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
       win.webContents.sendInputEvent({ type: 'keyUp', keyCode: input.key, modifiers: input.modifiers });
     }, { key, modifiers });
     await content.bringToFront();
+    await content.locator('#child').focus();
     expect(await zoom(content)).toBeCloseTo(1);
     await pressZoomKey(content, '=');
     await expect.poll(() => zoom(content)).toBeCloseTo(1.1);
+    await expect(status).toHaveText('화면 배율110%');
+    await expect(content.locator('#child')).toBeFocused();
+    const appearance = await status.evaluate(el => {
+      const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
+      return { dx: Math.abs(rect.x + rect.width / 2 - document.documentElement.clientWidth / 2), dy: Math.abs(rect.y + rect.height / 2 - document.documentElement.clientHeight / 2),
+        color: style.color, background: style.backgroundColor, blur: style.backdropFilter, pointerEvents: style.pointerEvents };
+    });
+    expect(appearance.dx).toBeLessThan(1);
+    expect(appearance.dy).toBeLessThan(1);
+    expect(appearance.color).toBe('rgb(231, 237, 223)');
+    expect(appearance.background).toContain('0.35');
+    expect(appearance.blur).toBe('blur(8px)');
+    expect(appearance.pointerEvents).toBe('none');
+    // Real elapsed time is intentional: preload timers live in Electron's
+    // isolated world, and must restart after the most recent native key input.
+    await content.waitForTimeout(1100);
     await pressZoomKey(content, '+', ['control', 'shift']);
     await expect.poll(() => zoom(content)).toBeCloseTo(1.25);
+    await expect(status).toHaveText('화면 배율125%');
+    await content.waitForTimeout(900);
+    await expect(status).toBeVisible();
+    await expect(overlay).toHaveCount(1);
+    await content.evaluate(() => {
+      const button = document.createElement('button'); button.id = 'zoom-underlay'; button.textContent = '아래 화면 조작';
+      button.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:200px;height:60px';
+      button.onclick = () => { button.dataset.clicked = 'true'; }; document.body.append(button);
+    });
+    await content.locator('#zoom-underlay').click();
+    await expect(content.locator('#zoom-underlay')).toHaveAttribute('data-clicked', 'true');
+    await content.locator('#zoom-underlay').evaluate(el => el.remove());
     await pressZoomKey(content, '-');
     await expect.poll(() => zoom(content)).toBeCloseTo(1.1);
+    await expect(status).toHaveText('화면 배율110%');
+    await expect(status).toBeHidden({ timeout: 3000 });
     const childPromise = app.waitForEvent('window');
     await content.getByRole('button', { name: '종목 새 창' }).click();
     const child = await childPromise;
     await expect(child.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
     await expect.poll(() => zoom(child)).toBeCloseTo(1.1);
+    await expect(child.locator('#ticklane-desktop-zoom')).toHaveCount(0);
     await child.bringToFront();
     await pressZoomKey(child, '0');
     await expect.poll(() => zoom(child)).toBeCloseTo(1);
     await expect.poll(() => zoom(content)).toBeCloseTo(1);
+    await expect(child.locator('#ticklane-desktop-zoom').getByRole('status')).toHaveText('화면 배율100%');
+    await expect(status).toBeHidden();
     await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find(item => item.label === '보기').submenu.items.find(item => item.label === '확대').click());
     await expect.poll(() => zoom(child)).toBeCloseTo(1.1);
+    await expect(child.locator('#ticklane-desktop-zoom').getByRole('status')).toHaveText('화면 배율110%');
     const contextLabel = await app.evaluate(({ BrowserWindow, Menu }, url) => {
       const win = BrowserWindow.getAllWindows().find(win => win.webContents.getURL() === url);
       const original = Menu.buildFromTemplate;
@@ -159,6 +198,7 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
     }, child.url());
     expect(contextLabel).toBe('화면 배율 110%');
     await expect.poll(() => zoom(child)).toBeCloseTo(1);
+    await expect(child.locator('#ticklane-desktop-zoom').getByRole('status')).toHaveText('화면 배율100%');
     await pressZoomKey(child, '=');
     await expect.poll(() => zoom(child)).toBeCloseTo(1.1);
     const saved = JSON.parse(await readFile(join(dir, 'connections.json'), 'utf8'));
@@ -173,6 +213,7 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
     await expect.poll(() => zoom(restored)).toBeCloseTo(1.1);
     await restored.reload();
     await expect.poll(() => zoom(restored)).toBeCloseTo(1.1);
+    await expect(restored.locator('#ticklane-desktop-zoom')).toHaveCount(0);
     await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items[0].submenu.items.find(item => item.label === '서버 선택').click());
     const launcher = app.windows().find(page => page.url().startsWith('app:'));
     // Keep the recovery launcher visible while closing the old workspace, then
@@ -184,6 +225,28 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
     const switched = await switchedPromise;
     await expect(switched.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
     await expect.poll(() => zoom(switched)).toBeCloseTo(1);
+    await expect(switched.locator('#ticklane-desktop-zoom')).toHaveCount(0);
+    await (await app.browserWindow(switched)).evaluate(win => win.setSize(480, 360));
+    await switched.emulateMedia({ reducedMotion: 'reduce' });
+    for (let i = 0; i < 13; i++) await pressZoomKey(switched, '=');
+    const extremeStatus = switched.locator('#ticklane-desktop-zoom').getByRole('status');
+    await expect(extremeStatus).toHaveText('화면 배율300%');
+    for (const percent of [300, 50]) {
+      if (percent === 50) for (let i = 0; i < 13; i++) await pressZoomKey(switched, '-');
+      await expect(extremeStatus).toHaveText(`화면 배율${percent}%`);
+      const bounds = await extremeStatus.evaluate(el => {
+        const rect = el.getBoundingClientRect(), width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
+        return { left: rect.left, right: rect.right, width, dx: Math.abs(rect.x + rect.width / 2 - width / 2),
+          dy: Math.abs(rect.y + rect.height / 2 - height / 2), transition: getComputedStyle(el).transitionDuration,
+          textFits: [...el.children].every(child => { const box = child.getBoundingClientRect(); return box.left >= 0 && box.right <= width; }) };
+      });
+      expect(bounds.left, `${percent}% ${JSON.stringify(bounds)}`).toBeGreaterThanOrEqual(0);
+      expect(bounds.right, `${percent}% ${JSON.stringify(bounds)}`).toBeLessThanOrEqual(bounds.width);
+      expect(bounds.dx).toBeLessThan(1);
+      expect(bounds.dy).toBeLessThan(1);
+      expect(bounds.transition).toBe('0s');
+      expect(bounds.textFits).toBe(true);
+    }
     const factors = Object.values(JSON.parse(await readFile(join(dir, 'connections.json'), 'utf8')).zoomFactors);
     expect(factors).toContain(1.1);
     expect((await fetch(server.origin + '/health')).ok).toBe(true);
