@@ -77,3 +77,11 @@ the full five panes.
 - CONTEXT.md: **LiveTimeframe**
 - ADR-0040: Live Candle Backfill (separate cache from promoted Parquet)
 - ADR-0028: Drawing-pane binding by stable PaneId
+
+## 2026-10-26 — 창별 거래량 오버레이 예외
+
+사용자 승인으로 `volumeOverlayEnabled`가 켜진 차트는 기본 거래량을 캔들 pane의
+숨은 독립 스케일에 그리며 별도 volume pane을 마운트하지 않는다. 기본 끔이므로
+기존 봉별 게이트는 유지한다. 이는 거래량의 표시 위치에 한정한 예외이며 호가 지표의
+분봉 게이트나 공용 pane 병합 규칙을 바꾸지 않는다. 반복 추가한 거래량은 기존 pane을
+유지한다. 거래량의 누적 체결강도 시리즈는 같은 날 후속 요청으로 제거했다.

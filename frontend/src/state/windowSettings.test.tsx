@@ -17,6 +17,26 @@ beforeEach(() => {
 });
 
 describe('typed window settings lifecycle', () => {
+  it('validates overlay styles and transports them through persistence, cloning and presets', () => {
+    expect(normalizeChartDisplayPrefs({ volumeOverlayHeight: 0, volumeOverlayTransparency: 101,
+      volumeOverlayUpColor: 'red', volumeOverlayDownColor: '#12345678' })).toMatchObject({
+      volumeOverlayEnabled: false, volumeOverlayHeight: 25, volumeOverlayTransparency: 65,
+      volumeOverlayUpColor: '', volumeOverlayDownColor: '',
+    });
+    const style = { volumeOverlayEnabled: true, volumeOverlayHeight: 40, volumeOverlayTransparency: 0,
+      volumeOverlayUpColor: '#ABCDEF', volumeOverlayDownColor: '#123456' };
+    seedSettingsForWindow(chart('a'));
+    useWindowSettingsStore.getState().patch('a', 'chart', style);
+    const payload = capturePresetPayload();
+    const added = useWorkspaceStore.getState().addWindow('chart');
+    expect(useWindowSettingsStore.getState().byWindow[added].chart).toMatchObject(style);
+    useWindowSettingsStore.getState().patch('a', 'chart', { volumeOverlayEnabled: false, volumeOverlayHeight: 10 });
+    expect(useWindowSettingsStore.getState().byWindow[added].chart).toMatchObject(style);
+    applyPresetPayload(payload, null);
+    expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject(style);
+    const saved = JSON.parse(localStorage.getItem(WINDOW_SETTINGS_KEY)!);
+    expect(normalizeWindowSettingsSnapshot(saved).byWindow.a.chart).toMatchObject(style);
+  });
   it('defaults old heatmap layer settings to off and restores explicit choices through presets', () => {
     expect(normalizeChartDisplayPrefs({}).depthHeatmapAboveCandles).toBe(false);
     expect(normalizeChartDisplayPrefs({ depthHeatmapAboveCandles: 'true' }).depthHeatmapAboveCandles).toBe(false);

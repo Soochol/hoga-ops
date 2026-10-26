@@ -24,7 +24,7 @@ const provider = (tf: LiveTimeframe) => ({ children }: { children: ReactNode }) 
 };
 function useProbe() {
   return { indicators: useWindowIndicators(), actions: useIndicatorActions(), prefs: useChartPrefActions(),
-    cumulative: useActivePrefs(p => p.volumeFillStrengthCumulative), stretch: useWindowPaneStretch() };
+    cumulative: useActivePrefs(p => p.fillStrengthCumulative), stretch: useWindowPaneStretch() };
 }
 it('writes a separate seconds bucket, shares it across seconds intervals, and round-trips persistence', () => {
   const seconds = renderHook(useProbe, { wrapper: provider('5s') });
@@ -33,13 +33,13 @@ it('writes a separate seconds bucket, shares it across seconds intervals, and ro
     seconds.result.current.actions.setBollingerEnabled(true);
     seconds.result.current.actions.setPanePrefForTimeframe('5s', 'volumeEnabled', false);
     seconds.result.current.actions.setPaneStretch({ volume: 0.8 });
-    seconds.result.current.prefs.setToggle('volumeFillStrengthCumulative', true);
+    seconds.result.current.prefs.setToggle('fillStrengthCumulative', false);
   });
   expect(seconds.result.current.indicators.bollingerEnabled).toBe(true);
   expect(seconds.result.current.indicators.volumeEnabled).toBe(false);
   expect(minute.result.current.indicators.bollingerEnabled).toBe(false);
   expect(minute.result.current.indicators.volumeEnabled).toBe(true);
-  expect(minute.result.current.cumulative).toBe(false);
+  expect(minute.result.current.cumulative).toBe(true);
   expect(minute.result.current.stretch.volume).toBeUndefined();
   const state = useLivePageStore.getState();
   const restored = normalizeIndicatorsV2(JSON.parse(JSON.stringify({ byWindow: state.indicatorsByWindow,
@@ -48,8 +48,8 @@ it('writes a separate seconds bucket, shares it across seconds intervals, and ro
   expect(resolveIndicatorSettings(restored.byWindow[scope.windowKey], '1m').bollingerEnabled).toBe(false);
   expect(restored.paneStretchByTimeframe.seconds?.volume).toBe(0.8);
   const prefs = sanitizeIndicatorModalBucketMap(JSON.parse(JSON.stringify(useChartPrefsStore.getState().indicatorModalByWindow[scope.windowKey])));
-  expect(prefs.seconds?.volumeFillStrengthCumulative).toBe(true);
-  expect(prefs.minute?.volumeFillStrengthCumulative).toBeUndefined();
+  expect(prefs.seconds?.fillStrengthCumulative).toBe(false);
+  expect(prefs.minute?.fillStrengthCumulative).toBeUndefined();
   for (const tf of ['1s', '5s', '10s', '30s'] as const) expect(profileKeyForTimeframe(tf)).toBe('seconds');
   seconds.unmount(); minute.unmount();
 });

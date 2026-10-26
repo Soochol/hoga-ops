@@ -613,6 +613,15 @@ _Avoid_: "baseline" alone (collides with lightweight-charts' `BaselineSeries`, w
 The deep module that owns chart-pane lifecycle for any indicator derived from a **RangeBundle**. Replaces the prior pattern of five near-clone pane components (CandlePane, VolumePane, RatioPane, QuoteTotalsPane, FillStrengthPane), each repeating the same useEffect → addSeries → `axis.contains` filter → `axis.toVirtual` mapping → `setData` → `try { removeSeries } catch` shape with only the per-series projection differing. Takes a **PaneSpec** describing series count, type, options, and a `(bundle, axis, ctx?) => DataPoint[]` projection per series; the module owns the lifecycle invariants (pre-open auction point drop, real-ms → virtual-second mapping, ChartErrorBoundary teardown race guard around `removeSeries`). New indicators add one PaneSpec entry instead of a new component file; cross-cutting policy changes (e.g., a chart-wide setting toggle, a label format change) land in one place. Lives at `frontend/src/chart/RangeSeriesPane.tsx`; the five historical panes survive as named PaneSpec exports (`CANDLE_SPEC`, `VOLUME_SPEC`, `RATIO_SPEC`, `QUOTE_TOTALS_SPEC`, `FILL_STRENGTH_SPEC`).
 _Avoid_: "ChartPane" (collides with lightweight-charts' own "pane" terminology), "BundlePane" (loses the per-`paneIndex` series semantic), "SeriesView" (loses the multi-series-per-pane semantic).
 
+**거래량 겹쳐 표시 (Volume Overlay)**:
+차트 헤더 설정의 창별 표시 방식이다. 기본 거래량을 캔들 pane 하단에 숨은 독립 축으로
+그리고 별도 volume pane을 마운트하지 않는다. 가격축·거래량 원본·공용 Pane Group은
+바꾸지 않으며, 끄면 기존 pane 배치·봉별 높이·거래량 드로잉을 복원한다. 기본 끔,
+투명도 65%, 높이 25%, 상승·하락 색상은 테마를 따른다. 반복 추가한 거래량은 별도
+pane에 남는다. 거래량 내 누적 체결강도 표시는 2026-10-26 사용자 요청으로 제거했다.
+독립 체결강도 지표의 누적선과는 별개다.
+_Avoid_: 가격·거래량 축 공유; 거래량 데이터 재집계; 공용 Pane Group의 캔들 병합으로 표현.
+
 **Pane Group**:
 사용자가 레전드 이름 칩을 드래그(또는 칩 메뉴)로 보조지표 pane 들을 **한 pane 에 병합**한 단위 (ADR-0160). 레이아웃의 원본은 `paneGroups: PaneId[][]`(전체 PaneId 의 순열+분할)이고 종전 `paneOrder` 는 그 평탄화 투영으로 남는다. 렌더는 지표당 **RangeSeriesPane** 1개가 같은 `paneIndex` 를 공유하는 방식이라(병합 PaneSpec 을 합성하지 않는다) 데이터 라우팅·memo 경계가 병합 전과 같다. 멤버십은 여전히 타임프레임 게이트 소유 — 그룹은 레이아웃일 뿐이다. y축은 기본 멤버별 격리(`merged:<paneId>:<원id>` 네임스페이스), 그룹별 3모드(`isolated`/`shared`/`left`) 오버라이드는 멤버 구성의 정렬 join 을 키로 저장돼 구성이 바뀌면 기본값으로 리셋된다. 핵심 모듈: `frontend/src/chart/paneGroups.ts`(모델·연산·축 정책), `frontend/src/live/paneGroupSpecs.ts`(게이트 분할), `frontend/src/live/paneMergeDrag.ts`(드롭 판정).
 _Avoid_: "pane 스택"(z-순서로 읽힌다), "합성 pane"(새 PaneSpec 을 만든다는 오해 — 렌더 모델과 반대), "그룹"(단독으로는 워크스페이스 창 **그룹**(차트 연동 그룹)과 충돌).

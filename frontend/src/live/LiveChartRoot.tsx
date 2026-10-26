@@ -8,7 +8,7 @@ import { IndicatorInstanceProvider } from './indicators/IndicatorInstanceProvide
 import { IndicatorInstanceOverlays } from './indicators/IndicatorInstanceOverlays';
 import { indicatorInstancePanes, instancePaneGroup, filterPrimaryPaneGroups, indicatorInstanceApplicable } from './indicators/indicatorInstancePanes';
 import { useWindowIndicators } from './workspace/windowView';
-import { basePaneId } from '../chart/paneOrder';
+import VolumeOverlay from './indicators/VolumeOverlay';
 import type { SeriesType } from 'lightweight-charts';
 import { barPitchPx } from '../chart/drawing/chartCoordinates';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
@@ -564,16 +564,12 @@ export function LiveChartRoot({
    *  종전엔 이 자리에서 `spec.name` 으로 4갈래 분기했다. 그래서 새 pane 을 추가할 때
    *  이 조건식을 읽고 자기 이름을 어디에 끼울지 판단해야 했다 — 이제 pane 파일 한 칸이다.
    *
-   *  `volume` 만 예외다: 누적 체결강도 라인이 켜졌을 때만 라이브가 필요해 **상수로 접히지
-   *  않는다**. 그 라인의 데이터 함수도 같은 prefs 키로 게이트되므로(`projectors/volume.ts`)
-   *  조건이 둘로 갈리지 않는다. */
+   */
   const bundleForPane = (
     spec: { name: string; bundleKind?: PaneBundleKind },
     candlePath: RangeBundle,
   ): RangeBundle =>
-    basePaneId(spec.name as PaneId) === 'volume'
-      ? ((volumeFillStrengthCumulative || instanceBase.indicatorInstances?.some(row => row.category === 'volume' && row.prefs.volumeFillStrengthCumulative)) ? (liveBundle ?? candlePath) : candlePath)
-      : spec.bundleKind === 'ratio'
+    spec.bundleKind === 'ratio'
         ? (paneRatioBundle ?? candlePath)
         : spec.bundleKind === 'hoga'
           ? (paneHogaBundle ?? candlePath)
@@ -2111,7 +2107,7 @@ export function LiveChartRoot({
       ...(isUsWorkareaCode(code) ? { decimalPrices: true } : {}) }),
     [candleVenue, code, swapCandleColors, timeframe],
   );
-  const volumeFillStrengthCumulative = useActivePrefs((p) => p.volumeFillStrengthCumulative);
+  const volumeOverlayEnabled = useActivePrefs(p => p.volumeOverlayEnabled);
 
   // 게이트를 통과한 pane 그룹 목록(= 사용자가 켜 둔 것, 병합 그룹 모양). 접기 이전.
   const gatedPaneGroups = useMemo(
@@ -2126,7 +2122,13 @@ export function LiveChartRoot({
     indicatorInstancePanes(instanceBase, row, timeframe, paneTogglesOverride?.hogaPanes !== false, isUsWorkareaCode(code)).map(instancePaneGroup)),
   [instanceBase, timeframe, paneTogglesOverride?.hogaPanes, code]);
   const primaryVisibleGroups = useMemo(() => filterPrimaryPaneGroups(gatedPaneGroups, instanceBase.indicatorPrimaryHidden), [gatedPaneGroups, instanceBase.indicatorPrimaryHidden]);
-  const visiblePaneGroups = useMemo(() => [...primaryVisibleGroups, ...extraPaneGroups], [primaryVisibleGroups, extraPaneGroups]);
+  const overlayVolume = volumeOverlayEnabled && primaryVisibleGroups.some(group => group.some(spec => spec.name === 'volume'));
+  // Render-only projection: retain global groups/order/stretch for switching back.
+  const displayPrimaryGroups = useMemo(() => !overlayVolume ? primaryVisibleGroups : primaryVisibleGroups.map(group => {
+    if (!group.some(spec => spec.name === 'volume')) return group;
+    return group.filter(spec => spec.name !== 'volume');
+  }).filter(group => group.length > 0), [primaryVisibleGroups, overlayVolume]);
+  const visiblePaneGroups = useMemo(() => [...displayPrimaryGroups, ...extraPaneGroups], [displayPrimaryGroups, extraPaneGroups]);
 
   // 각 pane(그룹) 앞에 놓인 그룹 **구성** 시퀀스. `RangeSeriesPane` 의 lifecycle dep
   // 으로 들어가 "밑에서 pane 인덱스가 밀리는" pane 들을 재생성에 참여시킨다 — 왜
@@ -2861,6 +2863,8 @@ export function LiveChartRoot({
                 onLegendGone={handleLegendGone}
               />
             )))}
+          {overlayVolume && <VolumeOverlay chart={chart} bundle={cb} axis={axis}
+            onLegendReady={handleLegendReady} onLegendGone={handleLegendGone} />}
           {!candleAlwaysOnTop && (
             <>
               {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false, isUsWorkareaCode(code))).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>

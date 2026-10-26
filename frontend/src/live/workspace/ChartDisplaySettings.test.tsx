@@ -10,6 +10,24 @@ beforeEach(() => useWindowSettingsStore.setState({ byWindow: {} }));
 afterEach(() => useChartPrefsStore.setState(initial, true));
 
 describe('chart display settings', () => {
+  it('shows overlay styles only when on, applies them locally and undoes color edits through the palette portal', async () => {
+    render(<ChartDisplaySettings windowId="a" />);
+    expect(screen.queryByRole('slider', { name: '거래량 투명도' })).toBeNull();
+    fireEvent.click(screen.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' }));
+    expect(screen.getByRole('slider', { name: '거래량 투명도' })).toHaveValue('65');
+    expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('25');
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    fireEvent.change(screen.getByRole('slider', { name: '거래량 표시 높이' }), { target: { value: '40' } });
+    await waitFor(() => expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayHeight).toBe(40));
+    fireEvent.click(screen.getByRole('button', { name: '상승봉 거래량 색상 선택' }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^상승봉 거래량 색상 #/ })[0]);
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayUpColor).toMatch(/^#/);
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    await waitFor(() => expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayUpColor).toBe(''));
+    expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayHeight).toBe(40);
+    expect(useChartPrefsStore.getState().volumeOverlayHeight).toBe(25);
+  });
   it('defaults color swapping on, gates it by inversion and preserves the choice when inversion is off', async () => {
     render(<ChartDisplaySettings windowId="a" />);
     fireEvent.click(screen.getByLabelText('차트 거꾸로 보기 세부 설정'));

@@ -142,6 +142,7 @@ const LEGEND_INSET = 'var(--space-xs)';
  *  장중에 같은 시리즈가 서로 다른 숫자로 보인다. 프로그램 순매수가 그 경우였다
  *  (DESIGN.md 2026-08-18). */
 const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
+  'candle', // Only the volume overlay registers legend series on this pane.
   'volume',
   'trade-value',
   'quote-totals',
@@ -1108,7 +1109,7 @@ function PaneLegendOverlay({
     paneCells.push({
       paneId,
       title: spec?.legendTitle,
-      toggleKey: spec?.legendToggleKey,
+      toggleKey: paneId === 'candle' ? 'volumeEnabled' : spec?.legendToggleKey,
       cells: entries.map((entry, i) => ({
         key: `${paneId}:${i}`,
         label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,

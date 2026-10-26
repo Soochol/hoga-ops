@@ -1,6 +1,7 @@
 import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 import { describe, it, expect } from 'vitest';
-import { projectVolume, VOLUME_SPEC } from './volume';
+import { projectVolume, projectVolumeCached, VOLUME_SPEC } from './volume';
+import { DEFAULT_VOLUME_OVERLAY_STYLE } from '../../state/chartDisplayPrefs';
 import { createVirtualAxis } from '../../util/virtualAxis';
 
 const sessionOpenMs = 1_779_062_400_000;
@@ -9,6 +10,31 @@ const axis = createVirtualAxis([
 ]);
 
 describe('projectVolume', () => {
+  it('changes historical colors/transparency without changing time or quantities, including inversion and a tail tick', () => {
+    const day1 = sessionOpenMs + 86_400_000;
+    const bundle = rangeBundleFixture({
+      segments: [
+        { date: '20260518', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000, source: 'hogaplay' },
+        { date: '20260519', session_open_ms: day1, session_close_ms: day1 + 23_400_000, source: 'hogaplay' },
+      ],
+      candles: [
+        { ts_ms: sessionOpenMs, open: 1, close: 2, high: 2, low: 1, vol_a: 10, vol_b: 20 },
+        { ts_ms: day1, open: 2, close: 1, high: 2, low: 1, vol_a: 40, vol_b: 10 },
+      ],
+    });
+    const ax = createVirtualAxis(bundle.segments!.map(s => ({ date: s.date, sessionOpenMs: s.session_open_ms, sessionCloseMs: s.session_close_ms })));
+    const style = { ...DEFAULT_VOLUME_OVERLAY_STYLE, volumeOverlayUpColor: '#112233', volumeOverlayDownColor: '#445566', volumeOverlayTransparency: 0 };
+    const plain = projectVolumeCached(bundle, ax);
+    expect(projectVolumeCached(bundle, ax, false, style).map(r => r.color)).toEqual(['#112233ff', '#445566ff']);
+    const faded = projectVolumeCached(bundle, ax, true, { ...style, volumeOverlayTransparency: 65 });
+    expect(faded.map(r => r.color)).toEqual(['#44556659', '#11223359']);
+    expect(faded.map(({ color, ...r }) => r)).toEqual(plain.map(({ color, ...r }) => r));
+    const next = projectVolumeCached({ ...bundle, candles: [bundle.candles[0], { ...bundle.candles[1], vol_a: 50 }] }, ax, true,
+      { ...style, volumeOverlayTransparency: 65 });
+    expect(next[0]).toBe(faded[0]);
+    expect(next[1].value).toBe(60);
+    expect(projectVolumeCached(bundle, ax, false, { ...style, volumeOverlayTransparency: 100 })[0].color).toBe('#11223300');
+  });
   it('emits {time, value, color} per candle; up candles get up color, down candles get down color', () => {
     const bundle = rangeBundleFixture( {
       candles: [
@@ -45,30 +71,11 @@ describe('VOLUME_SPEC', () => {
     } as never;
     const ax = { classifyAndProject: (t: number) => ({ contained: true, virtual: t }) } as never;
     const dataFn = VOLUME_SPEC.series[0].data;
-    expect(dataFn(bundle, ax, { cumulativeEnabled: false, auctionWindowMask: false }).length).toBe(1);
+    expect(dataFn(bundle, ax, {}).length).toBe(1);
   });
 
-  it('체결강도 누적 라인은 2번째 시리즈로 존재한다', () => {
-    expect(VOLUME_SPEC.series).toHaveLength(2);
-    const second = VOLUME_SPEC.series[1];
-    expect(second.type).toBeDefined();
-    const opts = (typeof second.options === 'function' ? second.options() : second.options) as Record<string, unknown>;
-    expect(opts.priceScaleId).toBe('');
-  });
-
-  it('토글 off 시 체결강도 누적 시리즈는 빈 데이터', () => {
-    const bundle = {
-      segments: [{ session_open_ms: 0, session_close_ms: 3_600_000, date: '20260527', source: 'kiwoom_live' }],
-      fill_strength: {
-        points: [{ t: 120_000, buy_qty: 100, sell_qty: 20, bucketIndex: 1, session_open_ms: 0, session_close_ms: 3_600_000 }],
-      },
-    } as never;
-    const ax = {
-      contains: (t: number) => t >= 0 && t <= 3_600_000,
-      toVirtual: (t: number) => t,
-    } as never;
-    const dataFn = VOLUME_SPEC.series[1].data as (...args: unknown[]) => { value: number; time: number }[];
-    expect(dataFn(bundle, ax, { cumulativeEnabled: false, auctionWindowMask: false }).length).toBe(0);
+  it('contains only the volume histogram', () => {
+    expect(VOLUME_SPEC.series).toHaveLength(1);
   });
 
   it('cached volume bars reproject only today after a live tick', () => {
@@ -91,14 +98,12 @@ describe('VOLUME_SPEC', () => {
     const dataFn = VOLUME_SPEC.series[0].data as (...args: Parameters<typeof VOLUME_SPEC.series[0]['data']>) => Array<{ value: number }>;
 
     dataFn({ segments, candles: [past0, past1, today] } as never, countingAxis, {
-      cumulativeEnabled: false,
-      auctionWindowMask: false,
     });
     calls.length = 0;
     const data = dataFn(
       { segments, candles: [past0, past1, { ...today, vol_a: 4 }] } as never,
       countingAxis,
-      { cumulativeEnabled: false, auctionWindowMask: false },
+      {},
     );
 
     expect(calls).toEqual([today.ts_ms]);

@@ -8,7 +8,7 @@
 - 정본은 `state/windowSettings.ts`의 `byWindow[windowId]`다. `hoga.window.settings.v1`
   localStorage에 즉시 저장한다. 값은 창별이며 종목·봉·링크 그룹에 따라 갈리지 않는다.
 - 설정은 종류별 section으로 나눈다. `chart` section은 `CHART_DISPLAY_TOGGLES`에
-  등록된 boolean의 완전한 값이다.
+  등록된 boolean과 거래량 오버레이 스타일의 완전한 값이다.
   새 종류는 `WINDOW_SETTINGS_REGISTRY`에 창 kind와 순수 정규화 함수를 등록한다.
   `WindowSettings` 타입은 레지스트리에서 파생된다. UI에 별도 저장 사본을 만들지 않는다.
 - `candleLogScale`·`candleInvertScale`은 기본값이 false이며 분·일·주·월에서 함께 쓴다.
@@ -20,6 +20,11 @@
 - `depthHeatmapAboveCandles`는 기본값이 false이며 켜면 잔량 히트맵을 캔들 앞에
   그린다. 히트맵·캔들 사이에는 `candleAlwaysOnTop`보다 이 값이 우선한다.
   크로스헤어 아래의 normal primitive 레이어를 사용하며 불투명도는 유지한다.
+- `volumeOverlayEnabled`는 기본 false다. `volumeOverlayTransparency`는 정수 0~100(기본 65),
+  `volumeOverlayHeight`는 정수 10~40(기본 25)이며 색상 두 값은 빈 문자열(테마 추종) 또는
+  6자리 hex다. 잘못된 값은 기본값으로 정규화한다. 스타일은 창 설정 store에만 쓴다.
+  겹치기는 기본 거래량의 표시·숨김을 따르며, 별도 volume pane을 렌더에서 제거하되
+  공용 pane 배치를 수정하지 않는다. 그림의 volume paneId는 보존하고 표시만 숨긴다.
 - 기존 호가 주문·체결 창의 저장 구조는 이번에 이전하지 않았다. 이후 이전 시 기존
   저장값을 읽는 이관 절차와 하위호환 테스트를 함께 추가한다.
 - 탭별 sessionStorage 워크스페이스에는 설정 내용을 넣지 않는다. 같은 창 id는
