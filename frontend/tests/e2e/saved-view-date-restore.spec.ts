@@ -139,6 +139,51 @@ test('a wide saved daily zoom fetches its earlier left edge before restoring', a
   await expect.poll(async () => (await snap(page))?.anchorVisible).toBe(true);
 });
 
+test('daily saved periods show fill only while weekly and monthly periods keep their boundary lines', async ({ page }, testInfo) => {
+  const wide = { ...save, range: { ...save.range, from_date: '20200710', from_ms: Date.UTC(2020, 6, 10) } };
+  const { row } = await setup(page, false, wide);
+  await row.click();
+  await expect.poll(async () => (await snap(page))?.anchorVisible).toBe(true);
+
+  const edgeVisible = () => page.evaluate(savedClose => {
+    const chart = (window as unknown as ChartWindow).__liveCharts.get('saved-daily');
+    const series = chart?.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick');
+    const anchor = series?.data().find(p => 'close' in p && p.close >= savedClose);
+    if (!chart || !anchor) return null;
+    const ts = chart.timeScale();
+    const x = ts.timeToCoordinate(anchor.time);
+    if (x === null) return null;
+    const right = Math.round(x + Math.max(1, ts.options().barSpacing / 2));
+    if (right < 0 || right >= ts.width()) return null;
+    const probe = document.createElement('canvas').getContext('2d')!;
+    probe.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    probe.fillRect(0, 0, 1, 1);
+    const accent = probe.getImageData(0, 0, 1, 1).data;
+    const canvases = Array.from(chart.chartElement().querySelectorAll('canvas'))
+      .filter(canvas => canvas.clientWidth > 500 && canvas.clientHeight > 200);
+    if (!canvases.length) return null;
+    return canvases.some(canvas => {
+      const ratio = canvas.width / canvas.clientWidth;
+      const ctx = canvas.getContext('2d')!;
+      return [30, 60, 90].every(y => {
+        const pixel = ctx.getImageData(Math.floor((right + 0.5) * ratio), Math.floor(y * ratio), 1, 1).data;
+        return pixel[3] > 240 && [0, 1, 2].every(i => pixel[i] === accent[i]);
+      });
+    });
+  }, savedClose);
+
+  for (const tf of ['D', 'W', 'M', 'D'] as const) {
+    await page.evaluate(async tf => {
+      const path = '/src/state/workspace.ts';
+      const { useWorkspaceStore } = await import(path);
+      useWorkspaceStore.getState().setChartTimeframe('saved-daily', tf);
+    }, tf);
+    await expect.poll(edgeVisible).toBe(tf !== 'D');
+  }
+  await expect(page.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
+  await page.screenshot({ path: testInfo.outputPath('daily-saved-fill-only.png') });
+});
+
 for (const [timeframe, span] of [['W', 40], ['M', 12]] as const) {
   test(`a saved ${timeframe} view restores its own zoom`, async ({ page }) => {
     const savedView = { ...save, timeframe, viewport: { ...save.viewport, bar_span: span } };

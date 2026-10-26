@@ -33,6 +33,16 @@ function makePaneSeries(...paneIds: string[]) {
 describe('StudySavedRangeBandHost', () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); useChartPrefsStore.getState().resetToDefaults(); });
 
+  it('updates daily versus weekly/monthly boundaries on every pane without reattaching', () => {
+    const { map, series } = makePaneSeries('candle', 'volume', 'ratio');
+    const { rerender } = render(<StudySavedRangeBandHost axis={axis} paneSeries={map} marks={marks} showEdges={false} />);
+    const prims = series.map(s => s.attachPrimitive.mock.calls[0][0] as StudySavedRangeBandPrimitive);
+    expect(prims.map(p => p.snapshot()?.showEdges)).toEqual([false, false, false]);
+    rerender(<StudySavedRangeBandHost axis={axis} paneSeries={map} marks={marks} showEdges />);
+    expect(prims.map(p => p.snapshot()?.showEdges)).toEqual([true, true, true]);
+    for (const s of series) expect(s.attachPrimitive).toHaveBeenCalledTimes(1);
+  });
+
   it('updates and repaints every pane immediately when the global fill setting changes', () => {
     const repaint = vi.spyOn(StudySavedRangeBandPrimitive.prototype, 'requestUpdate');
     const { map, series } = makePaneSeries('candle', 'volume');

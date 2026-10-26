@@ -123,6 +123,14 @@ function rects(c: ReturnType<typeof makeCanvasSpy>): number[][] {
 }
 
 describe('StudySavedRangeBandPrimitive', () => {
+  it.each([0, 0.4, 1])('draws only the daily fill at opacity %s, with no boundary strokes', (fillOpacity) => {
+    const { prim } = attach(makeAxisStubs(), () => ({ axis, marks, fillOpacity, showEdges: false }));
+    const c = makeCanvasSpy();
+    draw(prim, c, { w: 500, h: 200 });
+    expect(rects(c)).toEqual(fillOpacity === 0 ? [] : [[96, 0, 208, 200]]);
+    expect(c.globalAlpha).toBe(1);
+  });
+
   it.each([0, 0.4, 1])('uses fill opacity %s without dimming the boundary lines', (fillOpacity) => {
     const { prim } = attach(makeAxisStubs(), () => ({ axis, marks, fillOpacity }));
     const c = makeCanvasSpy();

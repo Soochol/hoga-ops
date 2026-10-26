@@ -30,6 +30,8 @@ export type StudySavedRangeBandSnapshot = {
   axis: VirtualAxis;
   marks: StudySavedRangeMarks;
   fillOpacity: number;
+  /** Daily saved views use fill only; other callers retain boundary lines. */
+  showEdges?: boolean;
 };
 
 export type StudySavedRangeBandSource = () => StudySavedRangeBandSnapshot | null;
@@ -109,7 +111,7 @@ class StudySavedRangeBandRenderer implements IPrimitivePaneRenderer {
       ctx.save();
 
       if (geom.width > 0 && snap.fillOpacity > 0) {
-        // Keep the saved interval subtle over candles; edges retain full contrast.
+        // Keep the saved interval subtle over candles.
         ctx.save();
         ctx.globalAlpha *= snap.fillOpacity;
         ctx.fillStyle = tokens.fill;
@@ -117,10 +119,12 @@ class StudySavedRangeBandRenderer implements IPrimitivePaneRenderer {
         ctx.restore();
       }
 
-      // 양끝 1px 실선. 0.5 오프셋으로 픽셀 격자에 앉혀 흐릿함을 막는다.
-      ctx.fillStyle = tokens.edge;
-      ctx.fillRect(Math.round(geom.left), 0, 1, paneHeight);
-      ctx.fillRect(Math.round(geom.right), 0, 1, paneHeight);
+      // 주·월봉 등 기존 호출자는 양끝 1px 실선을 유지한다.
+      if (snap.showEdges !== false) {
+        ctx.fillStyle = tokens.edge;
+        ctx.fillRect(Math.round(geom.left), 0, 1, paneHeight);
+        ctx.fillRect(Math.round(geom.right), 0, 1, paneHeight);
+      }
 
       ctx.restore();
     });

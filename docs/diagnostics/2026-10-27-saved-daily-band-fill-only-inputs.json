@@ -1,0 +1,31 @@
+{
+  "base": "19a609ae79942a8c4a2e7198a8f9afce2a6fd7ab",
+  "source_head": "19a609ae79942a8c4a2e7198a8f9afce2a6fd7ab",
+  "node": "v24.13.1",
+  "checks": {
+    "typecheck": "passed",
+    "vitest": "202 passed (3 files)",
+    "playwright": "9 passed (saved-view-date-restore.spec.ts)",
+    "production_build": "passed during E2E startup",
+    "diff_check": "passed"
+  },
+  "sha256": {
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    "DESIGN.md": "ffc73a426d2547ee865ca15d1b95e6452f3086e30e1544d38dde1b10a3ea0327",
+    "docs/diagnostics/2026-10-27-saved-daily-band-fill-only.md": "55c3179509863da4329a000a5891262f3fca74108caffb24236271c08c40a47b",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/src/chart/StudySavedRangeBandPrimitive.test.ts": "dd8f106721f59f08ea1cb46f3d01543a87dc013d8f1baae3b0139d53cd909de5",
+    "frontend/src/chart/StudySavedRangeBandPrimitive.ts": "bd988d6b0aea6c1b44e5c505413ff43cec8e42d94aa2089bcb320ddcb9fb6ded",
+    "frontend/src/live/LiveChartRoot.tsx": "32e83553e6bbaf5fb385eb8f8206c4c7e3f38969e0e9797abb6dd0dc61ec3747",
+    "frontend/src/studyViews/StudySavedRangeBandHost.test.tsx": "f3712317fc2116f96f03b53e69b4e6c576b0842497f48f0c08c0ccae2cdd8487",
+    "frontend/src/studyViews/StudySavedRangeBandHost.tsx": "645d86fd2fe3df4614456035b745e34bab153336c38ac2a03b08039993b3ac99",
+    "frontend/tests/e2e/saved-view-date-restore.spec.ts": "333f582a04189ca93ff06d383c075914c85f9df7f9b65eb2c99c77ff74d2f7ae",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  }
+}
