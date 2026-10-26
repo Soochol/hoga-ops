@@ -12,6 +12,7 @@ type Props = {
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
   marks: StudySavedRangeMarks;
+  showEdges?: boolean;
 };
 
 /**
@@ -24,7 +25,7 @@ type Props = {
  * 옛 DOM 오버레이는 차트 전체 높이를 덮어 거래량·보조지표 pane 까지 밴드가 이어졌다.
  * 캔들 pane 에만 붙이면 밴드가 캔들 pane 바닥에서 끊겨 **시각 회귀**가 된다.
  */
-function StudySavedRangeBandHost({ axis, paneSeries, marks }: Props) {
+function StudySavedRangeBandHost({ axis, paneSeries, marks, showEdges = true }: Props) {
   const fillPercent = useChartPrefsStore((state) => state.savedRangeFillPercent);
   const snapshotRef = useRef<StudySavedRangeBandSnapshot | null>(null);
   const primsRef = useRef<StudySavedRangeBandPrimitive[]>([]);
@@ -37,9 +38,9 @@ function StudySavedRangeBandHost({ axis, paneSeries, marks }: Props) {
   // 값이 그대로인데도 렌더마다 repaint 를 요청하게 된다.
   const { fromMs, toMs, barCount } = marks;
   useEffect(() => {
-    snapshotRef.current = { axis, marks: { fromMs, toMs, barCount }, fillOpacity: fillPercent / 100 };
+    snapshotRef.current = { axis, marks: { fromMs, toMs, barCount }, fillOpacity: fillPercent / 100, showEdges };
     for (const prim of primsRef.current) prim.requestUpdate();
-  }, [axis, fromMs, toMs, barCount, fillPercent]);
+  }, [axis, fromMs, toMs, barCount, fillPercent, showEdges]);
 
   useEffect(() => {
     const attached = [...paneSeries.values()].map((series) => {

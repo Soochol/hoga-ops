@@ -3000,7 +3000,7 @@ export function LiveChartRoot({
               DOM 없는 primitive 호스트라 팬/줌 재계산은 lwc 캔버스 패스가 담당한다
               (캔들과 같은 프레임 — 고저 극값 라벨과 동일 처방). */}
           {savedRangeBand && !isMinuteTimeframe(timeframe) && (
-            <StudySavedRangeBandHost axis={axis} paneSeries={paneSeries} marks={savedRangeBand} />
+            <StudySavedRangeBandHost axis={axis} paneSeries={paneSeries} marks={savedRangeBand} showEdges={timeframe !== 'D'} />
           )}
           {/* 창 간 크로스헤어 동기화(옆 창 호버 → 이 창). 게이트가 둘이다:
               **분봉 · `D` 만** — 소비자가 자기 축으로 스냅할 다리가 있는 봉이다(바로 위
