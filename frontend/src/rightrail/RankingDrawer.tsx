@@ -284,7 +284,7 @@ export function RankingDrawer() {
   }), [rows, kind, netBuyLabel]);
   const columns = useQuoteColumns(columnCodes, columnQuotes, scrollRef, columnScope, extraFigures);
   const columnLayout = useMemo(() => ({ ...columns.layout,
-    '--quote-rank-gap': '0.125rem',
+    '--quote-rank-gap': 'var(--space-sm)',
     '--quote-name-start': '2.5rem',
     // Use the left gutter for the four-digit figure; the name stays at 2.5rem.
     paddingLeft: 'max(0px, calc(var(--quote-name-start) - var(--quote-rank-width) - var(--quote-rank-gap)))',

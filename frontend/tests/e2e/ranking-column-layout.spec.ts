@@ -216,7 +216,7 @@ for (const fontSize of [16, 20]) {
       const [a, b] = await Promise.all([geometry(first), geometry(second)]);
       expect(a.name.left).toBe(40 * scale);
       expect(b.name.left).toBe(a.name.left);
-      expect(b.name.left - b.rank.right).toBeCloseTo(2 * scale, 3);
+      for (const value of [a, b]) expect(value.name.left - value.rank.right).toBeCloseTo(8 * scale, 3);
       expect(a.padding).toBe(padding * scale);
       expect(a.price.right).toBeCloseTo(b.price.right, 3);
       expect(a.percent.right).toBeCloseTo(b.percent.right, 3);
