@@ -243,6 +243,7 @@ export const CHART_TOGGLE_GROUPS = [
   { id: 'grid', label: '격자 · 구분선' },
   { id: 'sync', label: '창 간 동기화' },
   { id: 'price', label: '가격 표시' },
+  { id: 'saved-range', label: '저장 기간' },
   { id: 'trade', label: '체결 강조' },
 ] as const;
 
@@ -294,12 +295,24 @@ export type NumericPrefDef = {
   readonly enabledBy?: ChartToggleKey;
   /** UI surface this pref belongs to. Unset → chart settings modal. */
   readonly category?: ChartToggleCategory;
-  /** Render hint. `'time'` → HH:MM 시각 입력(TimeOfDayInput). 값은 여전히
-   *  HHMM 정수로 저장. 미지정 → 일반 숫자 입력. */
-  readonly kind?: 'time';
+  /** Standalone app-setting numeric rows belong to a settings subgroup. */
+  readonly group?: ChartToggleGroupId;
+  /** `'time'` → HH:MM 입력, `'percent'` → 즉시 반영하는 % 슬라이더.
+   *  값은 정수로 저장한다. 미지정 → 일반 숫자 입력. */
+  readonly kind?: 'time' | 'percent';
 };
 
 export const CHART_NUMERIC_PREFS = [
+  {
+    key: 'savedRangeFillPercent',
+    label: '저장 기간 채움 농도',
+    description: '값이 클수록 저장 기간의 배경이 진해집니다. 0%는 양끝 경계선만 표시합니다.',
+    default: 40,
+    min: 0,
+    max: 100,
+    kind: 'percent',
+    group: 'saved-range',
+  },
   {
     key: 'ratioOutlierThreshold',
     label: '호가비 극단값 임계 배수',

@@ -151,3 +151,49 @@ for (const [timeframe, span] of [['W', 40], ['M', 12]] as const) {
     expect((await snap(page))?.visibleCount).toBeGreaterThan(span - 2);
   });
 }
+
+for (const theme of ['toss-dark', 'toss-light']) {
+  test(`${theme}: top settings adjusts saved-period fill immediately and remembers it`, async ({ page }, testInfo) => {
+    await page.addInitScript(theme => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
+    const wide = { ...save, range: { ...save.range, from_date: '20200710', from_ms: Date.UTC(2020, 6, 10) } };
+    const { row } = await setup(page, false, wide);
+    await row.click();
+    await expect.poll(async () => (await snap(page))?.anchorVisible).toBe(true);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    const pixel = () => page.evaluate(() => {
+      const chart = (window as unknown as ChartWindow).__liveCharts.get('saved-daily');
+      const canvases = Array.from(chart?.chartElement().querySelectorAll('canvas') ?? [])
+        .filter(canvas => canvas.width > 500 && canvas.height > 200);
+      if (!canvases.length) return null;
+      // Candles and top-layer primitives may use separate canvases. Read both.
+      return canvases.map(canvas => Array.from(canvas.getContext('2d')!
+        .getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height * 0.75), 1, 1).data));
+    });
+    const softened = await pixel();
+    expect(softened).not.toBeNull();
+    await page.getByRole('button', { name: '설정', exact: true }).first().click();
+    const editor = page.getByTestId('settings-shell');
+    await editor.getByRole('textbox', { name: '설정 필터' }).fill('저장 기간');
+    const slider = editor.getByRole('slider', { name: '저장 기간 채움 농도' });
+    await expect(slider).toHaveValue('40');
+    await slider.focus();
+    await slider.press('Home');
+    await expect(slider).toHaveValue('0');
+    await expect.poll(pixel).not.toEqual(softened);
+    const empty = await pixel();
+    await slider.press('End');
+    await expect(slider).toHaveValue('100');
+    await expect.poll(pixel).not.toEqual(empty);
+    await editor.getByRole('button', { name: '되돌리기' }).click();
+    await expect(slider).toHaveValue('0');
+    await expect.poll(pixel).toEqual(empty);
+    await slider.focus();
+    await slider.press('End');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('hoga.chart.prefs.v1') ?? '{}').savedRangeFillPercent)).toBe(100);
+    await editor.screenshot({ path: testInfo.outputPath(`saved-period-fill-${theme}.png`) });
+    await page.reload();
+    await page.getByRole('button', { name: '설정', exact: true }).first().click();
+    await editor.getByRole('textbox', { name: '설정 필터' }).fill('저장 기간');
+    await expect(slider).toHaveValue('100');
+  });
+}
