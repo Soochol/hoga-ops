@@ -67,12 +67,11 @@ describe('computeBandGeometry', () => {
 });
 
 function makeCanvasSpy() {
-  return {
-    save: vi.fn(),
-    restore: vi.fn(),
-    fillRect: vi.fn(),
-    fillStyle: '',
-  } as unknown as CanvasRenderingContext2D & { fillRect: ReturnType<typeof vi.fn> };
+  const stack: number[] = [];
+  const context = { globalAlpha: 1, save: vi.fn(), restore: vi.fn(), fillRect: vi.fn(), fillStyle: '' };
+  context.save.mockImplementation(() => { stack.push(context.globalAlpha); });
+  context.restore.mockImplementation(() => { context.globalAlpha = stack.pop()!; });
+  return context as unknown as CanvasRenderingContext2D & { fillRect: ReturnType<typeof vi.fn> };
 }
 
 function makeTarget(context: CanvasRenderingContext2D, width = 500, height = 300) {
@@ -124,9 +123,19 @@ function rects(c: ReturnType<typeof makeCanvasSpy>): number[][] {
 }
 
 describe('StudySavedRangeBandPrimitive', () => {
+  it.each([0, 0.4, 1])('uses fill opacity %s without dimming the boundary lines', (fillOpacity) => {
+    const { prim } = attach(makeAxisStubs(), () => ({ axis, marks, fillOpacity }));
+    const c = makeCanvasSpy();
+    const alphas: number[] = [];
+    c.fillRect.mockImplementation(() => { alphas.push(c.globalAlpha); });
+    draw(prim, c);
+    expect(alphas).toEqual(fillOpacity === 0 ? [1, 1] : [fillOpacity, 1, 1]);
+    expect(c.globalAlpha).toBe(1);
+  });
+
   it('tint 와 양끝 실선을 pane 높이 전체로 그린다', () => {
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => ({ axis, marks }));
+    const { prim } = attach(stubs, () => ({ axis, marks, fillOpacity: 0.4 }));
     const c = makeCanvasSpy();
 
     draw(prim, c, { w: 500, h: 200 });
@@ -140,7 +149,7 @@ describe('StudySavedRangeBandPrimitive', () => {
 
   it('좌표를 못 얻으면 아무것도 그리지 않는다', () => {
     const stubs = makeAxisStubs({ timeToCoordinate: () => null });
-    const { prim } = attach(stubs, () => ({ axis, marks }));
+    const { prim } = attach(stubs, () => ({ axis, marks, fillOpacity: 0.4 }));
     const c = makeCanvasSpy();
 
     draw(prim, c);
@@ -163,7 +172,7 @@ describe('StudySavedRangeBandPrimitive', () => {
     // 밴드가 새 프레임 좌표로 나와야 한다. DOM 오버레이 시절엔 여기서 구독 → rAF →
     // React 렌더를 거쳐야 했고, 그 지연이 곧 캔들을 뒤따라오는 밴드였다.
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => ({ axis, marks }));
+    const { prim } = attach(stubs, () => ({ axis, marks, fillOpacity: 0.4 }));
 
     const before = makeCanvasSpy();
     draw(prim, before, { w: 500, h: 200 });
@@ -183,7 +192,7 @@ describe('StudySavedRangeBandPrimitive', () => {
         throw new Error('Object is disposed');
       },
     });
-    const { prim } = attach(stubs, () => ({ axis, marks }));
+    const { prim } = attach(stubs, () => ({ axis, marks, fillOpacity: 0.4 }));
     const c = makeCanvasSpy();
 
     expect(() => draw(prim, c)).not.toThrow();
@@ -196,7 +205,7 @@ describe('StudySavedRangeBandPrimitive', () => {
 
   it('detach 후엔 chart 참조를 놓아 그리지 않는다', () => {
     const stubs = makeAxisStubs();
-    const { prim } = attach(stubs, () => ({ axis, marks }));
+    const { prim } = attach(stubs, () => ({ axis, marks, fillOpacity: 0.4 }));
     const c = makeCanvasSpy();
 
     prim.detached();

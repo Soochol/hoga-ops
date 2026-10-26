@@ -29,6 +29,7 @@ const TOKEN_SPEC = {
 export type StudySavedRangeBandSnapshot = {
   axis: VirtualAxis;
   marks: StudySavedRangeMarks;
+  fillOpacity: number;
 };
 
 export type StudySavedRangeBandSource = () => StudySavedRangeBandSnapshot | null;
@@ -107,10 +108,10 @@ class StudySavedRangeBandRenderer implements IPrimitivePaneRenderer {
       const tokens = resolveTokensThemed(TOKEN_SPEC);
       ctx.save();
 
-      if (geom.width > 0) {
+      if (geom.width > 0 && snap.fillOpacity > 0) {
         // Keep the saved interval subtle over candles; edges retain full contrast.
         ctx.save();
-        ctx.globalAlpha *= 0.4;
+        ctx.globalAlpha *= snap.fillOpacity;
         ctx.fillStyle = tokens.fill;
         ctx.fillRect(geom.left, 0, geom.width, paneHeight);
         ctx.restore();

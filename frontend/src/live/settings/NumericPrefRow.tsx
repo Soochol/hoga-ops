@@ -23,6 +23,18 @@ export default function NumericPrefRow({ def }: { def: NumericPrefDef }) {
     setInputValue(String(value));
   }, [value]);
 
+  if (def.kind === 'percent') {
+    return <SettingsRow label={def.label} description={def.description} disabled={!gateEnabled}>
+      <div className="flex items-center gap-2">
+        <input type="range" min={def.min} max={def.max} step={1} value={value}
+          disabled={!gateEnabled} aria-label={def.label} aria-valuetext={`${value}%`}
+          data-testid={`settings-numeric-${def.key}`} className="w-28 accent-accent"
+          onChange={(event) => setNumericPref(def.key as NumericPrefKey, Number(event.currentTarget.value))} />
+        <output className="w-10 text-right text-sm tabular-nums text-fg">{value}%</output>
+      </div>
+    </SettingsRow>;
+  }
+
   // 시각 종류는 HH:MM 입력(TimeOfDayInput)으로 통일. 값은 HHMM 정수 그대로 저장.
   // 범위 접미어는 숫자 대신 포맷된 시각(09:00–15:20)으로 표시한다.
   if (def.kind === 'time') {

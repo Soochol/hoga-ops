@@ -6,6 +6,7 @@ import {
   type StudySavedRangeBandSnapshot,
 } from '../chart/StudySavedRangeBandPrimitive';
 import type { StudySavedRangeMarks } from './studyDailyContext';
+import { useChartPrefsStore } from '../state/chartPrefs';
 
 type Props = {
   axis: VirtualAxis;
@@ -24,6 +25,7 @@ type Props = {
  * 캔들 pane 에만 붙이면 밴드가 캔들 pane 바닥에서 끊겨 **시각 회귀**가 된다.
  */
 function StudySavedRangeBandHost({ axis, paneSeries, marks }: Props) {
+  const fillPercent = useChartPrefsStore((state) => state.savedRangeFillPercent);
   const snapshotRef = useRef<StudySavedRangeBandSnapshot | null>(null);
   const primsRef = useRef<StudySavedRangeBandPrimitive[]>([]);
 
@@ -35,9 +37,9 @@ function StudySavedRangeBandHost({ axis, paneSeries, marks }: Props) {
   // 값이 그대로인데도 렌더마다 repaint 를 요청하게 된다.
   const { fromMs, toMs, barCount } = marks;
   useEffect(() => {
-    snapshotRef.current = { axis, marks: { fromMs, toMs, barCount } };
+    snapshotRef.current = { axis, marks: { fromMs, toMs, barCount }, fillOpacity: fillPercent / 100 };
     for (const prim of primsRef.current) prim.requestUpdate();
-  }, [axis, fromMs, toMs, barCount]);
+  }, [axis, fromMs, toMs, barCount, fillPercent]);
 
   useEffect(() => {
     const attached = [...paneSeries.values()].map((series) => {

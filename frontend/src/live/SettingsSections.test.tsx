@@ -68,6 +68,20 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(useLiveVenueStore.getState().venue).toBe('UN');
     expect(undo).toBeDisabled();
   });
+  it('filters, adjusts and undoes the saved-period fill setting without changing unrelated preferences', async () => {
+    renderSettings();
+    fireEvent.change(screen.getByLabelText('설정 필터'), { target: { value: '저장 기간' } });
+    const slider = screen.getByRole('slider', { name: '저장 기간 채움 농도' });
+    expect(slider).toHaveValue('40');
+    fireEvent.change(slider, { target: { value: '75' } });
+    expect(useChartPrefsStore.getState().savedRangeFillPercent).toBe(75);
+    const undo = screen.getByRole('button', { name: '되돌리기' });
+    await waitFor(() => expect(undo).toBeEnabled());
+    act(() => useLiveVenueStore.getState().setVenue('UN'));
+    fireEvent.click(undo);
+    await waitFor(() => expect(slider).toHaveValue('40'));
+    expect(useLiveVenueStore.getState().venue).toBe('UN');
+  });
   it('외부에서 같은 설정이 변경되면 오래된 되돌리기를 비활성화한다', async () => {
     renderSettings();
     const old = useChartPrefsStore.getState().cursorSyncCrossSymbol;
