@@ -57,6 +57,12 @@ test('좁은 작업 영역에 추가한 잠정투자자 창도 숫자에 필요�
   await added.getByRole('button', { name: '금액(억원)', exact: true }).click();
   const unit = added.getByText('단위: 억원', { exact: true });
   await expect(unit).toBeInViewport();
+  const unitBox = (await unit.boundingBox())!;
+  await page.mouse.move(unitBox.x + 1, unitBox.y + unitBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(unitBox.x + unitBox.width - 1, unitBox.y + unitBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('');
   await expect(added.getByRole('table')).toContainText('+3.6');
   await expect(added.getByRole('table')).not.toContainText('억');
   await expect.poll(async () => {

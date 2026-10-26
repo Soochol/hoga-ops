@@ -23,17 +23,24 @@ beforeEach(() => {
   hook.mockReturnValue(result(payload()));
 });
 
-it('구분된 연결 정보·전체 제목을 제공하고 원문 URL을 만들지 않는다', () => {
+it('구분된 연결 정보·전체 제목을 읽기 목록으로 제공하고 클릭해도 펼치지 않는다', () => {
   render(<NewsWindow code="005930" name="삼성전자" />);
   expect(screen.getByText('종목코드 연결')).toBeInTheDocument();
   expect(screen.getByText('제목에 종목명')).toBeInTheDocument();
-  expect(screen.getByText('조회 결과')).toBeInTheDocument();
+  const linkedOnly = screen.getByRole('checkbox', { name: /종목 연결만/ });
+  expect(linkedOnly).toBeChecked();
+  expect(screen.queryByText('조회 결과')).not.toBeInTheDocument();
+  expect(screen.queryByText('다른 회사 소식')).not.toBeInTheDocument();
   expect(screen.queryByRole('link')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('checkbox', { name: /종목 연결만/ }));
+  fireEvent.click(linkedOnly);
+  expect(screen.getByText('조회 결과')).toBeInTheDocument();
+  expect(screen.getByText('다른 회사 소식')).toBeInTheDocument();
+  fireEvent.click(linkedOnly);
   expect(screen.getByText('삼성전자 투자 소식')).toBeInTheDocument();
   expect(screen.queryByText('다른 회사 소식')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /삼성전자 투자 소식/ }));
-  expect(screen.getByText('제공 종목코드: 000810')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /삼성전자 투자 소식/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText('삼성전자 투자 소식'));
+  expect(screen.queryByText(/제공 종목코드:/)).not.toBeInTheDocument();
 });
 
 it('갱신된 뉴스는 읽던 목록을 밀지 않고 수동 반영한다', () => {
