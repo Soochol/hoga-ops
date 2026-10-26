@@ -216,6 +216,20 @@ describe('makeStudySaveCommand', () => {
     expect(buildStudyReferenceSaveRequest(source)?.range).toMatchObject({ from_ms: old, to_ms: old + 10000 });
   });
 
+  it.each(['D', 'W', 'M'] as const)('preserves the full visible %s period even before the hogaplay retention floor', (timeframe) => {
+    const dates = [Date.UTC(2020, 6, 10), Date.UTC(2020, 10, 16), Date.UTC(2021, 3, 22)];
+    const source: LiveStudySaveSource = {
+      origin: 'live', code: '068290', label: '삼성출판사', timeframe,
+      bundle: bundle({ candles: dates.map(ts_ms => ({ ts_ms, open: 1, high: 2, low: 1, close: 2, vol_a: 1, vol_b: 0 })) }),
+      captureViewport: () => ({ rightEdgeMs: dates[2], leftEdgeMs: dates[0], barSpan: 191.47, atLiveEdge: false }),
+    };
+    const expected = { from_date: '20200710', to_date: '20210422', from_ms: dates[0], to_ms: dates[2] };
+    const command = makeStudySaveCommand({ mode: 'create', source, existingSave: null });
+    expect(command?.request.range).toEqual(expected);
+    expect(command?.dialog.rangeLabel).toBe('2020-07-10–2021-04-22');
+    expect(buildStudyReferenceSaveRequest(source)?.range).toEqual(expected);
+  });
+
   it('returns null when no viewport can be captured or inferred', () => {
     const source: LiveStudySaveSource = {
       origin: 'live',

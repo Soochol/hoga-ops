@@ -7,7 +7,7 @@ import type {
 import type { RangeBundle } from '../api/types';
 import { realMsToYyyymmdd, todayKstYyyymmdd } from '../live/liveDateTime';
 import type { TabViewport } from '../live/viewportAnchor';
-import { isSecondTimeframe, type LiveTimeframe } from '../state/livePage';
+import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 
 export function defaultStudyViewName(row: StudyViewListRow | undefined, label: string, toDate: string): string {
   return row?.name ?? compactStudyViewName(label, toDate);
@@ -104,10 +104,10 @@ export function clampWindowToRetention(
   return { fromIndex, toIndex: window.toIndex };
 }
 
-/** 초봉은 로컬 관측 체결을 읽으므로 hogaplay의 보존 기간을 적용하지 않는다. */
+/** hogaplay 원자료 보존 제한은 분봉에만 적용한다. 캘린더 봉과 초봉은 별도 원천이다. */
 export function saveWindow(bundle: RangeBundle, viewport: StudyViewport, todayYyyymmdd: string, timeframe?: LiveTimeframe) {
   const window = visibleWindow(bundle, viewport);
-  return timeframe && isSecondTimeframe(timeframe) ? window : clampWindowToRetention(bundle, window, todayYyyymmdd);
+  return !timeframe || isMinuteTimeframe(timeframe) ? clampWindowToRetention(bundle, window, todayYyyymmdd) : window;
 }
 
 export function rangeForWindow(bundle: RangeBundle, fromIndex: number, toIndex: number) {

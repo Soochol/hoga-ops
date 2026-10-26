@@ -1,4 +1,4 @@
-import { isSecondTimeframe } from '../state/livePage';
+import { isMinuteTimeframe } from '../state/livePage';
 import { studyTimeframeLabel } from './studyViewPeriod';
 import { persistJson, readJsonObject } from '../state/persist';
 import { useStudySaveNotice } from './StudyViewSaveToastHostHelpers';
@@ -50,7 +50,7 @@ export function LiveStudyViewSaveButton({
       start_date: range!.from_date,
       end_date: range!.to_date,
     }),
-    enabled: !!command && !!range && !isSecondTimeframe(command.request.timeframe),
+    enabled: !!command && !!range && isMinuteTimeframe(command.request.timeframe),
     staleTime: 30_000,
     retry: false,
   });
@@ -62,7 +62,7 @@ export function LiveStudyViewSaveButton({
     onSettled: () => queryClient.invalidateQueries({ queryKey: CAPTURE_QUEUE_QUERY_KEY }),
   });
 
-  const coverage: SaveCoverage | null = command && !isSecondTimeframe(command.request.timeframe)
+  const coverage: SaveCoverage | null = command && isMinuteTimeframe(command.request.timeframe)
     ? {
       isLoading: previewQuery.isLoading,
       isError: previewQuery.isError,
@@ -116,7 +116,7 @@ export function LiveStudyViewSaveButton({
           errorMessage={createError}
           onCancel={() => setCommand(null)}
           onSubmit={({ name, memo, capture, ...group }) => {
-            const missing = isSecondTimeframe(command.request.timeframe) ? [] : previewQuery.data?.missing ?? [];
+            const missing = isMinuteTimeframe(command.request.timeframe) ? previewQuery.data?.missing ?? [] : [];
             mutations.create.mutate(
               { ...studySaveCommandBody(command, { name, memo }), ...group },
               {
