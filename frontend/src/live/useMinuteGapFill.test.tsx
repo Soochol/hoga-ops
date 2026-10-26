@@ -80,6 +80,64 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('useMinuteGapFill — 날짜 안의 부분 누락', () => {
+  const date = '20260814';
+  const start = regularSessionOpenMs(date);
+  const disk = [{ ts_ms: start + 2 * 60_000, open: 100, high: 110, low: 90, close: 105, vol_a: 7, vol_b: 3 }];
+  const args = { ...BASE, diskCandles: disk, diskSegments: [{ date, session_open_ms: start,
+    session_close_ms: start + 3 * 60_000, source: 'hogaplay' as const }] };
+
+  it('빈 날짜가 없어도 부분 누락을 보충하고 기존 OHLCV를 덮거나 무응답 분을 만들지 않는다', async () => {
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue({
+      code: '005930', from: date, to: date, venue: 'KRX', bucket_ms: 60_000,
+      candles: [
+        { ...barsFor(date)[0], volume: 0 },
+        { ...barsFor(date)[0], t_ms: start + 2 * 60_000, close: 9999, volume: 9999 },
+        { ...barsFor(date)[0], t_ms: start + 3 * 60_000 },
+      ], cached_dates: [], fresh_dates: [date], data_warnings: [], adjust_factors: { [date]: 1 },
+    } as LivePastCandlesResponse as never);
+    const { result, rerender } = renderHook(() => useMinuteGapFill(args), { wrapper: wrap(newClient()) });
+    await waitFor(() => expect(result.current.remainingRuns).toBe(0));
+    expect(result.current.candles.map(c => c.ts_ms)).toEqual([start, start + 3 * 60_000]);
+    expect(result.current.candles[0].vol_a).toBe(0);
+    expect([...result.current.partialFilledDates]).toEqual([date]);
+    rerender();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(disk[0]).toMatchObject({ close: 105, vol_a: 7, vol_b: 3 });
+  });
+
+  it('공급자에게 추가 봉이 없으면 보충 완료라고 표시하지 않는다', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({
+      code: '005930', from: date, to: date, venue: 'KRX', bucket_ms: 60_000,
+      cached_dates: [], fresh_dates: [date], data_warnings: [],
+      candles: [{ ...barsFor(date)[0], t_ms: disk[0].ts_ms }], adjust_factors: { [date]: 1 },
+    } as LivePastCandlesResponse as never);
+    const { result } = renderHook(() => useMinuteGapFill(args), { wrapper: wrap(newClient()) });
+    await waitFor(() => expect(result.current.remainingRuns).toBe(0));
+    expect(result.current.candles).toEqual([]);
+    expect(result.current.filledDates.size).toBe(0);
+    expect(result.current.partialFilledDates.size).toBe(0);
+  });
+
+  it('척도가 다른 부분 보충은 제외하고, 당일과 다른 시장에서도 조회하지 않는다', async () => {
+    const spy = stubBackend([date], { [date]: 0.5 });
+    const { result, rerender } = renderHook(
+      (props: UseMinuteGapFillArgs) => useMinuteGapFill(props),
+      { wrapper: wrap(newClient()), initialProps: args as UseMinuteGapFillArgs },
+    );
+    await waitFor(() => expect(result.current.remainingRuns).toBe(0));
+    expect(result.current.candles).toEqual([]);
+    expect(result.current.rescaledDates).toEqual([date]);
+    rerender({ ...args, todayKstYyyymmdd: date });
+    expect(result.current.remainingRuns).toBe(0);
+    rerender({ ...args, venue: 'NXT' });
+    expect(result.current.candles).toEqual([]);
+    rerender({ ...args, enabled: false });
+    expect(result.current.candles).toEqual([]);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('useMinuteGapFill — 게이트 (양방향)', () => {
   it('얼린 저장뷰면 요청한다', async () => {
     const spy = stubBackend(['20260814']);

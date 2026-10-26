@@ -456,8 +456,12 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
    * ⚠ 착석은 **이동만 한다.** 한때 여기 딸린 우측 벽이 있었으나 제거됐고(#1457),
    * 착석만 되돌아왔다(#1461) — B 오른쪽으로 나가는 것을 막지 않는다.
    */
+  const savedRangeGapFillPending = savedRangeFreeze !== null
+    && (d.gapFill.isFetching || d.gapFill.remainingRuns > 0);
   const savedRangeViewport = useMemo((): TabViewport | null => {
-    if (!savedRange) return null;
+    // Do not consume the saved period's one-shot on a truncated disk subset.
+    // Supplementary morning bars must participate in the initial placement.
+    if (!savedRange || savedRangeGapFillPending) return null;
     if (isCalendarTimeframe(view.timeframe)) {
       return studyDailyViewport(savedRangeCandles, savedRange.fromMs, savedRange.toMs, view.timeframe, savedRange);
     }
@@ -468,7 +472,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       ? savedRange.savedBarSpan
       : Math.max(1, countBarsInRange(savedRangeCandles, savedRange.fromMs, savedRange.toMs));
     return { rightEdgeMs: savedRange.toMs, barSpan, atLiveEdge: false };
-  }, [savedRange, savedRangeCandles, view.timeframe]);
+  }, [savedRange, savedRangeCandles, view.timeframe, savedRangeGapFillPending]);
 
   /**
    * 차트 정체성에 저장뷰와 명시적 열기 순번을 섞는다 — 같은 항목을 다시 눌러도
@@ -501,6 +505,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           // 그것만 보면 안내가 '보충 중' → '없음' → '보충 중' 으로 깜빡인다.
           gapFill: {
             filledCount: d.gapFill.filledDates.size,
+            partialFilledCount: d.gapFill.partialFilledDates.size,
             rescaledCount: d.gapFill.rescaledDates.length,
             unfillableCount: d.gapFill.unfillableCount,
             pending: d.gapFill.isFetching || d.gapFill.remainingRuns > 0,
@@ -949,6 +954,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               pagedHistory={savedRangeFreeze === null ? d.usStockHistory : undefined}
               savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange?.toMs ?? null}
+              savedRangeCandlesPending={savedRangeGapFillPending}
               bundle={d.workareaBundle}
               chartBundle={d.workareaChartBundle}
               hogaPaneBundle={d.workareaHogaBundle}

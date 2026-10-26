@@ -909,8 +909,12 @@ export function useLiveBundle(
     code,
     venue,
     timeframe: regularSessionOnly ? '1m' : timeframe,
-    todayKstYyyymmdd,
+    // A saved range's right edge is not today's calendar date. Otherwise its
+    // last historical day is incorrectly treated as today and never repaired.
+    todayKstYyyymmdd: frozenRangeFrom !== null ? realTodayKstYyyymmdd() : todayKstYyyymmdd,
     missingDates: minuteDiskCandles.data?.missing_dates,
+    diskCandles: minuteDiskCandles.data?.candles,
+    diskSegments: minuteDiskCandles.data?.segments,
   });
 
   /** 디스크가 실제로 실어 온 거래일. 보충분과의 **서로소 확인**과 소스 표기가 함께 쓴다. */
@@ -930,7 +934,9 @@ export function useLiveBundle(
     // 못하는 tf 를 추가하려면 kiwoom_minute_candles.BUCKET_MS_TO_TIC_SCOPE 주석 참고.
     if (restBypassEnabled) {
       const disk = minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
-      const extra = minuteGapFill.candles.filter(c => diskCandleDates === null || !diskCandleDates.has(realMsToYyyymmdd(c.ts_ms)));
+      // The hook keeps disk buckets and supplies only missing provider buckets,
+      // including gaps within a date that already has disk candles.
+      const extra = minuteGapFill.candles;
       const source = extra.length ? [...disk, ...extra].sort((a, b) => a.ts_ms - b.ts_ms) : disk;
       return regularSessionOnly
         ? aggregateCandles(keepRegularSessionCandles(source.map(c => ({ ...c, t_ms: c.ts_ms, volume: c.vol_a + c.vol_b }))), bucketMs / 1000, venue).map(kisBarToCandle)
@@ -943,7 +949,7 @@ export function useLiveBundle(
     const src = regularSessionOnly ? keepRegularSessionCandles(raw) : needsRegularSessionClip(timeframe) ? keepMinuteSessionCandles(raw, candleVenue) : raw;
     if (src.length === 0) return EMPTY_CANDLES;
     return aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000, candleVenue).map(kisBarToCandle);
-  }, [isMinute, timeframe, venue, candleVenue, regularSessionOnly, bucketMs, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles, diskCandleDates]);
+  }, [isMinute, timeframe, venue, candleVenue, regularSessionOnly, bucketMs, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
     // 우회 ON: 스크리너 일봉. OFF: 벤더 일봉. D는 그대로, W/M은 aggregateCalendar.
