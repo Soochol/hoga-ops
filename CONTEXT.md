@@ -1043,6 +1043,15 @@ legacy 계수 1, 전체 수정 OHLCV 일치와 정확한 비율식을 별도로 
 이름 붙은 `{conditions, universe}` 의 영속 사본 — 사용자가 빌더에서 만든 조건검색을 저장/목록/이름변경/삭제(CRUD)한다. 목록에서 선택하면 빌더에 **로드만** 되고(자동 조회 X), `조회` 로 실행한다(스테이트리스 — `/scan` 에 현재 빌더 상태 POST; `/saves/{id}/run` 없음). 영속은 **Watchlist 패턴**(파일=SSOT, `<data_dir>/screener/saves.json`, `atomic_write_json` + `asyncio.Lock` + `schema_version` + 손상 격리). `SavedScreener.id` 는 서버 uuid4(이름변경과 무관)이고, 각 조건 leaf 의 `id` 는 프론트 React key/저장 라운드트립용 클라이언트 nanoid 로 **별개**다.
 _Avoid_: "프리셋"·"필터 저장" 단독 (— **저장된 조건검색/SavedScreener**); `SavedScreener.id` 와 조건 leaf `id` 혼동.
 
+**전체 호가 (Full Price Ladder)**:
+호가주문창의 선택적 가격 탐색 모드. 기존 수량 입력 줄에서 켜면 확인된 당일 상·하한가
+사이의 주식/ETF/ETN 유효 호가단위가 연속으로 이어진다. 가격열 드래그·사다리 휠·
+키보드로 탐색하며 수신 시세는 탐색 가격을 이동시키지 않는다. `현재가`는 모드를 유지한 채
+현재 가격을 중앙으로 옮긴다. 10호가 밖과 잔량 없는 가격도 지정가 주문·정정 대상이지만
+기존 계좌·수량·호가 신선도·고액 확인은 유지한다. 빈 잔량은 표시하지 않으며 관측되지 않은
+잔량을 0으로 추정하지 않는다. 종목·시장·세션·거래일 전환에 기본 10호가로 돌아간다.
+_Avoid_: 전체 가격의 잔량을 수신한다는 표현; Floating을 창 분리 기능으로 해석하기.
+
 **열람 호가 상태 (Viewed Orderbook Availability)**:
 10호가·호가주문 마지막 호가 열람(2026-10-24): 표시 가능한 기존 사다리가 없으면
 `/api/live/last-orderbook`의 키움 `ka10004`를 종목·유효시장별 공유 조회한다.

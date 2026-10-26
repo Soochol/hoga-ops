@@ -178,6 +178,93 @@ async function multiBrokerSetup(page: Page) {
   return { window, toss, kiwoom, commands };
 }
 
+test('전체 호가는 입력 줄에서 전환하고 상하한가·10호가 밖 주문과 현재가 복귀를 지원한다', async ({ page }, testInfo) => {
+  const { window, commands, ws } = await setup(page);
+  const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+  await quantity.fill('25');
+  const toggle = window.getByRole('button', { name: '전체 호가', exact: true });
+  await expect(toggle).toBeEnabled();
+  const controlsBefore = await window.locator('.order-quantity-controls').boundingBox();
+  const toggleBox = (await toggle.boundingBox())!;
+  const quantityBox = (await quantity.boundingBox())!;
+  expect(Math.abs(toggleBox.y - quantityBox.y)).toBeLessThan(8);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  expect(await window.locator('.order-quantity-controls').boundingBox()).toEqual(controlsBefore);
+  const region = window.getByRole('region', { name: '실시간 호가 주문 사다리' });
+  await region.focus();
+  await page.keyboard.press('Home');
+  await expect(window.locator('[data-order-price]').first()).toHaveAttribute('data-order-price', '85800');
+  await page.keyboard.press('ArrowUp');
+  await expect(window.locator('[data-order-price]').first()).toHaveAttribute('data-order-price', '85800');
+  const upperRow = window.locator('[data-order-price="85800"]');
+  await expect(upperRow.locator('.order-depth')).toHaveText(['', '']);
+  await upperRow.getByRole('button', { name: /매도 85,800원 주문 추가/ }).dblclick();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0]).toMatchObject({ side: 'SELL', price: 85800, quantity: 25 });
+  await region.focus();
+  await page.keyboard.press('End');
+  await expect(window.locator('[data-order-price]').last()).toHaveAttribute('data-order-price', '46200');
+  await page.keyboard.press('ArrowDown');
+  await expect(window.locator('[data-order-price]').last()).toHaveAttribute('data-order-price', '46200');
+  await window.getByRole('button', { name: /매수 46,200원 주문 추가/ }).dblclick();
+  await expect.poll(() => commands.length).toBe(2);
+  expect(commands[1]).toMatchObject({ side: 'BUY', price: 46200, quantity: 25 });
+  const firstBefore = await window.locator('[data-order-price]').first().getAttribute('data-order-price');
+  await ws.waitForSubscribe('005930');
+  ws.pushLive('005930', { kind: 'ob', venue: 'UN', t_ms: Date.now(),
+    asks: Array.from({ length: 10 }, (_, i) => ({ price: 67400 + i * 100, qty: 500 + i })),
+    bids: Array.from({ length: 10 }, (_, i) => ({ price: 67300 - i * 100, qty: 600 + i })), total_ask_qty: 5000, total_bid_qty: 6000 });
+  await expect(window.getByLabel('매수총잔량 6,000')).toBeVisible();
+  await expect(window.locator('[data-order-price]').first()).toHaveAttribute('data-order-price', firstBefore!);
+  await window.getByRole('button', { name: '현재가', exact: true }).click();
+  await expect(window.locator('[data-order-price="67200"] .order-current')).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(quantity).toHaveValue('25');
+  await page.screenshot({ path: testInfo.outputPath('full-price-orders.png') });
+  await toggle.click();
+  await expect(window.locator('[data-order-price]')).toHaveCount(20);
+});
+
+test('전체 호가 가격열의 휠·드래그는 주문을 전송하지 않고 창 크기에 맞는 가격만 렌더한다', async ({ page }) => {
+  const { window, commands } = await setup(page);
+  await window.getByRole('button', { name: '전체 호가', exact: true }).click();
+  const first = window.locator('[data-order-price]').first();
+  const initial = Number(await first.getAttribute('data-order-price'));
+  await window.locator('[data-price-pan]').first().hover();
+  await page.mouse.wheel(0, 240);
+  await expect.poll(async () => Number(await first.getAttribute('data-order-price'))).toBe(initial - 1000);
+  const source = (await window.locator('[data-price-pan]').nth(10).boundingBox())!;
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2 + 96, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await first.getAttribute('data-order-price'))).toBe(initial - 600);
+  expect(commands).toHaveLength(0);
+  const frame = page.locator('[data-win]').filter({ has: window });
+  await frame.getByRole('button', { name: '원래 크기로 복원', exact: true }).click();
+  const region = window.getByRole('region', { name: '실시간 호가 주문 사다리' });
+  await expect.poll(async () => {
+    const height = await region.evaluate(node => node.clientHeight);
+    const rows = await window.locator('[data-order-price]').count();
+    return rows <= Math.max(1, Math.floor((height - 32) / 24));
+  }).toBe(true);
+  await window.getByRole('button', { name: '현재가', exact: true }).click();
+  await expect(window.locator('[data-order-price="67200"]')).toBeVisible();
+});
+
+test('전체 호가에서 기존 주문을 잔량 없는 가격으로 드래그 정정한다', async ({ page }) => {
+  const { window, commands } = await setup(page, true);
+  await window.getByRole('button', { name: '전체 호가', exact: true }).click();
+  const source = window.getByLabel('매수 67,200원 주문', { exact: true });
+  const destination = window.getByRole('button', { name: /매수 66,100원 주문 추가/ });
+  await expect(window.locator('[data-order-price="66100"] .order-depth')).toHaveText(['', '']);
+  await drag(page, source, destination);
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0]).toMatchObject({ price: 66100, quantity: null });
+  await expect(window.getByLabel('매수 66,100원 주문', { exact: true })).toHaveText('70');
+});
+
 test('주말 REST 마지막 호가는 20단과 상세정보를 표시하고 새 주문을 보내지 않는다', async ({ page }, testInfo) => {
   await page.clock.setFixedTime(new Date('2026-10-24T10:15:00+09:00'));
   const { window, commands } = await setup(page, false, true, false, 0, 1, { venue: 'KRX', lastBook: 'ready' });
