@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react';
 
 /** Keep a symbol's digit budget until it changes; only grow at a price-band boundary.
  * CSS ch units follow the active font without measuring every incoming quote. */
-export function useBookPriceLayout(levels: readonly { price: number }[], symbol: string, averageMarker: boolean, baselinePrice: number | null = null): CSSProperties {
+export function useBookPriceLayout(levels: readonly { price: number }[], symbol: string, averageMarker: boolean, baselinePrice: number | null = null, showPercent = true): CSSProperties {
   let requiredDigits = 5;
   let requiredPercent = '—';
   for (const { price } of levels) {
@@ -22,10 +22,10 @@ export function useBookPriceLayout(levels: readonly { price: number }[], symbol:
   const commas = Math.floor((digits - 1) / 3);
   // Order: day 16 + dot 12 + gaps 6; book: day 16 + gap 4 (14px less).
   const markerDifference = averageMarker ? 0 : 14;
-  const minimum = (digits >= 8 ? 160 : digits >= 7 ? 144 : 128) - markerDifference;
+  const minimum = (digits >= 8 ? 160 : digits >= 7 ? 144 : 128) - markerDifference - (showPercent ? 0 : 50);
   return {
     // Reserve a full figure for each separator, including fallback font metrics.
-    '--book-price-width': `max(${minimum}px, calc(${digits + commas}ch + var(--book-day-width) + ${30 - markerDifference}px + max(48px, 6.4ch)))`,
+    '--book-price-width': `max(${minimum}px, calc(${digits + commas}ch + var(--book-day-width) + ${(showPercent ? 30 : 34) - markerDifference}px${showPercent ? ' + max(48px, 6.4ch)' : ''}))`,
     '--book-price-sample': JSON.stringify('8'.repeat(digits).replace(/\B(?=(\d{3})+(?!\d))/g, ',')),
     '--book-percent-sample': JSON.stringify(percent),
   } as CSSProperties;

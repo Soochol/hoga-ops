@@ -65,6 +65,10 @@ export function OrderSettingsForm({ draft, onChange, busy }: {
         <OrderSettingsToggleRow label="내 평단가 표시"
           icon={<span className="order-settings-average-dot" aria-hidden="true" />}
           checked={draft.showAveragePrice} disabled={busy} onChange={showAveragePrice => onChange({ ...draft, showAveragePrice })} />
+        <OrderSettingsToggleRow label="호가 가격 구분선"
+          checked={draft.showPriceSeparators} disabled={busy} onChange={showPriceSeparators => onChange({ ...draft, showPriceSeparators })} />
+        <OrderSettingsToggleRow label="호가 등락률 표시"
+          checked={draft.showPriceChangePercent} disabled={busy} onChange={showPriceChangePercent => onChange({ ...draft, showPriceChangePercent })} />
       </OrderSettingsSection>
       <OrderSettingsSection id={`${sectionId}-sound`} title="주문 알림">
         <OrderSettingsToggleRow label="주문접수 소리" checked={draft.orderReceiptSound} disabled={busy}

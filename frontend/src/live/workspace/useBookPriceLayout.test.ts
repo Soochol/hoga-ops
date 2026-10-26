@@ -42,3 +42,15 @@ it('retains percentage width when the rate loses a digit or crosses zero', () =>
   rerender({ price: 67_200, symbol: 'B' });
   expect(result.current).toEqual(narrow);
 });
+
+it('등락률을 숨기면 예약 열 폭을 줄이고 다시 켜면 기존 가격·등락률 폭을 복원한다', () => {
+  const { result, rerender } = renderHook(({ showPercent }) =>
+    useBookPriceLayout([{ price: 67200 }], 'A', true, 66000, showPercent),
+  { initialProps: { showPercent: true } });
+  const visible = result.current;
+  rerender({ showPercent: false });
+  expect(result.current['--book-price-width' as keyof typeof result.current]).not.toEqual(visible['--book-price-width' as keyof typeof visible]);
+  expect(result.current['--book-price-sample' as keyof typeof result.current]).toEqual(visible['--book-price-sample' as keyof typeof visible]);
+  rerender({ showPercent: true });
+  expect(result.current).toEqual(visible);
+});

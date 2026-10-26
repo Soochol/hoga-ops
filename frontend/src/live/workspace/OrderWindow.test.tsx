@@ -83,6 +83,28 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('가격 구분선과 등락률은 즉시 반영하고 일반·전체 호가를 바꿔도 유지한다', () => {
+    const { container } = show();
+    const root = screen.getByTestId('order-window');
+    expect(root).not.toHaveClass('order-price-separators');
+    expect(container.querySelectorAll('.book-price-percent')).toHaveLength(20);
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    expect(screen.getByRole('switch', { name: '호가 가격 구분선' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: '호가 등락률 표시' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('switch', { name: '호가 가격 구분선' }));
+    fireEvent.click(screen.getByRole('switch', { name: '호가 등락률 표시' }));
+    expect(root).toHaveClass('order-price-separators', 'order-hide-percent');
+    expect(container.querySelectorAll('.book-price-percent')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '전체 호가' }));
+    expect(root).toHaveClass('order-price-separators', 'order-hide-percent');
+    expect(container.querySelectorAll('.book-price-percent')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    fireEvent.click(screen.getByRole('switch', { name: '호가 등락률 표시' }));
+    expect(container.querySelectorAll('.book-price-percent')).toHaveLength(20);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
   it.each(['missing', 'wrong-code', 'yesterday'])('상하한가가 %s이면 전체 호가를 임의 생성하지 않는다', condition => {
     if (condition === 'missing') stockLimitsState.lower = null;
     if (condition === 'wrong-code') stockLimitsState.code = '000660';
@@ -1702,7 +1724,7 @@ describe('호가 주문', () => {
   it('종목을 다시 방문해도 수량은 빈칸이고 직접 지워도 0이나 프리셋으로 바뀌지 않는다', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const settings = { unit: 'quantity' as const, quantityPresets: [25, 75, 125] as [number, number, number],
-      amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: true, orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false };
+      amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: true, showPriceSeparators: false, showPriceChangePercent: true, orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false };
     const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} settings={settings} /></QueryClientProvider>;
     const view = render(content('005930'));
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '321' } });

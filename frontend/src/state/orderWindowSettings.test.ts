@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { normalizeOrderSettings, quantityForAmount, validOrderSettings } from './orderWindowSettings';
 
 describe('주문 금액 변환과 설정 복구', () => {
+  it.each([['showPriceSeparators', false], ['showPriceChangePercent', true]] as const)('%s는 구 저장값과 손상값을 기본값으로 복구하고 명시적 false도 유지한다', (key, fallback) => {
+    expect(normalizeOrderSettings(undefined)[key]).toBe(fallback);
+    for (const value of ['true', 'false', 1, null]) expect(normalizeOrderSettings({ [key]: value })[key]).toBe(fallback);
+    for (const value of [true, false]) {
+      const settings = normalizeOrderSettings({ [key]: value });
+      expect(settings[key]).toBe(value);
+      expect(validOrderSettings(settings)).toBe(true);
+    }
+    expect(validOrderSettings({ ...normalizeOrderSettings(null), [key]: undefined })).toBe(false);
+  });
   it.each(['buyFillSound', 'sellFillSound'] as const)('%s는 기본 끔이며 명시적 켜기와 유효성 검사를 보존한다', key => {
     expect(normalizeOrderSettings(undefined)[key]).toBe(false);
     expect(normalizeOrderSettings({ [key]: true })[key]).toBe(true);
@@ -28,7 +38,7 @@ describe('주문 금액 변환과 설정 복구', () => {
   it('손상된 저장 필드만 복구하고 수량·금액 프리셋 사본을 만든다', () => {
     const raw = { unit: 'amount', quantityPresets: [25, 1.5, -1], amountPresets: [2, 6, 12] };
     const restored = normalizeOrderSettings(raw);
-    expect(restored).toEqual({ unit: 'amount', quantityPresets: [25, 50, 100], amountPresets: [2, 6, 12], showAveragePrice: true, orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false });
+    expect(restored).toEqual({ unit: 'amount', quantityPresets: [25, 50, 100], amountPresets: [2, 6, 12], showAveragePrice: true, showPriceSeparators: false, showPriceChangePercent: true, orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false });
     restored.amountPresets[0] = 99;
     expect(raw.amountPresets[0]).toBe(2);
     expect(normalizeOrderSettings({ unit: 'invalid', amountPresets: null }).unit).toBe('quantity');

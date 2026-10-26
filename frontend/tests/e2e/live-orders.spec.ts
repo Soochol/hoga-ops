@@ -2245,6 +2245,80 @@ test('컴팩트 계좌 목록은 테마와 화면 폭에 맞춰 표시된다', a
   expect(commands).toHaveLength(0);
 });
 
+test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고침·다른 창에서도 독립 저장한다', async ({ page }, testInfo) => {
+  const { commands } = await setup(page, false, true, false, 0, 1, { averagePrice: '67000.1' });
+  const first = page.getByTestId('order-window').first();
+  const price = first.locator('[data-order-price="67200"] .order-price');
+  const originalWidth = (await price.boundingBox())!.width;
+  const settings = orderSettingsButton(first);
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  await settings.click();
+  const separators = dialog.getByRole('switch', { name: '호가 가격 구분선', exact: true });
+  const percent = dialog.getByRole('switch', { name: '호가 등락률 표시', exact: true });
+  await expect(separators).toHaveAttribute('aria-checked', 'false');
+  await expect(percent).toHaveAttribute('aria-checked', 'true');
+  await separators.click();
+  await percent.click();
+  await expect(first.locator('.book-price-percent')).toHaveCount(0);
+  await expect(first).toHaveClass(/order-price-separators/);
+  await expect(price).toHaveCSS('grid-template-columns', /^\d+(?:\.\d+)?px$/);
+  await expect(first.locator('[data-order-price="67200"]')).toHaveCSS('height', '24px');
+  expect((await price.boundingBox())!.width).toBeLessThan(originalWidth - 20);
+  await expect(price).toHaveCSS('box-shadow', /inset/);
+  await expect(first.locator('.order-lane').first()).toHaveCSS('box-shadow', 'none');
+  await dialog.screenshot({ path: testInfo.outputPath('order-price-display-settings.png') });
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+  await first.getByRole('button', { name: '전체 호가', exact: true }).click();
+  await expect(first.locator('.book-price-percent')).toHaveCount(0);
+  await expect(price).toHaveClass(/order-current/);
+  await expect(price).toHaveCSS('box-shadow', /inset/);
+  await first.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0]).toMatchObject({ side: 'BUY', price: 67200, quantity: 10 });
+  for (const theme of ['trading-desk', 'toss-light']) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await expect(price).toHaveCSS('box-shadow', /inset/);
+  }
+  await page.reload();
+  await expect(first).toHaveClass(/order-price-separators/);
+  await expect(first.locator('.book-price-percent')).toHaveCount(0);
+  await settings.click();
+  await expect(separators).toHaveAttribute('aria-checked', 'true');
+  await expect(percent).toHaveAttribute('aria-checked', 'false');
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+  await page.getByTestId('workspace-add-menu-button').click();
+  await page.getByTestId('workspace-add-order').click();
+  const second = page.getByTestId('order-window').nth(1);
+  await expect(second).not.toHaveClass(/order-price-separators/);
+  await expect(second.locator('.book-price-percent')).toHaveCount(20);
+  await orderSettingsButton(second).click();
+  await expect(separators).toHaveAttribute('aria-checked', 'false');
+  await expect(percent).toHaveAttribute('aria-checked', 'true');
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+  await expect(first.locator('.book-price-percent')).toHaveCount(0);
+});
+
+test('등락률 숨김은 큰 가격과 평단가·시고저 칩을 자르지 않고 복원 시 같은 폭을 사용한다', async ({ page }) => {
+  const { window } = await setup(page, false, true, false, 1_401_800, 1, { averagePrice: '1469000' });
+  await page.evaluate(() => document.fonts.ready);
+  const price = window.locator('[data-order-price="1469000"] .order-price');
+  const before = (await price.boundingBox())!.width;
+  await orderSettingsButton(window).click();
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  const percent = dialog.getByRole('switch', { name: '호가 등락률 표시', exact: true });
+  await percent.click();
+  expect((await price.boundingBox())!.width).toBeLessThan(before - 20);
+  const fits = await price.evaluate(el => {
+    const rect = el.getBoundingClientRect();
+    return [...el.children].every(child => { const r = child.getBoundingClientRect(); return r.left >= rect.left && r.right <= rect.right; });
+  });
+  expect(fits).toBe(true);
+  await expect(price.locator('.order-average-marker')).toBeVisible();
+  await percent.click();
+  expect((await price.boundingBox())!.width).toBeCloseTo(before, 1);
+  await expect(price.locator('.book-price-percent')).toBeVisible();
+});
+
 test('주문 설정은 즉시 저장하고 잘못된 입력은 제외하며 금액 프리셋으로 주문한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const settings = orderSettingsButton(window);
