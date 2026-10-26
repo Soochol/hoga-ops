@@ -11,7 +11,8 @@ export function VolumeOverlaySettings({ windowId }: { windowId: string }) {
   if (!prefs.volumeOverlayEnabled) return null;
   const patch = (values: Partial<VolumeOverlayStyle>) => useWindowSettingsStore.getState().patch(windowId, 'chart', values);
   const tokens = resolveTokensThemed(TOKEN_SPEC);
-  return <div className="ml-4">
+  return <details className="settings-dependent">
+    <summary aria-label="거래량을 캔들에 겹쳐 표시 세부 설정">세부 설정</summary>
     {([
       ['volumeOverlayTransparency', '거래량 투명도', 0, 100],
       ['volumeOverlayHeight', '거래량 표시 높이', 10, 40],
@@ -32,5 +33,5 @@ export function VolumeOverlaySettings({ windowId }: { windowId: string }) {
           aria-label={`${label} 테마 색상 사용`} onClick={() => patch({ [key]: '' })}>테마</button>
       </div>
     </SettingsRow>)}
-  </div>;
+  </details>;
 }

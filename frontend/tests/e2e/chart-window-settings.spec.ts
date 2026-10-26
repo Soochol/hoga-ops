@@ -28,6 +28,8 @@ async function open(page: Page, id: string) {
   const panel = page.getByRole('dialog', { name: '차트 설정', exact: true });
   await expect(panel.getByText('이 차트에 적용', { exact: true })).toBeVisible();
   await panel.getByLabel('차트 거꾸로 보기 세부 설정').click();
+  const volumeDetails = panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정');
+  if (await volumeDetails.isVisible()) await volumeDetails.click();
   return panel;
 }
 
@@ -448,6 +450,8 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
     });
     let panel = await open(page, 'a');
     await panel.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
+    await expect(panel.getByRole('slider', { name: '거래량 투명도' })).not.toBeVisible();
+    await panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정').press('Enter');
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toHaveCount(0);
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-candle')).toContainText('거래량');
     const overlayState = () => page.evaluate(() => {
@@ -521,6 +525,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
     await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts!.get('a')!.panes()[0]
       .getSeries().filter(s => s.seriesType() === 'Histogram').length)).toBe(0);
     await panel.getByRole('button', { name: '되돌리기', exact: true }).click();
+    await panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정').click();
     await expect(panel.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toHaveCount(0);
     expect(errors).toEqual([]);
