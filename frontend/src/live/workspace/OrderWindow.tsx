@@ -313,7 +313,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
   const priceLayout = useBookPriceLayout(explorer.enabled && fullRange
-    ? [...prices, { price: fullRange.priceAt(0) }, { price: fullRange.priceAt(fullRange.count - 1) }] : prices, code, true, baseline);
+    ? [...prices, { price: fullRange.priceAt(0) }, { price: fullRange.priceAt(fullRange.count - 1) }] : prices, code, true, baseline, preferences.showPriceChangePercent);
   const estimatePrice = quote?.price ?? null;
   const amountPresets = preferences.unit === 'amount';
   const presets = amountPresets ? preferences.amountPresets : preferences.quantityPresets;
@@ -700,7 +700,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         <span className="order-price-value book-price-value"><BookDayMarker marker={dayMarkers.get(price) ?? null} />
           {price === averageMarker.price && <TextTooltip text={averageMarkerLabel}><span className="order-average-marker" role="img" aria-label={averageMarkerLabel} /></TextTooltip>}
           {knownQuantity != null ? <BookPriceAmount price={price} qty={knownQuantity} /> : fmt(price)}
-        </span><small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small>
+        </span>{preferences.showPriceChangePercent && <small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small>}
       </div>
       {depth('bid', bid)}
       {orderCell('BUY', price, key)}
@@ -709,7 +709,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   return <div ref={rootRef}
     onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={e => endDrag(e, true)}
     onLostPointerCapture={e => { if (e.target === drag.current?.element) endDrag(e, true); }}
-    style={{ ...priceLayout, ...columnStyle }} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
+    style={{ ...priceLayout, ...columnStyle }} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${preferences.showPriceSeparators ? 'order-price-separators' : ''} ${preferences.showPriceChangePercent ? '' : 'order-hide-percent'} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => {
       if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; }
       else if (e.detail === 1) suppressDoubleClick.current = false;
@@ -881,7 +881,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
               : info}
             <div className={`order-price book-price-line ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value book-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
               {index === averageMarkerIndex && <TextTooltip text={averageMarkerLabel}><span className="order-average-marker" role="img" aria-label={averageMarkerLabel} /></TextTooltip>}
-              <BookPriceAmount price={level.price} qty={level.qty} /></span><small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
+              <BookPriceAmount price={level.price} qty={level.qty} /></span>{preferences.showPriceChangePercent && <small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small>}</div>
             {isAsk ? <div className="order-summary-slot" />
               : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}
             {orderCell('BUY', level.price, key)}
