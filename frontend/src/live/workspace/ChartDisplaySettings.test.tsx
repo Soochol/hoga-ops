@@ -14,6 +14,9 @@ describe('chart display settings', () => {
     render(<ChartDisplaySettings windowId="a" />);
     expect(screen.queryByRole('slider', { name: '거래량 투명도' })).toBeNull();
     fireEvent.click(screen.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' }));
+    const details = screen.getByLabelText('거래량을 캔들에 겹쳐 표시 세부 설정');
+    expect(details.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(details);
     expect(screen.getByRole('slider', { name: '거래량 투명도' })).toHaveValue('65');
     expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('25');
     await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
@@ -27,6 +30,10 @@ describe('chart display settings', () => {
     await waitFor(() => expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayUpColor).toBe(''));
     expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayHeight).toBe(40);
     expect(useChartPrefsStore.getState().volumeOverlayHeight).toBe(25);
+    fireEvent.click(details);
+    expect(details.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(details);
+    expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
   });
   it('defaults color swapping on, gates it by inversion and preserves the choice when inversion is off', async () => {
     render(<ChartDisplaySettings windowId="a" />);
