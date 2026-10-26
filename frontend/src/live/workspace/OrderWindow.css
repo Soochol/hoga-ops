@@ -41,7 +41,8 @@
   .order-buying-power { grid-row:2; }
 }
 .order-quantity-controls { padding:3px 0.625rem; background:var(--bg-input-hover); border-top:1px solid var(--border); gap:4px; }
-.order-input-controls { display:flex; align-items:center; gap:4px; flex-wrap:wrap; width:100%; min-width:0; }
+.order-input-controls { display:flex; align-items:center; gap:4px; flex-wrap:nowrap; width:100%; min-width:0; overflow-x:auto; scrollbar-width:thin; }
+.order-input-controls > * { flex-shrink:0; }
 .order-price-controls { display:inline-flex; align-items:center; gap:4px; flex-shrink:0; }
 .order-window .order-price-controls button[aria-pressed=true] { color:var(--accent); background:var(--tint-selection); border-color:var(--accent); }
 .order-input-mode { flex-shrink:0; }
@@ -57,8 +58,12 @@
 .order-quantity-presets { display:flex; gap:2px; }
 .order-window .order-quantity-presets button { padding:2px 0.3125rem; border-radius:var(--radius-md); background:var(--bg-card); white-space:nowrap; }
 .order-window .order-quantity-presets button[aria-pressed=true] { background:var(--tint-selection); border-color:var(--accent); color:var(--accent); }
-.order-estimate { margin-left:6px; flex-shrink:0; }
-.order-estimate .order-field-value { width:18ch; justify-content:flex-end; text-align:right; }
+.order-estimate { margin-left:auto; padding-left:6px; flex-shrink:0; }
+.order-estimate .order-field-value { justify-content:flex-end; text-align:right; }
+@container order-window (width < 560px) {
+  .order-input-controls,.order-price-controls { gap:2px; }
+  .order-estimate { padding-left:4px; }
+}
 .order-controls label { display:flex; align-items:center; gap:0.25rem; }
 .order-scroll { --order-lane-width:max(48px,var(--order-lane-content-width)); --order-depth-min:var(--order-depth-content-width); --order-columns:var(--order-lane-width) minmax(var(--order-depth-min),1fr) var(--book-price-width) minmax(var(--order-depth-min),1fr) var(--order-lane-width); display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
 .order-ladder { position:relative; flex:1 0 auto; min-width:calc(16px + 2 * var(--order-lane-width) + 2 * var(--order-depth-min) + var(--book-price-width)); min-height:244px; padding:4px 8px 0; }

@@ -202,6 +202,7 @@ test('전체 호가는 입력 줄에서 전환하고 상하한가·10호가 밖 
   await upperRow.getByRole('button', { name: /매도 85,800원 주문 추가/ }).dblclick();
   await expect.poll(() => commands.length).toBe(1);
   expect(commands[0]).toMatchObject({ side: 'SELL', price: 85800, quantity: 25 });
+  await expect(toggle).toBeEnabled();
   await region.focus();
   await page.keyboard.press('End');
   await expect(window.locator('[data-order-price]').last()).toHaveAttribute('data-order-price', '46200');
@@ -263,6 +264,38 @@ test('전체 호가에서 기존 주문을 잔량 없는 가격으로 드래그 
   await expect.poll(() => commands.length).toBe(1);
   expect(commands[0]).toMatchObject({ price: 66100, quantity: null });
   await expect(window.getByLabel('매수 66,100원 주문', { exact: true })).toHaveText('70');
+});
+
+test('호가주문 금액은 전체 호가 버튼 옆 한 줄을 유지하고 아주 좁은 창에서만 가로 스크롤한다', async ({ page }, testInfo) => {
+  const { window } = await setup(page);
+  await page.evaluate(() => document.fonts.ready);
+  const controls = window.getByRole('group', { name: '공통 주문 수량' });
+  const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+  const amount = window.getByLabel('예상 주문 금액');
+  for (const mode of ['quantity', 'amount'] as const) {
+    await window.getByRole('group', { name: '빠른 입력 방식' }).getByRole('button', { name: mode === 'quantity' ? '주' : '금액', exact: true }).click();
+    for (const width of [696, 576, 560, 504, 420, 360]) {
+      await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
+      await expect.poll(async () => {
+        const input = (await quantity.boundingBox())!;
+        const estimate = (await amount.boundingBox())!;
+        return Math.abs(input.y + input.height / 2 - estimate.y - estimate.height / 2);
+      }).toBeLessThan(1);
+      for (const name of ['전체 호가', '현재가']) {
+        const button = (await window.getByRole('button', { name, exact: true }).boundingBox())!;
+        const input = (await quantity.boundingBox())!;
+        expect(Math.abs(button.y + button.height / 2 - input.y - input.height / 2)).toBeLessThan(1);
+      }
+      expect(await window.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      if (width >= 504) expect(await controls.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    }
+  }
+  await quantity.fill('1000000000');
+  await expect(amount).toHaveText('금액67,200,000,000,000원');
+  await amount.scrollIntoViewIfNeeded();
+  await expect(amount).toBeInViewport();
+  expect(await controls.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+  await window.screenshot({ path: testInfo.outputPath('order-input-single-line.png') });
 });
 
 test('주말 REST 마지막 호가는 20단과 상세정보를 표시하고 새 주문을 보내지 않는다', async ({ page }, testInfo) => {
