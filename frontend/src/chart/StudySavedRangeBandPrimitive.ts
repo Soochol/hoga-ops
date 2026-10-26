@@ -108,8 +108,12 @@ class StudySavedRangeBandRenderer implements IPrimitivePaneRenderer {
       ctx.save();
 
       if (geom.width > 0) {
+        // Keep the saved interval subtle over candles; edges retain full contrast.
+        ctx.save();
+        ctx.globalAlpha *= 0.4;
         ctx.fillStyle = tokens.fill;
         ctx.fillRect(geom.left, 0, geom.width, paneHeight);
+        ctx.restore();
       }
 
       // 양끝 1px 실선. 0.5 오프셋으로 픽셀 격자에 앉혀 흐릿함을 막는다.
