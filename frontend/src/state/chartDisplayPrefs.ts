@@ -2,6 +2,13 @@
 export const CHART_DISPLAY_TOGGLES = [
   // ── 차트 › 캔들 · 지표 ─────────────────────────────────────────────
   {
+    key: 'volumeOverlayEnabled',
+    label: '거래량을 캔들에 겹쳐 표시',
+    description: '기본 거래량을 캔들 영역 하단에 표시하고 별도 거래량 패널을 숨깁니다. 추가한 거래량은 기존 패널에 유지합니다.',
+    default: false,
+    group: 'candle',
+  },
+  {
     key: 'candleLogScale',
     label: '로그 스케일',
     description: '같은 가격 변화율을 같은 세로 간격으로 표시합니다. 캔들과 가격 지표에 적용합니다.',
@@ -75,9 +82,19 @@ export const CHART_DISPLAY_TOGGLES = [
 ] as const;
 
 export type ChartDisplayPrefKey = (typeof CHART_DISPLAY_TOGGLES)[number]['key'];
-export type ChartDisplayPrefs = Record<ChartDisplayPrefKey, boolean>;
+export const DEFAULT_VOLUME_OVERLAY_STYLE = {
+  volumeOverlayTransparency: 65,
+  volumeOverlayHeight: 25,
+  volumeOverlayUpColor: '',
+  volumeOverlayDownColor: '',
+};
+export type VolumeOverlayStyle = typeof DEFAULT_VOLUME_OVERLAY_STYLE;
+export type ChartDisplayPrefs = Record<ChartDisplayPrefKey, boolean> & VolumeOverlayStyle;
 export const CHART_DISPLAY_PREF_KEYS: readonly ChartDisplayPrefKey[] = CHART_DISPLAY_TOGGLES.map(def => def.key);
-export const DEFAULT_CHART_DISPLAY_PREFS = Object.fromEntries(CHART_DISPLAY_TOGGLES.map(def => [def.key, def.default])) as ChartDisplayPrefs;
+export const DEFAULT_CHART_DISPLAY_PREFS = {
+  ...Object.fromEntries(CHART_DISPLAY_TOGGLES.map(def => [def.key, def.default])),
+  ...DEFAULT_VOLUME_OVERLAY_STYLE,
+} as ChartDisplayPrefs;
 
 export function isChartDisplayPrefKey(key: string): key is ChartDisplayPrefKey {
   return CHART_DISPLAY_PREF_KEYS.some(candidate => candidate === key);
@@ -85,7 +102,19 @@ export function isChartDisplayPrefKey(key: string): key is ChartDisplayPrefKey {
 
 export function normalizeChartDisplayPrefs(raw: unknown): ChartDisplayPrefs {
   const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-  return Object.fromEntries(CHART_DISPLAY_TOGGLES.map(def => [def.key,
+  const integer = (key: 'volumeOverlayTransparency' | 'volumeOverlayHeight', min: number, max: number) => {
+    const value = source[key];
+    return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
+      ? value : DEFAULT_VOLUME_OVERLAY_STYLE[key];
+  };
+  const color = (key: 'volumeOverlayUpColor' | 'volumeOverlayDownColor') =>
+    typeof source[key] === 'string' && /^#[0-9a-f]{6}$/i.test(source[key]) ? source[key].toUpperCase() : '';
+  return { ...Object.fromEntries(CHART_DISPLAY_TOGGLES.map(def => [def.key,
     typeof source[def.key] === 'boolean' ? source[def.key] : def.default,
-  ])) as ChartDisplayPrefs;
+  ])),
+  volumeOverlayTransparency: integer('volumeOverlayTransparency', 0, 100),
+  volumeOverlayHeight: integer('volumeOverlayHeight', 10, 40),
+  volumeOverlayUpColor: color('volumeOverlayUpColor'),
+  volumeOverlayDownColor: color('volumeOverlayDownColor'),
+  } as ChartDisplayPrefs;
 }

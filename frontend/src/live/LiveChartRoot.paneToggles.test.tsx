@@ -228,7 +228,6 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
       paneAxisMode: {},
       paneGroupStretch: {},
     });
-    useChartPrefsStore.getState().setToggle('volumeFillStrengthCumulative', false);
   });
 
   it('기본(전부 ON) 1m → 6 pane 마운트', () => {
@@ -523,7 +522,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     expect(after.get('quote-totals')).not.toBe(before.get('quote-totals'));
   });
 
-  it('volume pane uses the stable chart bundle when volume cumulative is disabled', () => {
+  it('volume pane uses the stable chart bundle', () => {
     const chartBundle = {
       ...DEFAULT_BUNDLE,
       candles: [{ ts_ms: 1748275260000, open: 1, high: 2, low: 1, close: 2, vol_a: 10, vol_b: 0 }],
@@ -540,26 +539,6 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
 
     const byName = new Map(paneBundles.map((p) => [p.name, p.bundle]));
     expect(byName.get('volume')).toBe(chartBundle);
-  });
-
-  it('volume pane uses the live bundle only when volume cumulative is enabled', () => {
-    useChartPrefsStore.getState().setToggle('volumeFillStrengthCumulative', true);
-    const chartBundle = {
-      ...DEFAULT_BUNDLE,
-      candles: [{ ts_ms: 1748275260000, open: 1, high: 2, low: 1, close: 2, vol_a: 10, vol_b: 0 }],
-    } satisfies RangeBundle;
-    const liveBundle = {
-      ...chartBundle,
-      fill_strength: { bucket_ms: 60_000, points: [{ t: 1748275260000, buy_qty: 10, sell_qty: 2 }] },
-    } satisfies RangeBundle;
-
-    renderAt('1m', {
-      bundle: liveBundle,
-      chartBundle,
-    });
-
-    const byName = new Map(paneBundles.map((p) => [p.name, p.bundle]));
-    expect(byName.get('volume')).toBe(liveBundle);
   });
 
   it('candle tooltip keeps the stable candle bundle but reads hoga values from the hoga bundle', () => {

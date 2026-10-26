@@ -1,4 +1,4 @@
-import { CHART_DISPLAY_TOGGLES, isChartDisplayPrefKey, normalizeChartDisplayPrefs, type ChartDisplayPrefs } from './chartDisplayPrefs';
+import { CHART_DISPLAY_TOGGLES, DEFAULT_VOLUME_OVERLAY_STYLE, isChartDisplayPrefKey, normalizeChartDisplayPrefs, type ChartDisplayPrefs, type VolumeOverlayStyle } from './chartDisplayPrefs';
 import { useWindowSettingsStore, WindowSettingsScope } from './windowSettings';
 /**
  * Declarative registry of boolean chart toggles. Each entry surfaces in the
@@ -51,13 +51,6 @@ export const CHART_TOGGLES = [
     label: '체결강도 — 당일 누적',
     description: '당일 누적 매수−매도를 선으로 표시합니다. 거래일마다 0에서 시작합니다.',
     default: true,
-    category: 'indicator-modal',
-  },
-  {
-    key: 'volumeFillStrengthCumulative',
-    label: '거래량 — 체결강도 누적',
-    description: '누적 매수−매도를 거래량 축에 맞춘 상대값으로 표시합니다.',
-    default: false,
     category: 'indicator-modal',
   },
   // ── 차트 › 창 간 동기화 ────────────────────────────────────────────
@@ -532,6 +525,7 @@ export const TRADE_HIGHLIGHT_COLOR_DEFAULT = '#EAB308';
  *  from `CHART_TOGGLES`; integer numeric fields come from
  *  `CHART_NUMERIC_PREFS`. */
 export type ChartViewPrefs =
+  & VolumeOverlayStyle
   & { [K in ChartToggleKey]: boolean }
   & { [K in NumericPrefKey]: number }
   // `CHART_LINE_STYLES` 파생 — 엔트리 하나가 `<key>Color`(''=방향 토큰) 와
@@ -559,6 +553,7 @@ const LINE_STYLE_DEFAULTS = Object.fromEntries(
   & { [K in ChartLineStyleKey as `${K}Width`]: ChartLineWidth };
 
 export const DEFAULT_PREFS: ChartViewPrefs = {
+  ...DEFAULT_VOLUME_OVERLAY_STYLE,
   ...TOGGLE_DEFAULTS,
   ...NUMERIC_DEFAULTS,
   ...LINE_STYLE_DEFAULTS,

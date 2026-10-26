@@ -411,3 +411,118 @@ test('워크스페이스 메뉴 저장·다른 배치 적용·복원에 차트�
   await page.getByRole('menuitem', { name: '창별 차트', exact: true }).click();
   await expectGrid(page, 'a', false, true);
 });
+
+for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
+  test(`${timeframe}: 거래량 겹치기는 별도 pane을 없애고 창별 축·스타일·뷰포트를 보존한다`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await setup(page, timeframe);
+    await scaleFixtures(page);
+    if (timeframe === '5s') {
+      await page.route(apiExact('live/second-trade-dates'), r => r.fulfill({ json: { dates: [] } }));
+      await page.route(apiExact('live/second-aggregates'), r => {
+        const p = new URL(r.request().url()).searchParams;
+        const date = p.get('date')!, seconds = Number(p.get('seconds'));
+        const start = Date.parse(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6)}T09:00:00+09:00`);
+        const from = Number(p.get('from_ms') ?? 0), to = Number(p.get('to_ms') ?? Infinity);
+        const bars = Array.from({ length: 30 }, (_, i) => ({ t_ms: start + i * seconds * 1000,
+          open: 35000, high: 35200, low: 34800, close: i % 2 ? 34900 : 35100,
+          volume: 100 + i, count: 3, trade_value: 3500000 }));
+        return r.fulfill({ json: { code: '098460', venue: 'KRX', date, seconds, source: 'second_trades',
+          status: 'observed', coverage: 'unverified', storage_error: null,
+          first_observed_ms: start, last_observed_ms: bars.at(-1)!.t_ms,
+          bars: bars.filter(b => b.t_ms >= from && b.t_ms < to), prices: [] } });
+      });
+    }
+    await page.goto('/live');
+    await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts?.get('a')?.panes()[0]
+      ?.getSeries().find(s => s.seriesType() === 'Candlestick')?.data().length ?? 0)).toBeGreaterThan(3);
+    await page.evaluate(async () => {
+      const chart = (window as ChartsWindow).__liveCharts!.get('a')!;
+      const candle = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
+      const volume = chart.panes()[1].getSeries().find(s => s.seriesType() === 'Histogram')!;
+      chart.timeScale().setVisibleLogicalRange({ from: -1, to: candle.data().length + 2 });
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      Object.assign(window, { __volumeBefore: { chart, candle, rows: volume.data(),
+        paneCount: chart.panes().length, range: chart.timeScale().getVisibleLogicalRange(), spacing: chart.timeScale().options().barSpacing } });
+    });
+    let panel = await open(page, 'a');
+    await panel.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
+    await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toHaveCount(0);
+    await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-candle')).toContainText('거래량');
+    const overlayState = () => page.evaluate(() => {
+      const chart = (window as ChartsWindow).__liveCharts!.get('a')!;
+      const candle = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
+      const histogram = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Histogram')!;
+      const other = (window as ChartsWindow).__liveCharts!.get('b')!;
+      const before = (window as unknown as { __volumeBefore: { chart: IChartApi; candle: ISeriesApi<'Candlestick'>;
+        rows: { time: unknown; value?: number }[]; paneCount: number; range: { from: number; to: number }; spacing: number } }).__volumeBefore;
+      return { paneCount: chart.panes().length, expectedPaneCount: before.paneCount - 1,
+        otherPaneCount: other.panes().length, originalPaneCount: before.paneCount,
+        lowerHistograms: chart.panes().slice(1).flatMap(p => p.getSeries()).filter(s => s.seriesType() === 'Histogram').length,
+        sameChart: chart === before.chart, sameCandle: candle === before.candle,
+        sameVolume: JSON.stringify(histogram?.data().map(({ time, ...r }) => ({ time, value: 'value' in r ? r.value : undefined })))
+          === JSON.stringify(before.rows.map(({ time, value }) => ({ time, value }))),
+        spacing: chart.timeScale().options().barSpacing, oldSpacing: before.spacing,
+        right: chart.timeScale().getVisibleLogicalRange()?.to, oldRight: before.range.to,
+        scale: histogram?.priceScale().options(), behindCandle: histogram && histogram.seriesOrder() < candle.seriesOrder(),
+        colors: histogram?.data().map(row => 'color' in row ? row.color : null),
+      };
+    });
+    await expect.poll(async () => (await overlayState()).sameVolume).toBe(true);
+    let state = await overlayState();
+    expect(state.paneCount).toBe(state.expectedPaneCount);
+    expect(state.otherPaneCount).toBe(state.originalPaneCount);
+    expect(state).toMatchObject({ sameChart: true, sameCandle: true, behindCandle: true, lowerHistograms: 0 });
+    expect(state.spacing).toBe(state.oldSpacing);
+    expect(state.right).toBeCloseTo(state.oldRight, 6);
+    expect(state.scale).toMatchObject({ mode: 0, invertScale: false, scaleMargins: { top: .75, bottom: 0 } });
+    if (timeframe === 'D') {
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-win="a"]').getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
+      await page.screenshot({ path: info.outputPath('volume-overlay-default.png'), animations: 'disabled' });
+      panel = await open(page, 'a');
+    }
+    await panel.getByRole('slider', { name: '거래량 표시 높이' }).press('End');
+    await panel.getByRole('slider', { name: '거래량 투명도' }).press('Home');
+    await panel.getByRole('button', { name: '상승봉 거래량 색상 선택', exact: true }).click();
+    await page.getByRole('button', { name: '상승봉 거래량 색상 #22C55E', exact: true }).click();
+    await expect(panel).toBeVisible();
+    await expect.poll(async () => (await overlayState()).colors?.includes('#22C55Eff')).toBe(true);
+    await expect.poll(async () => (await overlayState()).scale?.scaleMargins.top).toBe(.6);
+    // Palette Escape closes only its own layer.
+    await panel.getByRole('button', { name: '하락봉 거래량 색상 선택', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeVisible();
+    await panel.getByRole('switch', { name: '로그 스케일', exact: true }).click();
+    await panel.getByRole('switch', { name: '차트 거꾸로 보기', exact: true }).click();
+    await expectPriceScale(page, 'a', true, true);
+    await expect.poll(() => page.evaluate(() => {
+      const candle = (window as ChartsWindow).__liveCharts!.get('a')!.panes()[0].getSeries()
+        .find(s => s.seriesType() === 'Candlestick') as ISeriesApi<'Candlestick'>;
+      const rows = candle.data().filter(r => 'high' in r);
+      return candle.priceToCoordinate(Math.max(...rows.map(r => r.high)))! > candle.priceToCoordinate(Math.min(...rows.map(r => r.low)))!;
+    })).toBe(true);
+    state = await overlayState();
+    expect(state.scale).toMatchObject({ mode: 0, invertScale: false });
+    expect(state.sameCandle).toBe(true);
+    await page.keyboard.press('Escape');
+    if (timeframe === 'D') {
+      await page.screenshot({ path: info.outputPath('volume-overlay-comparison.png'), animations: 'disabled' });
+      await page.reload();
+      panel = await open(page, 'a');
+      await expect(panel.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
+      await expect(panel.getByRole('slider', { name: '거래량 투명도' })).toHaveValue('0');
+      await expect(page.locator('[data-win="a"]').getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
+      await page.screenshot({ path: info.outputPath('volume-overlay-settings.png'), animations: 'disabled' });
+    } else panel = await open(page, 'a');
+    await panel.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
+    await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts!.get('a')!.panes()[0]
+      .getSeries().filter(s => s.seriesType() === 'Histogram').length)).toBe(0);
+    await panel.getByRole('button', { name: '되돌리기', exact: true }).click();
+    await expect(panel.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
+    await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}

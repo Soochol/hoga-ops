@@ -809,11 +809,11 @@ describe('IndicatorPanel', () => {
   });
 
 
-  it('거래량 카테고리 이동 후 체결강도 누적 토글이 노출된다', () => {
+  it('거래량에는 누적 체결강도 옵션이 없다', () => {
     renderPanel();
     openDetail('거래량');
-    expect(screen.getByTestId('settings-toggle-volumeFillStrengthCumulative')).toBeTruthy();
-    expect(screen.getByText('거래량 — 체결강도 누적')).toBeTruthy();
+    expect(screen.queryByText('거래량 — 체결강도 누적')).toBeNull();
+    expect(screen.getByText(/캔들 차트 설정에서 거래량/)).toBeTruthy();
   });
 
   it('navigating to a category does NOT toggle its master switch', async () => {

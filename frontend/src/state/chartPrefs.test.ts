@@ -213,17 +213,8 @@ describe('체결창 대량 체결 강조 (trade-window 카테고리)', () => {
   });
 });
 
-describe('거래량 체결강도 누적 토글', () => {
-  it('기본값은 false', () => {
-    expect(DEFAULT_PREFS.volumeFillStrengthCumulative).toBe(false);
-  });
-
-  it('mergePrefs는 false를 보존한다', () => {
-    expect(hydratedMinuteView({ volumeFillStrengthCumulative: false }).volumeFillStrengthCumulative).toBe(false);
-    expect(hydratedMinuteView({ volumeFillStrengthCumulative: true }).volumeFillStrengthCumulative).toBe(true);
-    expect(hydratedMinuteView({ volumeFillStrengthCumulative: 'true' as never }).volumeFillStrengthCumulative)
-      .toBe(DEFAULT_PREFS.volumeFillStrengthCumulative);
-  });
+it('drops the retired volume cumulative preference from legacy storage', () => {
+  expect(hydratedMinuteView({ volumeFillStrengthCumulative: true })).not.toHaveProperty('volumeFillStrengthCumulative');
 });
 
 import { CHART_TOGGLES, CHART_LINE_STYLES, CHART_NUMERIC_PREFS, categoryOf, gatedByOf } from './chartPrefs';
