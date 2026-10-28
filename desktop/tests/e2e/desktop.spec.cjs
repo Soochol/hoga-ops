@@ -51,7 +51,9 @@ test('isolated server, sandbox, child state, request guard, recovery and restart
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => !w.webContents.getURL().startsWith('app:')).map(w => w.getTitle()))).toEqual(['Ticklane · 검증 서버']);
     expect(await content.evaluate(() => typeof window.require)).toBe('undefined');
     expect(await app.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
-    expect(await content.evaluate(() => window.hogaDesktop)).toEqual({ strictConfig: true, apiOrigin: server.origin });
+    expect(await content.evaluate(() => ({ strictConfig: window.hogaDesktop.strictConfig, apiOrigin: window.hogaDesktop.apiOrigin }))).toEqual({ strictConfig: true, apiOrigin: server.origin });
+    expect(await content.evaluate(() => window.hogaDesktop.controls.getState())).toEqual({ serverName: '검증 서버', origin: server.origin, apiOrigin: server.origin, zoomFactor: 1 });
+    expect(await content.evaluate(async () => { try { await window.hogaDesktop.controls.zoom('invalid'); return false; } catch { return true; } })).toBe(true);
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => !w.webContents.getURL().startsWith('app:')).every(w => w.webContents.getLastWebPreferences().sandbox))).toBe(true);
     const childPromise = app.waitForEvent('window');
     await content.getByRole('button', { name: '종목 새 창' }).click();
@@ -184,19 +186,19 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
     await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find(item => item.label === '보기').submenu.items.find(item => item.label === '확대').click());
     await expect.poll(() => zoom(child)).toBeCloseTo(1.1);
     await expect(child.locator('#ticklane-desktop-zoom').getByRole('status')).toHaveText('화면 배율110%');
-    const contextLabel = await app.evaluate(({ BrowserWindow, Menu }, url) => {
+    const contextMenus = await app.evaluate(({ BrowserWindow, Menu }, url) => {
       const win = BrowserWindow.getAllWindows().find(win => win.webContents.getURL() === url);
       const original = Menu.buildFromTemplate;
-      let items;
+      const menus = [];
       try {
-        Menu.buildFromTemplate = template => { items = template; return { popup() {} }; };
+        Menu.buildFromTemplate = template => { menus.push(template.map(item => item.label || item.role)); return { popup() {} }; };
         win.webContents.emit('context-menu', {}, { linkURL: '', isEditable: false });
+        win.webContents.emit('context-menu', {}, { linkURL: '', isEditable: true });
       } finally { Menu.buildFromTemplate = original; }
-      const zoom = items.find(item => item.label?.startsWith('화면 배율'));
-      zoom.submenu.find(item => item.label === '축소').click();
-      return zoom.label;
+      return menus;
     }, child.url());
-    expect(contextLabel).toBe('화면 배율 110%');
+    expect(contextMenus).toEqual([['cut', 'copy', 'paste', 'selectAll']]);
+    await child.evaluate(() => window.hogaDesktop.controls.zoom('out'));
     await expect.poll(() => zoom(child)).toBeCloseTo(1);
     await expect(child.locator('#ticklane-desktop-zoom').getByRole('status')).toHaveText('화면 배율100%');
     await pressZoomKey(child, '=');
@@ -214,7 +216,8 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
     await restored.reload();
     await expect.poll(() => zoom(restored)).toBeCloseTo(1.1);
     await expect(restored.locator('#ticklane-desktop-zoom')).toHaveCount(0);
-    await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items[0].submenu.items.find(item => item.label === '서버 선택').click());
+    await restored.evaluate(() => window.hogaDesktop.controls.selectServer());
+    expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items[0].submenu.items.find(item => item.label === '서버 선택').accelerator)).toBe('CommandOrControl+Alt+S');
     const launcher = app.windows().find(page => page.url().startsWith('app:'));
     // Keep the recovery launcher visible while closing the old workspace, then
     // connect the next server after Electron has finished closing its window.

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { ProgramWindowData } from '../programLineState';
 import type { RangeBundle } from '../../api/types';
 import type { LiveTimeframe } from '../../state/livePage';
 import type { GroupId } from '../../state/workspace';
@@ -35,6 +36,7 @@ export type GroupChartLink = {
   timeframe: LiveTimeframe;
   /** 차트 파이프라인의 chartBundle ?? bundle (레거시 LiveSidebar 계약 미러). */
   bundle: RangeBundle | null;
+  program?: ProgramWindowData;
   /** 위 `bundle` 의 지표에 **이미 적용된** 날짜별 수정계수(`scaleRangeBundlePrices`).
    *
    *  번들과 **같은 채널로** 흐르는 것이 요점이다: 데이터 창이 `/api/range` 를 따로

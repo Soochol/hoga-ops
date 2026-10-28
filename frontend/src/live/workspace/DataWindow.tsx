@@ -865,11 +865,11 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const live = useLiveSeries(code, venue);
   const liveTail = useMemo(() => aggregateProgramTrade(live.program), [live.program]);
   const series = useMemo(
-    () => mergeProgramTradeWithLiveTail(link?.bundle?.program_trade ?? null, liveTail),
-    [link?.bundle?.program_trade, liveTail],
+    () => link?.program?.series ?? mergeProgramTradeWithLiveTail(link?.bundle?.program_trade ?? null, liveTail),
+    [link?.program?.series, link?.bundle?.program_trade, liveTail],
   );
-  // 당일 종가 오버레이 — 순매수와 같은 번들의 candles 를 그대로 넘긴다(카드가
-  // anchorT 날짜로 잘라 쓴다). program_trade 와 형제 필드라 축이 정확히 맞는다.
+  // Price and program history share real timestamps but load independently.
+  // The card clips both to the selected day and draws whichever is ready.
   const closePoints = useMemo(
     () => volumeDistributionClosePointsFromCandles(link?.bundle?.candles ?? []),
     [link?.bundle?.candles],
@@ -881,6 +881,8 @@ function ProgramWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       <ProgramTradeSummaryCard
         key={code}
         series={series}
+        programState={link.program?.state}
+        closeState={link.program?.closeState}
         cursorMs={scope.kind === 'minute-cursor' ? scope.cursorMs : null}
         cursorDate={cursorDate}
         closePoints={closePoints}

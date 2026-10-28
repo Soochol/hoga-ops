@@ -65,7 +65,7 @@ function show() { return render(<QueryClientProvider client={new QueryClient({ d
 function enableReceiptSound() {
   fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
 
-  fireEvent.click(screen.getByRole('switch', { name: '주문접수 소리' }));
+  fireEvent.click(screen.getByRole('switch', { name: '주문·정정 접수 소리' }));
   fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
 }
 beforeEach(() => {
@@ -520,7 +520,7 @@ describe('호가 주문', () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
 
-    const checkbox = screen.getByRole('switch', { name: '주문접수 소리' });
+    const checkbox = screen.getByRole('switch', { name: '주문·정정 접수 소리' });
     expect(checkbox).not.toBeChecked();
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
 
@@ -532,7 +532,7 @@ describe('호가 주문', () => {
     fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
 
-    expect(screen.getByRole('switch', { name: '주문접수 소리' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: '주문·정정 접수 소리' })).toBeChecked();
   });
   it('미리듣기 차단을 설정 안에서 안내한다', async () => {
     vi.mocked(playOrderReceiptSound).mockResolvedValue(false);
@@ -555,7 +555,7 @@ describe('호가 주문', () => {
       fireEvent.click(toggle);
       expect(toggle).toBeChecked();
     }
-    expect(screen.getByRole('switch', { name: '주문접수 소리' })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: '주문·정정 접수 소리' })).not.toBeChecked();
     expect(subscribeOrderReceiptSoundRecovery).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
@@ -1296,7 +1296,7 @@ describe('호가 주문', () => {
     }
     expect(quantity).toHaveValue(25);
     expect(within(dialog).getByRole('switch', { name: '내 평단가 표시' })).toBeVisible();
-    expect(within(dialog).getByRole('switch', { name: '주문접수 소리' })).toBeVisible();
+    expect(within(dialog).getByRole('switch', { name: '주문·정정 접수 소리' })).toBeVisible();
     expect(mock.command).not.toHaveBeenCalled();
   });
 
@@ -1460,7 +1460,7 @@ describe('호가 주문', () => {
   });
   it('가격이나 유효 수량이 없으면 예상 금액을 계산하지 않고 잘못된 수량은 전송하지 않는다', () => {
     mock.quotePrice = null; show();
-    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('—');
+    expect(screen.getByLabelText('예상 주문 금액').querySelector('.order-field-value')).toBeEmptyDOMElement();
     expect(screen.getByLabelText('보유 종목 평가 수익').querySelector('.order-field-value')).toBeEmptyDOMElement();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '1.5' } });
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
@@ -1640,7 +1640,7 @@ describe('호가 주문', () => {
     view.rerender(<QueryClientProvider client={client}><DataWindow win={win} symbol={{ code: '000660', name: 'SK하이닉스' }} /></QueryClientProvider>);
     expect(screen.getByRole('combobox', { name: '주문 계좌' })).toHaveValue('2');
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
-    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('—');
+    expect(screen.getByLabelText('예상 주문 금액').querySelector('.order-field-value')).toBeEmptyDOMElement();
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
     expect(buy).toHaveAttribute('aria-disabled', 'true');

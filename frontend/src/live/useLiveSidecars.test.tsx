@@ -71,6 +71,8 @@ describe('split sidecars through real delta queries', () => {
     expect(calls).toHaveBeenCalledTimes(1);
     expect(String(calls.mock.calls[0][0])).not.toContain('volume_distribution_price');
     expect(result.current.isLoading).toBe(true);
+    expect(result.current.programLoading).toBe(false);
+    expect(result.current.programError).toBeNull();
     expect(result.current.data?.from_date).toBe(PLAN.to);
     const priced = { ...PLAN, options: { ...PLAN.options, volumeDistributionPriceRange: { min: 100, max: 200 } } };
     rerender({ plan: priced, waiting: false });
@@ -102,6 +104,8 @@ describe('split sidecars through real delta queries', () => {
     await waitFor(() => expect(result.current.error).toBe(error));
     expect(result.current.isLoading).toBe(false);
     expect(result.current.data?.ask_peaks).toEqual(INDEPENDENT.ask_peaks);
+    expect(result.current.programError).toBeNull();
+    expect(result.current.programLoading).toBe(false);
     expect(result.current.data?.volume_distributions).toEqual([]);
     unmount(); qc.clear();
   });
@@ -127,4 +131,27 @@ describe('split sidecars through real delta queries', () => {
     expect(pending.every((signal) => signal.aborted)).toBe(true);
     unmount(); qc.clear();
   });
+
+  it('reports an independent request failure, then recovers without waiting for the price lane', async () => {
+    const { qc, wrapper } = setup();
+    let fail = true;
+    const error = new Error('program request failed');
+    vi.spyOn(client, 'apiCall').mockImplementation((url) => {
+      if (String(url).includes('volume_distribution_bins')) return new Promise(() => {}) as never;
+      return (fail ? Promise.reject(error) : Promise.resolve(INDEPENDENT)) as never;
+    });
+    const { result, unmount } = renderHook(() => useLiveSidecars(PLAN, false), { wrapper });
+    expect(result.current.programLoading).toBe(true);
+    await waitFor(() => expect(result.current.programError).toBe(error));
+    expect(result.current.programLoading).toBe(false);
+    expect(result.current.programData).toBeUndefined();
+    fail = false;
+    act(() => { void qc.invalidateQueries(); });
+    await waitFor(() => expect(result.current.programData).toEqual(INDEPENDENT.program_trade));
+    expect(result.current.programError).toBeNull();
+    expect(result.current.programLoading).toBe(false);
+    expect(result.current.isLoading).toBe(true);
+    unmount(); qc.clear();
+  });
+
 });

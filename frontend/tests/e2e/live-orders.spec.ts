@@ -151,7 +151,7 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
-async function multiBrokerSetup(page: Page) {
+async function multiBrokerSetup(page: Page, blocked = false) {
   await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'not mocked' } }));
   await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
   const { window } = await setup(page);
@@ -160,7 +160,7 @@ async function multiBrokerSetup(page: Page) {
   await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: true, accounts: [
     { account_ref: toss, broker: 'toss', environment: 'real', label: '토스증권 · ****1234', routes: ['SOR'], order_enabled: true },
     { account_ref: kiwoom, broker: 'kiwoom', environment: 'real', label: '키움증권 · 실전 · ****5678',
-      routes: ['KRX', 'NXT', 'SOR'], order_enabled: true, blocked_reason: null },
+      routes: ['KRX', 'NXT', 'SOR'], order_enabled: !blocked, blocked_reason: blocked ? '검증 대기' : null },
   ] } }));
   await page.route('**/api/trading/v2/state?*', route => {
     const url = new URL(route.request().url());
@@ -384,13 +384,60 @@ test('증권사 계좌 전환은 키움 주문을 활성화하고 토스 주문�
   expect(commands[0].body).not.toHaveProperty('account_seq');
 });
 
+for (const blocked of [false, true]) {
+  test(`주문 경로는 같은 줄 오른쪽 끝에서 좁은 창일 때 축약한다 (검증 대기=${blocked})`, async ({ page }, info) => {
+    const { window, kiwoom, commands } = await multiBrokerSetup(page, blocked);
+    // Reload restores the saved window rectangle, so maximize again for the wide case.
+    await page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '창 최대화', exact: true }).click();
+    const summary = window.getByLabel('주문 경로', { exact: true });
+    const row = window.locator('.order-account-controls');
+    const button = window.getByRole('button', { name: '미체결 주문', exact: true });
+    const account = window.getByRole('combobox', { name: '주문 계좌' });
+    const route = window.getByRole('combobox', { name: '주문 거래소' });
+    const assertAlignment = async () => {
+      const bounds = (await summary.boundingBox())!;
+      const controls = (await row.boundingBox())!;
+      const action = (await button.boundingBox())!;
+      expect(Math.abs(bounds.y + bounds.height / 2 - action.y - action.height / 2)).toBeLessThan(2);
+      expect(bounds.x + bounds.width).toBeCloseTo(controls.x + controls.width - 10, 0);
+      expect(action.x + action.width).toBeLessThan(bounds.x);
+    };
+    // A fixed SOR account displays its value once, without a selector.
+    await expect(summary).toContainText('SOR');
+    await expect(route).toHaveCount(0);
+    await assertAlignment();
+    await account.selectOption(kiwoom);
+    await expect(route).toHaveValue('SOR');
+    // Size the order container itself: the workspace canvas has a minimum width.
+    for (const width of [1000, 576]) {
+      await window.evaluate((el, width) => { el.style.width = `${width}px`; }, width);
+      await expect.poll(() => summary.locator('.order-route-prefix').first().isVisible()).toBe(width >= 600);
+      await assertAlignment();
+      if (blocked) await expect(summary.getByText('검증 대기', { exact: true })).toBeVisible();
+      await row.screenshot({ path: info.outputPath(`order-route-${width}.png`) });
+    }
+    await summary.hover();
+    await expect(page.getByRole('tooltip')).toHaveText(`시세 UN · 주문 ${blocked ? '검증 대기 · ' : ''}SOR`);
+    await route.selectOption('NXT');
+    await expect(route).toHaveValue('NXT');
+    await expect(summary).toHaveAttribute('data-tooltip', `시세 UN · 주문 ${blocked ? '검증 대기 · ' : ''}NXT`);
+    await window.evaluate(el => { el.style.width = '360px'; });
+    await expect(summary).toBeInViewport();
+    const rowBounds = (await row.boundingBox())!;
+    const routeBounds = (await summary.boundingBox())!;
+    expect(routeBounds.y).toBeGreaterThanOrEqual(rowBounds.y);
+    expect(routeBounds.y + routeBounds.height).toBeLessThanOrEqual(rowBounds.y + rowBounds.height);
+    expect(commands).toHaveLength(0);
+  });
+}
+
 test('키움 주문의 가짜 응답은 선택 거래소와 계좌 식별자를 전송한다', async ({ page }, testInfo) => {
   const { window, kiwoom, commands } = await multiBrokerSetup(page);
   await window.getByRole('combobox', { name: '주문 계좌' }).selectOption(kiwoom);
   const route = window.getByRole('combobox', { name: '주문 거래소' });
   await expect(route).toBeVisible();
   await route.selectOption('KRX');
-  await expect(window.getByLabel('주문 경로')).toContainText('주문 KRX');
+  await expect(window.getByLabel('주문 경로')).toHaveAttribute('data-tooltip', '시세 UN · 주문 KRX');
   const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await expect(buy).toBeEnabled();
   await buy.dblclick();
@@ -551,7 +598,7 @@ test('매수·매도 체결음은 미리듣기·실제 체결 증가에서 재�
   }
   await expect.poll(sounds).toHaveLength(2);
   expect((await sounds()).every(duration => Math.abs(duration - 0.5) < 0.001)).toBe(true);
-  await expect(dialog.getByRole('switch', { name: '주문접수 소리', exact: true })).toHaveAttribute('aria-checked', 'false');
+  await expect(dialog.getByRole('switch', { name: '주문·정정 접수 소리', exact: true })).toHaveAttribute('aria-checked', 'false');
   await dialog.screenshot({ path: testInfo.outputPath('fill-sound-settings.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   const push = (filled: string, extra = {}) => ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1,
@@ -613,7 +660,7 @@ test('미리듣기는 설정을 열 때 출력 경로를 준비하고 마지막 
   await expect.poll(async () => (await output()).chimes).toBe(1);
   await dialog.getByRole('button', { name: '매도 체결 소리 들어보기', exact: true }).click();
   await expect.poll(async () => (await output()).chimes).toBe(2);
-  const toggle = dialog.getByRole('switch', { name: '주문접수 소리', exact: true });
+  const toggle = dialog.getByRole('switch', { name: '주문·정정 접수 소리', exact: true });
   await setSettingSwitch(toggle, true);
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   expect((await output()).active).toBe(1); // The enabled order window shares the same output.
@@ -626,7 +673,7 @@ test('미리듣기는 설정을 열 때 출력 경로를 준비하고 마지막 
   expect(commands).toHaveLength(0);
 });
 
-test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
+test('주문·정정 접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
   // Observe the real Web Audio buffer without replacing playback or autoplay policy.
   await page.addInitScript(() => {
     const observed = globalThis.window as unknown as {
@@ -646,7 +693,7 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   const { window, commands } = await setup(page);
   const settings = orderSettingsButton(window);
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
-  const checkbox = dialog.getByRole('switch', { name: '주문접수 소리', exact: true });
+  const checkbox = dialog.getByRole('switch', { name: '주문·정정 접수 소리', exact: true });
   await settings.click();
 
   await expect(checkbox).toHaveAttribute('aria-checked', 'false');
@@ -714,6 +761,67 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   expect(await soundStates()).toEqual(['running', 'running']);
 });
 
+for (const scenario of [
+  { count: 1, failures: 0, sound: true, uncertain: false },
+  { count: 10, failures: 0, sound: true, uncertain: false },
+  { count: 10, failures: 3, sound: true, uncertain: true },
+  { count: 10, failures: 10, sound: true, uncertain: false },
+  { count: 10, failures: 10, sound: true, uncertain: true },
+  { count: 10, failures: 0, sound: false, uncertain: false },
+]) {
+  test(`정정 접수음은 드래그 한 번에 최대 한 번: ${JSON.stringify(scenario)}`, async ({ page }) => {
+    await page.addInitScript(() => {
+      const observed = globalThis.window as unknown as { __receiptStarts: string[] };
+      observed.__receiptStarts = [];
+      const start = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function (when?: number) {
+        observed.__receiptStarts.push(this.context.state);
+        start.call(this, when);
+      };
+    });
+    const sounds = () => page.evaluate(() => (globalThis.window as unknown as { __receiptStarts: string[] }).__receiptStarts);
+    const { window, commands } = await setup(page, Array.from({ length: scenario.count }, (_, i) => mkOrder(`sound-${i}`)));
+    if (scenario.sound) {
+      await orderSettingsButton(window).click();
+      const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+      await setSettingSwitch(dialog.getByRole('switch', { name: '주문·정정 접수 소리', exact: true }), true);
+      await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+    }
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let requests = 0;
+    await page.route(/\/api\/trading\/orders\/sound-\d+\/modify$/, async route => {
+      const attempt = ++requests;
+      if (attempt === scenario.count) await gate;
+      if (attempt <= scenario.failures) return route.fulfill({ status: scenario.uncertain ? 503 : 409, json: { detail: {
+        code: scenario.uncertain ? 'order-outcome-unknown' : 'modify-rejected',
+        message: scenario.uncertain ? '정정 결과 확인 필요' : '정정 거절',
+      } } });
+      await route.fallback();
+    });
+    await drag(page, window.getByRole('button', { name: /매수 67,200원 주문 추가/ }),
+      window.getByRole('button', { name: /매수 67,100원 주문 추가/ }));
+    await expect.poll(() => requests).toBe(scenario.count);
+    expect(await sounds()).toEqual([]); // Even earlier accepted children wait for this gesture's last response.
+    release();
+    if (scenario.failures) {
+      await expect(page.getByRole('alert', { name: '주문 알림', exact: true })).toContainText(`정정 미접수 ${scenario.failures}건`);
+    } else await expect(page.getByRole('status', { name: '주문 접수 알림' })).toHaveText('정정 요청 접수됨');
+    const expected = scenario.sound && scenario.failures < scenario.count ? ['running'] : [];
+    await expect.poll(sounds).toEqual(expected);
+    await expect.poll(() => commands.length).toBe(scenario.count - scenario.failures);
+    if (scenario.failures === 3) {
+      // Only failed children are retried; this second gesture gets one new chime.
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+      await page.getByRole('button', { name: '같은 요청 다시 확인', exact: true }).click();
+      await expect(page.getByRole('status', { name: '주문 접수 알림' })).toHaveText('정정 요청 접수됨');
+      await expect.poll(sounds).toEqual(['running', 'running']);
+      expect(requests).toBe(13);
+      expect(commands).toHaveLength(10);
+    }
+  });
+}
+
 test('오디오 재생 거절은 주문 접수를 유지하고 복구 후 다음 주문만 재생한다', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     const observed = globalThis.window as unknown as { __soundBlocked: boolean; __soundStarts: number };
@@ -736,7 +844,7 @@ test('오디오 재생 거절은 주문 접수를 유지하고 복구 후 다음
   await orderSettingsButton(window).click();
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
 
-  await setSettingSwitch(dialog.getByRole('switch', { name: '주문접수 소리', exact: true }), true);
+  await setSettingSwitch(dialog.getByRole('switch', { name: '주문·정정 접수 소리', exact: true }), true);
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await buy.dblclick();
@@ -2245,6 +2353,20 @@ test('컴팩트 계좌 목록은 테마와 화면 폭에 맞춰 표시된다', a
   expect(commands).toHaveLength(0);
 });
 
+async function expectGradientSeparator(depth: Locator) {
+  const line = await depth.evaluate(el => {
+    const style = getComputedStyle(el, '::after');
+    return { image: style.backgroundImage, height: style.height, pointer: style.pointerEvents,
+      ask: el.classList.contains('order-ask') };
+  });
+  expect(line.height).toBe('1px');
+  expect(line.pointer).toBe('none');
+  expect(line.image).toContain('linear-gradient(to right,');
+  // The transparent end faces outwards; the opaque end meets the price cell.
+  expect(line.image).toMatch(line.ask ? /to right, rgba\(0, 0, 0, 0\),/ : /, rgba\(0, 0, 0, 0\)\)$/);
+  await expect(depth).toHaveCSS('box-shadow', 'none');
+}
+
 test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고침·다른 창에서도 독립 저장한다', async ({ page }, testInfo) => {
   const { commands } = await setup(page, false, true, false, 0, 1, { averagePrice: '67000.1' });
   const first = page.getByTestId('order-window').first();
@@ -2268,7 +2390,7 @@ test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고
   for (const level of [67200, 67300]) {
     const row = first.locator(`[data-order-price="${level}"]`);
     const depth = row.locator('.order-depth');
-    await expect(depth).toHaveCSS('box-shadow', /inset/);
+    await expectGradientSeparator(depth);
     const priceBounds = (await row.locator('.order-price').boundingBox())!;
     const depthBounds = (await depth.boundingBox())!;
     expect(depthBounds.y + depthBounds.height).toBeCloseTo(priceBounds.y + priceBounds.height, 1);
@@ -2285,7 +2407,7 @@ test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고
   const fullDepths = first.locator('[data-order-price="67200"] .order-depth');
   await expect(fullDepths).toHaveCount(2);
   for (const depth of await fullDepths.all()) {
-    await expect(depth).toHaveCSS('box-shadow', /inset/);
+    await expectGradientSeparator(depth);
     const priceBounds = (await price.boundingBox())!;
     const depthBounds = (await depth.boundingBox())!;
     expect(depthBounds.y + depthBounds.height).toBeCloseTo(priceBounds.y + priceBounds.height, 1);
@@ -2296,6 +2418,8 @@ test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고
   for (const theme of ['trading-desk', 'toss-light']) {
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
     await expect(price).toHaveCSS('box-shadow', /inset/);
+    for (const depth of await fullDepths.all()) await expectGradientSeparator(depth);
+    await first.locator('.order-ladder').screenshot({ path: testInfo.outputPath(`gradient-separators-${theme}.png`) });
   }
   await page.reload();
   await expect(first).toHaveClass(/order-price-separators/);
@@ -2316,7 +2440,7 @@ test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고
   await percent.click();
   await expect(separators).toHaveAttribute('aria-checked', 'false');
   await expect(percent).toHaveAttribute('aria-checked', 'true');
-  await expect(second.locator('.order-depth').first()).toHaveCSS('box-shadow', 'none');
+  expect(await second.locator('.order-depth').first().evaluate(el => getComputedStyle(el, '::after').content)).toBe('none');
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(first.locator('.book-price-percent')).toHaveCount(0);
 });

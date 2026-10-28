@@ -1,0 +1,80 @@
+{
+  "date": "2026-10-28",
+  "head": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "base": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "state": "uncommitted working tree including prior program-line and order gradient/sound changes",
+  "frontend_sha256": "02dea02f3afaeb863f1444fd1ae29f3ae6b667e6599a75b9d57212394514b845",
+  "fingerprint_method": "Sorted unique git ls-files --cached --others --exclude-standard frontend; path + NUL + contents + NUL, including source/tests/fixtures/lockfile/configuration.",
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "browser": "system Chrome",
+    "workers": 1,
+    "ports": [
+      20144,
+      21144
+    ],
+    "data": "/tmp/hoga-e2e-data-144",
+    "dist": "/tmp/hoga-e2e-dist-144",
+    "vendor_credentials": "blank per playwright.config.ts"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed app/unit/E2E projects",
+      "log": "/tmp/hoga-order-route-types.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx tsc -p tsconfig.e2e.json --noEmit",
+      "result": "passed after final test-only fixture correction; app/unit inputs unchanged",
+      "log": "/tmp/hoga-order-route-corrected-types.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/workspace/OrderWindow.test.tsx",
+      "result": "177 passed",
+      "log": "/tmp/hoga-order-route-unit.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/live-orders.spec.ts --project=chromium --reporter=list --grep '주문 경로는|증권사 계좌 전환은|키움 주문의 가짜|헤더 주문 설정은|576px 압축형은'",
+      "result": "4 unchanged regression tests passed; 2 new layout tests failed due to fixture sizing, rerun below",
+      "log": "/tmp/hoga-order-route-e2e.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/live-orders.spec.ts --project=chromium --reporter=list --grep '주문 경로는'",
+      "result": "2 passed at final input; production build passed in setup",
+      "log": "/tmp/hoga-order-route-corrected-e2e.log",
+      "fixture_correction": "Reload loses maximize state; viewport resizing also respects workspace canvas minimum width. Explicitly maximize and size order container, following existing responsive test fixtures. Production code unchanged between E2E runs."
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx eslint src/live/workspace/OrderWindow.tsx tests/e2e/live-orders.spec.ts -f json",
+      "result": "0 errors; same 6 pre-existing refs warnings in OrderWindow; final test file rechecked with 0 warnings",
+      "logs": [
+        "/tmp/hoga-order-route-lint.json",
+        "/tmp/hoga-order-route-corrected-lint.json"
+      ]
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "right-edge alignment on same row",
+    "1000px full and 576px abbreviated labels, 360px visibility",
+    "fixed SOR account without select",
+    "multi-route account selection updates summary and submission",
+    "blocked account retains 검증 대기",
+    "full tooltip for abbreviated label",
+    "existing compact order layout and settings popover"
+  ],
+  "visual_qa": "Inspected wide screenshot and narrow 576px screenshots for normal/blocked accounts. Labels align at far right and account/action buttons remain on same row.",
+  "limits": "Trading APIs mocked; no real orders submitted. Backend/API unchanged."
+}

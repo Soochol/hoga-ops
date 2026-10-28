@@ -8,11 +8,6 @@ import { LiveSymbolSearch } from '../live/LiveSymbolSearch';
 import ClockLabel from './ClockLabel';
 import { useRightRailStore } from '../state/rightRail';
 
-const NAV_BUTTON_CLASS = [
-  'h-full inline-flex items-center whitespace-nowrap transition-colors',
-  'text-sm text-fg-dim font-semibold hover:text-fg',
-].join(' ');
-
 /**
  * 이 탭에서 실제로 이동이 일어나는 클릭인가.
  *
@@ -24,7 +19,7 @@ function navigatesInThisTab(e: MouseEvent<HTMLAnchorElement>): boolean {
   return e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
 }
 
-export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void }) {
+export default function TopNav() {
   // 종목 검색은 /live 전용이므로 해당 라우트에서만 헤더에 마운트한다. 검색창의
   // ＋버튼·"/" 키 포커스 배선은 liveSearchFocus 이벤트 버스로 위치와 무관하게 동작한다.
   const isLive = useLocation().pathname === '/live';
@@ -99,12 +94,6 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
         <div className="flex items-center justify-end gap-lg text-xs font-semibold text-fg-dim">
           {isLive && <LiveSymbolSearch />}
           <CaptureInlineStatus />
-          {/* 설정은 **라우트가 아니라 드로어**다. 목록 기반 렌더(`SYSTEM_NAV_ITEMS`)와
-              그 안의 `/settings` 분기는 항목이 하나뿐인 죽은 일반화였고, 페이지가
-              사라지면서 함께 지웠다. */}
-          <button type="button" onClick={onOpenSettings} className={NAV_BUTTON_CLASS}>
-            설정
-          </button>
           <ServiceStatusButton />
         </div>
       </div>

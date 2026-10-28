@@ -16,7 +16,10 @@ function StrictConfigGate({ children }: { children: ReactNode }) {
   return <div className="grid place-items-center min-h-screen bg-bg text-fg p-6">
     <div className="max-w-xl space-y-4" role="status">
       <p>{state.error ?? '서버 연결 설정을 확인하고 있습니다…'}</p>
-      {state.error && <><p className="text-sm text-fg-dim">다른 서버를 선택하려면 Ctrl+Alt+S 또는 화면 우클릭의 서버 선택을 사용하세요.</p>
+      {state.error && <><p className="text-sm text-fg-dim">다른 서버는 서버 선택 화면에서 연결할 수 있습니다. 단축키: Ctrl+Alt+S</p>
+        {window.hogaDesktop?.controls && <ToolbarButton onClick={() => {
+          void window.hogaDesktop!.controls!.selectServer().catch(() => setState({ ready: false, error: '서버 선택 화면을 열지 못했습니다. Ctrl+Alt+S를 사용하세요.' }));
+        }}>서버 선택</ToolbarButton>}
         <ToolbarButton onClick={() => { setState({ ready: false }); setAttempt(value => value + 1); }}>다시 시도</ToolbarButton></>}
     </div>
   </div>;

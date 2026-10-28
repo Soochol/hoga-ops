@@ -38,7 +38,10 @@ function changeZoom(win: BrowserWindow | null | undefined, command: ZoomCommand)
   if (!key) return;
   const factor = nextZoomFactor(win.webContents.getZoomFactor(), command);
   for (const [other, otherKey] of windowProfileKeys) {
-    if (otherKey === key && !other.isDestroyed()) other.webContents.setZoomFactor(factor);
+    if (otherKey === key && !other.isDestroyed()) {
+      other.webContents.setZoomFactor(factor);
+      other.webContents.send('desktop:zoom-state', factor);
+    }
   }
   // Only the window where the user adjusted zoom displays the transient status.
   win.webContents.send('desktop:zoom-changed', factor);
@@ -82,6 +85,16 @@ function showLauncher(message = ''): void {
 function trustedLauncher(event: IpcMainInvokeEvent): void {
   if (!launcher || event.sender !== launcher.webContents || event.senderFrame !== launcher.webContents.mainFrame
     || event.senderFrame.url !== LAUNCHER_URL) throw new Error('허용되지 않은 설정 요청입니다.');
+}
+
+/** Only the active server's top-level workspace may call these narrow controls. */
+function trustedContent(event: IpcMainInvokeEvent): BrowserWindow {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || !contentWindows.has(win) || !active
+    || windowProfileKeys.get(win) !== sessionKey(active)
+    || event.senderFrame !== event.sender.mainFrame
+    || !appNavigation(event.senderFrame.url, active)) throw new Error('허용되지 않은 데스크톱 요청입니다.');
+  return win;
 }
 
 function configureSession(profile: Profile): Electron.Session {
@@ -133,19 +146,17 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
     return { action: 'deny' };
   });
   win.webContents.on('context-menu', (_event, params) => {
-    const items: Electron.MenuItemConstructorOptions[] = [
-      { label: '서버 선택', accelerator: 'CommandOrControl+Alt+S', click: () => showLauncher() },
-      { label: '새 작업 창', click: () => { if (active) openContent(active, `${active.origin}/live`); } },
-      { type: 'separator' },
-      { label: `화면 배율 ${Math.round(win.webContents.getZoomFactor() * 100)}%`, submenu: zoomMenu(() => win) },
-    ];
+    const items: Electron.MenuItemConstructorOptions[] = [];
     if (externalLink(params.linkURL) && !appNavigation(params.linkURL, profile)) {
-      items.push({ type: 'separator' }, { label: '링크를 외부 브라우저로 열기', click: () => {
+      items.push({ label: '링크를 외부 브라우저로 열기', click: () => {
         void shell.openExternal(params.linkURL).catch(() => showLauncher('외부 브라우저를 열 수 없습니다.'));
       } });
     }
-    if (params.isEditable) items.push({ type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' });
-    Menu.buildFromTemplate(items).popup({ window: win });
+    if (params.isEditable) {
+      if (items.length) items.push({ type: 'separator' });
+      items.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' });
+    }
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
   });
   win.webContents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) showLauncher('화면을 불러오지 못했습니다. 서버 주소·프론트 빌드·연결을 확인한 뒤 다시 연결하세요.');
@@ -240,6 +251,19 @@ else {
     });
     session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
+    ipcMain.handle('desktop:read', event => {
+      const win = trustedContent(event);
+      return { serverName: active!.name, origin: active!.origin,
+        apiOrigin: active!.apiOrigin ?? active!.origin, zoomFactor: win.webContents.getZoomFactor() };
+    });
+    ipcMain.handle('desktop:select-server', event => { trustedContent(event); showLauncher(); });
+    ipcMain.handle('desktop:new-window', event => { trustedContent(event); openContent(active!, `${active!.origin}/live`); });
+    ipcMain.handle('desktop:zoom', (event, command: unknown) => {
+      const win = trustedContent(event);
+      if (command !== 'in' && command !== 'out' && command !== 'reset') throw new Error('잘못된 배율 명령입니다.');
+      changeZoom(win, command);
+      return win.webContents.getZoomFactor();
+    });
     ipcMain.handle('launcher:read', event => {
       trustedLauncher(event);
       return { profiles: settings.profiles, activeId: settings.activeId, warning, build, developmentAllowed: !app.isPackaged, hasWindows: contentWindows.size > 0 };

@@ -189,3 +189,21 @@ test('보조지표 스타일·기간 편집과 되돌리기, 반응형 배치, �
     await editor.screenshot({ path: testInfo.outputPath(`indicator-list-readable-${width}.png`) });
   }
 });
+
+test('설정은 알림 아래 마지막 레일 버튼에서 열리고 브라우저에는 데스크톱 항목이 없다', async ({ page }, info) => {
+  await setup(page);
+  await expect(page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('button', { name: '설정', exact: true })).toHaveCount(0);
+  const rail = page.getByRole('navigation', { name: '우측 레일' });
+  const settings = rail.getByRole('button', { name: '설정', exact: true });
+  await expect(rail.getByRole('button').last()).toHaveAccessibleName('설정');
+  const alerts = await rail.getByRole('button', { name: '시그널 알림 패널 토글' }).boundingBox();
+  const bounds = await settings.boundingBox();
+  expect(bounds!.y).toBeGreaterThanOrEqual(alerts!.y + alerts!.height);
+  await settings.focus(); await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: '설정', exact: true })).toBeVisible();
+  await expect(page.getByTestId('settings-nav-desktop')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '설정', exact: true })).toHaveCount(0);
+  await expect(settings).toBeFocused();
+  await rail.screenshot({ path: info.outputPath('settings-last-rail.png') });
+});

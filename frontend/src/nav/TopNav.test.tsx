@@ -38,27 +38,27 @@ describe('TopNav', () => {
     useRightRailStore.setState({ activePanel: null, lastPanel: 'watchlist' });
   });
 
-  it('renders workspace links in the approved order and Settings at the end', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+  it('renders workspace links and keeps settings out of the header', () => {
+    render(<TopNav />, { wrapper: W });
 
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
     expect(labels).toEqual([
       'TTicklane', '라이브', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처', '복기 노트 작성',
     ]);
-    expect(screen.getByRole('button', { name: '설정' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '설정' })).not.toBeInTheDocument();
     expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
   });
 
   it('renders only the Ticklane brand text, without the old subtitle', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    render(<TopNav />, { wrapper: W });
 
     expect(screen.getByText('Ticklane')).toBeInTheDocument();
     expect(screen.queryByText(/orderbook replay/i)).not.toBeInTheDocument();
   });
 
   it('uses text-only active styling for the current route', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    render(<TopNav />, { wrapper: W });
 
     const liveLink = screen.getByRole('link', { name: '라이브' });
 
@@ -69,7 +69,7 @@ describe('TopNav', () => {
   });
 
   it('mounts the symbol search in the header on /live', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, {
+    render(<TopNav />, {
       wrapper: ({ children }) => <W route="/live">{children}</W>,
     });
 
@@ -77,7 +77,7 @@ describe('TopNav', () => {
   });
 
   it('hides the symbol search on non-live routes', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, {
+    render(<TopNav />, {
       wrapper: ({ children }) => <W route="/heatmap">{children}</W>,
     });
 
@@ -85,7 +85,7 @@ describe('TopNav', () => {
   });
 
   it('라이브 nav 는 관심종목 패널을 함께 연다', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    render(<TopNav />, { wrapper: W });
 
     fireEvent.click(screen.getByRole('link', { name: '라이브' }));
 
@@ -98,7 +98,7 @@ describe('TopNav', () => {
   // 열림이 아니라 **교체**다: 다른 패널을 보던 중에 눌러도 그 라우트의 패널로 간다.
   it('다른 패널이 열려 있어도 그 라우트의 패널로 교체한다', () => {
     useRightRailStore.setState({ activePanel: 'screener', lastPanel: 'screener' });
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    render(<TopNav />, { wrapper: W });
 
     fireEvent.click(screen.getByRole('link', { name: '라이브' }));
 
@@ -109,7 +109,7 @@ describe('TopNav', () => {
 
   // toggle 이었다면 여기서 닫힌다 — "누르면 열린다" 와 정반대다.
   it('같은 nav 를 다시 눌러도 패널이 닫히지 않는다', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    render(<TopNav />, { wrapper: W });
     const live = screen.getByRole('link', { name: '라이브' });
 
     fireEvent.click(live);
@@ -120,7 +120,7 @@ describe('TopNav', () => {
 
   it('패널이 지정되지 않은 nav 는 열린 패널을 그대로 둔다', () => {
     useRightRailStore.setState({ activePanel: 'watchlist', lastPanel: 'watchlist' });
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    render(<TopNav />, { wrapper: W });
 
     fireEvent.click(screen.getByRole('link', { name: '히트맵' }));
 
@@ -130,7 +130,7 @@ describe('TopNav', () => {
   // 새 탭으로 여는 클릭은 이 탭에서 이동이 일어나지 않는다 — 그런데 패널만 바뀌면
   // 사용자는 건드린 적 없는 화면이 변한 걸 보게 된다.
   it('새 탭 클릭(ctrl/meta/shift/alt)은 이 탭의 패널을 바꾸지 않는다', () => {
-    render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+    render(<TopNav />, { wrapper: W });
     const live = screen.getByRole('link', { name: '라이브' });
 
     for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey'] as const) {
@@ -138,20 +138,9 @@ describe('TopNav', () => {
       expect(useRightRailStore.getState().activePanel).toBeNull();
     }
   });
-
-  it('opens settings through a button instead of navigating', () => {
-    const onOpenSettings = vi.fn();
-    render(<TopNav onOpenSettings={onOpenSettings} />, { wrapper: W });
-
-    const settings = screen.getByRole('button', { name: '설정' });
-
-    settings.click();
-    expect(onOpenSettings).toHaveBeenCalledOnce();
-    expect(screen.queryByRole('link', { name: '설정' })).toBeNull();
-  });
 });
 
 it('links the brand to the project home', () => {
-  render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
+  render(<TopNav />, { wrapper: W });
   expect(screen.getByRole('link', { name: 'Ticklane 홈' })).toHaveAttribute('href', '/');
 });

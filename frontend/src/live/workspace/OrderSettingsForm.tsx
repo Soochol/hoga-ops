@@ -71,7 +71,7 @@ export function OrderSettingsForm({ draft, onChange, busy }: {
           checked={draft.showPriceChangePercent} disabled={busy} onChange={showPriceChangePercent => onChange({ ...draft, showPriceChangePercent })} />
       </OrderSettingsSection>
       <OrderSettingsSection id={`${sectionId}-sound`} title="주문 알림">
-        <OrderSettingsToggleRow label="주문접수 소리" checked={draft.orderReceiptSound} disabled={busy}
+        <OrderSettingsToggleRow label="주문·정정 접수 소리" checked={draft.orderReceiptSound} disabled={busy}
           onChange={orderReceiptSound => {
             if (orderReceiptSound) prepareOrderReceiptSound();
             onChange({ ...draft, orderReceiptSound });

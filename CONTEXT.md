@@ -387,6 +387,11 @@ _Avoid_: "right rail" (global App shell chrome), "right sidebar" or "sidebar" al
 
 **프로그램 순매수 (Program Trade Net Buy)**:
 The Kiwoom `0w` stock-level intraday cumulative program-trade net-buy series for one stock **Code**, surfaced as a chart pane and as a compact summary in the **Live Detail Panel**. Each KRX tick fans out to two consumers: the display-only **Live Buffer** publishes it immediately through `/api/live/series` and the shared live WebSocket, while `program_trade_latch` retains the latest value for `ProgramTradeCollector`'s 30-second durable sidecar flush under the frozen `kis-program-trade` identifier. `/live` merges the persisted `/api/range` history with the strict-after-seam 15-minute WS tail; the chart pane and `ProgramWindow` consume that same merged **Stock-Date Range** bundle.
+2026-10-28: 프로그램 데이터 창은 같은 이력 쿼리·WS 병합 결과를 별도로 전달받아
+캔들 pane의 날짜/축 준비를 기다리지 않는다. 그룹 링크는 프로그램 이력 조회와 캔들
+조회의 준비/실패 상태도 전달한다. 종가선과 순매수선은 독립 표시하며 로딩·조회 실패·
+데이터 없음·관측 1점 대기를 구분한다. 기존 쿼리의 동일 종목 캐시를 사용하고 종목
+교체 시 이전 종목의 선은 남기지 않는다. 캔들 pane의 날짜 필터는 그대로 유지한다.
 _Avoid_: "program" alone (too vague outside a UI card label), treating it as KIS REST data, saying that the WS tick is written to JSONL/parquet (only the 30-second sidecar path is durable), or adding a second `ProgramWindow` subscription.
 
 **Live Investor Estimate Card**:
@@ -1174,3 +1179,16 @@ NXT 미상장은 제외 증거가 아니다. 정규장·과거 커서·실효 NX
 깊은 누락 보충은 ‘과거 데이터 복구’로 분리한다. 두 경로의 계획과 시작은 한 서버 작업으로
 직렬화하며 일반 갱신 클릭이 과거 복구를 암묵적으로 요청하지 않는다. 낮 한 번의 시도 후에는
 밤 22시 확인의 예산을 남기고, 잠정·독립 확인·충돌 격리와 기존 저장 조건은 유지한다.
+
+주문·정정 접수음(2026-10-28): 기존 `orderReceiptSound` 설정과 음원을 신규 주문 및
+가격·수량 정정에 함께 사용한다. 한 번의 묶음 드래그는 모든 응답 처리 후 접수된 건이
+있으면 한 번만 울리고, 접수 확인된 건 없이 모두 실패·결과 불명확이면 울리지 않는다. 일부 실패의
+건수·재시도 안내는 유지한다. 첫 접수된 하위 명령 ID로 중복 재생을 막고, 실패한
+하위 주문만 재시도해 새로 접수되면 그 재시도에 한 번 알린다. 취소 접수는 대상이 아니다.
+
+데스크톱 설정 진입점(2026-10-28): 앱 전체 설정은 우측 레일의 알림 아래 마지막
+톱니바퀴 버튼에서 연다. 기존 중앙 설정 모달과 다른 패널의 열림 상태는 유지한다.
+Electron에서만 「데스크톱」 섹션에 현재 서버·서버 선택·새 작업 창·배율 조절을 제공한다.
+일반 우클릭의 서버 선택/새 창/배율 메뉴는 제거하고 편집·외부 링크 메뉴는 유지한다.
+Ctrl+Alt+S와 로컬 연결 실패 화면은 계속 복구 진입점이다. 원격 UI의 bridge는 제한된
+명령만 제공하며 main에서 활성 서버의 등록 창·main frame·허용 URL을 검사한다.

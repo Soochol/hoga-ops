@@ -6,7 +6,7 @@ test('앱 공통 메뉴·설정·포털 툴팁은 선택되지 않고 입력창�
   await page.goto('/live');
   const menu = page.getByRole('navigation', { name: '주요 메뉴' });
   await expect(menu).toHaveCSS('user-select', 'none');
-  await menu.getByRole('button', { name: '설정', exact: true }).click();
+  await page.getByRole('navigation', { name: '우측 레일' }).getByRole('button', { name: '설정', exact: true }).click();
   const settings = page.getByTestId('settings-shell');
   const scope = settings.getByText('앱 전체에 적용', { exact: true });
   await expect(scope).toHaveCSS('user-select', 'none');
@@ -52,7 +52,7 @@ test('창 최대화·Escape 복원은 원래 배치를 보존한다', async ({ p
   await expect.poll(async () => (await win.boundingBox())!.width).toBeGreaterThan(before!.width);
   // 확장된 rect를 이동/스냅 엔진에 저장하지 않도록 리사이즈 핸들도 비활성화한다.
   await expect(win.locator('[data-handle="e"]')).toHaveCount(0);
-  await page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('button', { name: '설정', exact: true }).click();
+  await page.getByRole('navigation', { name: '우측 레일' }).getByRole('button', { name: '설정', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);

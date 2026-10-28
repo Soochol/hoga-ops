@@ -187,6 +187,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const {
     bundle,
     chartBundle,
+    programWindow,
     hogaBundle,
     hogaMissingDates,
     candleEmpty,
@@ -487,6 +488,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
      *  데이터마저 가장 느린 벤더 walk 를 기다리게 되고, 그게 이 기능이 피하려던 비용이다.
      *  지수 워크에어리어는 분봉 캡처 파이프라인 자체가 없으므로 대상이 아니다. */
     gapFill,
+    programWindow,
     workareaCode,
     workareaBundle,
     workareaChartBundle,

@@ -958,6 +958,59 @@ describe('useLiveBundle', () => {
     });
   });
 
+  it('publishes program history before candles and isolates program loading/error from the price sidecar', () => {
+    const points = [0, 30_000].map(offset => ({ t: DEFAULT_CANDLE.t_ms + offset,
+      net_qty: 10, net_amount: 100_000_000, gap_risk: false }));
+    const history = { ...fallbackRangeBundle(), program_trade: { points } };
+    let pending = true;
+    let failure: Error | null = null;
+    useRangeSidecarDeltaSpy.mockImplementation((...args) => {
+      const options = args[6] as { programTradeEnabled?: boolean };
+      if (!options.programTradeEnabled) return { ...rangeResult(), error: new Error('unrelated price failure') };
+      return { ...rangeResult(pending ? null : history), isPending: pending, error: failure };
+    });
+    candlesMock.candles = [];
+    const { result, rerender } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    expect(result.current.programWindow.state).toBe('loading');
+    pending = false;
+    rerender();
+    expect(result.current.programWindow.state).toBe('ready');
+    expect(result.current.programWindow.series.points).toEqual(points);
+    // The pane retains its date/axis guard; the standalone window does not wait for it.
+    expect(result.current.chartBundle?.program_trade?.points).toEqual([]);
+    failure = new Error('program refresh failed');
+    rerender();
+    expect(result.current.programWindow.state).toBe('error');
+    expect(result.current.programWindow.series.points).toEqual(points);
+    failure = null;
+    candlesMock.candles = [DEFAULT_CANDLE];
+    rerender();
+    expect(result.current.programWindow.state).toBe('ready');
+    expect(result.current.chartBundle?.program_trade?.points).toEqual(points);
+  });
+
+  it('waits for the live snapshot too and distinguishes its initial failure from empty history', () => {
+    const { result, rerender } = renderHook(({ loading, error }: { loading: boolean; error: Error | null }) =>
+      useLiveBundle('005930', '1m', '20260527', { ...liveFixture, isLoading: loading, error }),
+    { initialProps: { loading: true, error: null as Error | null }, wrapper });
+    expect(result.current.programWindow.state).toBe('loading');
+    rerender({ loading: false, error: new Error('snapshot failed') });
+    expect(result.current.programWindow.state).toBe('error');
+    rerender({ loading: false, error: null });
+    expect(result.current.programWindow.state).toBe('ready');
+    expect(result.current.programWindow.series.points).toEqual([]);
+  });
+
+  it('reports candle failure warnings while keeping ready program history independent', () => {
+    candlesMock.warnings = [{ reason: 'api_error', msg: 'vendor failed', kind: 'vendor_api', is_failure: true }];
+    const { result, rerender } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+    expect(result.current.programWindow.closeState).toBe('error');
+    expect(result.current.programWindow.state).toBe('ready');
+    candlesMock.warnings = [{ reason: 'fallback_to_krx', msg: 'KRX fallback', is_failure: false }];
+    rerender();
+    expect(result.current.programWindow.closeState).toBe('ready');
+  });
+
   /** HogaPlay 모드는 디스크를 읽으며, 미수집 날짜도 벤더에 자동 요청하지 않는다. */
   describe('창별 hogaplay 소스', () => {
     it('passes empty sessions to the time axis without filling them with live trades', () => {

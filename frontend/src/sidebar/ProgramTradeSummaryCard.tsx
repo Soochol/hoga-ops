@@ -1,5 +1,6 @@
 import { ResponsiveDataControls } from '../ui/ResponsiveDataControls';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { ProgramLineLoadState } from '../live/programLineState';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
@@ -30,6 +31,8 @@ export type ProgramClosePoint = { t_ms: number; close: number };
 
 type Props = {
   series?: ProgramTradeSeries | null;
+  programState?: ProgramLineLoadState;
+  closeState?: ProgramLineLoadState;
   cursorMs?: number | null;
   cursorDate?: string | null;
   /** 당일 분봉 종가(같은 번들의 candles). 순매수 곡선 위에 dim 참조선으로
@@ -51,6 +54,7 @@ type Props = {
 
 
 type ProgramTradeMetric = 'net' | 'buy' | 'sell';
+const EMPTY_PROGRAM_POINTS: ProgramTradePoint[] = [];
 
 
 const METRIC_LABELS: Record<ProgramTradeMetric, string> = {
@@ -60,6 +64,8 @@ const METRIC_LABELS: Record<ProgramTradeMetric, string> = {
 
 export default function ProgramTradeSummaryCard({
   series,
+  programState = 'ready',
+  closeState = 'ready',
   cursorMs = null,
   cursorDate = null,
   closePoints = null,
@@ -72,26 +78,8 @@ export default function ProgramTradeSummaryCard({
   dailyOlderError = false,
   onLoadOlder,
 }: Props) {
-  const points = series?.points ?? [];
-  // 스파크라인 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
-  // 크로스헤어(cursorMs)로 복귀한다. effectiveCursor 하나로 상단 금액·
-  // 수량(pickProgramTradePoint)까지 함께 호버 위치를 따라간다.
-  const [hoverMs, setHoverMs] = useState<number | null>(null);
-  const measure = useProgramTradeDisplayStore((state) => state.measure);
   const view = useProgramTradeDisplayStore((state) => state.view);
   const setView = useProgramTradeDisplayStore((state) => state.setView);
-  const effectiveCursor = hoverMs ?? cursorMs;
-  // 빈 상태 판정은 latest(커서 무관) 로만 한다 — "데이터가 없다" 와 "커서 위치에
-  // 아직 관측이 없다" 는 다른 사건이다. 예전엔 커서 기준 point 하나로 둘을 함께
-  // 판정해, x 축이 담는 구간(가격 오버레이 포함 통합 범위)의 앞쪽 — 순매수 첫
-  // 관측 이전 — 에 호버하면 카드 전체가 빈 상태로 무너졌다. 스파크라인이 사라지면
-  // onMouseLeave 가 걸릴 대상도 없어져 hoverMs 가 그 값에 고착됐다(리로드로만 복구).
-  const latest = pickProgramTradePoint(points, null, todayKst);
-  const point = pickProgramTradePoint(points, effectiveCursor, todayKst);
-
-  // 읽을 것(커서 위치 point)도 그릴 것(오늘 스코프 latest)도 없을 때만 빈 상태다.
-  // latest 만으로 판정하면 새날 아침에 전일 캔들을 호버하는 경로(point 는 전일 값을
-  // floor 로 집는다)가 함께 죽는다 — 그건 todayKst 스코프가 막으려던 대상이 아니다.
   if (view === 'daily') {
     return <ProgramDailySummary points={dailyPoints} loading={dailyLoading} error={dailyError}
       cursorDate={cursorDate}
@@ -99,30 +87,55 @@ export default function ProgramTradeSummaryCard({
       onLoadOlder={onLoadOlder}
       onShowIntraday={() => setView('intraday')} />;
   }
+  return <ProgramIntradaySummary series={series} cursorMs={cursorMs} closePoints={closePoints}
+    todayKst={todayKst} programState={programState} closeState={closeState} />;
+}
 
-  if (!latest && !point) {
-    return (
-      <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
-        <ProgramTradeControls view="intraday" onSelect={setView} />
-        <SidebarState className="min-h-[64px] flex-1 px-3 py-4">
-          프로그램 순매수 데이터 없음
-        </SidebarState>
-      </div>
-    );
-  }
+function ProgramIntradaySummary({
+  series, cursorMs = null, closePoints = null, todayKst = null,
+  programState = 'ready', closeState = 'ready',
+}: Pick<Props, 'series' | 'cursorMs' | 'closePoints' | 'todayKst' | 'programState' | 'closeState'>) {
+  const points = series?.points ?? EMPTY_PROGRAM_POINTS;
+  // 스파크라인 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
+  // 크로스헤어(cursorMs)로 복귀한다. effectiveCursor 하나로 상단 금액·
+  // 수량(pickProgramTradePoint)까지 함께 호버 위치를 따라간다.
+  const [hoverMs, setHoverMs] = useState<number | null>(null);
+  const measure = useProgramTradeDisplayStore((state) => state.measure);
+  const setView = useProgramTradeDisplayStore((state) => state.setView);
+  const effectiveCursor = hoverMs ?? cursorMs;
+  // The summary follows the cursor, while each line keeps all observations on
+  // the selected day, including points later than the cursor.
+  const latest = pickProgramTradePoint(points, null, todayKst);
+  const point = pickProgramTradePoint(points, effectiveCursor, todayKst);
 
-  // 궤적의 날짜 스코프. 커서 위치에 관측이 없으면(point null) 커서 날짜를 쓴다 —
-  // 그 날 궤적은 그대로 보여주고 상단 숫자만 비운다.
-  // 마지막 `?? 0` 은 도달 불가다: effectiveCursor 가 null 이면 point 는 latest 경로로
-  // 계산돼 non-null 이고, 둘 다 null 인 경우는 위에서 빈 상태로 빠졌다.
-  const anchorT = point?.t ?? effectiveCursor ?? latest?.t ?? 0;
+  // A price-only response still chooses the requested day. Do not wait for a
+  // program point to establish the plot, or leak yesterday's close into today.
+  const day = String(selectedProgramDay(point, effectiveCursor, todayKst, latest, closePoints) ?? '');
+  const drawable = useMemo(() => {
+    return points
+    .filter(p => Number.isFinite(p.t) && programValue(p, 'net', measure) !== null && realMsToYyyymmdd(p.t) === day)
+    .map(p => ({ t: p.t, v: programValue(p, 'net', measure)! }))
+    .sort((a, b) => a.t - b.t);
+  }, [points, measure, day]);
+  const drawablePrice = useMemo(() => {
+    return (closePoints ?? [])
+    .filter(p => Number.isFinite(p.t_ms) && Number.isFinite(p.close) && realMsToYyyymmdd(p.t_ms) === day)
+    .map(p => ({ t: p.t_ms, v: p.close })).sort((a, b) => a.t - b.t);
+  }, [closePoints, day]);
+  const programMessage = lineStateMessage('프로그램 순매수', programState, drawable.length);
+  const priceMessage = closePoints !== null ? lineStateMessage('종가', closeState, drawablePrice.length) : null;
+  const hasSamples = drawable.length > 0 || drawablePrice.length > 0;
 
   return (
     <div className="program-trade-card flex h-full min-h-0 flex-col py-2 font-data text-xs">
       <div className="program-trade-content min-h-0 flex-1 overflow-auto">
         <div className="flex h-full min-h-[132px] flex-col">
           <ProgramTradeControls view="intraday" onSelect={setView} />
-          <div className="shrink-0 overflow-x-auto" aria-label="프로그램 누적 요약">
+          {(programMessage || priceMessage) && <div role="status" aria-label="프로그램 조회 상태" className="shrink-0 text-xs text-fg-dim">
+            {programMessage && <div>{programMessage}</div>}
+            {priceMessage && <div>{priceMessage}</div>}
+          </div>}
+          {hasSamples && <div className="shrink-0 overflow-x-auto" aria-label="프로그램 누적 요약">
           <div
             data-testid="program-metric-strip"
             className="program-metric-strip mt-1 grid divide-x divide-border py-1 tabular-nums"
@@ -137,19 +150,39 @@ export default function ProgramTradeSummaryCard({
               </div>;
             })}
           </div>
-          </div>
+          </div>}
           <ProgramTradeSparkline
-            points={points}
-            anchorT={anchorT}
+            drawable={drawable}
+            drawablePrice={drawablePrice}
             cursorMs={effectiveCursor}
             measure={measure}
-            closePoints={closePoints}
             onHoverMsChange={setHoverMs}
           />
         </div>
       </div>
     </div>
   );
+}
+
+
+function selectedProgramDay(
+  point: ProgramTradePoint | null, cursorMs: number | null, today: string | null,
+  latest: ProgramTradePoint | null, closes: readonly ProgramClosePoint[] | null,
+): string | null {
+  if (point) return realMsToYyyymmdd(point.t);
+  if (cursorMs !== null) return realMsToYyyymmdd(cursorMs);
+  if (today) return today;
+  if (latest) return realMsToYyyymmdd(latest.t);
+  return closes?.length ? realMsToYyyymmdd(closes[closes.length - 1].t_ms) : null;
+}
+
+
+function lineStateMessage(label: string, state: ProgramLineLoadState, count: number): string | null {
+  if (state === 'error') return `${label} 조회 실패${count > 0 ? ' · 수신된 데이터 표시 중' : ''}`;
+  if (state === 'loading') return `${label} 불러오는 중…`;
+  if (count === 0) return `${label} 데이터 없음`;
+  if (count === 1) return `${label} 추가 관측 대기`;
+  return null;
 }
 
 
@@ -379,53 +412,23 @@ function formatProgramDailyValue(value: number | null, side: ProgramTradeMetric,
  *  누적 순매수는 일별로 리셋되는데 병합 번들은 여러 날을 담을 수 있으므로,
  *  카드 숫자가 가리키는 point(anchorT)와 같은 KST 날짜만 잘라 그린다. */
 function ProgramTradeSparkline({
-  points,
-  anchorT,
-  cursorMs,
-  measure,
-  closePoints,
-  onHoverMsChange,
+  drawable, drawablePrice, cursorMs, measure, onHoverMsChange,
 }: {
-  points: readonly ProgramTradePoint[];
-  anchorT: number;
+  drawable: readonly SparkPoint[];
+  drawablePrice: readonly SparkPoint[];
   cursorMs: number | null;
   measure: ProgramTradeMeasure;
-  closePoints: readonly ProgramClosePoint[] | null;
   onHoverMsChange: (ms: number | null) => void;
 }) {
-  // viewBox 단위 — preserveAspectRatio="none" 으로 CSS 크기에 맞춰 늘어난다.
   const W = 100;
   const H = 32;
-
-  // 마우스 Y 를 플롯 높이 대비 비율(0=위,1=아래)로 담는다. 가로선·값 배지는
-  // 데이터 곡선이 아니라 이 커서 높이를 읽는다(캔들차트 Normal crosshair —
-  // 곡선에 스냅하는 Magnet 이 아님). null 이면 이 스파크라인 밖.
   const [hoverYRatio, setHoverYRatio] = useState<number | null>(null);
 
-  const drawable = useMemo(() => {
-    const day = realMsToYyyymmdd(anchorT);
-    return points
-      .filter(
-        (p) => programValue(p, 'net', measure) !== null && realMsToYyyymmdd(p.t) === day,
-      )
-      .map((p) => ({ t: p.t, v: programValue(p, 'net', measure)! }));
-  }, [points, anchorT, measure]);
-
-  // 당일 종가 오버레이 — 순매수와 같은 KST 날짜(anchorT)만 잘라 시간 오름차순.
-  const drawablePrice = useMemo(() => {
-    if (!closePoints || closePoints.length === 0) return [];
-    const day = realMsToYyyymmdd(anchorT);
-    return closePoints
-      .filter((c) => realMsToYyyymmdd(c.t_ms) === day)
-      .map((c) => ({ t: c.t_ms, v: c.close }))
-      .sort((a, b) => a.t - b.t);
-  }, [closePoints, anchorT]);
-
   const geometry = useMemo(() => {
-    if (drawable.length < 2) return null;
+    if (drawable.length < 2 && drawablePrice.length < 2) return null;
     // 축 시작은 순매수·가격 통합 최소 — 둘 다 같은 당일이지만 관측 시작이 미세하게
     // 달라 한쪽이 잘리지 않게 한다(가격 첫 봉이 보통 더 이르다 = 세션 오픈).
-    let tFirst = drawable[0].t;
+    let tFirst = drawable[0]?.t ?? drawablePrice[0].t;
     for (const p of drawablePrice) {
       if (p.t < tFirst) tFirst = p.t;
     }
@@ -459,7 +462,7 @@ function ProgramTradeSparkline({
       return x < 0 ? 0 : x > W ? W : x;
     };
     const toY = (v: number) => H - ((v - vMin) / vSpan) * H;
-    const segments = buildTimeGapSegments(drawable, PROGRAM_SPARK_GAP_THRESHOLD_MS).map((seg) => ({
+    const segments = buildTimeGapSegments(drawable.length >= 2 ? drawable : [], PROGRAM_SPARK_GAP_THRESHOLD_MS).map((seg) => ({
       kind: seg.kind,
       points: seg.pts.map((p) => `${toX(p.t)},${toY(p.v)}`).join(' '),
     }));
@@ -500,7 +503,7 @@ function ProgramTradeSparkline({
   const dotTopPct = dotValue != null ? (toY(dotValue) / H) * 100 : null;
   // 가로선·값 배지는 마우스 Y 를 그대로 읽는다(곡선 스냅 없음). toY 를 뒤집어
   // 커서 높이 비율 → 값으로: r=0(위)→vMax, r=1(아래)→vMin.
-  const showYCursor = hoverYRatio != null;
+  const showYCursor = drawable.length >= 2 && hoverYRatio != null;
   const cursorValue = showYCursor ? valueFromYRatio(hoverYRatio!, vMin, vMax) : null;
   const cursorYPct = showYCursor ? hoverYRatio! * 100 : null;
 
@@ -544,7 +547,7 @@ function ProgramTradeSparkline({
           preserveAspectRatio="none"
           className="block h-full w-full"
         >
-          <line
+          {drawable.length >= 2 && <line
             data-testid="zero-baseline"
             x1={0}
             x2={W}
@@ -553,7 +556,7 @@ function ProgramTradeSparkline({
             stroke="var(--grid)"
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
-          />
+          />}
           {/* 당일 종가 오버레이 — 순매수선 아래 레이어에 dim 회색 참조선.
               축 라벨 없이 곡선만(보조 시리즈). 순매수(accent)가 위로 올라온다. */}
           {priceLine && (
@@ -621,7 +624,7 @@ function ProgramTradeSparkline({
       {/* 가격 축은 오른쪽 — 메인 차트(priceScaleId: 'right')와 같은 방향.
           라벨을 svg 안에 두지 않는 이유는 커서 도트와 같다: preserveAspectRatio
           =none 아래서는 글자도 가로세로 다른 비율로 늘어난다. */}
-      <div
+      {drawable.length >= 2 ? <div
         data-testid="program-sparkline-axis"
         className="relative flex shrink-0 flex-col items-end justify-between font-data text-badge leading-none text-fg-dimmer tabular-nums"
       >
@@ -651,7 +654,7 @@ function ProgramTradeSparkline({
             {formatProgramAxisValue(cursorValue, measure)}
           </span>
         )}
-      </div>
+      </div> : <span aria-hidden="true" />}
       {/* 시간축 — 축 도메인의 시작·중간·끝(KST). 매물대 카드의 시간축과 같은
           위계(border-t 로 플롯과 분리, dim 라벨)라 두 창을 위아래로 놓으면 같은
           높이에서 같은 방식으로 읽힌다. 축 도메인은 순매수·가격 통합 범위이므로
@@ -698,7 +701,7 @@ function programValue(
 ): number | null {
   if (!point) return null;
   const value = point[`${side}_${measure}` as keyof ProgramTradePoint];
-  return typeof value === 'number' ? value : null;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 
