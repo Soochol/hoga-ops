@@ -17,9 +17,11 @@ from hoga.trading.contracts import (
     BrokerState,
     CancelBrokerOrders,
     CreateBrokerOrder,
+    ExecutionHistoryPage,
     ModifyBrokerOrder,
     ReviewBrokerCommand,
 )
+from hoga.trading.executions import execution_history
 from hoga.trading.models import TradingCancelResponse, TradingReviewResponse
 from hoga.trading.multi_broker import BrokerTradingService
 from hoga.trading.toss import TradingError
@@ -70,6 +72,14 @@ def build_router(service: BrokerTradingService) -> APIRouter:
     @router.get("/holdings")
     async def holdings(account_ref: AccountRef) -> BrokerHoldings:
         return await invoke(service.holdings(account_ref))
+
+    @router.get("/execution-history")
+    async def executions(
+        account_ref: AccountRef,
+        date: str = Query(pattern=r"^\d{8}$"),
+        next_key: str | None = Query(default=None, min_length=1, max_length=8192),
+    ) -> ExecutionHistoryPage:
+        return await invoke(execution_history(service, account_ref, date, next_key))
 
     @router.post("/orders")
     async def create(body: CreateBrokerOrder, x_hoga_order: str | None = Header(default=None)) -> BrokerCommandResult:

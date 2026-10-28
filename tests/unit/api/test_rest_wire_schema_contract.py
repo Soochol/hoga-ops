@@ -452,6 +452,10 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
         "sellable_quantity", "holding_quantity", "average_purchase_price", "fetched_at_ms", "capacity_status",
         "orders", "recent_orders", "unresolved_commands", "events_connected", "revision"}),
     broker_contracts.BrokerHoldings: frozenset({"account_ref", "holdings", "fetched_at_ms"}),
+    broker_contracts.ExecutionHistoryRow: frozenset({"order_ref", "broker_order_id", "code", "name", "side",
+        "quantity", "order_quantity", "price", "price_basis", "amount", "filled_at", "ordered_at", "route"}),
+    broker_contracts.ExecutionHistoryPage: frozenset({"account_ref", "date", "rows", "next_key",
+        "fetched_at_ms", "events_connected"}),
     broker_contracts.BrokerCommandStatus: frozenset({"command_id", "state", "result"}),
     UsMinuteMetadata: frozenset({"market_timezone", "source", "history_scope", "delay_status", "session_scope",
                                 "available_from_ms", "available_to_ms", "last_successful_check_at_ms",
@@ -622,6 +626,10 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "ExecutionPriceBasis": (
+        frozenset(get_args(broker_contracts.ExecutionHistoryRow.model_fields["price_basis"].annotation)),
+        "frontend/src/api/executionHistory.ts",
+    ),
     "TradeSpotRepresentation": (frozenset(get_args(m.TradeSpotRepresentation)), "frontend/src/api/tradeSpot.ts"),
     "TradeSpotStatus": (frozenset(get_args(m.TradeSpotStatus)), "frontend/src/api/tradeSpot.ts"),
     "ConfirmationState": (frozenset(get_args(ConfirmationState)), "frontend/src/api/screenerRecovery.ts"),

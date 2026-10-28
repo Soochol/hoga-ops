@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-28",
+  "branch": "codex/account-execution-history",
+  "head": "7d30930d844f4684cf73a40aabb35704d41c3a1a",
+  "base": "7d30930d844f4684cf73a40aabb35704d41c3a1a",
+  "state": "uncommitted implementation on the recorded head/base",
+  "fingerprints": {
+    "frontend": "e1e7a3d80217a9202347c722baac9be9c686ee87b0def69249c81465969896d0",
+    "backend_and_tests": "f1f55c0e1b3ecdeaaff1921882367103f696da069eedf865a418d31805183e37"
+  },
+  "fingerprint_method": "Sorted unique git ls-files --cached --others --exclude-standard for each scope; path + NUL + file bytes + NUL. Includes sources, tests, fixtures, lockfiles and validation configuration.",
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "python": "3.14.7",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "browser": "system Chrome",
+    "workers": 1,
+    "ports": [
+      20144,
+      21144
+    ],
+    "data": "/tmp/hoga-e2e-data-144",
+    "dist": "/tmp/hoga-e2e-dist-144",
+    "credentials": "blank per Playwright config; all order/account tests use synthetic responses"
+  },
+  "checks": [
+    {
+      "command": "frontend: npm run typecheck",
+      "result": "all three TS projects passed at final app/unit input",
+      "log": "/tmp/hoga-execution-history-types-final.log"
+    },
+    {
+      "command": "frontend: npx tsc -p tsconfig.e2e.json --noEmit",
+      "result": "passed after final narrow-width E2E assertions",
+      "log": "/tmp/hoga-execution-history-e2e-types-final.log"
+    },
+    {
+      "command": "frontend: affected Vitest suites (12 files)",
+      "result": "405 passed",
+      "log": "/tmp/hoga-execution-history-final-unit.log",
+      "scope": [
+        "executionHistory",
+        "ExecutionHistoryWindow",
+        "workspace.executions",
+        "OrderWindow",
+        "workspace",
+        "workspace.normalize",
+        "workspace.pin",
+        "workspace.alwaysOnTop",
+        "WindowAddMenu",
+        "WindowFrame.pin",
+        "DataWindow",
+        "trading"
+      ]
+    },
+    {
+      "command": "frontend: npx vitest run src/live/workspace/OrderWindow.test.tsx",
+      "result": "178 passed; includes one new missing saved-account recovery test",
+      "log": "/tmp/hoga-execution-history-final-order-unit.log"
+    },
+    {
+      "command": "frontend: npx vitest run src/api/executionHistory.test.tsx src/live/workspace/ExecutionHistoryWindow.test.tsx",
+      "result": "6 passed after final account guard",
+      "log": "/tmp/hoga-execution-history-final-focused-unit.log"
+    },
+    {
+      "command": "frontend: WindowFrame and workspaceTransfer unit suites",
+      "result": "14 passed",
+      "log": "/tmp/hoga-execution-history-layout-unit.log"
+    },
+    {
+      "command": "frontend: npx vitest run src/live/presets/layoutPresetSnapshot.test.ts",
+      "result": "32 passed",
+      "log": "/tmp/hoga-execution-history-preset-unit.log"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_execution_history.py tests/unit/api/test_broker_trading.py tests/unit/api/test_trading_v2_wire.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "61 passed",
+      "log": "/tmp/hoga-execution-history-backend-final.log"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "12 passed after explicit ExecutionPriceBasis registration; deliberate FE enum mismatch rejected and restored",
+      "logs": [
+        "/tmp/hoga-execution-history-wire-final.log",
+        "/tmp/hoga-execution-history-wire-negative.log"
+      ]
+    },
+    {
+      "command": "frontend: npx playwright test tests/e2e/live-orders.spec.ts --project=chromium --reporter=list --grep '내 체결내역은|주문 경로는 같은 줄|키움 주문의 가짜 응답은|증권사 계좌 전환은'",
+      "result": "6 passed; Vite production build passed",
+      "log": "/tmp/hoga-execution-history-complete-e2e.log"
+    },
+    {
+      "command": "frontend: npx playwright test tests/e2e/live-orders.spec.ts --project=chromium --reporter=list --grep '내 체결내역은 상태 열 없이'",
+      "result": "1 passed after final source-selector responsive CSS and 340px coverage; Vite production build passed",
+      "log": "/tmp/hoga-execution-history-narrow-e2e.log"
+    },
+    {
+      "command": "ESLint affected production/tests; Ruff changed Python modules/tests; git diff --check",
+      "result": "0 lint errors; 6 pre-existing OrderWindow react-hooks/refs warnings; Ruff and diff checks passed",
+      "log": "/tmp/hoga-execution-history-lint-final.json"
+    }
+  ],
+  "distinct_frontend_unit_tests": 452,
+  "reuse": "405 includes the prior 177 OrderWindow tests; final OrderWindow 178 supersedes that slice (406 distinct). Additional WindowFrame/workspaceTransfer 14 and preset 32 give 452. Final focused hook/UI rerun retained. Later CSS only wraps the source selector at narrow widths; affected linked-account browser scenario and production build rerun. Other passing browser inputs/logic unchanged.",
+  "coverage": [
+    "no status column",
+    "source order window account follow, independent sources",
+    "no market venue filter",
+    "immediate account isolation and late response rejection",
+    "source close retains last account; reload restores",
+    "partial/cancelled fills remain; modified order explicit quantities retained",
+    "no duplicate cumulative quantity; retain observed rows across polling pages",
+    "account/day-bound pagination",
+    "latest page polling only",
+    "missing price/time/amount not fabricated",
+    "reading position retained with refresh notice",
+    "account binding/invalid cursor errors",
+    "340px and 576px layout",
+    "no order command while viewing/filtering"
+  ],
+  "limits": "Tests use synthetic broker HTTP/event responses. No live order submitted. This validates worktree source/build, not deployment to the running user app. Primary 5173/8000 servers and installed desktop app unchanged.",
+  "pr_reuse_audit": {
+    "date": "2026-10-28",
+    "latest_main": "7d30930d844f4684cf73a40aabb35704d41c3a1a",
+    "frontend_fingerprint_matches": true,
+    "backend_fingerprint_matches": true,
+    "open_pr_file_overlap": {
+      "1927": [],
+      "1726": []
+    },
+    "current_commit_mapping": "PR description records the commit containing these exact verified inputs."
+  }
+}

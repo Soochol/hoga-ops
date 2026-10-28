@@ -123,6 +123,31 @@ class BrokerHoldings(BaseModel):
     fetched_at_ms: int
 
 
+class ExecutionHistoryRow(BaseModel):
+    order_ref: str
+    broker_order_id: str
+    code: str
+    name: str | None = None
+    side: Literal["BUY", "SELL"]
+    quantity: str
+    order_quantity: str
+    price: str | None
+    price_basis: Literal["average", "execution"]
+    amount: str | None
+    filled_at: str | None
+    ordered_at: str | None
+    route: Route
+
+
+class ExecutionHistoryPage(BaseModel):
+    account_ref: str
+    date: str
+    rows: list[ExecutionHistoryRow]
+    next_key: str | None
+    fetched_at_ms: int
+    events_connected: bool
+
+
 class BrokerCommandStatus(BaseModel):
     command_id: str
     state: str

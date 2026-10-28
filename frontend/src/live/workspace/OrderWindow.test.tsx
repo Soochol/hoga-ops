@@ -83,6 +83,18 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('복원한 계좌가 없어도 다른 단일 계좌로 자동 전환하지 않고 명시적으로 선택할 수 있다', () => {
+    const opened = vi.fn();
+    render(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자"
+      selectedAccountId={99} onOpenExecutions={opened} /></QueryClientProvider>);
+    expect(screen.getByRole('button', { name: '내 체결' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: '주문 계좌' })).toHaveValue('99');
+    fireEvent.change(screen.getByRole('combobox', { name: '주문 계좌' }), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: '내 체결' }));
+    expect(opened).toHaveBeenCalledWith(1);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
   it('가격 구분선과 등락률은 즉시 반영하고 일반·전체 호가를 바꿔도 유지한다', () => {
     const { container } = show();
     const root = screen.getByTestId('order-window');

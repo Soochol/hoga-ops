@@ -86,14 +86,16 @@ const orderKey = (account: TradingAccountId, id: string) => JSON.stringify([acco
 type CancelFailure = { action: Action; notice: OrderNotice };
 type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
 
-export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSymbol }: {
+export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSymbol, selectedAccountId, onResolvedAccount, onOpenExecutions }: {
+  selectedAccountId?: TradingAccountId; onResolvedAccount?: (account: TradingAccountId) => void; onOpenExecutions?: (account: TradingAccountId) => void;
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
 }) {
-  const [selectedAccount, selectAccount] = useState<TradingAccountId | null>(null);
+  const [selectedAccount, selectAccount] = useState<TradingAccountId | null>(selectedAccountId ?? null);
   const [localSettings, setLocalSettings] = useState(() => normalizeOrderSettings(settings));
   const preferences = settings ?? localSettings;
   const accounts = useTradingAccounts(mode);
   const account = selectedAccount ?? accounts.data?.accounts[0]?.account_seq ?? 0;
+  useEffect(() => { if (account) onResolvedAccount?.(account); }, [account, onResolvedAccount]);
   if (selectedAccount === null && accounts.data?.accounts.length) selectAccount(accounts.data.accounts[0].account_seq);
   useEffect(() => {
     if (preferences.orderReceiptSound || preferences.buyFillSound || preferences.sellFillSound) return subscribeOrderReceiptSoundRecovery();
@@ -108,15 +110,16 @@ export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSy
   return <OrderWindowContent key={code} code={code} name={name}
     preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} onApplySettings={applySettings}
     profitAsPercent={profitAsPercent} onToggleProfitDisplay={() => setProfitAsPercent(value => !value)}
-    accounts={accounts} account={account} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} />;
+    accounts={accounts} account={account} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} onOpenExecutions={onOpenExecutions} />;
 }
 
-function OrderWindowContent({ code, name, accounts, account, onAccountChange, onSelectSymbol,
+function OrderWindowContent({ code, name, accounts, account, onAccountChange, onSelectSymbol, onOpenExecutions,
   preferences, quantity, onQuantityChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
   code: string; name: string;
   accounts: ReturnType<typeof useTradingAccounts>; account: TradingAccountId; onAccountChange: (account: TradingAccountId) => void; preferences: OrderWindowSettings;
   quantity: number | null; onQuantityChange: (quantity: number | null) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
+  onOpenExecutions?: (account: TradingAccountId) => void;
   profitAsPercent: boolean; onToggleProfitDisplay: () => void;
 }) {
   const client = useQueryClient();
@@ -737,10 +740,11 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     }}>
     <div className="order-controls order-account-controls">
       <div className="order-account-group" ref={accountAnchor}>
-      {accounts.data && accounts.data.accounts.length > 1 ? <select className="order-account-select" aria-label="주문 계좌" value={account} disabled={busy || dragInProgress}
+      {accounts.data && (accounts.data.accounts.length > 1 || (accounts.data.accounts.length > 0 && !activeAccount)) ? <select className="order-account-select" aria-label="주문 계좌" value={account} disabled={busy || dragInProgress}
         onChange={e => { const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
           if (next) onAccountChange(next.account_seq);
           closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); reviewUnknown(false); }}>
+        {!activeAccount && <option value={account} disabled>선택 계좌 연결 확인</option>}
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{accountDisplayLabel(a.label)}</option>)}
       </select> : <TextTooltip text={accountDisplayLabel(activeAccount?.label)}><span className="order-account-label text-fg-dim">{accountDisplayLabel(activeAccount?.label)}</span></TextTooltip>}
       {(['orders', 'holdings'] as const).map(tab => <button key={tab} type="button" aria-haspopup="dialog" aria-expanded={accountTab === tab}
@@ -748,6 +752,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         {tab === 'orders' ? '미체결 주문' : '보유종목'}
       </button>)}
       </div>
+      {onOpenExecutions && <button type="button" disabled={!account || !activeAccount || dragInProgress || busy}
+        onClick={() => onOpenExecutions(account)}>내 체결</button>}
       <div className="order-settings-group">
       {!showInlineSummary && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
         disabled={dragInProgress} onClick={() => setInfoOpen(open => !open)}>정보</button>}
