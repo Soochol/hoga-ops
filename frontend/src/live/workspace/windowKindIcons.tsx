@@ -32,6 +32,7 @@ const svg = (children: ReactNode) => (
 
 export const WINDOW_KIND_ICON: Record<IconWindowKind, ReactNode> = {
   'market-indices': svg(<><path d="M3 3v18h18" /><path d="m5 15 5-5 4 2 6-7M5 10l5 4 4-1 6 4" /></>),
+  'account-fills': svg(<><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></>),
   order: svg(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 4v16M16 4v16M3 12h18" /></>),
   news: svg(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h10M7 12h4M7 16h4M15 12h2M15 16h2" /></>),
   chart: svg(

@@ -717,3 +717,67 @@ async def test_post_ack_reference_conflict_stays_unknown_and_cannot_be_replayed(
             await service.execute(create(adapter.account_ref), "create")
         assert error.value.code == "order-outcome-unknown"
     assert len(broker.writes) == 1 and service.unresolved(adapter.account_ref, "005930") == ["create-1"]
+
+
+async def test_execution_history_preserves_partial_cancelled_fill_and_does_not_invent_time_or_average(setup):
+    broker, _, adapter, _, api = setup
+    broker.history = [{
+        "ord_no": "0000042", "stk_cd": "A007810", "stk_nm": "코리아써키트",
+        "ord_qty": "100", "ord_uv": "80500", "cntr_qty": "30", "cntr_uv": "80400",
+        "ord_remnq": "0", "io_tp_nm": "매수", "trde_tp": "2", "acpt_tp": "확인",
+        "ord_tm": "100000", "cnfm_tm": "100030", "dmst_stex_tp": "SOR",
+    }]
+    response = await api.get('/api/trading/v2/execution-history', params={
+        'account_ref': adapter.account_ref, 'date': '20261028',
+    })
+    assert response.status_code == 200, response.text
+    data = response.json()
+    row = data['rows'][0]
+    assert row['quantity'] == '30' and row['order_quantity'] == '100'
+    assert row['price'] == '80400' and row['price_basis'] == 'execution'
+    assert row['filled_at'] is None and row['amount'] is None
+    assert row['route'] == 'SOR' and row['name'] == '코리아써키트'
+    assert data['account_ref'] == adapter.account_ref and data['date'] == '20261028'
+    reads = [r for r in broker.requests if r.headers['api-id'] == 'kt00007']
+    assert json.loads(reads[-1].content)['dmst_stex_tp'] == '%'
+    assert not broker.writes
+
+
+async def test_execution_history_rejects_foreign_account_and_invalid_date_before_fetch(setup):
+    broker, _, adapter, _, api = setup
+    for params, status in [
+        ({'account_ref': 'acc_' + 'f' * 32, 'date': '20261028'}, 403),
+        ({'account_ref': adapter.account_ref, 'date': '20260230'}, 422),
+        ({'account_ref': adapter.account_ref, 'date': '20261028', 'next_key': 'bad'}, 422),
+    ]:
+        response = await api.get('/api/trading/v2/execution-history', params=params)
+        assert response.status_code == status, response.text
+    assert not [r for r in broker.requests if r.headers['api-id'] == 'kt00007']
+
+
+async def test_execution_history_pages_are_account_bound_and_preserve_modified_order_fills(setup, monkeypatch):
+    _, _, adapter, _, api = setup
+    original = adapter.gateway.call
+    seen = []
+
+    async def call(api_id, body, **kwargs):
+        if api_id != 'kt00007':
+            return await original(api_id, body, **kwargs)
+        seen.append((body, kwargs.get('cursor')))
+        native = '0000051' if not kwargs.get('cursor') else '0000052'
+        row = {'ord_no': native, 'stk_cd': 'A007810', 'ord_qty': '100', 'ord_uv': '80500',
+               'cntr_qty': '20', 'cntr_uv': '80500', 'ord_remnq': '80',
+               'io_tp_nm': '매수정정', 'trde_tp': '2', 'acpt_tp': '체결',
+               'ori_ord': '0000040', 'dmst_stex_tp': 'SOR', 'ord_tm': '100000'}
+        return {'acnt_ord_cntr_prps_dtl': [row, row]}, 'opaque-next' if not kwargs.get('cursor') else None
+
+    monkeypatch.setattr(adapter.gateway, 'call', call)
+    params = {'account_ref': adapter.account_ref, 'date': '20261028'}
+    first = (await api.get('/api/trading/v2/execution-history', params=params)).json()
+    assert len(first['rows']) == 1 and first['rows'][0]['quantity'] == '20'
+    second = (await api.get('/api/trading/v2/execution-history',
+                            params={**params, 'next_key': first['next_key']})).json()
+    assert second['next_key'] is None
+    assert first['rows'][0]['order_ref'] != second['rows'][0]['order_ref']
+    assert seen[0][1] == '' and seen[1][1] == 'opaque-next'
+    assert all(body['dmst_stex_tp'] == '%' for body, _ in seen)

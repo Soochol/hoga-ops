@@ -1,3 +1,4 @@
+import type { TradingAccountId } from '../api/trading';
 import { REFERENCE_CANVAS as REF_CANVAS } from '../workspace/referenceCanvas';
 import { normalizeZOrder } from '../workspace/zOrder';
 import { MAX_GROUP, MIN_GROUP, isGroupId, type GroupId } from '../workspace/groupId';
@@ -92,7 +93,7 @@ function isDeepLinkTab(): boolean {
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
  *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D).
  *  'market-indices' 는 시장 전체 창으로 종목·그룹 연동에서 제외한다. */
-export const WINDOW_KINDS = ['chart', 'book', 'order', 'broker', 'trade', 'program-trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking', 'market-indices'] as const;
+export const WINDOW_KINDS = ['chart', 'book', 'order', 'account-fills', 'broker', 'trade', 'program-trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking', 'market-indices'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 /**
@@ -177,6 +178,14 @@ export interface ChartWindowRuntime {
   secondViewport?: SecondTimeframeViewport;
 }
 
+export interface ExecutionWindowConfig {
+  sourceOrderId?: string;
+  account?: TradingAccountId;
+  symbol?: GroupSymbol;
+  side?: 'ALL' | 'BUY' | 'SELL';
+  currentSymbolOnly?: boolean;
+}
+
 export interface WorkspaceWindow {
   id: string;
   kind: WindowKind;
@@ -186,6 +195,9 @@ export interface WorkspaceWindow {
   chart?: ChartWindowConfig;
   /** Order input mode and independently editable presets, scoped to this window. */
   order?: OrderWindowSettings;
+  /** Account selection belongs to this order window; never inherited from another window. */
+  orderAccount?: TradingAccountId;
+  executionHistory?: ExecutionWindowConfig;
   /** 체결창 단건 최소 금액(만원). 생략 또는 0이면 전체 표시. */
   tradeMinAmountManwon?: number;
   /** 종목/날짜와 독립적인 뉴스 표시 필터. 생략은 종목 연결만 표시. */
@@ -265,6 +277,9 @@ type Store = Persisted & {
   /** 레거시 px rect 를 주어진 캔버스 기준 비율로 1회 변환하고 v2 로 영속화. */
   normalizeLegacyRects: (canvas: Canvas) => void;
   addWindow: (kind: WindowKind) => string;
+  openExecutionHistory: (sourceId: string, account: TradingAccountId) => string | null;
+  setOrderAccount: (id: string, account: TradingAccountId) => void;
+  setExecutionWindowConfig: (id: string, config: ExecutionWindowConfig) => void;
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
   toggleAlwaysOnTop: (id: string) => void;
@@ -407,6 +422,22 @@ function readRect(raw: unknown, legacyPx: boolean): WorkspaceRect | null {
  *  (분기를 호출부가 아니라 여기 두는 이유: 프리셋 적용 경로가 이 함수를 재사용하므로,
  *  호출부에서 지우면 새 프리셋 경로가 생길 때마다 지우는 것을 잊을 수 있다.)
  */
+function validTradingAccount(value: unknown): value is TradingAccountId {
+  return typeof value === 'number' ? Number.isSafeInteger(value) && value > 0
+    : typeof value === 'string' && /^acc_[a-f0-9]{32}$/.test(value);
+}
+
+function readExecutionConfig(raw: unknown, keepAccount: boolean): ExecutionWindowConfig {
+  const cfg = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  return {
+    ...(typeof cfg.sourceOrderId === 'string' ? { sourceOrderId: cfg.sourceOrderId } : {}),
+    ...(keepAccount && validTradingAccount(cfg.account) ? { account: cfg.account } : {}),
+    ...(keepAccount && readSymbol(cfg.symbol) ? { symbol: readSymbol(cfg.symbol)! } : {}),
+    side: cfg.side === 'BUY' || cfg.side === 'SELL' ? cfg.side : 'ALL',
+    currentSymbolOnly: cfg.currentSymbolOnly === true,
+  };
+}
+
 function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceWindow | null {
   if (!raw || typeof raw !== 'object') return null;
   const w = raw as Record<string, unknown>;
@@ -420,6 +451,8 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
   }
   if (w.alwaysOnTop === true) win.alwaysOnTop = true;
   if (w.kind === 'order' && w.order != null) win.order = normalizeOrderSettings(w.order);
+  if (keepPin && w.kind === 'order' && validTradingAccount(w.orderAccount)) win.orderAccount = w.orderAccount;
+  if (w.kind === 'account-fills') win.executionHistory = readExecutionConfig(w.executionHistory, keepPin);
   if (w.kind === 'trade' && isTradeMinAmountManwon(w.tradeMinAmountManwon)) {
     win.tradeMinAmountManwon = w.tradeMinAmountManwon;
   }
@@ -456,7 +489,7 @@ function readSymbol(raw: unknown): GroupSymbol | null {
   // kind='index' 는 code 가 실제 LiveIndexId 일 때만 보존 — 손상/외래 값이
   // 상태바 폴백(`index:FOO`)·드로어 capabilities 로 새는 것을 입구에서 차단(리뷰 #2).
   if (s.kind === 'us_stock') {
-    return /^us-stock:(NASDAQ|NYSE|AMEX):[A-Za-z0-9][A-Za-z0-9._\-]{0,19}$/.test(s.code) ? { code: s.code, name: s.name, kind: 'us_stock' } : null;
+    return /^us-stock:(NASDAQ|NYSE|AMEX):[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/.test(s.code) ? { code: s.code, name: s.name, kind: 'us_stock' } : null;
   }
   const isIndex = s.kind === 'index' && isLiveIndexId(s.code);
   return { code: s.code, name: s.name, ...(isIndex ? { kind: 'index' as const } : {}) };
@@ -629,7 +662,7 @@ export function groupTargetChartWindow(
 export function activeGroupOf(state: Pick<Persisted, 'windows' | 'zOrder'>): GroupId {
   for (let i = state.zOrder.length - 1; i >= 0; i--) {
     const win = state.windows.find(w => w.id === state.zOrder[i]);
-    if (win && win.kind !== 'market-indices') return win.group;
+    if (win && win.kind !== 'market-indices' && win.kind !== 'account-fills') return win.group;
   }
   return 1;
 }
@@ -645,7 +678,7 @@ export function windowSymbolOf(
   state: Pick<Persisted, 'groupSymbols'>,
   win: WorkspaceWindow | null | undefined,
 ): GroupSymbol | null {
-  if (!win || win.kind === 'market-indices') return null;
+  if (!win || (win.kind === 'market-indices' || win.kind === 'account-fills')) return null;
   return win.pinned ?? state.groupSymbols[win.group] ?? null;
 }
 
@@ -658,7 +691,7 @@ export function windowSymbolOf(
 export function focusedWindowSymbol(state: Pick<Persisted, 'windows' | 'zOrder' | 'groupSymbols'>): GroupSymbol | null {
   for (let i = state.zOrder.length - 1; i >= 0; i--) {
     const win = state.windows.find(w => w.id === state.zOrder[i]);
-    if (win && win.kind !== 'market-indices') return windowSymbolOf(state, win);
+    if (win && win.kind !== 'market-indices' && win.kind !== 'account-fills') return windowSymbolOf(state, win);
   }
   return null;
 }
@@ -686,10 +719,10 @@ export type ActivationTarget =
   | { kind: 'blocked' };
 
 export function activationTarget(state: Pick<Persisted, 'windows' | 'zOrder'>): ActivationTarget {
-  if (state.windows.every(w => w.kind === 'market-indices')) return { kind: 'empty', group: 1 };
+  if (state.windows.every(w => (w.kind === 'market-indices' || w.kind === 'account-fills'))) return { kind: 'empty', group: 1 };
   for (let i = state.zOrder.length - 1; i >= 0; i--) {
     const w = state.windows.find((win) => win.id === state.zOrder[i]);
-    if (w && w.kind !== 'market-indices' && !w.pinned) return { kind: 'window', window: w };
+    if (w && w.kind !== 'market-indices' && w.kind !== 'account-fills' && !w.pinned) return { kind: 'window', window: w };
   }
   return { kind: 'blocked' };
 }
@@ -720,6 +753,7 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // 본문은 가로 크롬이 없어 창 폭이 곧 패널 폭 — 하한 미만으로 좁히면 가로 스크롤.)
   book: { w: BOOK_WINDOW_DEFAULT_W, h: 560 },
   order: { w: 576, h: 720 },
+  'account-fills': { w: 720, h: 460 },
   // broker = 헤더 27 + 시점 상한 10행(매수5+매도5) 23.25×10 + divide 9 ≈ 269 → 280.
   // (하루 누적 유니온은 10행을 넘을 수 있고 그때는 스크롤이 정상.)
   broker: { w: 280, h: 310 },
@@ -867,6 +901,41 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     return id;
   },
 
+  setOrderAccount: (id, account) => {
+    if (!validTradingAccount(account)) return;
+    set(state => {
+      const source = state.windows.find(w => w.id === id && w.kind === 'order');
+      if (!source || source.orderAccount === account) return {};
+      const symbol = windowSymbolOf(state, source) ?? undefined;
+      const windows = state.windows.map(w => w.id === id ? { ...w, orderAccount: account }
+        : w.kind === 'account-fills' && w.executionHistory?.sourceOrderId === id
+          ? { ...w, executionHistory: { ...w.executionHistory, account, symbol } } : w);
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
+  openExecutionHistory: (sourceId, account) => {
+    const source = get().windows.find(w => w.id === sourceId && w.kind === 'order');
+    if (!source || !validTradingAccount(account)) return null;
+    get().setOrderAccount(sourceId, account);
+    const previous = get().windows.find(w => w.kind === 'account-fills' && w.executionHistory?.sourceOrderId === sourceId);
+    if (previous) { get().focusWindow(previous.id); return previous.id; }
+    const id = get().addWindow('account-fills');
+    get().setExecutionWindowConfig(id, { sourceOrderId: sourceId, account,
+      symbol: windowSymbolOf(get(), source) ?? undefined });
+    return id;
+  },
+
+  setExecutionWindowConfig: (id, config) => {
+    set(state => {
+      const windows = state.windows.map(w => w.id === id && w.kind === 'account-fills'
+        ? { ...w, executionHistory: readExecutionConfig(config, true) } : w);
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
   closeWindow: (id) => {
     const closingWindow = get().windows.find(w => w.id === id);
     if (closingWindow?.kind === 'chart' && !readLastWindowPreferences('chart')) rememberChartPreferences(id);
@@ -881,7 +950,9 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       if (closing?.order && !readLastOrderSettings()) rememberLastOrderSettings(closing.order);
       const next = {
         maximizedId: state.maximizedId === id ? null : state.maximizedId,
-        windows: state.windows.filter((w) => w.id !== id),
+        windows: state.windows.filter((w) => w.id !== id).map(w => closing && w.executionHistory?.sourceOrderId === id
+          ? { ...w, executionHistory: { ...w.executionHistory, account: closing.orderAccount,
+            symbol: windowSymbolOf(state, closing) ?? undefined } } : w),
         zOrder: state.zOrder.filter((i) => i !== id),
         chartRuntime: clearedChartRuntime(state.chartRuntime, [id]),
       };
@@ -1022,7 +1093,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   },
 
   pinWindowToSymbol: (id, symbol) => set(state => {
-    if (!state.windows.some(w => w.id === id && w.kind !== 'market-indices')) return {};
+    if (!state.windows.some(w => w.id === id && w.kind !== 'market-indices' && w.kind !== 'account-fills')) return {};
     const windows = state.windows.map(w => w.id === id ? normalizeUsWindow({ ...w, pinned: symbol }, symbol) : w);
     persistFromState({ ...state, windows });
     return { windows, chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
@@ -1031,7 +1102,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   setWindowSymbol: (id, symbol) => {
     if (/^us-stock:(NASDAQ|NYSE|AMEX):/.test(symbol.code)) symbol = { ...symbol, kind: 'us_stock' };
     const win = get().windows.find((w) => w.id === id);
-    if (!win || win.kind === 'market-indices') return;
+    if (!win || (win.kind === 'market-indices' || win.kind === 'account-fills')) return;
     if (!win.pinned) {
       get().setGroupSymbol(win.group, symbol);
       return;
@@ -1415,6 +1486,8 @@ export function snapshotWorkspace(): WorkspaceSnapshot {
   return {
     windows: s.windows.map(withoutPin).map((w) => ({
       ...w,
+      orderAccount: undefined,
+      ...(w.executionHistory ? { executionHistory: readExecutionConfig(w.executionHistory, false) } : {}),
       rect: { ...w.rect },
       ...(w.chart ? { chart: { ...w.chart } } : {}),
       ...(w.order ? { order: normalizeOrderSettings(w.order) } : {}),

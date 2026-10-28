@@ -41,7 +41,8 @@ const ADD_ITEMS: readonly AddItem[] = [
   { kind: 'chart', desc: '캔들 + 보조지표 스택' },
   { kind: 'market-indices', desc: '코스피·코스닥·K200 당일 등락률 비교' },
   { kind: 'book', desc: '매수·매도 호가 잔량' },
-  { kind: 'order', desc: '토스증권 지정가 주문 · 드래그 정정·취소' },
+  { kind: 'order', desc: '토스·키움 지정가 주문 · 드래그 정정·취소' },
+  { kind: 'account-fills', desc: '호가주문 선택 계좌의 당일 체결내역' },
   { kind: 'trade', desc: '실시간 체결 틱 흐름' },
   { kind: 'broker', desc: '증권사별 매수·매도 상위' },
   { kind: 'program', desc: '프로그램 매매 순매수' },
@@ -58,7 +59,7 @@ const ADD_ITEMS: readonly AddItem[] = [
 const ADD_SECTIONS = [
   { label: '차트·시세', kinds: ['chart', 'market-indices', 'book', 'trade'] },
   { label: '수급·분석', kinds: ['broker', 'program', 'program-trade', 'investor', 'investor-daily', 'vdist', 'sector-ranking'] },
-  { label: '주문·뉴스', kinds: ['order', 'news'] },
+  { label: '주문·뉴스', kinds: ['order', 'account-fills', 'news'] },
 ] as const;
 const GROUPED_ITEMS = ADD_SECTIONS.flatMap(section => section.kinds.map(kind => ({
   ...ADD_ITEMS.find(item => item.kind === kind)!, section: section.label,

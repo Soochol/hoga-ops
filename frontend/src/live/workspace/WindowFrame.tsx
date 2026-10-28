@@ -117,7 +117,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
     onTradeMinAmountChange,
   } = props;
 
-  const marketWide = kind === 'market-indices';
+  const marketWide = kind === 'market-indices' || kind === 'account-fills';
   const showVenueSupport = (kind === 'book' || kind === 'order') && !!symbolCode && !isIndex;
   const title = marketWide ? KIND_LABEL[kind] : symbolLabel ?? `그룹 ${group}`;
   const [headerActions, setHeaderActions] = useState<HTMLSpanElement | null>(null);
@@ -152,7 +152,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
           />}
           {/* 차트 창은 종목 식별 행(종목명·현재가·등락률·히트맵·경고)을 타이틀바에
               그린다(#869 캔버스 레전드에서 이관). 데이터 창·종목 없는 창은 기존 제목. */}
-          {marketWide ? headerContent ?? <span className="flex-1 text-xs">주요 지수</span> : kind === 'chart' && symbolCode ? (
+          {marketWide ? headerContent ?? <span className="flex-1 text-xs">{KIND_LABEL[kind]}</span> : kind === 'chart' && symbolCode ? (
             <TitleBarSymbolRow name={symbolLabel} code={symbolCode} isIndex={isIndex} windowId={id} />
           ) : (
             <>

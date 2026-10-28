@@ -102,11 +102,13 @@ import { isLiveIndexId, isUsIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
 import type { GroupId, GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
 import { useWorkspaceStore } from '../../state/workspace';
+import { ExecutionHistoryWindow } from './ExecutionHistoryWindow';
 import { NewsWindow } from './NewsWindow';
 import { focusLiveSearch } from '../liveSearchFocus';
 const OrderWindow = lazy(() => import('./OrderWindow').then(module => ({ default: module.OrderWindow })));
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
+  if (win.kind === 'account-fills') return <ExecutionHistoryWindow win={win} />;
   if (symbol?.kind === 'us_stock' || (symbol?.kind === 'index' && isUsIndexId(symbol.code))) {
     return <div className="flex h-full items-center justify-center text-xs text-fg-dim">{symbol.name} · 미국 일봉 차트에서 조회할 수 있습니다</div>;
   }
@@ -155,6 +157,9 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   switch (win.kind) {
     case 'order':
       return <Suspense fallback={<div className="p-2 text-sm text-fg-dim">호가 주문창 불러오는 중…</div>}><OrderWindow code={code} name={symbol?.name ?? code}
+        selectedAccountId={win.orderAccount}
+        onResolvedAccount={account => useWorkspaceStore.getState().setOrderAccount(win.id, account)}
+        onOpenExecutions={account => useWorkspaceStore.getState().openExecutionHistory(win.id, account)}
         settings={win.order} onSelectSymbol={(nextCode, name) => { if (nextCode !== code) useWorkspaceStore.getState().setWindowSymbol(win.id, { code: nextCode, name }); }} onSettingsChange={settings => useWorkspaceStore.getState().setOrderWindowSettings(win.id, settings)} /></Suspense>;
     case 'news':
       return <NewsWindow key={code} code={code} name={symbol?.name ?? code} linkedOnly={win.newsLinkedOnly ?? true}

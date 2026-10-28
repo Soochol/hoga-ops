@@ -174,6 +174,8 @@ async function multiBrokerSetup(page: Page, blocked = false) {
     return route.fulfill({ json: { command_id: commands.at(-1)!.body.command_id, order_ref: 'ord_fixture', status: 'accepted' } });
   });
   await page.reload();
+  // Fixture moves from legacy numeric accounts to v2 opaque refs; select explicitly.
+  await window.getByRole('combobox', { name: '주문 계좌' }).selectOption(toss);
   await expect(window.getByRole('combobox', { name: '주문 계좌' })).toHaveValue(toss);
   return { window, toss, kiwoom, commands };
 }
@@ -4127,4 +4129,101 @@ nativeScrollbarTest('100만원대 상세정보는 실제 폭으로 맞추고 긴
   }).toPass({ timeout: 5000 });
   await info.attach('intrinsic-summary-width', { body: JSON.stringify({ ordinary: before, longValue: await metrics() }), contentType: 'application/json' });
   expect(commands).toHaveLength(0);
+});
+
+async function focusOrderFromList(page: Page) {
+  await page.getByTestId('live-window-list-button').click();
+  await page.getByRole('menuitem', { name: /^호가 주문/ }).first().click();
+}
+
+const executionRow = (id: string, quantity = '12', code = '005930') => ({
+  order_ref: id, broker_order_id: id, code, name: code === '005930' ? '삼성전자' : 'SK하이닉스',
+  side: 'BUY', quantity, order_quantity: '100', price: '67200', price_basis: 'average',
+  amount: String(Number(quantity) * 67200), filled_at: '2026-10-28T10:00:00+09:00', ordered_at: '2026-10-28T09:59:00+09:00', route: 'SOR',
+});
+
+test('내 체결내역은 상태 열 없이 연결된 토스·키움 계좌를 따르고 시세 venue와 독립적으로 유지한다', async ({ page }, info) => {
+  const { window: order, toss, kiwoom, commands } = await multiBrokerSetup(page);
+  const reads: string[] = [];
+  let resolveKiwoom!: () => void;
+  let delayKiwoom = true;
+  await page.route('**/api/trading/v2/execution-history?*', async route => {
+    const url = new URL(route.request().url());
+    const account = url.searchParams.get('account_ref')!;
+    reads.push(url.search);
+    if (account === kiwoom && delayKiwoom) await new Promise<void>(resolve => { resolveKiwoom = () => { delayKiwoom = false; resolve(); }; });
+    await route.fulfill({ json: { account_ref: account, date: url.searchParams.get('date'), rows: account === toss
+      ? [executionRow('toss-fill'), executionRow('other-stock', '5', '000660')]
+      : [{ ...executionRow('kiwoom-fill', '30'), name: '키움 체결 종목', filled_at: null, price_basis: 'execution', amount: null }],
+    next_key: null, fetched_at_ms: Date.now(), events_connected: true } });
+  });
+  await order.getByRole('button', { name: '내 체결', exact: true }).click();
+  const history = page.getByTestId('execution-history-window');
+  await expect(history.locator('[data-execution-order="toss-fill"]')).toContainText('12주');
+  await expect(history.getByRole('columnheader')).toHaveText(['체결시각', '종목', '구분', '체결수량', '체결가', '체결금액']);
+  await history.getByLabel('현재 종목만').check();
+  await expect(history.locator('[data-execution-order]')).toHaveCount(1);
+  await history.getByLabel('현재 종목만').uncheck();
+  await page.getByTestId('live-venue-picker').click();
+  await page.getByTestId('live-venue-option-KRX').click();
+  await expect(history.locator('[data-execution-order]')).toHaveCount(2);
+  expect(reads.every(query => !query.includes('venue'))).toBe(true);
+  await focusOrderFromList(page);
+  await order.getByRole('combobox', { name: '주문 계좌' }).selectOption(kiwoom);
+  await expect(history.locator('[data-execution-order="toss-fill"]')).toHaveCount(0);
+  await expect(history.getByText('체결내역 불러오는 중…')).toBeVisible();
+  await expect.poll(() => typeof resolveKiwoom).toBe('function');
+  resolveKiwoom();
+  await expect(history.locator('[data-execution-order="kiwoom-fill"]')).toContainText('30주');
+  await expect(history.locator('[data-execution-order="kiwoom-fill"] td').first()).toBeEmpty();
+  await order.getByRole('button', { name: '내 체결', exact: true }).click();
+  await expect(history).toHaveCount(1);
+  await page.locator('[data-win]').filter({ has: history }).evaluate(el => { el.style.width = '576px'; });
+  await history.screenshot({ path: info.outputPath('executions-table-no-status.png') });
+  await page.locator('[data-win]').filter({ has: history }).evaluate(el => { el.style.width = '340px'; });
+  await expect.poll(() => history.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(history.locator('[data-execution-order="kiwoom-fill"] td').nth(3)).toHaveText('30주');
+  await expect(history.locator('[data-execution-order="kiwoom-fill"] td').nth(4)).toHaveText('67,200');
+  await history.screenshot({ path: info.outputPath('executions-table-narrow.png') });
+  await focusOrderFromList(page);
+  await page.locator('[data-win]').filter({ has: order }).getByRole('button', { name: /호가 주문 창 닫기/ }).click();
+  await expect(history.getByRole('option', { name: '연결 종료 · 마지막 계좌 유지' })).toBeAttached();
+  await expect(history.locator('[data-execution-order="kiwoom-fill"]')).toContainText('30주');
+  await page.reload();
+  await expect(history.locator('[data-execution-order="kiwoom-fill"]')).toContainText('30주');
+  expect(commands).toHaveLength(0);
+});
+
+test('내 체결내역은 이전 조회·부분체결 갱신을 중복 없이 표시하고 읽던 위치와 조회 실패 안내를 유지한다', async ({ page }, info) => {
+  const { window: order, toss } = await multiBrokerSetup(page);
+  let quantity = '30', fail = false;
+  await page.route('**/api/trading/v2/execution-history?*', route => {
+    const url = new URL(route.request().url());
+    if (fail && !url.searchParams.has('next_key')) return route.fulfill({ status: 503, json: { detail: '조회 실패' } });
+    return route.fulfill({ json: { account_ref: toss, date: url.searchParams.get('date'),
+      rows: url.searchParams.has('next_key') ? [executionRow('partial', '20'), executionRow('older-fill')]
+        : [executionRow('partial', quantity), ...Array.from({ length: 25 }, (_, i) => executionRow(`row-${i}`))],
+      next_key: url.searchParams.has('next_key') ? null : 'opaque-next', fetched_at_ms: Date.now(), events_connected: true } });
+  });
+  await order.getByRole('button', { name: '내 체결', exact: true }).click();
+  const history = page.getByTestId('execution-history-window');
+  await expect(history.locator('[data-execution-order="partial"]')).toContainText('30주');
+  const region = history.getByRole('region', { name: '내 체결내역 목록' });
+  await region.evaluate(el => { el.scrollTop = 300; });
+  await expect.poll(() => region.evaluate(el => el.scrollTop)).toBeGreaterThan(100);
+  quantity = '50';
+  await history.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(history.getByRole('button', { name: '새 체결·갱신 1건 확인' })).toBeVisible();
+  await expect.poll(() => region.evaluate(el => el.scrollTop)).toBeGreaterThan(100);
+  await history.getByRole('button', { name: '새 체결·갱신 1건 확인' }).click();
+  await expect(history.locator('[data-execution-order="partial"]')).toContainText('50주');
+  await history.getByRole('button', { name: '이전 내역 더 보기' }).click();
+  await expect(history.locator('[data-execution-order="older-fill"]')).toBeVisible();
+  await expect(history.locator('[data-execution-order="partial"]')).toHaveCount(1);
+  await expect(history.locator('[data-execution-order="partial"]')).toContainText('50주');
+  fail = true;
+  await history.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(history.getByRole('alert')).toContainText('체결내역 조회 실패 · 수신된 내역 표시 중');
+  await expect(history.locator('[data-execution-order="partial"]')).toContainText('50주');
+  await history.screenshot({ path: info.outputPath('executions-error-retains-rows.png') });
 });

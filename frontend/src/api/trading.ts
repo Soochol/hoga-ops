@@ -128,7 +128,7 @@ export function useTradingAccounts(mode: TradingMode) {
   }, staleTime: 60_000, retry: false });
 }
 
-function useTradingRefresh(account: TradingAccountId, mode: TradingMode, listen = true) {
+export function useTradingRefresh(account: TradingAccountId, mode: TradingMode, listen = true) {
   const client = useQueryClient();
   const subscribe = useCallback((listener: () => void) => subscribeTradingRefresh(client, mode, account, listener), [client, mode, account]);
   const snapshot = useCallback(() => tradingRefreshVersion(client, mode, account), [client, mode, account]);
