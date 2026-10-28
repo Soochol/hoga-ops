@@ -152,3 +152,37 @@ for (const timeframe of ['1m', '3m', 'D']) test(`${timeframe}: 설정 토글·�
   });
   expect(await page.evaluate(() => (window as ChartsWindow).__executionPaints)).toEqual([]);
 });
+
+test('과거 이동은 새 거래일만 조회하고 돌아오면 빈 날짜와 B/S를 캐시에서 복원한다', async ({ page }) => {
+  await fixture(page, 'D');
+  const requested: string[] = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/trading/v2/executions') requested.push(url.searchParams.get('date')!);
+  });
+  await page.goto('/live');
+  const frame = page.locator('[data-win="fills"]');
+  await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts?.get('fills')?.panes()[0]
+    ?.getSeries().find(series => series.seriesType() === 'Candlestick')?.data().length ?? 0)).toBeGreaterThanOrEqual(3);
+  const range = async (recent: boolean) => page.evaluate(recent => {
+    const chart = (window as ChartsWindow).__liveCharts!.get('fills')!;
+    const rows = chart.panes()[0].getSeries().find(series => series.seriesType() === 'Candlestick')!.data();
+    chart.timeScale().setVisibleRange({ from: rows[recent ? rows.length - 2 : 0].time,
+      to: rows[recent ? rows.length - 1 : 1].time });
+  }, recent);
+  await range(true);
+  await frame.getByRole('button', { name: '차트 설정', exact: true }).click();
+  await page.getByRole('dialog', { name: '차트 설정', exact: true }).getByRole('switch', { name: '매매내역 표시', exact: true }).check();
+  await page.keyboard.press('Escape');
+  await frame.getByRole('combobox', { name: '매매 계좌' }).selectOption(accountA);
+  await expect.poll(() => [...requested]).toEqual(['20260527', '20260526']);
+  await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__executionPaints?.some(p => p.text === 'B'))).toBe(true);
+  await range(false);
+  await expect.poll(() => [...requested]).toEqual(['20260527', '20260526', '20260525']);
+  await expect(frame.getByTestId('account-execution-status')).toContainText('조회된 매매내역 없음');
+  await page.evaluate(() => { (window as ChartsWindow).__executionPaints = []; });
+  await range(true);
+  await expect(frame.getByTestId('account-execution-status')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__executionPaints?.some(p => p.text === 'B'))).toBe(true);
+  expect(requested).toEqual(['20260527', '20260526', '20260525']);
+});

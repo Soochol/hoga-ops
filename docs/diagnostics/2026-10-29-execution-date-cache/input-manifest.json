@@ -1,0 +1,60 @@
+{
+  "base_sha": "ec0d03d6050bc96156b8ff9a2b19bbcb10157a0d",
+  "origin_main_sha": "ec0d03d6050bc96156b8ff9a2b19bbcb10157a0d",
+  "input_sha256": "08e213fb7b006c348e520581b1be3f9ee95ac6ac36ca7c8d420e7919fe60fd42",
+  "aggregate_file_count": 2836,
+  "aggregate_scope": {
+    "roots": [
+      "hoga/",
+      "tests/",
+      "frontend/src/",
+      "frontend/tests/",
+      "scripts/"
+    ],
+    "config": [
+      ".python-version",
+      "frontend/package-lock.json",
+      "frontend/package.json",
+      "frontend/playwright.config.ts",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.test.json",
+      "frontend/vite.config.ts",
+      "frontend/vitest.config.ts",
+      "pyproject.toml",
+      "ruff.toml",
+      "uv.lock"
+    ],
+    "selection": "git ls-files -c -o --exclude-standard; unique existing files; selected roots/config; sort paths",
+    "algorithm": "SHA256 of compact sorted JSON mapping every selected relative path to SHA256(file bytes)"
+  },
+  "changed_inputs_and_config": {
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/src/api/accountExecutionPages.ts": "5579096a2c4ae7a74a7f150c140934ece47ed977021dafe5af14e9b731fc4ce1",
+    "frontend/src/api/accountExecutions.test.tsx": "1f0638b454f11b297d105d379dd6d5ac38cbf9d7bef687ffdd1e658bae0e6726",
+    "frontend/src/api/accountExecutions.ts": "92faf1b0aa1dafd93628418ab689470bc59c9e9dc475c9432d63e7e7f3f86e5c",
+    "frontend/src/chart/AccountExecutionsPrimitive.test.ts": "79ab30ef51a245274f415a889b3ab462ac56fe09000b061783cc172beaa7f4d2",
+    "frontend/src/chart/AccountExecutionsPrimitive.ts": "e8aeccd5e9cdf2d21e6607158a1977701a7434eb2558256eec53520cbd098575",
+    "frontend/tests/e2e/account-executions.spec.ts": "a25e9421d934f34940663b3928e5045f51b46efde3c7b6c64c860e222574989c",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "ruff.toml": "422277b5742ea124f25690201cb540117de803f74719052a6dbdc3bfa8aa7d07",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  },
+  "backend_input_sha256": "e55a2d9b6b4e1b5cce7adce089a2a1bea494ddf2a23bbd3c11f43349b1dace0c",
+  "backend_unchanged_from_previous_validation": true,
+  "pr_review": {
+    "base_sha": "ec0d03d6050bc96156b8ff9a2b19bbcb10157a0d",
+    "validated_inputs_unchanged": true,
+    "overlapping_open_pull_requests": [],
+    "reuse": "Typecheck, 201 frontend unit tests, 4 browser tests, 3 repeated daily tests and 12 wire tests reused after exact source/test/config/dependency fingerprint match."
+  }
+}

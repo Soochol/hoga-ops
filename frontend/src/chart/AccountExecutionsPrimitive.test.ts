@@ -18,6 +18,11 @@ it('paints only B/S at live series price coordinates and clears drawing/hits whe
   expect(ctx.fillText.mock.calls).toEqual([['B', 92, 200], ['S', 108, 200]]);
   expect(primitive.detailAt(92, 200)).toBe(buy);
   expect(primitive.detailAt(108, 200)).toBe(sell);
+  const updatedBuy = { ...buy, executions: [...buy.executions] };
+  primitive.setMarkers([updatedBuy, sell]);
+  expect(primitive.detailAt(92, 200)).toBe(updatedBuy); // Details stay clickable before the next paint.
+  primitive.setMarkers([{ ...updatedBuy, price: 110 }, sell]);
+  expect(primitive.detailAt(92, 200)).toBeNull(); // A changed price cannot keep an old hit position.
   primitive.setMarkers([]);
   ctx.fillText.mockClear(); primitive.paneViews()[0].renderer()!.draw(target);
   expect(ctx.fillText).not.toHaveBeenCalled(); expect(primitive.detailAt(92, 200)).toBeNull();
