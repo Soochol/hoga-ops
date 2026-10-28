@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-28",
+  "head": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "base": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "worktree": "/home/dev/.codex/worktrees/3854/hoga-ops",
+  "state": "uncommitted working tree; includes preceding program-line implementation",
+  "frontend_sha256": "ac95912425d1236bd17132c2990e7644b2d590f34e74ed137b4b709302e37122",
+  "fingerprint_method": "Sorted unique git ls-files --cached --others --exclude-standard frontend; path + NUL + file bytes + NUL; includes source, tests, fixtures, dependencies/lockfile and configuration.",
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "browser": "system Chrome",
+    "workers": 1,
+    "backend_port": 20144,
+    "frontend_port": 21144,
+    "data_dir": "/tmp/hoga-e2e-data-144",
+    "dist_dir": "/tmp/hoga-e2e-dist-144",
+    "vendor_credentials": "blank per playwright.config.ts"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed all 3 TypeScript projects",
+      "log": "/tmp/hoga-order-gradient-types.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/workspace/OrderWindow.test.tsx src/live/workspace/orderReceiptSound.test.ts src/state/orderWindowSettings.test.ts",
+      "result": "209 tests / 3 files passed",
+      "log": "/tmp/hoga-order-gradient-unit.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/live-orders.spec.ts --project=chromium --reporter=list --grep '정정 접수음은|호가 표시 옵션은|주문·정정 접수 소리는|오디오 재생 거절은|헤더 주문 설정은|전체 호가에서 기존 주문'",
+      "result": "11 passed; setup production Vite build passed",
+      "log": "/tmp/hoga-order-gradient-e2e.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx eslint src/live/workspace/OrderWindow.tsx src/live/workspace/OrderSettingsForm.tsx src/live/workspace/OrderWindow.test.tsx tests/e2e/live-orders.spec.ts -f json",
+      "result": "0 errors; OrderWindow existing 6 refs warnings identical to HEAD, no added warnings",
+      "logs": [
+        "/tmp/hoga-order-gradient-lint.json",
+        "/tmp/hoga-order-gradient-base-lint.json"
+      ]
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "1 order drag accepted: one actual AudioBufferSource start",
+    "10 orders accepted: one start after final response",
+    "3 uncertain + 7 accepted: one start and failure count, retry only 3 children: one further start",
+    "10 rejected: no start",
+    "10 unknown: no start",
+    "sound disabled: no start",
+    "new order and audio recovery regressions",
+    "gradient direction, 1px alignment, both book modes, light/dark screenshots, toggles and persistence"
+  ],
+  "visual_qa": "Inspected screenshots gradient-separators-trading-desk.png and gradient-separators-toss-light.png under frontend/test-results; central line preserved, fades to both outer depth edges, quantities and bars intact.",
+  "limits": "Trading APIs mocked; no real orders placed. Backend/API contracts unchanged.",
+  "input_file_count": 1942
+}

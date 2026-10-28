@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { TRADING_TIME_MIN_HHMM } from '../util/tradingTime';
 import { useLiveDailyProgramTrade } from '../api/liveDailyProgramTrade';
-import type { WireDataWarning } from '../api/dataWarnings';
+import { isWarningFailure, type WireDataWarning } from '../api/dataWarnings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLiveSettings } from '../api/liveSettings';
 import { hasBlockingWarnings, useLivePastCandles, type LivePastCandlesResponse } from '../api/livePastCandles';
@@ -17,7 +17,7 @@ import {
   needsRegularSessionClip,
   fetchBucketMsFor,
 } from '../state/livePage';
-import { createRegularSessionBundleFilter, regularSessionHogaForDisplay } from './regularSessionView';
+import { createRegularSessionBundleFilter, filterRegularSessionSnapshots, regularSessionHogaForDisplay } from './regularSessionView';
 import { useRegularSessionLiveSeries } from './useRegularSessionLiveSeries';
 import { useWindowView, useWindowIndicatorDemand } from './workspace/windowView';
 import { peakWallBarFamilyActive } from '../state/indicatorOps';
@@ -69,6 +69,7 @@ import {
   liveVenueSessionBoundsMs,
 } from './liveVenuePolicy';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
+import type { ProgramWindowData } from './programLineState';
 import { mergeProgramTradeSeriesWithLiveTail } from './programTradeLiveTail';
 import { useLiveSidecars } from './useLiveSidecars';
 import { useMinuteGapFill, type MinuteGapFillResult } from './useMinuteGapFill';
@@ -333,6 +334,7 @@ export function overlayLiveTradesOnCalendarCandles(
 export type CandleSourceKey = string;
 
 export interface UseLiveBundleResult {
+  programWindow: ProgramWindowData;
   /** Full bundle = stable chart side + live hoga overlay. Consumed by hoga
    * panes (ratio/quoteTotals/fillStrength), LiveStatusBar, LiveSidebar. New ref
    * on every SSE tick. */
@@ -1112,6 +1114,20 @@ export function useLiveBundle(
   // 쿼리 응답 객체는 fetch 마다 한 번만 새로 생기므로 이 파생도 참조가 안정적이다
   // (아래 번들 memo 의 의존성 배열이 이 값을 그대로 쓴다).
   const programOnlySidecarProgramTrade = programOnlySidecar.data?.program_trade ?? null;
+  // The standalone plot has its own day axis. Keep history visible before
+  // candles arrive; the chart pane below still applies its candle-date guard.
+  const programHistory = isMinute ? pastSidecars.programData : programOnlySidecarProgramTrade;
+  const programWindowSeries = useMemo(() => {
+    const merged = mergeProgramTradeSeriesWithLiveTail(
+      effProgramTradeEnabled ? programHistory : null, effProgramTradeEnabled ? live.program : [],
+    );
+    return regularSessionOnly
+      ? { ...merged, points: [...filterRegularSessionSnapshots(merged.points)] } : merged;
+  }, [programHistory, effProgramTradeEnabled, live.program, regularSessionOnly]);
+  const programLoading = isMinute ? pastSidecars.programLoading
+    : programOnlySidecarEnabled && programOnlySidecar.isPending;
+  const programError = isMinute ? pastSidecars.programError
+    : programOnlySidecarEnabled ? programOnlySidecar.error : null;
   // 호가 유래 지표를 **캔들과 같은 척도**로 옮긴다. `/api/range` 는 디스크 캡처라
   // 원주가이고 위 벤더 봉은 수정주가인데, 둘이 같은 price scale 에 그려지므로 계수 ≠ 1
   // 인 구간이 통째로 어긋난다(009830 2026-06-12: 캔들 34,662~36,596 vs 히트맵
@@ -1694,7 +1710,16 @@ export function useLiveBundle(
       ? screenerDailyCandlesQuery.data?.data_warnings ?? []
       : pastDailyCandlesQuery.data?.data_warnings ?? [];
 
+  const closeState: ProgramWindowData['closeState'] = activeCandlesError || pastDataWarnings.some(isWarningFailure)
+    ? 'error' : activeCandlesLoading ? 'loading' : 'ready';
+  const programState: ProgramWindowData['state'] = programError || (effProgramTradeEnabled && live.error)
+    ? 'error' : programLoading || (effProgramTradeEnabled && live.isLoading) ? 'loading' : 'ready';
+  const programWindow = useMemo<ProgramWindowData>(() => ({
+    series: programWindowSeries, state: programState, closeState,
+  }), [programWindowSeries, programState, closeState]);
+
   return {
+    programWindow,
     bundle,
     chartBundle,
     hogaBundle,

@@ -72,7 +72,7 @@ Electron main
 6. 로드 이후 REST·WS 끊김은 기존 앱의 연결 상태·재연결 정책을 우선 사용한다. heartbeat 실패마다 업무 창을 reload하지 않는다. 절전 복귀 시 기존 WS 재연결과 데이터 신선도 표시가 회복되는지 확인한다.
 7. 자동 재접속은 GET 진단과 연결 재시도만 수행한다. 주문·정정·취소 등 상태변경 요청을 Electron 계층에서 재전송하지 않는다.
 
-현재 `loadConfig()`는 `/config.json` 실패 시 `http://localhost:8000`으로 폴백한다. 원격 서버를 선택한 Electron에서 이 동작이 발생하면 다른 서버에 요청할 수 있으므로 **데스크톱 모드는 설정 실패 시 요청을 중단**해야 한다. 최소 preload에서 권한 없는 읽기 전용 데스크톱 표시값만 제공하고, 프론트의 설정 로더가 명시적인 엄격 모드를 선택하도록 한다. 원격 페이지에는 IPC·Node·파일·shell API를 제공하지 않는다.
+현재 `loadConfig()`는 `/config.json` 실패 시 `http://localhost:8000`으로 폴백한다. 원격 서버를 선택한 Electron에서 이 동작이 발생하면 다른 서버에 요청할 수 있으므로 **데스크톱 모드는 설정 실패 시 요청을 중단**해야 한다. 최소 preload에서 권한 없는 읽기 전용 데스크톱 표시값만 제공하고, 프론트의 설정 로더가 명시적인 엄격 모드를 선택하도록 한다. 원격 페이지에는 임의 IPC·Node·파일·shell API를 제공하지 않는다. 2026-10-28 승인으로 설정 UI용 제한된 데스크톱 조작을 추가했다(아래 보안 경계).
 
 엄격 모드에서는 설정 로딩 실패·잘못된 API origin을 사용자에게 표시하고 재시도로 복구한다. `api/client.ts`의 설정 promise 캐시와 `AppInfoSections.tsx`의 별도 설정 읽기 모두 이 정책을 따르게 한다. 거부된 promise가 영구 캐시되어 재시도까지 막지 않도록 한다. 일반 브라우저 개발의 기존 폴백 동작은 유지한다. 새 모드의 플래그는 권한 부여나 서버 인증에 사용하지 않는다.
 
@@ -102,7 +102,7 @@ Electron main
 
 ## 보안과 배포
 
-원격·로컬 renderer 모두 `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`를 사용한다. 연결 설정 IPC는 패키지에 포함한 로컬 설정 화면의 main frame에서만 허용하며 URL과 payload를 검증한다. 원격 창의 읽기 전용 표시값 외에는 Electron API를 노출하지 않는다. 다운로드는 사용자 저장 동작에 맞춰 처리하고 파일의 자동 실행은 하지 않는다.
+원격·로컬 renderer 모두 `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`를 사용한다. 연결 설정 IPC는 패키지에 포함한 로컬 설정 화면의 main frame에서만 허용하며 URL과 payload를 검증한다. 2026-10-28 사용자 승인: 원격 업무 창에는 현재 연결 읽기·로컬 서버 선택 화면 열기·동일 서버 새 창·배율 in/out/reset 및 배율 구독만 제공한다. main은 등록된 활성 서버 창·main frame·허용 업무 URL을 검사한다. 프로필 편집·연결 적용은 계속 로컬 launcher 전용이며 임의 IPC·파일·URL 실행 기능은 노출하지 않는다. 다운로드는 사용자 저장 동작에 맞춰 처리하고 파일의 자동 실행은 하지 않는다.
 
 세션 권한은 기본 거부로 두고 검증한 기존 기능에 필요한 범위만 허용한다. 로컬 설정 화면에는 제한적인 CSP를 적용한다. 원격 업무 화면의 CSP는 기존 동작과의 호환을 확인한 뒤 별도 변경으로 다룬다. 요청과 오류 로그에는 query·쿠키·주문 payload를 기록하지 않는다.
 

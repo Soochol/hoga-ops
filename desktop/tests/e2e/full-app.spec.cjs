@@ -28,7 +28,7 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     const desktopEnv = { ...process.env, HOGA_DESKTOP_USER_DATA: join(temp, 'desktop') }; delete desktopEnv.ELECTRON_RUN_AS_NODE;
     const args = process.env.HOGA_DESKTOP_EXECUTABLE ? [] : [desktop];
     if (process.env.HOGA_DESKTOP_TEST_PLATFORM) args.push(`--ozone-platform=${process.env.HOGA_DESKTOP_TEST_PLATFORM}`);
-    app = await electron.launch({ executablePath: process.env.HOGA_DESKTOP_EXECUTABLE,
+    app = await electron.launch({ executablePath: process.env.HOGA_DESKTOP_EXECUTABLE ?? process.env.HOGA_DESKTOP_ELECTRON_BINARY,
       args, cwd: desktop, env: desktopEnv, chromiumSandbox: true });
     const launcher = await app.firstWindow();
     await launcher.locator('#origin').fill(origin); await launcher.locator('#name').fill('로컬 통합 검증');
@@ -37,7 +37,24 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await expect(page.getByRole('button', { name: '관심종목 패널 토글', exact: true })).toBeVisible();
     await page.screenshot({ path: join(desktop, 'test-results/real-app.png') });
-    await page.getByRole('button', { name: '설정', exact: true }).click();
+    await expect(page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('button', { name: '설정', exact: true })).toHaveCount(0);
+    const rail = page.getByRole('navigation', { name: '우측 레일' });
+    await expect(rail.getByRole('button').last()).toHaveAccessibleName('설정');
+    await rail.getByRole('button', { name: '설정', exact: true }).click();
+    await page.getByTestId('settings-nav-desktop').click();
+    const desktopSettings = page.getByRole('region', { name: '데스크톱', exact: true });
+    await expect(desktopSettings.getByText('로컬 통합 검증', { exact: true })).toBeVisible();
+    await expect(desktopSettings.getByText(origin, { exact: true })).toBeVisible();
+    await desktopSettings.getByRole('button', { name: '화면 배율 확대', exact: true }).click();
+    await expect(desktopSettings.getByLabel('현재 화면 배율')).toHaveText('110%');
+    await desktopSettings.getByRole('button', { name: '100% 복원', exact: true }).click();
+    await expect(desktopSettings.getByLabel('현재 화면 배율')).toHaveText('100%');
+    await expect(page.locator('#ticklane-desktop-zoom').getByRole('status')).toBeHidden({ timeout: 3000 });
+    await desktopSettings.screenshot({ path: join(desktop, 'test-results/desktop-settings.png') });
+    await desktopSettings.getByRole('button', { name: '서버 선택', exact: true }).click();
+    await expect(launcher.locator('#origin')).toBeVisible();
+    await launcher.close(); // Hides the recovery window while workspaces remain open.
+    await page.bringToFront();
     await expect(page.getByRole('button', { name: '화면 설정 내보내기' })).toBeAttached();
     await page.getByRole('button', { name: '앱 정보', exact: true }).click();
     // Native save destination is stubbed in the main process, not the renderer.
@@ -52,8 +69,10 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     await page.getByLabel('백업 파일을 저장했습니다.').check();
     await page.getByRole('button', { name: '설정 적용 후 새로고침' }).click();
     await expect(page.getByRole('button', { name: '관심종목 패널 토글', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '설정', exact: true }).click();
+    await page.getByTestId('settings-nav-desktop').click();
     const nextWindow = app.waitForEvent('window');
-    await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items[0].submenu.items.find(item => item.label === '새 작업 창').click());
+    await page.getByRole('button', { name: '새 작업 창', exact: true }).click();
     const child = await nextWindow;
     await expect(child.getByRole('button', { name: '관심종목 패널 토글', exact: true })).toBeVisible();
     await installLiveMocks(page);

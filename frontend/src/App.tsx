@@ -211,7 +211,7 @@ export default function App() {
         className="grid min-h-0 min-w-0 overflow-hidden"
         style={{ gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr) auto' }}
       >
-        <TopNav onOpenSettings={() => setSettingsOpen(true)} />
+        <TopNav />
         <main className="overflow-hidden min-w-0"><Outlet /></main>
         <MarketIndexBar />
       </div>
@@ -238,7 +238,7 @@ export default function App() {
       {activePanel === 'signalAlerts' && (
         <Suspense fallback={null}><SignalAlertsDrawer /></Suspense>
       )}
-      <RightRail />
+      <RightRail settingsOpen={settingsOpen} />
     </div>
   );
 }

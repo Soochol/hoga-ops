@@ -348,7 +348,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     && holdingQuantity >= 0 && holdingQuantity <= MAX_ORDER_QUANTITY
     && sellableQuantity != null && Number.isSafeInteger(sellableQuantity)
     && sellableQuantity >= 0 && sellableQuantity <= holdingQuantity;
-  const buyingPower = state.data?.buying_power != null && !state.balancesError ? Number(state.data.buying_power) : null;
+  const buyingPower = state.data?.buying_power != null && state.data.buying_power.trim() !== '' && !state.balancesError ? Number(state.data.buying_power) : null;
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const profitPercent = holdingProfitPercent(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const canToggleProfit = holdingQuantity != null && holdingQuantity > 0 && holdingProfit != null && profitPercent != null;
@@ -406,7 +406,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         || !!state.data?.unresolved_commands.some(id => id !== next.base.command_id) })
       : changesPrice(next) && !fresh ? newOrderIssue({ ...availability, settingsOpen: false, locked: false }) : null;
     if (issue) { setNotice(issue); return; }
-    if (next.type === 'create' && preferences.orderReceiptSound) prepareOrderReceiptSound();
+    const announceReceipt = changesPrice(next) && preferences.orderReceiptSound;
+    if (announceReceipt) prepareOrderReceiptSound();
     if (cancellingOrders) {
       // Reserve every target synchronously, before either React or the broker responds.
       for (const item of targets) cancellingRef.current.add(orderKey(account, item.order.orderId));
@@ -420,6 +421,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     let retryAction = next;
     let groupFailure: OrderNotice | null = null;
     let accepted = true;
+    let firstAcceptedCommandId: string | null = null;
     try {
       if (next.type === 'group') {
         const failed: NonNullable<Action['batch']> = [];
@@ -433,6 +435,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             try {
               const body = next.operation === 'modify' ? { ...item.base, price: next.price, quantity: null, confirm_high_value: high } : item.base;
               const response = await tradingCommand<TradingCommandResponse>(`/orders/${encodeURIComponent(item.order.orderId)}/${next.operation}`, body, mode);
+              firstAcceptedCommandId ??= item.base.command_id;
               if (next.operation === 'modify') acceptTradingReplacement(client, mode, account, code, item.order.orderId, response.order_id);
               setPending(prev => ({ ...prev, [orderKey(account, item.order.orderId)]: response.order_id }));
             } catch (error) {
@@ -475,13 +478,6 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           const body: CreateTradingOrder = { ...next.base, side: next.side!, price: next.price, quantity: next.quantity!, confirm_high_value: high,
             ...(typeof account === 'string' ? { route: next.base.route } : {}) };
           response = await tradingCommand<TradingCommandResponse>('/orders', body, mode);
-          if (preferences.orderReceiptSound) {
-            const soundFailed = () => setReceipt(current => current?.commandId === next.base.command_id
-              ? { ...current, text: '주문은 접수됐지만 알림음을 재생하지 못했습니다', soundFailed: true } : current);
-            void notifyOrderReceiptAccepted(account, next.base.command_id).then(started => {
-              if (!started) soundFailed();
-            }, soundFailed);
-          }
         } else {
           const path = `/orders/${encodeURIComponent(next.order!.orderId)}/${next.type}`;
           if (next.type === 'modify') {
@@ -491,6 +487,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           if (next.type === 'modify') acceptTradingReplacement(client, mode, account, code, next.order!.orderId, response.order_id);
           setPending(prev => ({ ...prev, [orderKey(account, next.order!.orderId)]: response.order_id }));
         }
+        firstAcceptedCommandId = next.base.command_id;
       }
       // A late cancel ACK must not close a newer order menu or confirmation.
       if (!cancellingOrders) {
@@ -510,6 +507,15 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       // A failure never opens the removed new-order editor. Retry retains its ID.
       if (!cancellingOrders) setFailedRequest(failure.retry ? { action: retryAction, high } : null);
     } finally {
+      // One gesture, one chime, including partially accepted batches. Using the first
+      // accepted child ID lets a retry of failed children announce its own receipt.
+      if (announceReceipt && firstAcceptedCommandId) {
+        const soundFailed = () => setReceipt(current => current?.commandId === next.base.command_id
+          ? { ...current, text: `${label}은 접수됐지만 알림음을 재생하지 못했습니다`, soundFailed: true } : current);
+        void notifyOrderReceiptAccepted(account, firstAcceptedCommandId).then(started => {
+          if (!started) soundFailed();
+        }, soundFailed);
+      }
       if (cancellingOrders) {
         for (const item of targets) cancellingRef.current.delete(orderKey(account, item.order.orderId));
         setCancelling(new Set(cancellingRef.current));
@@ -737,11 +743,6 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); reviewUnknown(false); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{accountDisplayLabel(a.label)}</option>)}
       </select> : <TextTooltip text={accountDisplayLabel(activeAccount?.label)}><span className="order-account-label text-fg-dim">{accountDisplayLabel(activeAccount?.label)}</span></TextTooltip>}
-      {routes && <span className="text-fg-dim" aria-label="주문 경로">시세 {venue} · 주문 {activeAccount?.order_enabled === false ? '검증 대기' : orderRoute}</span>}
-      {routes && routes.length > 1 && <select aria-label="주문 거래소" value={orderRoute} disabled={busy || dragInProgress}
-        onChange={e => { chooseRoute(e.target.value as 'SOR' | 'KRX' | 'NXT'); closeAction(); resetDrag(); setFailedRequest(null); }}>
-        {routes.map(route => <option key={route} value={route}>{route}</option>)}
-      </select>}
       {(['orders', 'holdings'] as const).map(tab => <button key={tab} type="button" aria-haspopup="dialog" aria-expanded={accountTab === tab}
         disabled={!account || dragInProgress || busy} onClick={() => { closeAction(); setSettingsDraft(null); setAccountTab(accountTab === tab ? null : tab); }}>
         {tab === 'orders' ? '미체결 주문' : '보유종목'}
@@ -750,6 +751,18 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       <div className="order-settings-group">
       {!showInlineSummary && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
         disabled={dragInProgress} onClick={() => setInfoOpen(open => !open)}>정보</button>}
+      {routes && <TextTooltip text={`시세 ${venue} · 주문 ${activeAccount?.order_enabled === false ? '검증 대기 · ' : ''}${orderRoute}`}>
+        <span className="order-route-summary text-fg-dim" aria-label="주문 경로" tabIndex={routes.length > 1 ? undefined : 0}>
+          <span><span className="order-route-prefix">시세 </span>{venue}</span>
+          <span aria-hidden="true">·</span>
+          <span className="order-route-prefix">주문</span>
+          {activeAccount?.order_enabled === false && <span>검증 대기</span>}
+          {routes.length > 1 ? <select aria-label="주문 거래소" value={orderRoute} disabled={busy || dragInProgress}
+            onChange={e => { chooseRoute(e.target.value as 'SOR' | 'KRX' | 'NXT'); closeAction(); resetDrag(); setFailedRequest(null); }}>
+            {routes.map(route => <option key={route} value={route}>{route}</option>)}
+          </select> : activeAccount?.order_enabled !== false && <span>{orderRoute}</span>}
+        </span>
+      </TextTooltip>}
       </div>
     </div>
     <AccountTradingPanel key={account} account={account} orderEnabled={!!activeAccount && activeAccount.order_enabled !== false} accountLabel={activeAccount?.label ?? '계좌 연결 대기'}
@@ -790,7 +803,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           </button>
         </span>
       </div>
-      <span className="order-buying-power" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
+      <span className="order-buying-power" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : ''}</span></span>
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
@@ -812,7 +825,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         </div>
         <span className="order-field order-estimate" aria-label="예상 주문 금액">
           <span className="order-meta" aria-hidden="true">금액</span>
-          <span className="order-field-value">{estimateAmount == null ? '—' : `${fmt(estimateAmount)}원`}
+          <span className="order-field-value">{estimateAmount == null ? '' : `${fmt(estimateAmount)}원`}
           </span>
         </span>
       </div>

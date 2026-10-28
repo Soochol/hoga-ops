@@ -7,6 +7,8 @@ import { PatternIcon } from '../ui/PatternIcon';
 import { BookmarkIcon } from '../ui/BookmarkIcon';
 import { BellIcon } from '../ui/BellIcon';
 import { DoubleChevronIcon } from '../ui/ChevronIcon';
+import { SettingsIcon } from '../ui/SettingsIcon';
+import { requestSettingsModal } from '../live/settingsModalControls';
 import { RailButton } from '../ui/RailShell';
 
 /**
@@ -15,7 +17,7 @@ import { RailButton } from '../ui/RailShell';
  * 스크리너 (Screener), 순위 (Ranking), 패턴 (봉 패턴 검색 — ADR-0166), 저장뷰
  * (Saved Views), 알림; each toggles its own panel (mutually exclusive — one panel slot). The chevron collapses the open panel and re-opens the last one.
  */
-export default function RightRail() {
+export default function RightRail({ settingsOpen = false }: { settingsOpen?: boolean }) {
   const activePanel = useRightRailStore((s) => s.activePanel);
   const togglePanel = useRightRailStore((s) => s.togglePanel);
   const toggleCollapse = useRightRailStore((s) => s.toggleCollapse);
@@ -95,6 +97,10 @@ export default function RightRail() {
         onClick={() => togglePanel('signalAlerts')}
         icon={<BellIcon className="w-[1.125em] h-[1.125em]" />}
       />
+      <RailButton active={settingsOpen} onClick={requestSettingsModal} aria-label="설정" aria-haspopup="dialog" aria-expanded={settingsOpen}>
+        <SettingsIcon className="w-[1.125em] h-[1.125em]" />
+        <span className="text-2xs leading-tight">설정</span>
+      </RailButton>
     </nav>
   );
 }

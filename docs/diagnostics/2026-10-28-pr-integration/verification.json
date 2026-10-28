@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-28",
+  "base": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "head": "See PR head; this record is committed with the verified source.",
+  "fingerprint_method": "Sorted unique git ls-files --cached --others --exclude-standard for each scope; path + NUL + contents + NUL. Includes source/tests/fixtures/lockfiles/configuration.",
+  "frontend_sha256": "9f1ed8aa7ab18649c6c7ebed9ec372ae144fb2a5d9cc64bc532bd28550442e70",
+  "desktop_sha256": "039892c7dac6af781847c5ce8dbefd546abc29d9be3b9027be2ef4517f0ec752",
+  "fresh_integration": {
+    "cwd": "frontend",
+    "command": "npx playwright test tests/e2e/program-line-loading.spec.ts tests/e2e/live-orders.spec.ts --project=chromium --reporter=list --grep '프로그램 창은|정정 접수음은|주문 경로는'",
+    "result": "10 passed (31.8s); production build passed",
+    "log": "/tmp/hoga-pr-final-integration-e2e.log",
+    "environment": "system Chrome, workers=1, slot144 ports20144/21144, clean /tmp/hoga-e2e-data-144, isolated dist, blank vendor credentials"
+  },
+  "reused_checks": [
+    {
+      "record": "../2026-10-28-order-empty-values/verification.json",
+      "basis": "Exact current frontend fingerprint matches; full typecheck, build and 177 OrderWindow tests passed."
+    },
+    {
+      "record": "../2026-10-28-program-line-visibility/implementation-verification.json",
+      "basis": "357 program unit tests and axis checks: program sources/tests and their inputs unchanged by subsequent order/settings work. Final integrated program E2E rerun above."
+    },
+    {
+      "record": "../2026-10-28-order-gradient-sound/verification.json",
+      "basis": "Receipt sound/settings module inputs unchanged. Final OrderWindow unit tests and six sound gesture scenarios verified after subsequent changes."
+    },
+    {
+      "record": "../2026-10-28-order-route-label/verification.json",
+      "basis": "Two responsive route scenarios rerun above against final combined code."
+    },
+    {
+      "record": "../2026-10-28-desktop-settings/verification.json",
+      "basis": "Desktop source/config/dependencies unchanged; type/lint/build/19 unit tests and 5 Electron E2E passed, final full-app E2E passed. Frontend settings/navigation inputs unchanged by later amount-only display change; 70 unit/component and 8 browser E2E results retained."
+    }
+  ],
+  "merge_review": {
+    "open_pr_overlap": {
+      "1927": [],
+      "1726": []
+    },
+    "base_changed": false,
+    "diff_check": "passed",
+    "backend": "No backend/API/lockfile changes."
+  },
+  "limits": "Isolated test integration only; installed desktop app and primary servers are not restarted or upgraded."
+}

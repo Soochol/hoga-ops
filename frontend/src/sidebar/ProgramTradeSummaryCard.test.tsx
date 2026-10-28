@@ -794,3 +794,76 @@ it('daily follow completes during same-date minute updates without reformatting 
     vi.useRealTimers();
   }
 });
+
+
+describe('independent intraday lines and query states', () => {
+  const prices = [{ t_ms: T0, close: 70000 }, { t_ms: T0 + 60_000, close: 70500 }];
+  const program = seriesOf([point(T0, 100_000_000), point(T0 + 30_000, 200_000_000)]);
+
+  it('shows the ready price line while program history loads, then adds program without remounting the plot', () => {
+    const view = render(<ProgramTradeSummaryCard closePoints={prices} todayKst="20260721" programState="loading" />);
+    const graph = screen.getByTestId('program-sparkline');
+    expect(screen.getByTestId('program-price-graph')).toBeInTheDocument();
+    expect(screen.queryByTestId('program-sparkline-axis')).toBeNull();
+    expect(screen.queryByTestId('zero-baseline')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('프로그램 순매수 불러오는 중');
+    expect(screen.queryByText('프로그램 순매수 데이터 없음')).toBeNull();
+    view.rerender(<ProgramTradeSummaryCard series={program} closePoints={prices} todayKst="20260721" />);
+    expect(screen.getByTestId('program-sparkline')).toBe(graph);
+    expect(screen.getAllByTestId('sparkline-solid')).toHaveLength(1);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('shows program first and distinguishes price loading, failure, empty and recovery', () => {
+    const view = render(<ProgramTradeSummaryCard series={program} closePoints={[]} closeState="loading" />);
+    const graph = screen.getByTestId('program-sparkline');
+    expect(screen.getByRole('status')).toHaveTextContent('종가 불러오는 중');
+    view.rerender(<ProgramTradeSummaryCard series={program} closePoints={[]} closeState="error" />);
+    expect(screen.getByRole('status')).toHaveTextContent('종가 조회 실패');
+    expect(screen.getByTestId('program-sparkline')).toBe(graph);
+    view.rerender(<ProgramTradeSummaryCard series={program} closePoints={[]} />);
+    expect(screen.getByRole('status')).toHaveTextContent('종가 데이터 없음');
+    view.rerender(<ProgramTradeSummaryCard series={program} closePoints={prices} />);
+    expect(screen.getByTestId('program-price-graph')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('does not call loading or failed queries empty and retains received lines on a refresh failure', () => {
+    const view = render(<ProgramTradeSummaryCard closePoints={[]} programState="loading" closeState="loading" />);
+    expect(screen.getByRole('status')).not.toHaveTextContent('데이터 없음');
+    view.rerender(<ProgramTradeSummaryCard closePoints={prices} programState="error" />);
+    expect(screen.getByRole('status')).toHaveTextContent('프로그램 순매수 조회 실패');
+    expect(screen.getByTestId('program-price-graph')).toBeInTheDocument();
+    view.rerender(<ProgramTradeSummaryCard series={program} closePoints={prices} programState="error" closeState="error" />);
+    expect(screen.getByRole('status')).toHaveTextContent('수신된 데이터 표시 중');
+    expect(screen.getAllByTestId('sparkline-solid')).toHaveLength(1);
+    expect(screen.getByTestId('program-price-graph')).toBeInTheDocument();
+    view.rerender(<ProgramTradeSummaryCard closePoints={[]} />);
+    expect(screen.getByRole('status')).toHaveTextContent('프로그램 순매수 데이터 없음');
+    expect(screen.getByRole('status')).toHaveTextContent('종가 데이터 없음');
+  });
+
+  it('one program sample does not hide two ready price samples or fabricate a program line', () => {
+    render(<ProgramTradeSummaryCard series={seriesOf([program.points[0]])} closePoints={prices} />);
+    expect(screen.getByTestId('program-price-graph')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('추가 관측 대기');
+    expect(screen.queryByTestId('program-sparkline-axis')).toBeNull();
+  });
+
+  it('does not use previous-day prices during a new-day load', () => {
+    render(<ProgramTradeSummaryCard closePoints={prices} todayKst="20260722" programState="loading" closeState="loading" />);
+    expect(screen.queryByTestId('program-price-graph')).toBeNull();
+    expect(screen.getByRole('status')).not.toHaveTextContent('데이터 없음');
+  });
+
+  it('keeps a past-day plot alive when local hover precedes the first program observation', () => {
+    const series = seriesOf([point(T0 + 30_000, 1), point(T0 + 60_000, 2)]);
+    render(<ProgramTradeSummaryCard series={series} closePoints={prices} todayKst="20260722" cursorMs={T0 + 60_000} />);
+    const graph = screen.getByTestId('program-sparkline');
+    vi.spyOn(graph, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1000, 100));
+    fireEvent.mouseMove(graph, { clientX: 100, clientY: 50 });
+    expect(screen.getByTestId('program-sparkline')).toBe(graph);
+    fireEvent.mouseLeave(graph);
+    expect(screen.getByTestId('program-sparkline')).toBe(graph);
+  });
+});

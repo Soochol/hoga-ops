@@ -79,6 +79,9 @@ export function useLiveSidecars(plan: LiveRangeRequestPlan, waitingForPrice: boo
   }, [independentData, priceData, coverageFrom]);
   return {
     data,
+    programData: independentData?.program_trade,
+    programLoading: independentEnabled && independent.isPending && independentData == null,
+    programError: independentEnabled ? independent.error : null,
     enabled: independentEnabled || priceWanted,
     error: (independentEnabled ? independent.error : null) ?? (priceEnabled ? price.error : null),
     // Pending covers the enabled-but-not-fetching frame. Errors settle this

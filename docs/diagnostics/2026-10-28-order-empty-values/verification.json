@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-28",
+  "head": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "base": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "state": "uncommitted working tree",
+  "frontend_sha256": "9f1ed8aa7ab18649c6c7ebed9ec372ae144fb2a5d9cc64bc532bd28550442e70",
+  "fingerprint_method": "Sorted unique git ls-files --cached --others --exclude-standard frontend; path + NUL + contents + NUL (source, tests, fixtures, lockfile and config).",
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "vitest": "4.1.7",
+    "vite": "8.0.16"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed all three TypeScript projects",
+      "log": "/tmp/hoga-order-empty-types.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/workspace/OrderWindow.test.tsx",
+      "result": "177 passed; existing empty estimate expectations updated",
+      "log": "/tmp/hoga-order-empty-unit.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build",
+      "result": "passed",
+      "log": "/tmp/hoga-order-empty-build.log"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "scope": "Only missing/invalid amount and buying power display. Whitespace-only buying power treated as missing, confirmed numeric zero preserved. Labels and layout unchanged. No backend/API or interaction changes; no additional E2E required for this text-only update."
+}

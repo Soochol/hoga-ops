@@ -29,6 +29,7 @@ import {
 import { SettingsEditor, SettingsEditorNavItem } from './settings/SettingsEditor';
 import { useSettingsUndo } from './settings/useSettingsUndo';
 import { readAppSettings, restoreAppSettings, subscribeAppSettings } from './settings/editorSnapshots';
+import DesktopSection from './settings/DesktopSection';
 import SettingsTransferSection from './settings/SettingsTransferSection';
 
 /**
@@ -53,7 +54,7 @@ import SettingsTransferSection from './settings/SettingsTransferSection';
  * 원래 설정 표면이 **둘**이었다 — 여기(차트 드로어)와 `pages/Settings` 의 앱 설정
  * 모달. 둘은 셸 마크업·testId 규칙·행 컴포넌트를 이미 공유하면서 nav 목록과 셸 상수만
  * 갈라져 있었고, 같은 값에 대해 서로 다른 이야기를 하는 지점까지 생겼다(자세한 사연은
- * `DataSourceDetail` 헤더). 이제 진입점(TopNav ⚙ · `/live`·`/study` 툴바 ⚙ · 캔들
+ * `DataSourceDetail` 헤더). 이제 진입점(우측 레일 ⚙ · `/live`·`/study` 툴바 ⚙ · 캔들
  * 빈 상태 · `/settings` 라우트)이 전부 이 컴포넌트를 연다.
  *
  * `variant` 는 **체결창 섹션 하나**만 가른다(TOC 항목과 본문 섹션이 함께 사라진다).
@@ -64,10 +65,11 @@ type NavId =
   | ChartToggleCategory
   | 'data-source'
   | 'theme'
-  | 'general';
+  | 'general'
+  | 'desktop';
 
 const CATEGORY_ORDER: ChartToggleCategory[] = ['chart', 'trade-window'];
-const INFO_ORDER = ['data-source', 'theme', 'general'] as const;
+const INFO_ORDER = ['data-source', 'theme', 'desktop', 'general'] as const;
 const LABEL: Record<NavId, string> = {
   chart: '차트',
   'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
@@ -75,6 +77,7 @@ const LABEL: Record<NavId, string> = {
   'data-source': '데이터소스',
   theme: '테마',
   general: '앱 정보',
+  desktop: '데스크톱',
 };
 
 /** 레지스트리 밖의 손 스타일 행 — 라벨·설명을 여기 상수로 두고
@@ -186,6 +189,8 @@ function InfoSectionBody({ id }: { id: (typeof INFO_ORDER)[number] }) {
       return <DataSourceDetail />;
     case 'theme':
       return <ThemeSection />;
+    case 'desktop':
+      return <DesktopSection />;
     case 'general':
       return <><GeneralSection /><SettingsTransferSection /></>;
   }
@@ -200,7 +205,8 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
   // **컨텍스트로 갈리는 유일한 항목**이다.
   const registryIds = CATEGORY_ORDER.filter((c) => (variant === 'live' || c !== 'trade-window')
     && CHART_TOGGLES.some((t) => categoryOf(t) === c));
-  const navIds: NavId[] = [...registryIds, ...INFO_ORDER];
+  const infoIds = INFO_ORDER.filter(id => id !== 'desktop' || window.hogaDesktop?.controls);
+  const navIds: NavId[] = [...registryIds, ...infoIds];
 
   const undo = useSettingsUndo({ scopeKey: 'app', read: readAppSettings, restore: restoreAppSettings, subscribe: subscribeAppSettings });
   const [query, setQuery] = useState('');
@@ -348,7 +354,7 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
               섹션은 필터 대상이 아닙니다
             </div>
           )}
-          {!filtering && INFO_ORDER.map((id) => (
+          {!filtering && infoIds.map((id) => (
             <InfoSection key={id} id={id}>
               <InfoSectionBody id={id} />
             </InfoSection>

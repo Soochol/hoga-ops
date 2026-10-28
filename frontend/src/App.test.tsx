@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import type { ReactNode } from 'react';
 import App from './App';
+import { requestSettingsModal } from './live/settingsModalControls';
 import { useRightRailStore } from './state/rightRail';
 import { DEFAULT_THEME_PREFERENCE, useThemePrefsStore } from './state/themePrefs';
 import {
@@ -31,7 +32,7 @@ vi.mock('./nav/CaptureInlineStatus', () => ({
 }));
 
 vi.mock('./rightrail/RightRail', () => ({
-  default: () => <aside data-testid="right-rail" />,
+  default: () => <aside data-testid="right-rail"><button onClick={requestSettingsModal}>설정</button></aside>,
 }));
 
 vi.mock('./watchlist/WatchlistDrawer', () => ({

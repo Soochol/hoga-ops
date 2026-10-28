@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-28",
+  "branch": "codex/investigate-program-lines",
+  "head": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "base": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "scope": "Uncommitted implementation: independent program/close lines and per-line query states",
+  "frontend_sha256": "79431f83e18cde8ab79669c851a8b1e243c9414313d26a793b28ca5f14c1a331",
+  "fingerprint_method": "Sorted git ls-files --cached --others --exclude-standard frontend; each path + NUL + file bytes + NUL. Includes source, tests, fixtures, lockfile and configuration.",
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "browser": "system Chrome",
+    "workers": 1,
+    "e2e_slot": 144,
+    "backend_port": 20144,
+    "frontend_port": 21144,
+    "data_dir": "/tmp/hoga-e2e-data-144",
+    "dist_dir": "/tmp/hoga-e2e-dist-144",
+    "vendor_credentials": "blank per playwright.config.ts",
+    "browser_clock": "2026-05-28T10:00:00+09:00"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed; app, unit-test and E2E TypeScript projects",
+      "log": "/tmp/hoga-program-complete-types.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/sidebar/ProgramTradeSummaryCard.test.tsx src/live/useLiveBundle.test.tsx src/live/useLiveSidecars.test.tsx src/live/useLiveChartData.test.tsx src/live/workspace/DataWindow.test.tsx src/live/workspace/groupChartLinkSource.test.ts src/live/programTradeLiveTail.test.ts src/live/programTradeDateFilter.test.ts src/live/useDailyProgramTradeHistory.test.tsx",
+      "result": "357 tests / 9 files passed at final input",
+      "log": "/tmp/hoga-program-recorded-unit.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/program-line-loading.spec.ts --project=chromium --reporter=list",
+      "result": "2 passed; price-first/program-first, reload, symbol switch, failure, empty response; includes production Vite build",
+      "log": "/tmp/hoga-program-complete-e2e.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/distribution-time-axis.spec.ts tests/e2e/program-line-loading.spec.ts --project=chromium --reporter=list",
+      "result": "5 passed before final live snapshot state addition",
+      "log": "/tmp/hoga-program-final-e2e.log",
+      "reuse": "3 axis tests retained: geometry/axis/hover inputs unchanged by subsequent initial query status addition. New loading tests rerun afterward. Last subsequent edit only widened a test prop error type; full typecheck and unit tests rerun."
+    },
+    {
+      "command": "ESLint of changed production/test files; compare warning counts against base",
+      "result": "0 errors; no added warnings. Existing useLiveBundle 53, useLiveChartData 2, ChartWindow 2 warnings unchanged. ProgramTradeSummaryCard 0 warnings.",
+      "logs": [
+        "/tmp/hoga-program-final-lint.json",
+        "/tmp/hoga-program-lint-comparison.json",
+        "/tmp/hoga-program-fix-lint.log"
+      ]
+    }
+  ],
+  "limits": "API responses controlled in tests; no production latency or live upstream availability claim. Backend/API contracts unchanged."
+}

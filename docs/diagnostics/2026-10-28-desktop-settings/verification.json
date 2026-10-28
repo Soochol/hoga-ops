@@ -1,0 +1,114 @@
+{
+  "date": "2026-10-28",
+  "head": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "base": "e8fd26d8f1fce93c1d4a84602ed8c57f385a4695",
+  "state": "uncommitted working tree, including preceding program/order changes",
+  "input_sha256": "ae9f40a042e4d407694e26d6832add4142321654c5b06c963c7f11b7a9703758",
+  "fingerprint_method": "Sorted unique git ls-files --cached --others --exclude-standard frontend desktop; path + NUL + contents + NUL. Includes source, tests, fixtures, lockfiles and build/test configuration.",
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "electron": "44.8.0",
+    "browser": "system Chrome",
+    "workers": 1,
+    "browser_ports": [
+      20144,
+      21144
+    ],
+    "data": "/tmp/hoga-e2e-data-144",
+    "dist": "/tmp/hoga-e2e-dist-144",
+    "electron_runtime": "/home/dev/code/hoga-ops/desktop/node_modules/electron/dist/electron",
+    "electron_args": "current worktree desktop; ozone-platform=x11; chromiumSandbox=true",
+    "electron_data": "per-test temporary userData, fixture or isolated FastAPI ports",
+    "vendor_credentials": "blank in browser and Electron full-app harness"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed app/unit/E2E projects at final input",
+      "log": "/tmp/hoga-settings-types-complete.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/nav/TopNav.test.tsx src/rightrail/RightRail.test.tsx src/live/SettingsSections.test.tsx src/live/settings/DesktopSection.test.tsx src/ui/DesktopConfigGate.test.tsx src/App.test.tsx",
+      "result": "69 passed",
+      "log": "/tmp/hoga-settings-unit-complete.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run tests/component/TopNav.test.tsx",
+      "result": "1 passed",
+      "log": "/tmp/hoga-settings-component.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/settings-editor.spec.ts --project=chromium --reporter=list",
+      "result": "6 passed; production Vite build passed",
+      "log": "/tmp/hoga-settings-browser-e2e.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/live-window-ux.spec.ts --project=chromium --reporter=list --grep '앱 공통 메뉴|창 최대화'",
+      "result": "2 passed; final production Vite build passed",
+      "log": "/tmp/hoga-settings-window-e2e.log"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx eslint src/App.tsx src/App.test.tsx src/desktop.d.ts src/live/settings/DesktopSection.tsx src/live/settings/DesktopSection.test.tsx src/live/SettingsSections.tsx src/nav/TopNav.tsx src/nav/TopNav.test.tsx src/rightrail/RightRail.tsx src/rightrail/RightRail.test.tsx src/ui/DesktopConfigGate.tsx src/ui/DesktopConfigGate.test.tsx src/ui/SettingsIcon.tsx tests/e2e/settings-editor.spec.ts -f json; npx eslint tests/component/TopNav.test.tsx tests/e2e/live-window-ux.spec.ts -f json",
+      "result": "0 errors, 0 warnings",
+      "logs": [
+        "/tmp/hoga-settings-lint.json",
+        "/tmp/hoga-settings-test-lint.json"
+      ]
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run typecheck && npm run lint && npm test",
+      "result": "passed; 19 unit tests; build passed",
+      "logs": [
+        "/tmp/hoga-settings-desktop-types.log",
+        "/tmp/hoga-settings-desktop-lint.log",
+        "/tmp/hoga-settings-desktop-unit.log"
+      ]
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_ELECTRON_BINARY=/home/dev/code/hoga-ops/desktop/node_modules/electron/dist/electron HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/desktop.spec.cjs tests/e2e/full-app.spec.cjs",
+      "result": "5 passed",
+      "log": "/tmp/hoga-settings-desktop-e2e.log"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_ELECTRON_BINARY=/home/dev/code/hoga-ops/desktop/node_modules/electron/dist/electron HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/full-app.spec.cjs",
+      "result": "1 passed at final product input; rerun after recovery copy change and screenshot wait",
+      "log": "/tmp/hoga-settings-desktop-full-final.log"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run lint",
+      "result": "passed at final test input",
+      "log": "/tmp/hoga-settings-desktop-lint-final.log"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "right rail settings last after alerts, header removed",
+    "shared modal and active panel preserved, keyboard/Escape/focus restore",
+    "browser hides desktop-only category",
+    "Electron current server name/origin, server launcher, native new window",
+    "zoom controls/keyboard, same-server child sync and persistence",
+    "empty native context menu suppressed; editable copy/paste retained",
+    "bootstrap recovery button and Ctrl+Alt+S accelerator retained",
+    "invalid zoom command rejected, sandbox and network guards retained",
+    "settings transfer still works in real React/FastAPI/Electron"
+  ],
+  "visual_qa": "Inspected desktop/test-results/desktop-settings.png after zoom overlay dismissal.",
+  "reuse": "Desktop source unchanged after original type/unit/build/E2E pass. Later updates affected docs, frontend tests, recovery wording and full-app screenshot wait; affected frontend checks and full-app E2E rerun.",
+  "limits": "User installed app, shortcuts and primary servers not changed or restarted. This validates source/build and isolated sandboxed Electron integration, not an installed application update."
+}

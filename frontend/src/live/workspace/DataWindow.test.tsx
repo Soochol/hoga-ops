@@ -1490,3 +1490,29 @@ describe('DataWindow — 마지막 REST 호가', () => {
     expect(vi.mocked(useLiveRestOrderbook).mock.lastCall?.[2]).toBe(false);
   });
 });
+
+
+it('program window shows ready history before candles and publishes independent query states across stock changes', async () => {
+  const { useProgramTradeDisplayStore } = await import('../../state/programTradeDisplay');
+  useProgramTradeDisplayStore.setState({ view: 'intraday', measure: 'amount' });
+  __resetGroupChartLinksForTests();
+  useLiveCursorStore.getState().resetCursor();
+  const t = Date.parse('2026-07-20T09:00:00+09:00');
+  const series = { points: [0, 30_000].map(offset => ({ t: t + offset, net_qty: 10, net_amount: 100_000_000, gap_risk: false })) };
+  publishGroupChartLink(chartLink({ program: { series, state: 'ready', closeState: 'loading' } }));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const ui = (code: string) => <QueryClientProvider client={qc}><DataWindow win={dataWin('program')} symbol={{ code, name: code }} /></QueryClientProvider>;
+  const view = render(ui('005930'));
+  expect(screen.getByTestId('program-sparkline')).toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('종가 불러오는 중');
+  view.rerender(ui('000660'));
+  expect(screen.queryByTestId('program-sparkline')).toBeNull();
+  act(() => publishGroupChartLink(chartLink({ code: '000660', program: { series: { points: [] }, state: 'loading', closeState: 'loading' } })));
+  expect(screen.getByRole('status')).not.toHaveTextContent('데이터 없음');
+  act(() => publishGroupChartLink(chartLink({ code: '000660', program: { series: { points: [] }, state: 'error', closeState: 'ready' } })));
+  expect(screen.getByRole('status')).toHaveTextContent('프로그램 순매수 조회 실패');
+  act(() => publishGroupChartLink(chartLink({ code: '000660', program: { series, state: 'ready', closeState: 'ready' } })));
+  expect(screen.getByTestId('program-sparkline')).toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('종가 데이터 없음');
+  view.unmount(); qc.clear(); __resetGroupChartLinksForTests();
+});

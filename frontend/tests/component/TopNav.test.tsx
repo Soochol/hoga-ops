@@ -35,13 +35,13 @@ function W({ children }: { children: ReactNode }) {
 }
 
 it('renders the approved minimal top menu items', () => {
-  render(<TopNav onOpenSettings={() => {}} />, { wrapper: W });
+  render(<TopNav />, { wrapper: W });
 
   expect(screen.getByText('Ticklane')).toBeInTheDocument();
   expect(screen.getByText('라이브')).toBeInTheDocument();
   expect(screen.getByText('보관함')).toBeInTheDocument();
   expect(screen.getByText('캡처')).toBeInTheDocument();
-  expect(screen.getByText('설정')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '설정' })).not.toBeInTheDocument();
   expect(screen.queryByText(/orderbook replay/i)).not.toBeInTheDocument();
   expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
 });

@@ -1,12 +1,24 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const argument = process.argv.find(value => value.startsWith('--hoga-api-origin='));
 contextBridge.exposeInMainWorld('hogaDesktop', Object.freeze({
+  controls: Object.freeze({
+    getState: () => ipcRenderer.invoke('desktop:read'),
+    selectServer: () => ipcRenderer.invoke('desktop:select-server'),
+    newWindow: () => ipcRenderer.invoke('desktop:new-window'),
+    zoom: command => ipcRenderer.invoke('desktop:zoom', command),
+    onZoomChange: callback => {
+      const listener = (_event, factor) => {
+        if (typeof factor === 'number' && Number.isFinite(factor) && factor >= .5 && factor <= 3) callback(factor);
+      };
+      ipcRenderer.on('desktop:zoom-state', listener);
+      return () => ipcRenderer.removeListener('desktop:zoom-state', listener);
+    },
+  }),
   strictConfig: true,
   apiOrigin: argument ? argument.slice('--hoga-api-origin='.length) : '',
 }));
 
-// Receive-only IPC stays inside the isolated preload; the page receives no new
-// Electron API. Shadow DOM keeps page selectors and this small overlay separate.
+// The transient zoom overlay stays inside the isolated preload. Shadow DOM keeps page selectors and this small overlay separate.
 let zoomHost, zoomPanel, zoomValue, hideZoomTimer, pendingZoom;
 function showZoom(factor) {
   if (!document.body) { pendingZoom = factor; return; }

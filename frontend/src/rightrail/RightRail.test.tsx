@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { registerSettingsModalOpener } from '../live/settingsModalControls';
 import RightRail from './RightRail';
 import { useRightRailStore } from '../state/rightRail';
 
@@ -91,4 +92,17 @@ describe('RightRail', () => {
     fireEvent.click(screen.getByLabelText('우측 패널 열기')); // reopen lastPanel
     expect(useRightRailStore.getState().activePanel).toBe('screener');
   });
+});
+
+it('opens the shared settings dialog below alerts without changing the active panel', () => {
+  const open = vi.fn(); const unregister = registerSettingsModalOpener(open);
+  useRightRailStore.setState({ activePanel: 'watchlist' });
+  render(<RightRail settingsOpen />);
+  const button = screen.getByRole('button', { name: '설정' });
+  expect(screen.getAllByRole('button').at(-1)).toBe(button);
+  expect(button).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.click(button);
+  expect(open).toHaveBeenCalledOnce();
+  expect(useRightRailStore.getState().activePanel).toBe('watchlist');
+  unregister();
 });
