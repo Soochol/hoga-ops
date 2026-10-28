@@ -647,20 +647,20 @@ it('protects unsaved edits on saved-condition switch, new draft and restore', as
   expect(screen.getByRole('dialog', { name: '미저장 변경 확인' })).toBeVisible();
   expect(screen.getByLabelText('저장한 조건검색 선택')).toHaveTextContent('기본조건');
   fireEvent.click(screen.getByRole('button', { name: '계속 편집' }));
-  expect(input).toHaveValue(200);
+  expect(input).toHaveValue('200');
   fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));
   fireEvent.click(screen.getByRole('button', { name: '계속 편집' }));
-  expect(input).toHaveValue(200);
+  expect(input).toHaveValue('200');
   fireEvent.click(screen.getByRole('button', { name: '저장본으로 되돌리기' }));
   fireEvent.click(screen.getByRole('button', { name: '변경 버리고 복원' }));
-  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue(100);
+  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('100');
   expect(screen.queryByText('수정됨')).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('최소 거래대금(억)'), { target: { value: '300' } });
   fireEvent.blur(screen.getByLabelText('최소 거래대금(억)'));
   await loadSave('다른조건');
   fireEvent.click(screen.getByRole('button', { name: '변경 버리고 이동' }));
   expect(screen.getByLabelText('저장한 조건검색 선택')).toHaveTextContent('다른조건');
-  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue(100);
+  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('100');
 });
 
 it('keeps an explicitly created empty draft across remounts', async () => {
@@ -685,4 +685,74 @@ it('prevents switching or restoring while a save is in flight', async () => {
   expect(screen.getByRole('button', { name: '저장본으로 되돌리기' })).toBeDisabled();
   await act(async () => { resolveSave(defaultSaves().saves[0]); });
   expect(screen.getByLabelText('저장한 조건검색 선택')).toBeEnabled();
+});
+
+it('필수 숫자의 빈칸은 조회·저장을 차단하고 저장본 복원으로 해제된다', async () => {
+  await renderPageReady();
+  vi.mocked(runScan).mockClear();
+  vi.mocked(updateSave).mockClear();
+  vi.mocked(createSave).mockClear();
+  const input = screen.getByLabelText('최소 거래대금(억)');
+  fireEvent.change(input, { target: { value: '' } });
+  fireEvent.blur(input);
+  expect(input).toHaveValue('');
+  expect(input).toHaveAccessibleDescription('값을 입력하세요.');
+  for (const name of ['조회', '저장', '다른 이름으로 저장']) {
+    const button = screen.getByRole('button', { name });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+  }
+  expect(runScan).not.toHaveBeenCalled();
+  expect(updateSave).not.toHaveBeenCalled();
+  expect(createSave).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '저장본으로 되돌리기' }));
+  fireEvent.click(screen.getByRole('button', { name: '변경 버리고 복원' }));
+  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('100');
+  expect(screen.getByRole('button', { name: '조회' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
+  expect(screen.queryByText('값을 입력하세요.')).not.toBeInTheDocument();
+});
+
+it('잘못된 숫자 조건을 제거하면 다른 조건의 조회·저장을 다시 허용한다', async () => {
+  await renderPageReady();
+  fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '이동평균' }));
+  const input = screen.getByLabelText('이동평균 기간(봉)');
+  fireEvent.change(input, { target: { value: '1001' } });
+  fireEvent.blur(input);
+  expect(input).toHaveValue('1001');
+  expect(screen.getByRole('button', { name: '조회' })).toBeDisabled();
+  fireEvent.click(within(screen.getByRole('group', { name: '이동평균 조건' })).getByRole('button', { name: '조건 제거' }));
+  expect(screen.getByRole('button', { name: '조회' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
+});
+
+it('가격·등락률 범위의 서버 제약을 조회 전에 검증한다', async () => {
+  await renderPageReady();
+  fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '현재가 범위' }));
+  const min = screen.getByLabelText('최저가(원)');
+  const max = screen.getByLabelText('최고가(원)');
+  fireEvent.change(min, { target: { value: '' } });
+  fireEvent.blur(min);
+  expect(screen.getByText('최저가 또는 최고가를 입력하세요.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '조회' })).toBeDisabled();
+  fireEvent.change(max, { target: { value: '500' } });
+  expect(screen.getByRole('button', { name: '조회' })).toBeEnabled();
+  fireEvent.change(min, { target: { value: '1000' } });
+  fireEvent.keyDown(min, { key: 'Enter' });
+  expect(screen.getByText('최고가는 최저가 이상으로 입력하세요.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
+  fireEvent.change(max, { target: { value: '2000' } });
+  expect(screen.getByRole('button', { name: '조회' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '등락률' }));
+  fireEvent.change(screen.getByLabelText('등락률 연산'), { target: { value: 'between' } });
+  const lo = screen.getByLabelText('등락률 하한(%)');
+  fireEvent.change(lo, { target: { value: '10' } });
+  fireEvent.blur(lo);
+  expect(screen.getByText('상한은 하한 이상으로 입력하세요.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '조회' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('등락률 연산'), { target: { value: 'gte' } });
+  expect(screen.getByRole('button', { name: '조회' })).toBeEnabled();
 });

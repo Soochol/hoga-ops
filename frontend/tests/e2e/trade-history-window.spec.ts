@@ -141,6 +141,14 @@ test('헤더 메뉴 설정은 넓은 창에서도 접근하며 금액 경계·�
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: '체결창 설정' })).toBeHidden();
   await expect(page.getByRole('button', { name: '체결창 설정', exact: true })).toBeFocused();
+  await window.locator('xpath=ancestor::*[@data-win][1]').getByRole('button', { name: /창 닫기$/ }).click();
+  await expect(page.getByTestId('trade-window')).toHaveCount(0);
+  await page.reload();
+  await page.getByTestId('workspace-add-menu-button').click();
+  await page.getByTestId('workspace-add-trade').click();
+  await expect(page.getByLabel('체결금액 1,000만원 이상 표시')).toBeVisible();
+  const remembered = await openTradeSettings(page);
+  await expect(remembered.getByRole('textbox', { name: '최소 금액 직접 입력' })).toHaveValue('1,000');
 });
 
 test('일치 없는 과거 페이지도 휠로 이어 조회하며 빈 결과에서 전체 표시로 복귀한다', async ({ page }) => {

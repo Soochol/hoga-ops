@@ -21,14 +21,18 @@ import {
   dropIndicatorScopesForRemovedWindows,
   dropIndicatorScopesForWindows,
   seedIndicatorScopeForWindow,
+  captureIndicatorPayloadForWindow,
+  restoreIndicatorScopesFromPayload,
 } from './indicatorScopeGc';
 import { liveDefaultWindows } from './liveDefaultLayout';
 import { isLiveIndexId, isUsIndexId, usChartTimeframe } from '../live/liveInstrument';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
-import { normalizeOrderSettings, validOrderSettings, type OrderWindowSettings } from './orderWindowSettings';
+import { normalizeOrderSettings, readLastOrderSettings, rememberLastOrderSettings, validOrderSettings, type OrderWindowSettings } from './orderWindowSettings';
 import { isTradeMinAmountManwon } from './tradeWindowSettings';
-import { seedSettingsForWindow } from './windowSettingsLifecycle';
+import { captureSettingsForWindow, restoreSettingsFromPayload, seedSettingsForWindow } from './windowSettingsLifecycle';
 import { useWindowSettingsStore } from './windowSettings';
+import { readLastWindowPreferences, rememberWindowPreferences, subscribeToChartPreferenceEdits } from './windowPreferenceMemory';
+import { windowScopeKey } from '../live/workspace/windowViewContext';
 
 /**
  * `/live` 멀티창 워크스페이스 상태 (ADR-0119, 스펙 #715).
@@ -184,6 +188,8 @@ export interface WorkspaceWindow {
   order?: OrderWindowSettings;
   /** 체결창 단건 최소 금액(만원). 생략 또는 0이면 전체 표시. */
   tradeMinAmountManwon?: number;
+  /** 종목/날짜와 독립적인 뉴스 표시 필터. 생략은 종목 연결만 표시. */
+  newsLinkedOnly?: boolean;
   /** 포커스·종목 고정과 독립적인 표시 순서. */
   alwaysOnTop?: boolean;
   /**
@@ -269,6 +275,7 @@ type Store = Persisted & {
   setWindowGroup: (id: string, group: GroupId) => void;
   setOrderWindowSettings: (id: string, settings: OrderWindowSettings) => void;
   setTradeMinAmountManwon: (id: string, amount: number) => void;
+  setNewsLinkedOnly: (id: string, linkedOnly: boolean) => void;
   setGroupSymbol: (group: GroupId, symbol: GroupSymbol) => void;
   /**
    * 창 종목 고정 토글. 켤 때 지금 그리고 있는 종목을 창 슬롯으로 복사하고, 끌 때
@@ -416,6 +423,7 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
   if (w.kind === 'trade' && isTradeMinAmountManwon(w.tradeMinAmountManwon)) {
     win.tradeMinAmountManwon = w.tradeMinAmountManwon;
   }
+  if (w.kind === 'news' && typeof w.newsLinkedOnly === 'boolean') win.newsLinkedOnly = w.newsLinkedOnly;
   if (w.kind === 'chart') {
     const cfg = (w.chart ?? {}) as Record<string, unknown>;
     // 구 스냅샷의 `cfg.indicators` 는 읽지 않는다 — 전역으로 1회 승격된 뒤
@@ -543,7 +551,10 @@ function readStorage(): Persisted & { pendingNormalize: boolean } {
     .filter((w): w is WorkspaceWindow => w !== null);
   // 저장값이 전부 손상돼 창이 하나도 없으면 기본 레이아웃으로 폴백 — 즉시 persist
   // 로 창 id 를 고정한다(시드/공장 경로와 동일 규율, 리뷰 #5).
-  if (windows.length === 0) {
+  // An explicitly empty workspace means the user closed every window. Preserve
+  // it so reopening the browser cannot insert a factory chart ahead of the last
+  // chart preferences. Nonempty but corrupt input still uses the safe fallback.
+  if (rawWindows.length > 0 && windows.length === 0) {
     const fresh = { windows: defaultWindows(), zOrder: [] as string[], groupSymbols: {} };
     fresh.zOrder = fresh.windows.map((w) => w.id);
     persistFromState(fresh);
@@ -792,6 +803,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     // 새 창이 복사할 지표의 원본 — `set` **전에** 잡는다(그 안에서 windows 가 바뀌면
     // 포커스 차트가 새 창 자신이 되어 시드가 자기 자신을 가리킨다).
     const indicatorSourceId = kind === 'chart' ? focusedChart(get())?.id ?? null : null;
+    const lastChart = kind === 'chart' && !indicatorSourceId ? readLastWindowPreferences('chart') : null;
     set((state) => {
       const group = activeGroupOf(state); // 새 창 = 활성 그룹 상속(#711)
       // DEFAULT_SIZE 는 콘텐츠 기준 px 크기다. 현재 캔버스로 나눠 비율로 저장한다. 이후 리사이즈는 기존 비율 계약을 따른다.
@@ -813,7 +825,28 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       if (kind === 'chart') {
         // 포커스 차트 창의 봉을 물려받는다 — 없으면 공장 기본.
         const src = focusedChart(state);
-        win.chart = src?.chart ? { ...src.chart } : { timeframe: '1m' };
+        win.chart = src?.chart ? { ...src.chart }
+          : lastChart ? readWindow({ ...win, chart: lastChart.chart }, false)?.chart : { timeframe: '1m' };
+      }
+      if (kind === 'trade') {
+        const amount = readLastWindowPreferences('trade')?.minAmountManwon;
+        if (isTradeMinAmountManwon(amount)) win.tradeMinAmountManwon = amount;
+      }
+      if (kind === 'news') {
+        const linkedOnly = readLastWindowPreferences('news')?.linkedOnly;
+        if (typeof linkedOnly === 'boolean') win.newsLinkedOnly = linkedOnly;
+      }
+      if (kind === 'order') {
+        // Before the first edit with last-settings support, inherit an existing
+        // order window once. Closing a window must not overwrite newer edits.
+        const lastSettings = readLastOrderSettings();
+        const previous = lastSettings ?? state.zOrder.slice().reverse()
+          .map(id => state.windows.find(w => w.id === id && w.kind === 'order'))
+          .find(w => w?.order)?.order;
+        if (previous) {
+          win.order = normalizeOrderSettings(previous);
+          if (!lastSettings) rememberLastOrderSettings(previous);
+        }
       }
       const next = { windows: [...state.windows, normalizeUsWindow(win, state.groupSymbols[group])], zOrder: [...state.zOrder, id], maximizedId: null };
       persistFromState({ ...state, ...next });
@@ -825,11 +858,27 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     // 그 안에서 갱신하지 않기 위해.)
     if (kind === 'chart') seedIndicatorScopeForWindow(id, indicatorSourceId);
     seedSettingsForWindow({ id, kind }, indicatorSourceId);
+    if (lastChart) {
+      const windows = [{ id, kind }];
+      const payload = [{ ...lastChart, id }];
+      restoreIndicatorScopesFromPayload(windows, payload);
+      restoreSettingsFromPayload(windows, payload);
+    }
     return id;
   },
 
   closeWindow: (id) => {
+    const closingWindow = get().windows.find(w => w.id === id);
+    if (closingWindow?.kind === 'chart' && !readLastWindowPreferences('chart')) rememberChartPreferences(id);
+    if (closingWindow?.kind === 'trade' && !readLastWindowPreferences('trade')) {
+      rememberWindowPreferences('trade', { minAmountManwon: closingWindow.tradeMinAmountManwon ?? 0 });
+    }
+    if (closingWindow?.kind === 'news' && !readLastWindowPreferences('news')) {
+      rememberWindowPreferences('news', { linkedOnly: closingWindow.newsLinkedOnly ?? true });
+    }
     set((state) => {
+      const closing = state.windows.find(w => w.id === id && w.kind === 'order');
+      if (closing?.order && !readLastOrderSettings()) rememberLastOrderSettings(closing.order);
       const next = {
         maximizedId: state.maximizedId === id ? null : state.maximizedId,
         windows: state.windows.filter((w) => w.id !== id),
@@ -1077,6 +1126,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     if (!validOrderSettings(settings)) return;
     set(state => {
       if (!state.windows.some(w => w.id === id && w.kind === 'order')) return {};
+      rememberLastOrderSettings(settings);
       const windows = state.windows.map(w => w.id === id ? { ...w, order: normalizeOrderSettings(settings) } : w);
       persistFromState({ ...state, windows });
       return { windows };
@@ -1087,8 +1137,21 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     if (!isTradeMinAmountManwon(amount)) return;
     set(state => {
       const win = state.windows.find(w => w.id === id && w.kind === 'trade');
-      if (!win || (win.tradeMinAmountManwon ?? 0) === amount) return state;
+      if (!win) return state;
+      rememberWindowPreferences('trade', { minAmountManwon: amount });
+      if ((win.tradeMinAmountManwon ?? 0) === amount) return state;
       const windows = state.windows.map(w => w.id === id ? { ...w, tradeMinAmountManwon: amount } : w);
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
+  setNewsLinkedOnly: (id, linkedOnly) => {
+    if (typeof linkedOnly !== 'boolean') return;
+    set(state => {
+      if (!state.windows.some(w => w.id === id && w.kind === 'news')) return state;
+      rememberWindowPreferences('news', { linkedOnly });
+      const windows = state.windows.map(w => w.id === id ? { ...w, newsLinkedOnly: linkedOnly } : w);
       persistFromState({ ...state, windows });
       return { windows };
     });
@@ -1101,6 +1164,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       persistFromState({ ...state, windows });
       return { windows };
     });
+    rememberChartPreferences(id);
   },
 
   setChartHoverLinked: (id, enabled) => {
@@ -1110,6 +1174,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       persistFromState({ ...state, windows });
       return { windows };
     });
+    rememberChartPreferences(id);
   },
 
   setChartIndicatorLegendsVisible: (id, visible) => {
@@ -1119,6 +1184,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       persistFromState({ ...state, windows });
       return { windows };
     });
+    rememberChartPreferences(id);
   },
 
   setChartTimeframe: (id, tf) => {
@@ -1176,6 +1242,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       persistFromState({ ...state, windows });
       return { windows, chartRuntime };
     });
+    rememberChartPreferences(id);
   },
 
   setSecondChartRange: (id, range) => set(state => {
@@ -1310,6 +1377,25 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
 // Migrate existing/restored windows before their first render. Settings live in
 // shared storage; the tab-local workspace continues to hold only window identity.
 useWorkspaceStore.getState().windows.forEach(win => seedSettingsForWindow(win));
+
+function rememberChartPreferences(id: string): void {
+  const win = useWorkspaceStore.getState().windows.find(w => w.id === id && w.kind === 'chart');
+  if (!win) return;
+  seedIndicatorScopeForWindow(id, null);
+  rememberWindowPreferences('chart', {
+    chart: win.chart ?? { timeframe: '1m' },
+    windowSettings: captureSettingsForWindow(win),
+    ...captureIndicatorPayloadForWindow(id),
+  });
+}
+
+const stopRememberingChart = subscribeToChartPreferenceEdits(edit => {
+  const id = 'windowId' in edit ? edit.windowId : useWorkspaceStore.getState().windows.find(win =>
+    win.kind === 'chart' && (windowScopeKey(win.id) === edit.windowKey
+      || windowScopeKey(win.id, 'index') === edit.windowKey))?.id;
+  if (id) rememberChartPreferences(id);
+});
+if (import.meta.hot) import.meta.hot.dispose(stopRememberingChart);
 
 /** 현재 워크스페이스를 프리셋 스냅샷으로 캡처한다(뷰포트·런타임 제외).
  *  스토어 내부 참조를 잡지 않도록 창·rect·chart 값까지 새 객체로 복제한다 —

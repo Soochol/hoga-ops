@@ -40,7 +40,7 @@ export function HistoryVolumeForm({ params, onChange }: {
       </ConditionFields>
       <ConditionFields>
         <Num label="비교" ariaLabel="거래량 비교 기간" suffix={legacyHistory ? undefined : '봉'}
-          min={1} max={params.record_period.unit === 'years' ? 20 : 1000}
+          step={1} min={1} max={params.record_period.unit === 'years' ? 20 : 1000}
           value={params.record_period.value} onChange={value => onChange({ ...params,
             record_period: { ...params.record_period, value: value ?? 1 } } as VolumeParams)} />
         {legacyHistory && <Select label="거래량 비교 단위" caption="비교 단위" value={params.record_period.unit}
@@ -53,9 +53,9 @@ export function HistoryVolumeForm({ params, onChange }: {
           options={[[ 'years', '년' ], ['trading_days', '거래일'], ['bars', '봉']]} />}
       </ConditionFields>
     </> : <ConditionFields>
-      <Num label="최근" ariaLabel="최근 기간(봉)" suffix="봉 이내" min={1} max={1000} value={params.lookback}
+      <Num label="최근" ariaLabel="최근 기간(봉)" suffix="봉 이내" step={1} min={1} max={1000} value={params.lookback}
         onChange={value => onChange({ ...params, lookback: value ?? 1 })} />
-      <Num label="비교" ariaLabel="신고 기준 기간(봉)" suffix="봉" min={1} max={1000} value={params.period}
+      <Num label="비교" ariaLabel="신고 기준 기간(봉)" suffix="봉" step={1} min={1} max={1000} value={params.period}
         onChange={value => onChange({ ...params, period: value ?? 1 })} />
     </ConditionFields>}
   </div>;

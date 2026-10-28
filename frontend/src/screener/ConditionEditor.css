@@ -84,3 +84,6 @@
   color: var(--fg); color-scheme: var(--color-scheme); font-size: var(--text-sm);
 }
 .condition-date-field { flex-wrap: wrap; }
+.condition-number-field { flex-wrap: wrap; }
+.condition-input-wrap[data-invalid='true'] { border-color: var(--error); }
+.condition-number-error { flex-basis: 100%; color: var(--error); font-size: var(--text-xs); overflow-wrap: anywhere; }

@@ -17,8 +17,8 @@ it('changes minute/day/week/month without changing the candle counts', () => {
   expect(screen.getByRole('combobox', { name: '거래량 주기' })).toHaveValue('D');
   for (const timeframe of ['W', 'M', '3m', 'D']) {
     fireEvent.change(screen.getByRole('combobox', { name: '거래량 주기' }), { target: { value: timeframe } });
-    expect(screen.getByLabelText('최근 기간(봉)')).toHaveValue(60);
-    expect(screen.getByLabelText('신고 기준 기간(봉)')).toHaveValue(250);
+    expect(screen.getByLabelText('최근 기간(봉)')).toHaveValue('60');
+    expect(screen.getByLabelText('신고 기준 기간(봉)')).toHaveValue('250');
     if (timeframe === '3m') {
       expect(screen.getByRole('status')).toHaveTextContent('"timeframe":"3m"');
     }
@@ -32,7 +32,7 @@ it('preserves date bounds when converting old daily history to candle counts', (
   fireEvent.change(screen.getByRole('combobox', { name: '거래량 주기' }), { target: { value: 'M' } });
   expect(screen.getByLabelText('거래량 발생 시작일')).toHaveValue('2019-01-01');
   expect(screen.getByRole('status')).toHaveTextContent('"unit":"bars"');
-  expect(screen.getByLabelText('거래량 비교 기간')).toHaveValue(250);
+  expect(screen.getByLabelText('거래량 비교 기간')).toHaveValue('250');
 });
 
 describe('saved conditions', () => {
@@ -51,9 +51,9 @@ it('keeps the open-bar policy and comparison count when switching the search win
   fireEvent.change(screen.getByRole('combobox', { name: '거래량 검색 기간' }), { target: { value: 'date_range' } });
   expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
-  expect(screen.getByLabelText('거래량 비교 기간')).toHaveValue(12);
+  expect(screen.getByLabelText('거래량 비교 기간')).toHaveValue('12');
   fireEvent.change(screen.getByRole('combobox', { name: '거래량 검색 기간' }), { target: { value: 'recent' } });
   expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
-  expect(screen.getByLabelText('신고 기준 기간(봉)')).toHaveValue(12);
+  expect(screen.getByLabelText('신고 기준 기간(봉)')).toHaveValue('12');
 });

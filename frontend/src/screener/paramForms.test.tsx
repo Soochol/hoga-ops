@@ -22,78 +22,62 @@ describe('기준시각 HHMM ↔ <input type="time"> 변환', () => {
   });
 });
 
-describe('Num 범위 클램프 (BreakoutForm 경유)', () => {
-  it('blur 시 min/max 로 클램프한다 — 음수·0 lookback 이 서버 422 를 부르지 않게', () => {
+describe('Num 입력 검증 (실제 조건 폼 경유)', () => {
+  it('범위 밖 값은 그대로 보이고 blur에서 오류를 안내한다', () => {
     const onChange = vi.fn();
     render(<BreakoutForm params={{ lookback: 200, period: 500 }} onChange={onChange} />);
     const input = screen.getByLabelText('최근 기간(봉)');
-
     fireEvent.change(input, { target: { value: '-5' } });
-    expect(onChange).toHaveBeenLastCalledWith({ lookback: -5, period: 500 }); // 타이핑 중엔 간섭 없음
-    fireEvent.blur(input, { target: { value: '-5' } });
-    expect(onChange).toHaveBeenLastCalledWith({ lookback: 1, period: 500 });  // blur 에서 min=1 로
-
-    fireEvent.blur(input, { target: { value: '5000' } });
-    expect(onChange).toHaveBeenLastCalledWith({ lookback: 1000, period: 500 }); // max=1000 으로
+    expect(input).toHaveValue('-5');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.blur(input);
+    expect(screen.getByRole('alert')).toHaveTextContent('1 이상으로 입력하세요.');
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: '5000' } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue('5000');
+    expect(screen.getByRole('alert')).toHaveTextContent('1000 이하로 입력하세요.');
+    expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('숫자가 아닌 입력은 undefined 로 흘려 폼 기본값 복원 경로를 탄다', () => {
+  it('문자와 빈칸은 기본값으로 복원하지 않는다', () => {
     const onChange = vi.fn();
     render(<BreakoutForm params={{ lookback: 200, period: 500 }} onChange={onChange} />);
-    fireEvent.change(screen.getByLabelText('최근 기간(봉)'), { target: { value: 'abc' } });
-    expect(onChange).toHaveBeenLastCalledWith({ lookback: 1, period: 500 }); // n ?? 1 폴백
+    const input = screen.getByLabelText('최근 기간(봉)');
+    fireEvent.change(input, { target: { value: 'abc' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(input).toHaveValue('abc');
+    expect(screen.getByRole('alert')).toHaveTextContent('숫자를 입력하세요.');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue('');
+    expect(screen.getByRole('alert')).toHaveTextContent('값을 입력하세요.');
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
 describe('총잔량 문턱(threshold_pct)은 서버 하한 ge=1 을 미러한다', () => {
-  // `min` 은 백엔드 `Field(ge=1)` 의 **손 미러**다 — 어긋나면 타입 검사는 통과하고
-  // 서버만 422 로 스캔을 통째로 거절한다(숫자 제약은 wire contract 가 대조하는 축이
-  // 아니다). 세 폼이 각자 자기 `min` prop 을 들고 있으므로 **폼당 하나씩** 세운다:
-  // 공용 Num 하나만 재면 어느 폼의 min 을 되돌려도 초록이라 아무것도 지키지 못한다.
-  //
-  // 0 을 고른 이유: 음수는 어차피 어떤 하한에도 걸리지만 **0 은 `min={0}` 을 그대로
-  // 통과**한다. 즉 0 만이 하한 1 과 0 을 구별하는 입력이다.
-  it('DepthPeakForm — 0 입력 후 blur 면 1 로', () => {
-    const onChange = vi.fn();
-    render(<DepthPeakForm params={{ lookback: 20, threshold_pct: 100 }} onChange={onChange} />);
-    const input = screen.getByLabelText('과거 peak 대비');
+  it.each([
+    ['peak', <DepthPeakForm params={{ lookback: 20, threshold_pct: 100 }} onChange={() => {}} />, '과거 peak 대비'],
+    ['period peak', <DepthPeakPeriodForm params={{ lookback: 5, period: 20, threshold_pct: 100 }} onChange={() => {}} />, '과거 peak 대비(%)'],
+    ['renewal', <DepthRenewalForm params={{ start_hhmm: 1200, threshold_pct: 100 }} onChange={() => {}} />, '이전 최대 대비'],
+  ])('%s: 0을 자동 보정하지 않고 하한 오류를 표시한다', (_, form, label) => {
+    render(form);
+    const input = screen.getByLabelText(label);
     fireEvent.change(input, { target: { value: '0' } });
-    expect(onChange).toHaveBeenLastCalledWith({ lookback: 20, threshold_pct: 0 });
-    fireEvent.blur(input, { target: { value: '0' } });
-    expect(onChange).toHaveBeenLastCalledWith({ lookback: 20, threshold_pct: 1 });
+    fireEvent.blur(input);
+    expect(input).toHaveValue('0');
+    expect(screen.getByRole('alert')).toHaveTextContent('1 이상으로 입력하세요.');
   });
 
-  it('DepthPeakPeriodForm — 0 입력 후 blur 면 1 로', () => {
+  it('상한은 두지 않는다', () => {
     const onChange = vi.fn();
-    render(<DepthPeakPeriodForm
-      params={{ lookback: 5, period: 20, threshold_pct: 100 }} onChange={onChange} />);
+    render(<DepthPeakPeriodForm params={{ lookback: 5, period: 20, threshold_pct: 100 }} onChange={onChange} />);
     const input = screen.getByLabelText('과거 peak 대비(%)');
-    fireEvent.change(input, { target: { value: '0' } });
-    expect(onChange).toHaveBeenLastCalledWith({ lookback: 5, period: 20, threshold_pct: 0 });
-    fireEvent.blur(input, { target: { value: '0' } });
-    expect(onChange).toHaveBeenLastCalledWith({ lookback: 5, period: 20, threshold_pct: 1 });
-  });
-
-  it('DepthRenewalForm — 0 입력 후 blur 면 1 로', () => {
-    const onChange = vi.fn();
-    render(<DepthRenewalForm
-      params={{ start_hhmm: 1200, threshold_pct: 100 }} onChange={onChange} />);
-    const input = screen.getByLabelText('이전 최대 대비');
-    fireEvent.change(input, { target: { value: '0' } });
-    expect(onChange).toHaveBeenLastCalledWith({ start_hhmm: 1200, threshold_pct: 0 });
-    fireEvent.blur(input, { target: { value: '0' } });
-    expect(onChange).toHaveBeenLastCalledWith({ start_hhmm: 1200, threshold_pct: 1 });
-  });
-
-  it('상한은 두지 않는다 — 백엔드에 없는 계약을 프론트가 발명하지 않는다', () => {
-    // `ge=1` 뿐이고 상한이 없다. 초과 돌파(150·300%)는 정상 사용이므로 `max` 를
-    // 넣으면 서버가 받는 값을 프론트가 조용히 깎는다.
-    const onChange = vi.fn();
-    render(<DepthPeakPeriodForm
-      params={{ lookback: 5, period: 20, threshold_pct: 100 }} onChange={onChange} />);
-    const input = screen.getByLabelText('과거 peak 대비(%)');
-    fireEvent.blur(input, { target: { value: '5000' } });
-    expect(onChange).not.toHaveBeenCalled();   // 클램프 없음 = onChange 호출 없음
+    fireEvent.change(input, { target: { value: '5000' } });
+    fireEvent.blur(input);
+    expect(onChange).toHaveBeenLastCalledWith({ lookback: 5, period: 20, threshold_pct: 5000 });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
 
@@ -122,10 +106,11 @@ describe('DepthRenewalForm', () => {
     expect(onChange).toHaveBeenCalledWith({ start_hhmm: 1200, threshold_pct: 120 });
   });
 
-  it('문턱을 비우면 100 으로 — undefined 가 서버로 가지 않는다', () => {
+  it('문턱을 비우면 빈칸을 유지하고 숫자 파라미터를 바꾸지 않는다', () => {
     const onChange = vi.fn();
     render(<DepthRenewalForm params={params} onChange={onChange} />);
     fireEvent.change(screen.getByLabelText('이전 최대 대비'), { target: { value: '' } });
-    expect(onChange).toHaveBeenCalledWith({ start_hhmm: 1200, threshold_pct: 100 });
+    expect(screen.getByLabelText('이전 최대 대비')).toHaveValue('');
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

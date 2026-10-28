@@ -27,7 +27,7 @@ describe('ConditionRow', () => {
     render(<ConditionRow leaf={initial} onChange={onChange} onRemove={vi.fn()} />);
     expect(screen.queryByRole('button', { name: /접기|펼치기/ })).not.toBeInTheDocument();
     const card = screen.getByRole('group', { name: `${name} 조건` });
-    const input = within(card).getAllByRole('spinbutton')[0];
+    const input = within(card).getAllByRole('textbox')[0];
     fireEvent.change(input, { target: { value: '17' } });
     expect(onChange).toHaveBeenLastCalledWith({ ...initial,
       params: { ...initial.params, [type === 'price_range' ? 'min'

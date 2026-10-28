@@ -68,7 +68,7 @@ test('all 20 compact editors stay editable through keyboard editing, reorder and
   await builder.getByRole('group', { name: '신고가 조건', exact: true }).screenshot({ path: testInfo.outputPath('condition-single-focus.png') });
   for (const label of labels) {
     const card = builder.getByRole('group', { name: `${label} 조건`, exact: true });
-    await expect(card.getByRole('spinbutton').first()).toBeVisible();
+    await expect(card.getByRole('textbox').first()).toBeVisible();
     await expect(card.getByRole('button', { name: /접기|펼치기/ })).toHaveCount(0);
   }
   await page.getByRole('button', { name: '조회', exact: true }).click();
@@ -161,4 +161,81 @@ test('all 20 compact editors stay editable through keyboard editing, reorder and
     await builder.screenshot({ path: testInfo.outputPath(`condition-editor-${theme}.png`) });
   }
   expect(errors).toEqual([]);
+});
+
+test('numeric drafts allow backspace and decimals while invalid fields block scan and save', async ({ page }) => {
+  await installLiveMocks(page);
+  const selected = conditions.filter(c => ['price', 'ma', 'bb-today', 'rate'].includes(c.id));
+  const saved = { id: 'numeric', name: '숫자 입력 검증', universe: {}, conditions: selected, created_at_ms: 1, updated_at_ms: 1 };
+  const scans: ScanRequest[] = [];
+  const writes: { conditions: ConditionLeaf[] }[] = [];
+  await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok', warnings: [] } }));
+  await page.route(apiExact('screener/saves'), route => route.fulfill({ json: { saves: [saved] } }));
+  await page.route(apiExact('screener/saves/numeric'), route => {
+    writes.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ...saved, ...writes.at(-1) } });
+  });
+  await page.route(apiExact('screener/scan'), route => {
+    scans.push(route.request().postDataJSON());
+    return route.fulfill({ json: { status: 'ok', warnings: [], rows: [], has_more: false } });
+  });
+  await page.goto('/screener');
+  const scan = page.getByRole('button', { name: '조회', exact: true });
+  const save = page.getByRole('button', { name: '저장', exact: true });
+  const period = page.getByLabel('이동평균 기간(봉)');
+  await expect(period).toHaveValue('20');
+  await period.click();
+  await period.press('End');
+  await period.press('Backspace');
+  await expect(period).toHaveValue('2');
+  await period.press('Backspace');
+  await expect(period).toHaveValue('');
+  await expect(scan).toBeDisabled();
+  await expect(save).toBeDisabled();
+  await expect(page.getByRole('button', { name: '다른 이름으로 저장' })).toBeDisabled();
+  await expect(page.getByText('값을 입력하세요.', { exact: true })).toHaveCount(0);
+  await period.press('Tab');
+  await expect(period).toHaveAccessibleDescription('값을 입력하세요.');
+  await period.fill('1001');
+  await period.press('Enter');
+  await expect(period).toHaveValue('1001');
+  await expect(period).toHaveAccessibleDescription('1000 이하로 입력하세요.');
+  await expect(scan).toBeDisabled();
+  expect(scans).toHaveLength(0);
+  expect(writes).toHaveLength(0);
+  await period.fill('60');
+  await expect(scan).toBeEnabled();
+
+  const multiplier = page.getByLabel('표준편차 배수');
+  await multiplier.fill('');
+  await multiplier.pressSequentially('2.');
+  await expect(multiplier).toHaveValue('2.');
+  await multiplier.pressSequentially('5');
+  await expect(multiplier).toHaveValue('2.5');
+  const rate = page.getByLabel('등락률 하한(%)');
+  await rate.fill('');
+  await rate.pressSequentially('-');
+  await expect(rate).toHaveValue('-');
+  await expect(scan).toBeDisabled();
+  await rate.pressSequentially('0.5');
+  await expect(rate).toHaveValue('-0.5');
+  await rate.press('Tab');
+  await page.getByLabel('최저가(원)').fill('');
+  await page.getByLabel('최고가(원)').fill('');
+  await page.getByLabel('최고가(원)').press('Tab');
+  await expect(page.getByText('최저가 또는 최고가를 입력하세요.')).toBeVisible();
+  await expect(scan).toBeDisabled();
+  await expect(save).toBeDisabled();
+  await page.getByLabel('최고가(원)').fill('50000');
+  await expect(scan).toBeEnabled();
+  await expect(save).toBeEnabled();
+  await scan.click();
+  await expect.poll(() => scans.length).toBe(1);
+  const expected = selected.map(c => c.type === 'ma' ? { ...c, params: { ...c.params, period: 60 } }
+    : c.type === 'bollinger_breakout_today' ? { ...c, params: { ...c.params, multiplier: 2.5 } }
+      : c.type === 'change_pct' ? { ...c, params: { ...c.params, lo: -0.5 } }
+        : { ...c, params: { max: 50000 } });
+  expect(scans[0].conditions).toEqual(expected);
+  await save.click();
+  await expect.poll(() => writes.at(-1)?.conditions).toEqual(expected);
 });

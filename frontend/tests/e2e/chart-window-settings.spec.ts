@@ -360,6 +360,30 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   await expectPriceScale(page, 'a', true, true);
 });
 
+test('모든 차트를 닫고 새로고침해도 새 차트는 마지막 편집한 봉과 표시 설정을 복원한다', async ({ page }) => {
+  await setup(page);
+  await scaleFixtures(page);
+  await page.goto('/live');
+  const settings = await open(page, 'a');
+  await settings.getByRole('switch', { name: '로그 스케일', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page.locator('[data-win="a"]').getByTestId('chart-window-header').getByRole('button', { name: '일', exact: true }).click();
+  for (const id of ['a', 'b']) {
+    await page.locator(`[data-win="${id}"]`).getByRole('button', { name: /창 닫기$/ }).click();
+  }
+  await expect(page.locator('.live-window-chart')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.live-window-chart')).toHaveCount(0);
+  await page.getByTestId('workspace-add-menu-button').click();
+  await page.getByTestId('workspace-add-chart').click();
+  const added = page.locator('.live-window-chart');
+  const id = (await added.getAttribute('data-win'))!;
+  await expect(added.getByTestId('chart-window-header').getByRole('button', { name: '일', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expectPriceScale(page, id, true, false);
+  const restored = await open(page, id);
+  await expect(restored.getByRole('switch', { name: '로그 스케일', exact: true })).toHaveAttribute('aria-checked', 'true');
+});
+
 test('워크스페이스 메뉴 저장·다른 배치 적용·복원에 차트별 설정이 포함된다', async ({ page }, info) => {
   await setup(page);
   const presets: LiveLayoutPreset[] = [];

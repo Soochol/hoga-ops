@@ -25,7 +25,7 @@ export function TradeValuePeriodForm({ params, onChange }: {
     <ConditionFields>
       {historical ? <HistoryDateRangeFields label="거래대금" start={params.start_date} end={params.end_date}
         onChange={dates => onChange({ ...params, ...dates })} /> : <>
-        <Num label="최근" ariaLabel="최근 기간(봉)" suffix="봉 이내" min={1} max={1000}
+        <Num label="최근" ariaLabel="최근 기간(봉)" suffix="봉 이내" step={1} min={1} max={1000}
           value={params.lookback} onChange={n => onChange({ ...params, lookback: n ?? 1 })} />
       </>}
       {!historical && <Num label="최소" ariaLabel="최소 거래대금(억)" suffix="억 원" min={0}
