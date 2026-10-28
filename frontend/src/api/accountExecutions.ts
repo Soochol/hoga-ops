@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { apiCall } from './client';
+import { fetchAccountExecutionPage, useHistoricalExecutionPages } from './accountExecutionPages';
 import type { TradingSide } from './trading';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 
@@ -41,12 +41,7 @@ function useExecutionPages(account: string, code: string, dates: readonly string
     initialPageParam: { index: 0, cursor: null } as Page,
     queryFn: async ({ pageParam, signal }) => {
       const date = dates[pageParam.index];
-      const params = new URLSearchParams({ account_ref: account, code, date, venue });
-      if (pageParam.cursor) params.set('cursor', pageParam.cursor);
-      const page = await apiCall<AccountExecutions>(`/api/trading/v2/executions?${params}`, { signal });
-      if (page.account_ref !== account || page.code !== code || page.date !== date || page.price_venue !== venue
-        || (page.next_cursor && page.next_cursor === pageParam.cursor)) throw new Error('체결 조회 응답을 확인할 수 없습니다.');
-      return page;
+      return fetchAccountExecutionPage(account, code, date, venue, pageParam.cursor, signal);
     },
     getNextPageParam: (last, _pages, param) => !last.supported ? undefined : last.next_cursor
       ? { index: param.index, cursor: last.next_cursor }
@@ -67,11 +62,11 @@ function useExecutionPages(account: string, code: string, dates: readonly string
 /** Today refreshes independently; polling must not re-read every historical trading day. */
 export function useAccountExecutions(account: string, code: string, dates: readonly string[], enabled: boolean, venue: string) {
   const today = todayKstYyyymmdd();
-  const pastDates = useMemo(() => dates.filter(date => date < today), [dates, today]);
+  const pastDates = useMemo(() => [...new Set(dates)].filter(date => date < today).sort().reverse(), [dates, today]);
   const currentDates = useMemo(() => dates.includes(today) ? [today] : [], [dates, today]);
   const current = useExecutionPages(account, code, currentDates, enabled, true, venue);
-  const past = useExecutionPages(account, code, pastDates, enabled, false, venue);
-  const pages = useMemo(() => [...(current.data?.pages ?? []), ...(past.data?.pages ?? [])], [current.data, past.data]);
+  const past = useHistoricalExecutionPages(account, code, pastDates, enabled, venue);
+  const pages = useMemo(() => [...(current.data?.pages ?? []), ...past.pages], [current.data, past.pages]);
   const rows = useMemo(() => {
     const unique = new Map<string, AccountExecution>();
     for (const page of pages) for (const row of page.rows) if (row.code === code) {
@@ -89,12 +84,12 @@ export function useAccountExecutions(account: string, code: string, dates: reado
   return {
     rows,
     rawCloses,
-    loading: current.isFetching || past.isFetching,
+    loading: current.isFetching || past.loading,
     error: current.error ?? past.error,
     message: pages.find(page => page.message)?.message,
-    pending: (currentDates.length > 0 && !current.data) || (pastDates.length > 0 && !past.data),
-    more: current.hasNextPage || past.hasNextPage,
-    retry: () => { if (enabled && currentDates.length) void current.refetch(); if (enabled && pastDates.length) void past.refetch(); },
-    loadMore: () => { if (current.hasNextPage) void current.fetchNextPage(); if (past.hasNextPage) void past.fetchNextPage(); },
+    pending: (currentDates.length > 0 && !current.data) || past.pending,
+    more: current.hasNextPage || past.more,
+    retry: () => { if (enabled && currentDates.length && current.error) void current.refetch(); past.retry(); },
+    loadMore: () => { if (enabled && current.hasNextPage) void current.fetchNextPage(); past.loadMore(); },
   };
 }

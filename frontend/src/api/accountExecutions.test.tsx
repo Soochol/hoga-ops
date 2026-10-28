@@ -89,3 +89,137 @@ it('keeps the newest Toss order summary across overlapping pages and refreshes i
   expect(result.current.rows).toHaveLength(1);
   expect(result.current.rows[0]).toMatchObject({ quantity: '40', price: '101.125', t_ms: 400 });
 });
+
+const requestedDates = () => mock.call.mock.calls.map(([path]) => new URL(String(path), 'http://fixture').searchParams.get('date'));
+
+it('reuses overlapping and empty historical dates after panning, returning, unmounting and the old five-minute TTL', async () => {
+  mock.call.mockImplementation(async (path: string) => page(path));
+  const { result, rerender, unmount } = renderHook(({ dates }) => useAccountExecutions(account, '005930', dates, true, 'KRX'),
+    { wrapper, initialProps: { dates: ['20261027', '20261026'] } });
+  await advance(); await advance();
+  expect(result.current.pending).toBe(false);
+  rerender({ dates: ['20261026', '20261025'] }); await advance(); await advance();
+  expect(requestedDates()).toEqual(['20261027', '20261026', '20261025']);
+  await act(async () => { await vi.advanceTimersByTimeAsync(6 * 60_000); });
+  rerender({ dates: ['20261027', '20261026'] }); await advance();
+  expect(result.current.rawCloses).toEqual({ '20261027': 100, '20261026': 100 });
+  expect(mock.call).toHaveBeenCalledTimes(3);
+  unmount();
+  renderHook(() => useAccountExecutions(account, '005930', ['20261027'], true, 'KRX'), { wrapper });
+  await advance(); expect(mock.call).toHaveBeenCalledTimes(3);
+});
+
+it('shares dates across windows while isolating accounts, stocks and price venues', async () => {
+  mock.call.mockImplementation(async (path: string) => page(path));
+  renderHook(() => useAccountExecutions(account, '005930', ['20261027'], true, 'KRX'), { wrapper });
+  const { rerender } = renderHook(({ ref, code, venue }) => useAccountExecutions(ref, code, ['20261027'], true, venue),
+    { wrapper, initialProps: { ref: account, code: '005930', venue: 'KRX' } });
+  await advance(); expect(mock.call).toHaveBeenCalledOnce();
+  rerender({ ref: account, code: '005930', venue: 'NXT' }); await advance();
+  rerender({ ref: account, code: '000660', venue: 'NXT' }); await advance();
+  rerender({ ref: `acc_${'b'.repeat(32)}`, code: '000660', venue: 'NXT' }); await advance();
+  expect(mock.call).toHaveBeenCalledTimes(4);
+  rerender({ ref: account, code: '005930', venue: 'KRX' }); await advance();
+  expect(mock.call).toHaveBeenCalledTimes(4);
+});
+
+it('aborts an unfinished page on leaving the range and resumes without rereading completed pages', async () => {
+  let aborted: AbortSignal | undefined, secondAttempts = 0;
+  mock.call.mockImplementation(async (path: string, { signal }: { signal: AbortSignal }) => {
+    if (!new URL(path, 'http://fixture').searchParams.has('cursor')) return page(path, 'second');
+    if (++secondAttempts > 1) return page(path);
+    aborted = signal;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+  });
+  const { result, rerender } = renderHook(({ dates }) => useAccountExecutions(account, '005930', dates, true, 'KRX'),
+    { wrapper, initialProps: { dates: ['20261027'] } });
+  await advance(); await advance();
+  expect(mock.call).toHaveBeenCalledTimes(2);
+  rerender({ dates: [] }); await advance();
+  expect(aborted?.aborted).toBe(true);
+  rerender({ dates: ['20261027'] }); await advance(); await advance();
+  expect(result.current.error).toBeNull(); expect(result.current.more).toBe(false);
+  expect(mock.call).toHaveBeenCalledTimes(3);
+  expect(mock.call.mock.calls.filter(([path]) => !String(path).includes('cursor='))).toHaveLength(1);
+});
+
+it('does not mark a failed historical page complete and retries only that page', async () => {
+  let fail = true;
+  mock.call.mockImplementation(async (path: string) => {
+    if (!new URL(path, 'http://fixture').searchParams.has('cursor')) return page(path, 'second');
+    if (fail) { fail = false; throw new Error('failed page'); }
+    return page(path);
+  });
+  const { result } = renderHook(() => useAccountExecutions(account, '005930', ['20261027'], true, 'KRX'), { wrapper });
+  await advance(); await advance();
+  expect(result.current.error).toBeTruthy(); expect(result.current.more).toBe(true);
+  act(() => result.current.retry()); await advance(); await advance();
+  expect(result.current.error).toBeNull(); expect(result.current.more).toBe(false);
+  expect(mock.call).toHaveBeenCalledTimes(3);
+});
+
+it('restarts only the affected date when a stored continuation expires after server restart', async () => {
+  let roots = 0;
+  mock.call.mockImplementation(async (path: string) => {
+    const p = new URL(path, 'http://fixture').searchParams;
+    if (p.get('date') === '20261027') return page(path);
+    if (!p.has('cursor')) return page(path, ++roots === 1 ? 'expired' : 'fresh');
+    if (p.get('cursor') === 'expired') throw Object.assign(new Error('expired'), { code: 'execution-cursor-expired' });
+    return page(path);
+  });
+  const { result } = renderHook(() => useAccountExecutions(account, '005930', ['20261027', '20261026'], true, 'KRX'), { wrapper });
+  await advance(); await advance(); await advance();
+  expect(result.current.error).toBeTruthy();
+  act(() => result.current.retry()); await advance(); await advance(); await advance();
+  expect(result.current.error).toBeNull(); expect(result.current.more).toBe(false);
+  expect(roots).toBe(2);
+  expect(requestedDates().filter(date => date === '20261027')).toHaveLength(1);
+});
+
+it('retains the 128-page automatic budget and continues only missing pages after More', async () => {
+  mock.call.mockImplementation(async (path: string) => {
+    const index = Number(new URL(path, 'http://fixture').searchParams.get('cursor') ?? '0');
+    return page(path, index < 130 ? String(index + 1) : null);
+  });
+  const { result } = renderHook(() => useAccountExecutions(account, '005930', ['20261027'], true, 'KRX'), { wrapper });
+  renderHook(() => useAccountExecutions(account, '005930', ['20261027'], true, 'KRX'), { wrapper });
+  for (let i = 0; i < 130; i++) await advance();
+  expect(mock.call).toHaveBeenCalledTimes(128);
+  expect(result.current.more).toBe(true); expect(result.current.pending).toBe(false);
+  act(() => result.current.loadMore()); await advance(); await advance(); await advance(); await advance();
+  expect(mock.call).toHaveBeenCalledTimes(131); expect(result.current.more).toBe(false);
+});
+
+it('polls only the visible current day while past navigation reuses completed dates', async () => {
+  mock.call.mockImplementation(async (path: string) => page(path));
+  const { rerender } = renderHook(({ dates }) => useAccountExecutions(account, '005930', dates, true, 'KRX'),
+    { wrapper, initialProps: { dates: ['20261028', '20261027'] } });
+  await advance(); await advance();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); }); await advance();
+  expect(requestedDates().filter(date => date === '20261028')).toHaveLength(2);
+  expect(requestedDates().filter(date => date === '20261027')).toHaveLength(1);
+  rerender({ dates: ['20261027', '20261026'] }); await advance(); await advance();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); }); await advance();
+  expect(requestedDates()).toEqual(['20261028', '20261027', '20261028', '20261026']);
+});
+
+it('rejects a continuation cycle instead of caching an incomplete date as finished', async () => {
+  mock.call.mockImplementation(async (path: string) => {
+    const cursor = new URL(path, 'http://fixture').searchParams.get('cursor');
+    return page(path, cursor === 'first' ? 'second' : 'first');
+  });
+  const { result } = renderHook(() => useAccountExecutions(account, '005930', ['20261027'], true, 'KRX'), { wrapper });
+  await advance(); await advance(); await advance();
+  expect(result.current.error).toBeTruthy(); expect(mock.call).toHaveBeenCalledTimes(3);
+});
+
+it('takes a closing-day snapshot after KST midnight before retaining yesterday as history', async () => {
+  mock.call.mockImplementation(async (path: string) => page(path));
+  const { rerender } = renderHook(() => useAccountExecutions(account, '005930', ['20261028'], true, 'KRX'), { wrapper });
+  await advance(); expect(mock.call).toHaveBeenCalledOnce();
+  vi.setSystemTime(new Date('2026-10-29T00:01:00+09:00'));
+  rerender(); await advance(); await advance();
+  expect(requestedDates()).toEqual(['20261028', '20261028']);
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); }); await advance();
+  expect(mock.call).toHaveBeenCalledTimes(2);
+});

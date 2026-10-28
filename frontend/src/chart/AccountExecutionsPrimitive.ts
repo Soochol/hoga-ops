@@ -18,7 +18,21 @@ export class AccountExecutionsPrimitive implements ISeriesPrimitive<Time> {
   detached() { this.attachedTo = null; this.hits = []; }
   paneViews() { return [this.view]; }
   updateAllViews() { /* Resolve coordinates during paint, never in a React scroll handler. */ }
-  setMarkers(points: readonly ExecutionMarker[]) { this.points = points; this.hits = []; this.attachedTo?.requestUpdate(); }
+  setMarkers(points: readonly ExecutionMarker[]) {
+    const samePositions = points.length === this.points.length && points.every((point, index) => {
+      const previous = this.points[index];
+      return point.time === previous.time && point.price === previous.price && point.side === previous.side;
+    });
+    if (samePositions) {
+      // An empty page can refresh details without moving any painted glyph.
+      const replacements = new Map(this.points.map((point, index) => [point, points[index]]));
+      this.hits = this.hits.map(hit => ({ ...hit, marker: replacements.get(hit.marker)! }));
+    } else {
+      this.hits = [];
+    }
+    this.points = points;
+    this.attachedTo?.requestUpdate();
+  }
   detailAt(x: number, y: number): ExecutionMarker | null {
     let nearest: PlottedExecution | undefined, distance = Infinity;
     for (const point of this.hits) {
