@@ -89,9 +89,9 @@ describe('호가 주문', () => {
     expect(root).not.toHaveClass('order-price-separators');
     expect(container.querySelectorAll('.book-price-percent')).toHaveLength(20);
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    expect(screen.getByRole('switch', { name: '호가 가격 구분선' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: '호가·잔량 구분선' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('switch', { name: '호가 등락률 표시' })).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(screen.getByRole('switch', { name: '호가 가격 구분선' }));
+    fireEvent.click(screen.getByRole('switch', { name: '호가·잔량 구분선' }));
     fireEvent.click(screen.getByRole('switch', { name: '호가 등락률 표시' }));
     expect(root).toHaveClass('order-price-separators', 'order-hide-percent');
     expect(container.querySelectorAll('.book-price-percent')).toHaveLength(0);
@@ -1203,7 +1203,7 @@ describe('호가 주문', () => {
     [67200, 'text-price-up', '120,000'],
     [65700, 'text-price-down', '-30,000'],
     [66000, 'text-fg', '0'],
-    [null, 'text-fg', '—'],
+    [null, 'text-fg', ''],
   ] as const)('평가수익은 현재가 %s에서 수익·손실·중립 색을 적용한다', (price, color, value) => {
     mock.quotePrice = price;
     show();
@@ -1232,14 +1232,14 @@ describe('호가 주문', () => {
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
     expect(mock.command.mock.calls[0][1]).toMatchObject({ price: 67200, quantity: 74 });
   });
-  it('미보유는 보유 0과 평단가·평가손익 없음으로 표시하며 클릭하면 주문수량을 0으로 바꾼다', () => {
+  it('미보유는 수량·평단가·평가손익을 비우고 클릭하면 주문수량을 0으로 바꾼다', () => {
     mock.holdingQuantity = '0'; mock.sellableQuantity = '0'; show();
-    expect(screen.getByLabelText('매입수량')).toHaveTextContent('0');
+    expect(screen.getByLabelText('매입수량').querySelector('.order-field-value')).toBeEmptyDOMElement();
     expect(screen.getByLabelText('매입수량')).toBeEnabled();
     fireEvent.click(screen.getByLabelText('매입수량'));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(0);
-    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('—');
-    expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('—');
+    expect(screen.getByLabelText('매입평단가').querySelector('.order-field-value')).toBeEmptyDOMElement();
+    expect(screen.getByLabelText('보유 종목 평가 수익').querySelector('.order-field-value')).toBeEmptyDOMElement();
     expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).not.toHaveAttribute('title');
     expect(mock.command).not.toHaveBeenCalled();
@@ -1461,7 +1461,7 @@ describe('호가 주문', () => {
   it('가격이나 유효 수량이 없으면 예상 금액을 계산하지 않고 잘못된 수량은 전송하지 않는다', () => {
     mock.quotePrice = null; show();
     expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('—');
-    expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('—');
+    expect(screen.getByLabelText('보유 종목 평가 수익').querySelector('.order-field-value')).toBeEmptyDOMElement();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '1.5' } });
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     expect(mock.command).not.toHaveBeenCalled();

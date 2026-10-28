@@ -559,6 +559,7 @@ export function resolveIndicatorModalPrefs(
 
 import { useContext, useMemo } from 'react';
 import { create } from 'zustand';
+import { notifyChartPreferenceEdit } from './windowPreferenceMemory';
 import {
   profileKeyForTimeframe,
   type IndicatorPaneProfileKey,
@@ -672,6 +673,7 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
       patch[key] = value;
     }
     set(patch as Partial<ChartPrefsStore>);
+    notifyChartPreferenceEdit({ windowKey: scope.windowKey });
   };
 
   /** ambient 봉 기준 쓰기 — Provider 밖(⚙️ 설정 시트) 호출자용. */
@@ -725,6 +727,7 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
         const buckets = { ...s.indicatorModalByWindow[windowKey] };
         delete buckets[profileKey];
         set({ indicatorModalByWindow: { ...s.indicatorModalByWindow, [windowKey]: buckets } });
+        notifyChartPreferenceEdit({ windowKey });
         return;
       }
       const byTimeframe = { ...s.indicatorModalByTimeframe };

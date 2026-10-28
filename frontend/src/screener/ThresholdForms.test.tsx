@@ -25,7 +25,7 @@ it('preserves amount/timeframe/open policy when switching recent/date modes', ()
   expect(screen.getByLabelText('거래대금 발생 시작일')).toHaveValue('2026-07-01');
   fireEvent.change(screen.getByRole('combobox', { name: '거래대금 검색 기간' }), { target: { value: 'recent' } });
   expect(screen.getByRole('combobox', { name: '봉 주기' })).toHaveValue('M');
-  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue(123);
+  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('123');
   expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
 });

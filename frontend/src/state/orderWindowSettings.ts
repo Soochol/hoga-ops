@@ -1,3 +1,5 @@
+import { persistJson, readJsonObject } from './persist';
+
 export type OrderInputUnit = 'quantity' | 'amount';
 export type OrderPresets = [number, number, number];
 export interface OrderWindowSettings {
@@ -22,6 +24,20 @@ export const DEFAULT_ORDER_SETTINGS: OrderWindowSettings = {
   showPriceSeparators: false, showPriceChangePercent: true,
   orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false,
 };
+
+const LAST_ORDER_SETTINGS_KEY = 'hoga.order.settings.last.v1';
+
+/** Read on creation, so another tab's latest edit can seed a new window without
+ * changing any existing window. Only preferences, never live order inputs. */
+export function readLastOrderSettings(): OrderWindowSettings | null {
+  const stored = readJsonObject(LAST_ORDER_SETTINGS_KEY);
+  return stored.schema_version === 1 && stored.settings && typeof stored.settings === 'object'
+    && !Array.isArray(stored.settings) ? normalizeOrderSettings(stored.settings) : null;
+}
+
+export function rememberLastOrderSettings(settings: OrderWindowSettings): void {
+  persistJson(LAST_ORDER_SETTINGS_KEY, { schema_version: 1, settings: normalizeOrderSettings(settings) });
+}
 
 export const validOrderInput = (value: number, unit: OrderInputUnit) => Number.isSafeInteger(value)
   && value >= 1 && value <= (unit === 'quantity' ? MAX_ORDER_QUANTITY : MAX_AMOUNT_MILLIONS);

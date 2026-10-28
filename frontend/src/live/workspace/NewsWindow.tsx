@@ -12,13 +12,22 @@ function relation(item: StockNewsItem, code: string, name: string) {
   return '조회 결과';
 }
 
-export function NewsWindow({ code, name }: { code: string; name: string }) {
+export function NewsWindow({ code, name, linkedOnly: savedLinkedOnly, onLinkedOnlyChange }: {
+  code: string; name: string; linkedOnly?: boolean; onLinkedOnlyChange?: (value: boolean) => void;
+}) {
   const [date, setDate] = useState('');
+  const [localLinkedOnly, setLocalLinkedOnly] = useState(true);
+  const linkedOnly = savedLinkedOnly ?? localLinkedOnly;
+  const changeLinkedOnly = (value: boolean) => {
+    setLocalLinkedOnly(value);
+    onLinkedOnlyChange?.(value);
+  };
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg-card text-fg" data-testid="stock-news-window"
       style={{ colorScheme: 'var(--color-scheme)' }}>
       <NewsList key={`${code}:${date}`} code={code} name={name} date={date.replaceAll('-', '') || null}
+        linkedOnly={linkedOnly} onLinkedOnlyChange={changeLinkedOnly}
         dateControls={<>
         <button type="button" aria-pressed={!date} onClick={() => setDate('')}
           className={`rounded px-2 py-1 text-sm ${!date ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-subtle'}`}>
@@ -26,7 +35,7 @@ export function NewsWindow({ code, name }: { code: string; name: string }) {
         </button>
         <label className="flex min-w-0 items-center gap-1 text-sm text-fg-dim">
           날짜
-          <input type="date" aria-label="뉴스 날짜" value={date} max={today}
+          <input type="date" aria-label="뉴스 날짜" value={date || today} max={today}
             onChange={(event) => setDate(event.target.value)}
             className="ui-field" />
         </label>
@@ -35,10 +44,12 @@ export function NewsWindow({ code, name }: { code: string; name: string }) {
   );
 }
 
-function NewsList({ code, name, date, dateControls }: { code: string; name: string; date: string | null; dateControls: ReactNode }) {
+function NewsList({ code, name, date, dateControls, linkedOnly, onLinkedOnlyChange }: {
+  code: string; name: string; date: string | null; dateControls: ReactNode;
+  linkedOnly: boolean; onLinkedOnlyChange: (value: boolean) => void;
+}) {
   const query = useStockNews(code, date);
   const [snapshot, setSnapshot] = useState<StockNewsResponse | null>(null);
-  const [linkedOnly, setLinkedOnly] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   // 첫 결과(실패 시 보존된 기사 포함)만 수용한다. 이후 배치는 읽던 목록을 밀지 않는다.
   if (!snapshot && query.data && (query.data.status === 'ok' || query.data.items.length > 0)) setSnapshot(query.data);
@@ -62,7 +73,7 @@ function NewsList({ code, name, date, dateControls }: { code: string; name: stri
     <>
       <ResponsiveDataControls label="뉴스 설정" secondary={<>
         <label className="flex items-center gap-1 text-fg-dim" data-tooltip="응답의 종목코드 또는 제목의 종목명이 일치하는 기사만 표시합니다. 기사 내용의 관련성을 보장하지는 않습니다.">
-          <input type="checkbox" checked={linkedOnly} onChange={(event) => setLinkedOnly(event.target.checked)} />
+          <input type="checkbox" checked={linkedOnly} onChange={(event) => onLinkedOnlyChange(event.target.checked)} />
           종목 연결만
           <span className="text-fg-dim">{shown.length}건</span>
         </label>

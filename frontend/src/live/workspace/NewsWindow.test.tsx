@@ -43,6 +43,21 @@ it('구분된 연결 정보·전체 제목을 읽기 목록으로 제공하고 �
   expect(screen.queryByText(/제공 종목코드:/)).not.toBeInTheDocument();
 });
 
+it('날짜·종목을 바꿔도 표시 필터를 유지하고 새 창은 저장된 필터와 최신 날짜로 시작한다', () => {
+  const changed = vi.fn();
+  const view = render(<NewsWindow code="005930" name="삼성전자" onLinkedOnlyChange={changed} />);
+  fireEvent.click(screen.getByRole('checkbox', { name: /종목 연결만/ }));
+  expect(changed).toHaveBeenLastCalledWith(false);
+  fireEvent.change(screen.getByLabelText('뉴스 날짜'), { target: { value: '2026-10-07' } });
+  expect(screen.getByRole('checkbox', { name: /종목 연결만/ })).not.toBeChecked();
+  view.rerender(<NewsWindow key="new-code" code="000660" name="SK하이닉스" linkedOnly={false} />);
+  expect(screen.getByRole('checkbox', { name: /종목 연결만/ })).not.toBeChecked();
+  expect(screen.getByRole('button', { name: '최신' })).toHaveAttribute('aria-pressed', 'true');
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+  expect(screen.getByLabelText('뉴스 날짜')).toHaveValue(today);
+  expect(hook).toHaveBeenLastCalledWith('000660', null);
+});
+
 it('갱신된 뉴스는 읽던 목록을 밀지 않고 수동 반영한다', () => {
   const view = render(<NewsWindow code="005930" name="삼성전자" />);
   const list = screen.getByLabelText('삼성전자 뉴스 목록');

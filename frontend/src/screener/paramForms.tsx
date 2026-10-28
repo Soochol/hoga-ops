@@ -3,37 +3,11 @@ import type { BreakoutParams, DepthPeakParams, DepthPeakPeriodParams, DepthRenew
 import { CandleSettings } from './CandleSettings';
 import { ConditionFields } from './ConditionControls';
 import { RENEWAL_MIN_HHMM, RENEWAL_MAX_HHMM, hhmmToTimeValue, timeValueToHhmm } from './paramFormsHelpers';
+import { Num } from './Num';
+export { Num } from './Num';
 
 export function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="text-2xs font-semibold uppercase text-fg-dim">{children}</div>;
-}
-
-export function Num({ value, onChange, label, ariaLabel, suffix, placeholder, min, max, step }: {
-  value: number | undefined; onChange: (n: number | undefined) => void;
-  label?: string; ariaLabel?: string; suffix?: string; placeholder?: string; min?: number; max?: number; step?: number;
-}) {
-  // Keep typing unrestricted; clamp only on blur. These bounds mirror the server.
-  const commit = (raw: string) => {
-    if (raw === '') { onChange(undefined); return; }
-    const n = Number(raw);
-    onChange(Number.isFinite(n) ? n : undefined);
-  };
-  const clampOnBlur = (raw: string) => {
-    if (raw === '') return;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return;
-    const c = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n));
-    if (c !== n) onChange(c);
-  };
-  return <label className="condition-field">
-    <span className="condition-field-label">{label ?? ariaLabel}</span>
-    <span className="condition-input-wrap">
-      <input type="number" inputMode="decimal" aria-label={ariaLabel ?? label} min={min} max={max} step={step}
-        value={value ?? ''} placeholder={placeholder} onChange={e => commit(e.target.value)}
-        onBlur={e => clampOnBlur(e.target.value)} className="font-data" />
-      {suffix && <span className="condition-unit">{suffix}</span>}
-    </span>
-  </label>;
 }
 
 export { Select } from './Select';
@@ -41,9 +15,9 @@ export { Select } from './Select';
 export function BreakoutForm({ params, onChange }: { params: BreakoutParams; onChange: (p: BreakoutParams) => void }) {
   return <CandleSettings params={params} onChange={patch => onChange({ ...params, ...patch })}>
     <ConditionFields>
-      <Num label="최근" ariaLabel="최근 기간(봉)" suffix="봉 이내" min={1} max={1000}
+      <Num label="최근" ariaLabel="최근 기간(봉)" suffix="봉 이내" step={1} min={1} max={1000}
         value={params.lookback} onChange={n => onChange({ ...params, lookback: n ?? 1 })} />
-      <Num label="비교" ariaLabel="신고 기준 기간(봉)" suffix="봉" min={1} max={1000}
+      <Num label="비교" ariaLabel="신고 기준 기간(봉)" suffix="봉" step={1} min={1} max={1000}
         value={params.period} onChange={n => onChange({ ...params, period: n ?? 1 })} />
     </ConditionFields>
   </CandleSettings>;
@@ -51,7 +25,7 @@ export function BreakoutForm({ params, onChange }: { params: BreakoutParams; onC
 
 export function PeriodForm({ params, onChange }: { params: PeriodParams; onChange: (p: PeriodParams) => void }) {
   return <CandleSettings params={params} onChange={patch => onChange({ ...params, ...patch })}>
-    <Num label="신고" ariaLabel="신고 기준 기간(봉)" suffix="봉" min={1} max={1000}
+    <Num label="신고" ariaLabel="신고 기준 기간(봉)" suffix="봉" step={1} min={1} max={1000}
       value={params.period} onChange={n => onChange({ ...params, period: n ?? 1 })} />
   </CandleSettings>;
 }
@@ -59,7 +33,7 @@ export function PeriodForm({ params, onChange }: { params: PeriodParams; onChang
 export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; onChange: (p: DepthPeakParams) => void }) {
   return <div className="condition-form">
     <ConditionFields>
-      <Num label="과거" ariaLabel="비교 기간(일)" suffix="거래일" min={1} max={1000}
+      <Num label="과거" ariaLabel="비교 기간(일)" suffix="거래일" step={1} min={1} max={1000}
         value={params.lookback} onChange={n => onChange({ ...params, lookback: n ?? 1 })} />
       <Num label="대비" ariaLabel="과거 peak 대비" suffix="% 이상" min={1}
         value={params.threshold_pct} onChange={n => onChange({ ...params, threshold_pct: n ?? 100 })} />
@@ -70,9 +44,9 @@ export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; o
 export function DepthPeakPeriodForm({ params, onChange }: { params: DepthPeakPeriodParams; onChange: (p: DepthPeakPeriodParams) => void }) {
   return <div className="condition-form">
     <ConditionFields>
-      <Num label="최근" ariaLabel="최근 기간(일)" suffix="거래일 이내" min={1} max={1000}
+      <Num label="최근" ariaLabel="최근 기간(일)" suffix="거래일 이내" step={1} min={1} max={1000}
         value={params.lookback} onChange={n => onChange({ ...params, lookback: n ?? 1 })} />
-      <Num label="과거" ariaLabel="비교 기간(일)" suffix="거래일" min={1} max={1000}
+      <Num label="과거" ariaLabel="비교 기간(일)" suffix="거래일" step={1} min={1} max={1000}
         value={params.period} onChange={n => onChange({ ...params, period: n ?? 1 })} />
     </ConditionFields>
     <Num label="대비" ariaLabel="과거 peak 대비(%)" suffix="% 이상" min={1}

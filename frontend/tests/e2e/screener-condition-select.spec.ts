@@ -20,7 +20,7 @@ test('saved-condition popup stays open and protects edits in page and rail workf
   await page.goto('/screener');
   const builder = page.getByTestId('screener-builder-pane');
   const trigger = builder.getByRole('button', { name: '저장한 조건검색 선택' });
-  const input = builder.getByRole('spinbutton', { name: '최소 거래대금(억)' });
+  const input = builder.getByRole('textbox', { name: '최소 거래대금(억)' });
   await expect(trigger).toHaveText('신고가, 거래대금⌄');
   await trigger.click();
   const search = page.getByRole('combobox', { name: '조건검색 이름 검색' });

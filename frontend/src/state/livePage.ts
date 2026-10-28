@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { notifyChartPreferenceEdit } from './windowPreferenceMemory';
 import { TIMEFRAME_TO_MS } from '../api/types';
 import type { MASource } from '../chart/projectors/movingAverage';
 import type { LineStyle, PaneId } from '../chart/drawing/types';
@@ -720,6 +721,7 @@ export const useLivePageStore = create<Store>((set, get) => {
     }
     set(next as Partial<Store>);
     persistIndicators();
+    notifyChartPreferenceEdit({ windowKey: scope.windowKey });
   };
 
   /** Provider 밖(전역 경로) 스코프 — 앱 세트의 ambient 봉. */
@@ -971,6 +973,7 @@ export const useLivePageStore = create<Store>((set, get) => {
       next.indicatorUndoToast = null;
       set(next as Partial<Store>);
       persistIndicators();
+      notifyChartPreferenceEdit({ windowKey: scope.windowKey });
     },
 
     resetIndicators: () => {

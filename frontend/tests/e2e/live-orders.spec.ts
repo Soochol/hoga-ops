@@ -2253,7 +2253,7 @@ test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고
   const settings = orderSettingsButton(first);
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
   await settings.click();
-  const separators = dialog.getByRole('switch', { name: '호가 가격 구분선', exact: true });
+  const separators = dialog.getByRole('switch', { name: '호가·잔량 구분선', exact: true });
   const percent = dialog.getByRole('switch', { name: '호가 등락률 표시', exact: true });
   await expect(separators).toHaveAttribute('aria-checked', 'false');
   await expect(percent).toHaveAttribute('aria-checked', 'true');
@@ -2265,13 +2265,31 @@ test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고
   await expect(first.locator('[data-order-price="67200"]')).toHaveCSS('height', '24px');
   expect((await price.boundingBox())!.width).toBeLessThan(originalWidth - 20);
   await expect(price).toHaveCSS('box-shadow', /inset/);
+  for (const level of [67200, 67300]) {
+    const row = first.locator(`[data-order-price="${level}"]`);
+    const depth = row.locator('.order-depth');
+    await expect(depth).toHaveCSS('box-shadow', /inset/);
+    const priceBounds = (await row.locator('.order-price').boundingBox())!;
+    const depthBounds = (await depth.boundingBox())!;
+    expect(depthBounds.y + depthBounds.height).toBeCloseTo(priceBounds.y + priceBounds.height, 1);
+    await expect(depth.locator('.order-depth-qty')).toBeVisible();
+  }
   await expect(first.locator('.order-lane').first()).toHaveCSS('box-shadow', 'none');
   await dialog.screenshot({ path: testInfo.outputPath('order-price-display-settings.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+  await first.locator('.order-ladder').screenshot({ path: testInfo.outputPath('order-depth-separators.png') });
   await first.getByRole('button', { name: '전체 호가', exact: true }).click();
   await expect(first.locator('.book-price-percent')).toHaveCount(0);
   await expect(price).toHaveClass(/order-current/);
   await expect(price).toHaveCSS('box-shadow', /inset/);
+  const fullDepths = first.locator('[data-order-price="67200"] .order-depth');
+  await expect(fullDepths).toHaveCount(2);
+  for (const depth of await fullDepths.all()) {
+    await expect(depth).toHaveCSS('box-shadow', /inset/);
+    const priceBounds = (await price.boundingBox())!;
+    const depthBounds = (await depth.boundingBox())!;
+    expect(depthBounds.y + depthBounds.height).toBeCloseTo(priceBounds.y + priceBounds.height, 1);
+  }
   await first.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
   await expect.poll(() => commands.length).toBe(1);
   expect(commands[0]).toMatchObject({ side: 'BUY', price: 67200, quantity: 10 });
@@ -2289,11 +2307,16 @@ test('호가 표시 옵션은 두 호가 모드에 즉시 적용하고 새로고
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-order').click();
   const second = page.getByTestId('order-window').nth(1);
-  await expect(second).not.toHaveClass(/order-price-separators/);
-  await expect(second.locator('.book-price-percent')).toHaveCount(20);
+  await expect(second).toHaveClass(/order-price-separators/);
+  await expect(second.locator('.book-price-percent')).toHaveCount(0);
   await orderSettingsButton(second).click();
+  await expect(separators).toHaveAttribute('aria-checked', 'true');
+  await expect(percent).toHaveAttribute('aria-checked', 'false');
+  await separators.click();
+  await percent.click();
   await expect(separators).toHaveAttribute('aria-checked', 'false');
   await expect(percent).toHaveAttribute('aria-checked', 'true');
+  await expect(second.locator('.order-depth').first()).toHaveCSS('box-shadow', 'none');
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(first.locator('.book-price-percent')).toHaveCount(0);
 });
@@ -2403,9 +2426,11 @@ test('평단가 표시 체크박스는 즉시 저장하며 다른 주문 창에�
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-order').click();
   const second = page.getByTestId('order-window').nth(1);
-  await expect(second.locator('.order-average-marker')).toHaveCount(1);
+  await expect(second.locator('.order-average-marker')).toHaveCount(0);
   await orderSettingsButton(second).click();
 
+  await expect(checkbox).toHaveAttribute('aria-checked', 'false');
+  await setSettingSwitch(checkbox, true);
   await expect(checkbox).toHaveAttribute('aria-checked', 'true');
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await page.locator('[data-win]').filter({ has: page.getByTestId('order-window') }).nth(1)
@@ -2418,7 +2443,7 @@ test('평단가 표시 체크박스는 즉시 저장하며 다른 주문 창에�
   expect(commands).toHaveLength(0);
 });
 
-test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 주문창과 독립적이다', async ({ page }) => {
+test('빠른 입력 방식·프리셋은 창별로 독립적이며 모두 닫고 다시 추가해도 마지막 설정을 유지한다', async ({ page }) => {
   const { window } = await setup(page);
   await window.getByRole('button', { name: '금액', exact: true }).click();
   await orderSettingsButton(window).click();
@@ -2441,13 +2466,25 @@ test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 �
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-order').click();
   const second = page.getByTestId('order-window').nth(1);
-  await expect(second.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('10');
+  await expect(second.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
+  await expect(second.getByRole('button', { name: '200만', exact: true })).toBeVisible();
   await expect(page.getByTestId('order-window').first().getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('29');
   await orderSettingsButton(second).click();
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('30');
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(second.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('30');
   await expect(page.getByTestId('order-window').first().getByRole('button', { name: '200만', exact: true })).toBeVisible();
+  await second.locator('xpath=ancestor::*[@data-win][1]')
+    .getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
+  await page.locator('[data-win]').filter({ has: page.getByTestId('order-window') })
+    .getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
+  await expect(page.getByTestId('order-window')).toHaveCount(0);
+  await page.reload();
+  await page.getByTestId('workspace-add-menu-button').click();
+  await page.getByTestId('workspace-add-order').click();
+  const reopened = page.getByTestId('order-window');
+  await expect(reopened.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('30');
+  await expect(reopened.getByRole('button', { name: '200만', exact: true })).toBeVisible();
 });
 
 test('드래그 주문이 커서를 따라 떠다니며 정정 호가·드래그 아웃 취소를 표시한다', async ({ page }, testInfo) => {
@@ -3264,6 +3301,20 @@ test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상
   const controls = (await window.locator('.order-quantity-controls').boundingBox())!;
   await page.screenshot({ path: testInfo.outputPath('compact-summary.png'),
     clip: { x: bounds.x, y: bounds.y, width: bounds.width, height: controls.y + controls.height - bounds.y } });
+  const summaryStyle = await window.locator('.order-holdings-summary').evaluate(el => {
+    const style = getComputedStyle(el);
+    return { background: style.backgroundColor, dividers: [...el.querySelectorAll(':scope > .order-field + .order-field')]
+      .map(field => { const divider = getComputedStyle(field, '::before');
+        return { content: divider.content, width: divider.width, height: parseFloat(divider.height), pointerEvents: divider.pointerEvents }; }) };
+  });
+  expect(summaryStyle.background).toBe('rgba(0, 0, 0, 0)');
+  expect(summaryStyle.dividers).toHaveLength(2);
+  for (const divider of summaryStyle.dividers) {
+    expect(divider.content).toBe('""');
+    expect(divider.width).toBe('1px');
+    expect(divider.height).toBeGreaterThan(0);
+    expect(divider.pointerEvents).toBe('none');
+  }
   const values = [
     ['.order-buying-power .order-field-value', '1원', '999,999,999,999원'],
     ['.order-holding-quantity .order-field-value', '1', '999,999,999'],

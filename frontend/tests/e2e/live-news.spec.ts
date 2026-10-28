@@ -84,6 +84,23 @@ test('독립 뉴스 창의 새 기사·날짜 조회·종목 고정과 그룹 �
   await expect(news.getByText('SK하이닉스 새 기사')).toBeVisible();
   await expect(news.getByText('삼성전자 새 기사')).toHaveCount(0);
   await frame.screenshot({ path: testInfo.outputPath('news-window.png') });
+  await settings.click();
+  await controls.getByRole('checkbox', { name: /종목 연결만/ }).uncheck();
+  await page.keyboard.press('Escape');
+  await news.getByLabel('뉴스 날짜').fill('2026-10-07');
+  await settings.click();
+  await expect(controls.getByRole('checkbox', { name: /종목 연결만/ })).not.toBeChecked();
+  await page.keyboard.press('Escape');
+  await choose(page, '삼성전자');
+  await expect(news.getByText('다른 종목 테스트 기사')).toBeVisible();
+  await frame.getByRole('button', { name: /창 닫기$/ }).click();
+  await page.reload();
+  await page.getByTestId('workspace-add-menu-button').click();
+  await page.getByTestId('workspace-add-news').click();
+  await expect(news.getByRole('button', { name: '최신', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const today = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()));
+  await expect(news.getByLabel('뉴스 날짜')).toHaveValue(today);
+  await expect(news.getByText('다른 종목 테스트 기사')).toBeVisible();
 });
 
 for (const theme of ['toss-light', 'toss-dark', 'obsidian-pro', 'ledger-studio']) {

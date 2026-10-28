@@ -36,6 +36,7 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useLiveSettings } from '../api/liveSettings';
 import { scanBasisLabel } from '../screener/scanBasisLabel';
 import type { SavedScreener } from '../api/savedScreeners';
+import { NumericInputValidationContext, useNumericInputValidation } from '../screener/numericInputValidation';
 
 type NameDialogMode = 'save-new' | 'save-as' | 'rename';
 
@@ -128,6 +129,13 @@ interface StatusFlag { key: string; text: string }
 
 export function Screener() {
   const editor = useSavedScreenerEditor();
+  const numericValidation = useNumericInputValidation();
+  const [formRevision, setFormRevision] = useState(0);
+  const editorDirty = editor.dirty || numericValidation.invalid;
+  const loadEditor = (save: SavedScreener | null) => {
+    setFormRevision(previous => previous + 1);
+    if (save) editor.load(save); else editor.newDraft();
+  };
   const [nameDialog, setNameDialog] = useState<NameDialogMode | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<{ save: SavedScreener | null; restore?: boolean } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<SavedScreener | null>(null);
@@ -172,6 +180,8 @@ export function Screener() {
   // 자동 로드되므로(useSavedScreenerEditor) 평상시엔 걸리지 않는 가드.
   const hasConditions = editor.conditions.length > 0;
   const invalidExpression = expressionError(editor.expression, editor.conditions.length);
+  const invalidInput = numericValidation.invalid ? '숫자 조건의 입력값을 확인하세요.' : null;
+  const invalidEditor = invalidExpression || invalidInput;
   const scanBody = useMemo(
     () => ({ conditions: editor.conditions, universe: editor.universe, basis: 'auto' as const,
       ...(editor.calculationPolicy === 'separate_bases_v2' ? { calculation_policy: editor.calculationPolicy } : {}),
@@ -179,7 +189,7 @@ export function Screener() {
     [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
-  const screener = useScreener({ continuous: !volumeRefreshStopped, anchor: scanKey });
+  const screener = useScreener({ continuous: !volumeRefreshStopped && !invalidEditor, anchor: scanKey });
   // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
   // 드로어 스캔은 scanKey null → 비교 불가 시 stale 판정하지 않는다.
   const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
@@ -195,11 +205,11 @@ export function Screener() {
   const renewalNeedsIntraday = (lastScan?.warnings ?? []).includes('depth_renewal_requires_intraday');
   const switchEditor = (save: SavedScreener | null, restore = false) => {
     if (editor.isSaving) return;
-    if (editor.dirty) { setPendingSwitch({ save, restore }); return; }
-    if (save) editor.load(save); else editor.newDraft();
+    if (editorDirty) { setPendingSwitch({ save, restore }); return; }
+    loadEditor(save);
   };
   const runScan = async (background = false): Promise<boolean> => {
-    if (invalidExpression || screener.isPending) return false;
+    if (invalidEditor || !hasConditions || screener.isPending) return false;
     if (!background) setVolumeRefreshStopped(false);
     const requestJson = JSON.stringify(scanBody);
     const anchored = !editor.dirty && editor.anchorId != null;
@@ -247,7 +257,7 @@ export function Screener() {
     acceptsVolumeEvent: screener.acceptsVolumeEvent,
     active: liveVolume && lastScan?.scanKey === scanKey && !volumeRefreshStopped,
     selectedId: scanKey,
-    disabled: notSeeded || !!invalidExpression,
+    disabled: notSeeded || !!invalidEditor,
     periodMs: editor.universe.scopes?.length ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS,
     resultCodes: rows.map(row => row.code),
     hasResults: lastScan !== null,
@@ -260,7 +270,7 @@ export function Screener() {
     },
   });
   const submitNameDialog = (name: string) => {
-    if (invalidExpression && nameDialog !== 'rename') return;
+    if (invalidEditor && nameDialog !== 'rename') return;
     if (nameDialog === 'save-new') editor.saveCurrent(name);
     else if (nameDialog === 'save-as') editor.saveAsNew(name);
     else if (nameDialog === 'rename' && anchorSave) editor.rename(anchorSave, name);
@@ -273,7 +283,7 @@ export function Screener() {
       ? `${editor.anchorName} 복사`
       : suggestSaveName(saves.map((s) => s.name));
   const saveCurrent = () => {
-    if (invalidExpression) return;
+    if (invalidEditor) return;
     if (editor.anchorId) editor.saveCurrent();
     else setNameDialog('save-new');
   };
@@ -299,6 +309,7 @@ export function Screener() {
   const [bannerFlag, ...chipFlags] = statusFlags;
 
   return (
+    <NumericInputValidationContext.Provider value={numericValidation.report}>
     <PageContainer centered className="grid gap-md min-h-0 !pb-0"
       style={{ gridTemplateColumns: '23rem minmax(0, 1fr)' }}>
       <PanelCard borderless flat data-testid="screener-builder-pane" className="flex min-h-0 flex-col overflow-hidden">
@@ -316,7 +327,7 @@ export function Screener() {
                 const save = saves.find((s) => s.id === id);
                 if (save) switchEditor(save);
               }} />
-            {editor.dirty && <span className="shrink-0 text-2xs text-fg-dim">수정됨</span>}
+            {editorDirty && <span className="shrink-0 text-2xs text-fg-dim">수정됨</span>}
             {anchorSave && !editor.isSaving && (
               <SavedActionsMenu save={anchorSave}
                 onRename={() => setNameDialog('rename')}
@@ -325,14 +336,15 @@ export function Screener() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-1">
-            <ToolbarButton onClick={saveCurrent} disabled={editor.isSaving || !!invalidExpression} className="text-fg">
+            <ToolbarButton onClick={saveCurrent} disabled={editor.isSaving || !!invalidEditor} className="text-fg">
               {editor.isSaving ? '저장 중…' : '저장'}
             </ToolbarButton>
-            <ToolbarButton onClick={() => setNameDialog('save-as')} disabled={editor.isSaving || !!invalidExpression}>
+            <ToolbarButton onClick={() => setNameDialog('save-as')} disabled={editor.isSaving || !!invalidEditor}>
               다른 이름으로 저장
             </ToolbarButton>
           </div>
-          {anchorSave && editor.dirty && (
+          {invalidInput && <p role="status" className="text-xs text-fg-dim">{invalidInput}</p>}
+          {anchorSave && editorDirty && (
             <ToolbarButton disabled={editor.isSaving} onClick={() => switchEditor(anchorSave, true)}>
               저장본으로 되돌리기
             </ToolbarButton>
@@ -340,7 +352,7 @@ export function Screener() {
           <p className="text-xs text-fg-dim">{calculationLabel(editor.calculationPolicy)}</p>
           {editor.calculationPolicy !== 'separate_bases_v2' && editor.conditions.length > 0 &&
             status?.calculation_policies?.includes('separate_bases_v2') &&
-            <ToolbarButton disabled={editor.isSaving} onClick={editor.copyToNewPolicy}>새 기준으로 복사</ToolbarButton>}
+            <ToolbarButton disabled={editor.isSaving || !!invalidEditor} onClick={editor.copyToNewPolicy}>새 기준으로 복사</ToolbarButton>}
           <p className="text-xs text-fg-dim">선택하면 조건을 불러옵니다 · 조회를 눌러 실행하세요</p>
           {editor.saveError && (
             <div className="text-xs" style={{ color: 'var(--error)' }}>저장 실패: {editor.saveError.message}</div>
@@ -348,10 +360,10 @@ export function Screener() {
           <div className="border-t border-border" />
         </div>
         <div className="min-h-0 flex-1">
-          <ConditionBuilder calculationPolicy={editor.calculationPolicy} conditions={editor.conditions} universe={editor.universe}
+          <ConditionBuilder key={`${editor.anchorId}:${formRevision}`} calculationPolicy={editor.calculationPolicy} conditions={editor.conditions} universe={editor.universe}
             onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse}
             expression={editor.expression} onExpressionChange={editor.editExpression} expressionScope={editor.anchorId}>
-            {!invalidExpression && <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />}
+            {!invalidEditor && <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />}
           </ConditionBuilder>
           {!editor.universe.scopes?.length && editor.conditions.some(leaf =>
             (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
@@ -365,8 +377,8 @@ export function Screener() {
           <ControlBar className="flex-wrap">
             <div className="min-w-0 flex-1" />
             <ToolbarButton tone="primary" onClick={() => { void runScan(); }}
-              disabled={screener.isPending || notSeeded || !hasConditions || !!invalidExpression}
-              data-tooltip={invalidExpression ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
+              disabled={screener.isPending || notSeeded || !hasConditions || !!invalidEditor}
+              data-tooltip={invalidEditor ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
               className="px-lg py-sm text-base">
               {screener.isPending ? '조회 중…' : '조회'}
             </ToolbarButton>
@@ -499,7 +511,7 @@ export function Screener() {
           <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
             <ToolbarButton onClick={() => setPendingSwitch(null)}>계속 편집</ToolbarButton>
             <ToolbarButton onClick={() => {
-              if (pendingSwitch.save) editor.load(pendingSwitch.save); else editor.newDraft();
+              loadEditor(pendingSwitch.save);
               setPendingSwitch(null);
             }}>{pendingSwitch.restore ? '변경 버리고 복원' : '변경 버리고 이동'}</ToolbarButton>
           </div>
@@ -515,5 +527,6 @@ export function Screener() {
         />
       )}
     </PageContainer>
+    </NumericInputValidationContext.Provider>
   );
 }

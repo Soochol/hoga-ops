@@ -9,6 +9,7 @@ import {
 } from './workspace';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 import { NARROW_CANVAS_W } from '../workspace/referenceCanvas';
+import { normalizeOrderSettings, readLastOrderSettings } from './orderWindowSettings';
 
 function chart(id: string, group: number): WorkspaceWindow {
   return {
@@ -109,6 +110,57 @@ describe('useWorkspaceStore 액션', () => {
     snapshot.windows.find(w => w.id === first)!.order!.amountPresets[0] = 99;
     settings.quantityPresets[0] = 999;
     expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order).toEqual({ unit: 'amount', quantityPresets: [25, 75, 250], amountPresets: [2, 6, 12], showAveragePrice: false, showPriceSeparators: true, showPriceChangePercent: false, orderReceiptSound: true, buyFillSound: true, sellFillSound: false, rememberQuantity: true });
+  });
+
+  it('마지막 주문 설정은 모든 창을 닫고 새 탭에서 추가해도 복원한다', async () => {
+    const first = useWorkspaceStore.getState().addWindow('order');
+    const settings = normalizeOrderSettings({ unit: 'amount', quantityPresets: [25, 75, 250],
+      amountPresets: [2, 6, 12], showAveragePrice: false, showPriceSeparators: true,
+      showPriceChangePercent: false, orderReceiptSound: true, buyFillSound: true,
+      sellFillSound: true, rememberQuantity: true });
+    useWorkspaceStore.getState().setOrderWindowSettings(first, settings);
+    useWorkspaceStore.getState().closeWindow(first);
+    sessionStorage.clear();
+    vi.resetModules();
+    const { useWorkspaceStore: reopened } = await import('./workspace');
+    const next = reopened.getState().addWindow('order');
+    expect(reopened.getState().windows.find(w => w.id === next)?.order).toEqual(settings);
+  });
+
+  it('새 주문창은 마지막 변경값을 복사하고 기존 창과 닫는 순서는 영향을 주지 않는다', () => {
+    const first = useWorkspaceStore.getState().addWindow('order');
+    const oldSettings = normalizeOrderSettings({ quantityPresets: [25, 75, 250] });
+    useWorkspaceStore.getState().setOrderWindowSettings(first, oldSettings);
+    const second = useWorkspaceStore.getState().addWindow('order');
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === second)?.order).toEqual(oldSettings);
+    const latest = normalizeOrderSettings({ quantityPresets: [30, 80, 300], buyFillSound: true });
+    useWorkspaceStore.getState().setOrderWindowSettings(second, latest);
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order).toEqual(oldSettings);
+    useWorkspaceStore.getState().closeWindow(second);
+    useWorkspaceStore.getState().closeWindow(first);
+    const third = useWorkspaceStore.getState().addWindow('order');
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === third)?.order).toEqual(latest);
+    latest.quantityPresets[0] = 999;
+    expect(readLastOrderSettings()?.quantityPresets[0]).toBe(30);
+  });
+
+  it('이전 버전의 주문창을 편집하지 않고 닫아도 설정을 한 번 이어받는다', () => {
+    const settings = normalizeOrderSettings({ showPriceSeparators: true });
+    useWorkspaceStore.setState({ windows: [{ id: 'old', kind: 'order', group: 1,
+      rect: { x: 0, y: 0, w: 0.5, h: 0.8 }, order: settings }], zOrder: ['old'] });
+    useWorkspaceStore.getState().closeWindow('old');
+    const next = useWorkspaceStore.getState().addWindow('order');
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === next)?.order).toEqual(settings);
+  });
+
+  it('잘못된 입력과 다른 종류 창에는 마지막 주문 설정을 갱신하지 않는다', () => {
+    const first = useWorkspaceStore.getState().addWindow('order');
+    const settings = normalizeOrderSettings({ quantityPresets: [25, 75, 250] });
+    useWorkspaceStore.getState().setOrderWindowSettings(first, settings);
+    useWorkspaceStore.getState().setOrderWindowSettings(first, { ...settings, quantityPresets: [NaN, 75, 250] });
+    useWorkspaceStore.getState().setOrderWindowSettings('a', normalizeOrderSettings({}));
+    useWorkspaceStore.getState().setOrderWindowSettings('missing', normalizeOrderSettings({}));
+    expect(readLastOrderSettings()).toEqual(settings);
   });
 
   it('새 차트 창은 포커스 차트 창의 timeframe 을 복제한다(#712)', () => {

@@ -2,6 +2,7 @@ import { createContext } from 'react';
 import { create } from 'zustand';
 import { HIGH_LOW_WINDOW_PREF_KEYS, normalizeChartDisplayPrefs } from './chartDisplayPrefs';
 import { persistJson, readJsonObject } from './persist';
+import { notifyChartPreferenceEdit } from './windowPreferenceMemory';
 
 /** Add a typed section here to share validation, persistence and preset transport.
  * Settings belong to a window, independently of its symbol or timeframe. */
@@ -61,10 +62,13 @@ export const useWindowSettingsStore = create<WindowSettingsStore>((set, get) => 
     if (!Object.keys(settings).length) return;
     set(state => ({ byWindow: { ...state.byWindow, [id]: settings } }));
   },
-  patch: (id, section, patch) => set(state => ({ byWindow: { ...state.byWindow, [id]: {
-    ...state.byWindow[id],
-    [section]: WINDOW_SETTINGS_REGISTRY[section].normalize({ ...state.byWindow[id]?.[section], ...patch }),
-  } } })),
+  patch: (id, section, patch) => {
+    set(state => ({ byWindow: { ...state.byWindow, [id]: {
+      ...state.byWindow[id],
+      [section]: WINDOW_SETTINGS_REGISTRY[section].normalize({ ...state.byWindow[id]?.[section], ...patch }),
+    } } }));
+    notifyChartPreferenceEdit({ windowId: id });
+  },
   restore: entries => {
     if (!entries.length) return;
     set(state => ({ byWindow: { ...state.byWindow,

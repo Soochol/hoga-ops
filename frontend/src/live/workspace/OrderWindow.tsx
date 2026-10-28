@@ -330,6 +330,10 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const estimateAmount = quantity != null && estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
     && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
   const holdingQuantity = state.data?.holding_quantity?.trim() && !state.balancesError ? Number(state.data.holding_quantity) : null;
+  const hasHolding = holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity > 0;
+  const averagePrice = Number(state.data?.average_purchase_price);
+  const averagePriceDisplay = hasHolding && Number.isFinite(averagePrice) && averagePrice > 0
+    ? fmt(Math.ceil(averagePrice)) : '';
   const averageMarker = preferences.showAveragePrice
     ? holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen) : { price: null, outside: false };
   const averageMarkerIndex = prices.findIndex(level => level.price === averageMarker.price);
@@ -348,8 +352,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const profitPercent = holdingProfitPercent(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const canToggleProfit = holdingQuantity != null && holdingQuantity > 0 && holdingProfit != null && profitPercent != null;
-  const profitAmountText = holdingQuantity === 0 || holdingProfit == null ? '—' : fmt(holdingProfit);
-  const profitPercentText = holdingProfit == null || profitPercent == null ? '—' : `${profitPercent.toFixed(2)}%`;
+  const profitAmountText = !hasHolding || holdingProfit == null ? '' : fmt(holdingProfit);
+  const profitPercentText = !hasHolding || holdingProfit == null || profitPercent == null ? '' : `${profitPercent.toFixed(2)}%`;
   const profitText = profitAsPercent ? profitPercentText : profitAmountText;
   const purchaseAmount = holdingPurchaseAmountWon(holdingQuantity, state.data?.average_purchase_price);
   const purchaseText = purchaseAmount == null ? '' : `매수금액 ${fmt(purchaseAmount)}원`;
@@ -762,13 +766,13 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
           onFocus={e => quantityTip.showOnFocus(e.currentTarget)} onBlur={quantityTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') quantityTip.hide(); }}>
-          <span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
+          <span className="order-field-value">{hasHolding ? fmt(holdingQuantity) : ''}</span>
         </button>
         <span className="order-field" aria-label="매입평단가" aria-describedby={averageTip.id} tabIndex={purchaseAmount == null ? undefined : 0}
           onMouseEnter={e => averageTip.show(e.currentTarget)} onMouseLeave={averageTip.hide}
           onFocus={e => averageTip.showOnFocus(e.currentTarget)} onBlur={averageTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
-          <span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
+          <span className="order-field-value">{averagePriceDisplay}</span>
         </span>
         <span className="order-field" aria-label="보유 종목 평가 수익">
           <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}
