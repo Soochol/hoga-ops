@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-28",
+  "branch": "codex/fix-alphanumeric-execution-history",
+  "head": "65f6d7441e2cd1cb37bfb117fb0d03c45fa7362c",
+  "base": "65f6d7441e2cd1cb37bfb117fb0d03c45fa7362c",
+  "state": "uncommitted fix",
+  "cause": "toss_row incorrectly accepted only six numeric characters. Domestic code 0158S0 (엘리스) was dropped despite confirmed fills.",
+  "fix": "Accept the same six ASCII alphanumeric code shape as the existing trading route and Kiwoom adapter; keep currency/date/positive-fill filters.",
+  "evidence": {
+    "running_server_commit": "65f6d7441",
+    "live_symbol": {
+      "code": "0158S0",
+      "name": "엘리스"
+    },
+    "confirmed_filled_order_rows_checked": 31,
+    "preserved_by_fixed_mapper": 31,
+    "source": "Existing localhost server GET account-orders; no account/order identifiers or private raw responses stored here."
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_execution_history.py -k domestic_alphanumeric",
+      "result": "Before fix: 0158S0 fails with empty rows; numeric case passes.",
+      "log": "/tmp/hoga-elice-history-before.log"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_execution_history.py tests/unit/api/test_broker_trading.py tests/unit/api/test_trading_v2_wire.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "67 passed after fix; first/continuation pages and invalid/foreign exclusions covered",
+      "log": "/tmp/hoga-elice-history-after.log"
+    },
+    {
+      "command": "uv run --extra dev ruff check hoga/trading/executions.py tests/unit/api/test_execution_history.py; git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "Local replay of existing real Toss order response through corrected mapper",
+      "result": "31/31 Elice filled orders preserved; fields validate; live symbol catalog provides 엘리스 name"
+    }
+  ],
+  "limits": "No frontend, API schema, dependency or environment changes. No extra vendor client or token issuance; no live order submitted. Running user server was not restarted or modified; fix remains in this worktree.",
+  "backend_input_sha256": "cb31c5a4dc09a341ab4a31c5680c62354c4eb3b0b2b1da2076a0eaa4d555909d",
+  "fingerprint_method": "Sorted unique tracked and untracked backend/tests/config/lockfile paths; path + NUL + bytes + NUL.",
+  "environment": {
+    "python": "Python 3.14.7",
+    "pytest": "pytest 9.0.3",
+    "ruff": "ruff 0.15.13",
+    "network": "Synthetic HTTP broker fixtures for tests; separate readonly replay through existing localhost server."
+  },
+  "pr_reuse_audit": {
+    "latest_main": "65f6d7441e2cd1cb37bfb117fb0d03c45fa7362c",
+    "backend_fingerprint_matches": true,
+    "open_pr_file_overlap": {
+      "1927": [],
+      "1726": []
+    },
+    "commit_mapping": "PR description records the commit containing the exact verified input."
+  }
+}
