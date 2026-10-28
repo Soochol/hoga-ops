@@ -111,6 +111,7 @@ import { useDailyMaSeriesRegistry } from '../indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from '../indicators/paneLegendRegistry';
 import type { TabViewport } from '../viewportAnchor';
 import { seedSettingsForWindow } from '../../state/windowSettingsLifecycle';
+import { ChartTradeAccountControl } from './ChartTradeAccountControl';
 
 /** 빈 캔들 폴백 — **모듈 상수여야 한다.** 인라인 `[]` 는 매 렌더 새 배열이라
  *  아래 저장뷰 `useMemo` 들이 캔들이 안 왔을 때 매번 재계산된다. */
@@ -891,6 +892,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           </div>
         )}
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1">
+          {!isIndex && (view.timeframe === 'D' || isMinuteTimeframe(view.timeframe)) && <ChartTradeAccountControl windowId={win.id} />}
           <span aria-hidden className="live-chart-toolbar-divider" />
           <ChartAnalysisActions win={win} code={d.workareaCode} timeframe={view.timeframe}
             viewportRef={imageViewportRef}

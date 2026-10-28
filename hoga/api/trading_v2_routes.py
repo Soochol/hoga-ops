@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query
@@ -7,6 +8,7 @@ from pydantic import ValidationError
 
 from hoga.api.trading_routes import require_order_header
 from hoga.trading.contracts import (
+    AccountExecutions,
     BrokerAccounts,
     BrokerBalances,
     BrokerCommand,
@@ -25,6 +27,7 @@ from hoga.trading.executions import execution_history
 from hoga.trading.models import TradingCancelResponse, TradingReviewResponse
 from hoga.trading.multi_broker import BrokerTradingService
 from hoga.trading.toss import TradingError
+from hoga.util.timeenc import KST
 
 AccountRef = Annotated[str, Query(pattern=r"^acc_[a-f0-9]{32}$")]
 
@@ -74,12 +77,28 @@ def build_router(service: BrokerTradingService) -> APIRouter:
         return await invoke(service.holdings(account_ref))
 
     @router.get("/execution-history")
-    async def executions(
+    async def account_execution_history(
         account_ref: AccountRef,
         date: str = Query(pattern=r"^\d{8}$"),
         next_key: str | None = Query(default=None, min_length=1, max_length=8192),
     ) -> ExecutionHistoryPage:
         return await invoke(execution_history(service, account_ref, date, next_key))
+
+    @router.get("/executions")
+    async def executions(
+        account_ref: AccountRef,
+        code: str = Query(pattern=r"^[A-Za-z0-9]{6}$"),
+        date: str = Query(pattern=r"^\d{8}$"),
+        cursor: str | None = Query(default=None, min_length=1, max_length=4096),
+        venue: Literal["KRX", "NXT", "UN"] = "KRX",
+    ) -> AccountExecutions:
+        try:
+            selected = datetime.strptime(date, "%Y%m%d").date()
+        except ValueError as exc:
+            raise HTTPException(422, "유효한 체결 조회 날짜를 선택하세요.") from exc
+        if selected > datetime.now(KST).date():
+            raise HTTPException(422, "미래 날짜의 체결은 조회할 수 없습니다.")
+        return await invoke(service.executions(account_ref, code, date, cursor, venue))
 
     @router.post("/orders")
     async def create(body: CreateBrokerOrder, x_hoga_order: str | None = Header(default=None)) -> BrokerCommandResult:

@@ -11,6 +11,7 @@ from hoga.trading.models import TradingHolding
 Broker = Literal["toss", "kiwoom"]
 Environment = Literal["real", "mock"]
 Route = Literal["KRX", "NXT", "SOR"]
+ExecutionBasis = Literal["execution", "order_average"]
 
 
 class BrokerAccount(BaseModel):
@@ -153,3 +154,29 @@ class BrokerCommandStatus(BaseModel):
     state: str
     # Journal entries contain operation-specific receipts and review evidence.
     result: dict[str, Any] | None
+
+
+class AccountExecution(BaseModel):
+    execution_id: str
+    order_ref: str
+    code: str
+    trading_date: str
+    t_ms: int
+    side: Literal["BUY", "SELL"]
+    price: str
+    quantity: str
+    venue: str | None
+    basis: ExecutionBasis = "execution"
+
+
+class AccountExecutions(BaseModel):
+    account_ref: str
+    code: str
+    date: str
+    rows: list[AccountExecution] = Field(default_factory=list)
+    next_cursor: str | None = None
+    supported: bool = True
+    message: str | None = None
+    fetched_at_ms: int
+    raw_close: str | None = None
+    price_venue: str = "KRX"

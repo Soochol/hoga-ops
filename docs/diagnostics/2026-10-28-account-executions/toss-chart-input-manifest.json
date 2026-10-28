@@ -1,0 +1,86 @@
+{
+  "base_sha": "084a33958d6541fc1e8fdfbcef7a636cdf64e559",
+  "origin_main_sha": "084a33958d6541fc1e8fdfbcef7a636cdf64e559",
+  "initial_base_sha": "7d30930d844f4684cf73a40aabb35704d41c3a1a",
+  "input_sha256": "6cb955b27edf23fbccabea74048f54570d6fdc195c1daf635d206f4332aa8b05",
+  "aggregate_file_count": 2835,
+  "aggregate_scope": {
+    "roots": [
+      "hoga/",
+      "tests/",
+      "frontend/src/",
+      "frontend/tests/",
+      "scripts/"
+    ],
+    "config": [
+      ".python-version",
+      "frontend/package-lock.json",
+      "frontend/package.json",
+      "frontend/playwright.config.ts",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.test.json",
+      "frontend/vite.config.ts",
+      "frontend/vitest.config.ts",
+      "pyproject.toml",
+      "ruff.toml",
+      "uv.lock"
+    ],
+    "selection": "git ls-files -c -o --exclude-standard; unique existing files; selected roots/config; sort paths",
+    "algorithm": "SHA256 of compact sorted JSON mapping every selected relative path to SHA256(file bytes)"
+  },
+  "changed_inputs_and_config": {
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/src/api/accountExecutions.test.tsx": "a56523e26310ba000e07d8cc0486aeeb1018befc1acdb1cdc5258c9f08fd6dab",
+    "frontend/src/api/accountExecutions.ts": "6998529dbce7d0ec915609c298d6ffa036130d791d0ed73f17a896a1beb3ccfa",
+    "frontend/src/chart/AccountExecutionsPrimitive.test.ts": "dbbbf1ef203f0b0ec3731032c5fcf98f09f3fa18258ed5626b13ac52d58cc450",
+    "frontend/src/chart/AccountExecutionsPrimitive.ts": "0f625eff2655c63c49d242c7cc4d8ffc5184e65e430b286ecbfc14da7816b1a6",
+    "frontend/src/chart/projectors/accountExecutions.test.ts": "02bcf34c45442bd34c7d2f075f70ada5d483951bfd6c632b7a13f4430217e81d",
+    "frontend/src/chart/projectors/accountExecutions.ts": "fab30eab655276cf10c8d09ce6173e7e2d126ec8b663fc9b041f76f00113a1be",
+    "frontend/src/live/AccountExecutionsOverlay.tsx": "a397a24725b917a31509445caec35d77bb3ff020bb53686711199baf4fd1599a",
+    "frontend/src/live/LiveChartRoot.tsx": "425ce7109c0a582303691c26092f5976a898475c06f9b87250cb041fbbbcb950",
+    "frontend/src/live/workspace/ChartTradeAccountControl.css": "b473da445d9697efee567cc393ad906b98844ab8f2aaa8103b2f5f7f1f2cbe7c",
+    "frontend/src/live/workspace/ChartTradeAccountControl.test.tsx": "2bb5f48d3ec9136ae6e54d0211d2bf00b6a78e8ebebf5b62f08a688164f38636",
+    "frontend/src/live/workspace/ChartTradeAccountControl.tsx": "29d6a79dcf18486e5fa39b86ce27eddc94a327ffc81db0a5bd1c092a162e59ab",
+    "frontend/src/live/workspace/ChartWindow.tsx": "3e4886447071dffc732f750c6d0c6b0c2fbd3bfc2ea298873ba1d4841d6b887f",
+    "frontend/src/state/chartDisplayPrefs.ts": "e7a4bb5d5041d5697677cd7944d109d8c6281055b6be92ceb5eea8262642f0e6",
+    "frontend/src/state/chartTradeAccounts.ts": "c762f14c9af498b188bcf47fbf13dd84fd15952b48ed262b6252ec75787036f7",
+    "frontend/tests/e2e/account-executions.spec.ts": "2abf50354c968e7c8ad0ab3d520701eec8e303a6922c759833b0d8033ba40295",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "hoga/api/trading_v2_routes.py": "1223386099db9eb470ba8194c330f58564637aefa3b11c5889b4a17068647965",
+    "hoga/trading/chart_executions.py": "9a34ba1742a6909f606a11ec704175855abb6779d33c4384b5b4d1a8f6735250",
+    "hoga/trading/contracts.py": "b22fced486ea138bb0db4bd772d37c9c3dc1956be43525038334cf8cde53cfb3",
+    "hoga/trading/kiwoom.py": "30fb104f3c8f493b24b3414badae66ebccd0d7f03743a5d16a4c69c01f51b286",
+    "hoga/trading/multi_broker.py": "16cdb64ceb851ec03f3f3804354578394fdfccc29bd3db1270f1609068811c10",
+    "hoga/trading/toss_executions.py": "ed475fd80ff3fb18ad55f3f4ffee0a22dc4239cb677a70dd739e0efe29aff806",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "ruff.toml": "422277b5742ea124f25690201cb540117de803f74719052a6dbdc3bfa8aa7d07",
+    "tests/unit/api/test_account_executions.py": "7ffdfc73248ab066a1c816f577f59b9cef566da1de7a4a2b0e2561777df7d73d",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "4b92bc0e2716648cd786e8229a31796d8803d34d72282e9ebdee04e19dda3e5f",
+    "tests/unit/api/test_toss_account_executions.py": "ead47b0157f60f5738dc275d09725a13b1106d169268276a1e63ef66dd113cf2",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  },
+  "groups": {
+    "frontend": {
+      "input_sha256": "b42b77f1df5eb88796b4e4b76bf2e25b076526169f82ebb948726bb77d05a3a3",
+      "file_count": 1952
+    },
+    "backend": {
+      "input_sha256": "e55a2d9b6b4e1b5cce7adce089a2a1bea494ddf2a23bbd3c11f43349b1dace0c",
+      "file_count": 846
+    }
+  },
+  "pr_review": {
+    "previous_input_sha256": "5d9d4b7f792fef2ef99ce9ff97658e87d6ece59725137e50b72b1917dd7be882",
+    "change": "Chart toggle description now names Toss order average basis; display text only.",
+    "validation": "ChartWindowSettings and ChartTradeAccountControl: 2 files, 7 passed. Other previous validation reused; no logic, type, backend, dependency or test input changed."
+  }
+}
