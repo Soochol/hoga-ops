@@ -14,6 +14,7 @@ from typing import Any
 from hoga.live import kiwoom_runtime
 from hoga.trading.accounts import AccountRegistry
 from hoga.trading.brokers import TossTradingAdapter
+from hoga.trading.chart_executions import ExecutionHistory
 from hoga.trading.commands import dispatch_command
 from hoga.trading.contracts import (
     BrokerAccounts,
@@ -27,6 +28,7 @@ from hoga.trading.kiwoom import KiwoomAccountGateway, KiwoomTradingAdapter
 from hoga.trading.models import TradingCommand
 from hoga.trading.service import TradingService
 from hoga.trading.toss import TradingError
+from hoga.trading.toss_executions import TossExecutionHistory
 
 
 class BrokerTradingService:
@@ -45,6 +47,8 @@ class BrokerTradingService:
         self._order_locks = defaultdict(asyncio.Lock)
         self._event_releases: dict[str, Any] = {}
         self.on_event = on_event or (lambda event: None)
+        self.execution_history = ExecutionHistory(data_dir)
+        self.toss_execution_history = TossExecutionHistory(data_dir)
 
     def adapters(self) -> list[KiwoomTradingAdapter]:
         if self._kiwoom is None:
@@ -148,6 +152,12 @@ class BrokerTradingService:
     async def balances(self, ref: str, code: str, price: int | None = None):
         adapter = await self.resolve(ref)
         return await adapter.balances(ref, code) if adapter is self.toss else await adapter.balances(code, price)
+
+    async def executions(self, ref: str, code: str, date: str, cursor: str | None, venue: str):
+        adapter = await self.resolve(ref)
+        if adapter is self.toss:
+            return await self.toss_execution_history.read(adapter, ref, code, date, cursor, venue)
+        return await self.execution_history.read(adapter, ref, code, date, cursor, venue)
 
     async def holdings(self, ref: str):
         adapter = await self.resolve(ref)

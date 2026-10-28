@@ -1,5 +1,12 @@
 /** Pure candle-window preference schema, shared by rendering and persistence. */
 export const CHART_DISPLAY_TOGGLES = [
+  {
+    key: 'accountExecutionsEnabled',
+    label: '매매내역 표시',
+    description: '상단에서 선택한 계좌의 매매내역을 일봉·분봉에 B/S로 표시합니다. 토스는 주문 평균가 기준입니다.',
+    default: false,
+    group: 'candle',
+  },
   // ── 차트 › 캔들 · 지표 ─────────────────────────────────────────────
   {
     key: 'volumeOverlayEnabled',

@@ -91,6 +91,7 @@ import { depthHeatmapFromWire } from './depthHeatmapWire';
 import DrawingOverlay from '../chart/DrawingOverlay';
 import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
 import PaneLegendOverlay from './PaneLegendOverlay';
+import AccountExecutionsOverlay from './AccountExecutionsOverlay';
 import CandleTooltip from './CandleTooltip';
 import HighLowLabelsHost from './HighLowLabelsHost';
 import type { CandlePaneContext } from '../chart/projectors/candle';
@@ -2829,6 +2830,8 @@ export function LiveChartRoot({
       )}
       {chart && cb && axis.segments.length > 0 && (
         <>
+          <AccountExecutionsOverlay chart={chart} bundle={cb} axis={axis} paneSeries={paneSeries}
+            timeframe={timeframe} code={code ?? ''} factors={adjustFactors} venue={candleVenue ?? venue} />
           {candleAlwaysOnTop && (
             <>
               {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false, isUsWorkareaCode(code))).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
