@@ -201,7 +201,7 @@ it('renders list and no-match state', async () => {
   expect(screen.getByRole('complementary', { name: '저장뷰' })).toHaveClass('bg-bg');
   // 경계선 없는 표면(2026-07-22 C안) + 페이지 필드와 동일 톤(2026-07-29 배경 통일 완결).
   expect(screen.getByRole('complementary', { name: '저장뷰' })).not.toHaveClass('border-l');
-  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   await userEvent.type(screen.getByLabelText('저장뷰 검색'), '없음');
   expect(screen.getByText('검색 결과가 없습니다')).toBeTruthy();
   expect(screen.queryByText('차트 화면에서 저장할 수 있습니다')).toBeNull();
@@ -221,7 +221,7 @@ it('clears the saved-view search with the inline clear button', async () => {
 
   expect(search.value).toBe('');
   expect(screen.queryByRole('button', { name: '검색어 지우기' })).toBeNull();
-  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
 });
 
 it('renders saved views as Code-keyed stock-name tree groups', () => {
@@ -235,7 +235,7 @@ it('renders saved views as Code-keyed stock-name tree groups', () => {
 
   const samsung = screen.getByRole('region', { name: '삼성전자 저장뷰' });
   expect(within(samsung).getByRole('button', { name: '삼성전자 접기' })).toHaveAttribute('aria-expanded', 'true');
-  expect(within(samsung).getByText('삼성전자', { exact: true })).toBeTruthy();
+  expect(within(within(samsung).getByRole('button', { name: '급등 이후 저장뷰 열기' })).getByText('삼성전자')).toBeTruthy();
   expect(within(samsung).getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   expect(within(samsung).queryByText('삼성전자 · 5m')).toBeNull();
   expect(within(samsung).getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();
@@ -250,8 +250,11 @@ it('matches watchlist list typography for stock headers and saved view names', (
   const groupHeader = screen.getByRole('button', { name: '삼성전자 접기' });
   expect(groupHeader.parentElement).toHaveClass('text-sm', 'font-semibold', 'text-fg-dim');
 
-  const savedViewName = screen.getByText('삼성전자 · 급등 이후');
-  expect(savedViewName).toHaveClass('text-xs', 'text-fg');
+  const savedView = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  const stockName = within(savedView).getByText('삼성전자');
+  expect(stockName).toHaveClass('text-fg');
+  expect(stockName.parentElement).toHaveClass('text-xs', 'truncate');
+  expect(within(savedView).getByText('· 급등 이후')).toHaveClass('text-fg-dim', 'font-normal');
 });
 
 // 스토어가 URL 을 이긴다 — 이 드로어는 우측 레일의 **전역** 컴포넌트라 `?view=` 없이
@@ -263,7 +266,7 @@ it('highlights the saved-view row for the open saved view', () => {
 
   const activeRow = screen.getByRole('button', { name: '눌림 저장뷰 열기' });
   expect(activeRow).toHaveAttribute('aria-current', 'true');
-  expect(within(activeRow).getByText('SK하이닉스 · 눌림')).toHaveClass('text-accent', 'font-semibold');
+  expect(within(activeRow).getByText('SK하이닉스')).toHaveClass('text-accent', 'font-semibold');
   expect(activeRow.style.background).toBe('');
   expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).not.toHaveAttribute('aria-current');
 });
@@ -469,7 +472,8 @@ it('저장뷰를 열어도 창의 봉을 밀지 않는다 — 봉은 창이 소�
 it('clicking the saved view name text navigates to /live', async () => {
   renderDrawer('/inventory');
 
-  await userEvent.click(screen.getByText('삼성전자 · 급등 이후'));
+  const row = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
+  await userEvent.click(within(row).getByText('· 급등 이후'));
 
   await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/live'));
 });
@@ -584,7 +588,7 @@ it('cancels saved view rename on Escape', async () => {
   await userEvent.keyboard('{Escape}');
 
   expect(updateMetadataMutate).not.toHaveBeenCalled();
-  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
 });
 
 it('starts inline rename without navigating from a non-study route', async () => {
@@ -605,7 +609,7 @@ it('does not rename a saved view when the inline value is empty', async () => {
   await userEvent.keyboard('{Enter}');
 
   expect(updateMetadataMutate).not.toHaveBeenCalled();
-  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
 });
 
 it('does not rename a saved view when the inline value is unchanged', async () => {
@@ -616,7 +620,7 @@ it('does not rename a saved view when the inline value is unchanged', async () =
   await userEvent.type(input, '{Enter}');
 
   expect(updateMetadataMutate).not.toHaveBeenCalled();
-  expect(screen.getByText('삼성전자 · 급등 이후')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
 });
 
 it('defers context-menu deletion for five seconds and allows undo', async () => {
@@ -835,14 +839,13 @@ it('dragging a stock group reorders groups', async () => {
 describe('formatStudyViewMeta', () => {
   beforeEach(() => { vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 14)); });
   afterEach(() => { vi.restoreAllMocks(); });
-  it('shows timeframe · single date (from==to) without the current year', () => {
+  it('shows a single date without the timeframe or current year', () => {
     expect(
       formatStudyViewMeta({ timeframe: '1m', range: { from_date: '20260708', to_date: '20260708' } }),
-    ).toBe('1분봉 · 07.08');
+    ).toBe('07.08');
   });
 
-  // 같은 해 안의 범위는 `to` 쪽 연도를 접는다 — 메타행이 truncate 라 아낀 폭이
-  // 그대로 `to` 날짜의 생존으로 돌아온다.
+  // 같은 해의 기간에는 올해 연도를 반복하지 않는다.
   it('shows a daily date range without the timeframe, folding the repeated year', () => {
     expect(
       formatStudyViewMeta({ timeframe: 'D', range: { from_date: '20260701', to_date: '20260708' } }),
@@ -878,7 +881,7 @@ it('opens immediately and uses context menus instead of double-click rename', ()
   const row = screen.getByRole('button', { name: '급등 이후 저장뷰 열기' });
   fireEvent.click(row);
   expect(savedRange()?.viewId).toBe('a');
-  fireEvent.doubleClick(screen.getByText('삼성전자 · 급등 이후'));
+  fireEvent.doubleClick(screen.getByRole('button', { name: '급등 이후 저장뷰 열기' }));
   expect(screen.queryByLabelText('저장뷰 이름 수정')).toBeNull();
   expect(screen.queryByRole('button', { name: '다중 선택' })).toBeNull();
   expect(screen.queryByRole('button', { name: /순서 이동|행 메뉴|그룹 메뉴/ })).toBeNull();

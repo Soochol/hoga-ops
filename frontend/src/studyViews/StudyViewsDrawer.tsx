@@ -355,6 +355,8 @@ export function StudyViewsDrawer() {
   const renderStudyViewRow = (row: StudyViewListRow, handle: TreeDragHandle) => {
     const isActive = openStudyViewId === row.id;
     const isEditing = renameState?.id === row.id || memoState?.id === row.id;
+    const stockName = row.label || row.code;
+    const title = formatStudyViewTitle(row);
     return (
       <RailTreeRow
         key={row.id}
@@ -455,10 +457,11 @@ export function StudyViewsDrawer() {
           </div>
         ) : (
           <div className="min-w-0 flex-1 leading-tight">
-            <div className={`truncate text-xs ${isActive ? 'font-semibold text-accent' : 'text-fg'}`}>
-              {formatStudyViewTitle(row)}
+            <div className="truncate text-xs">
+              <span className={isActive ? 'font-semibold text-accent' : 'text-fg'}>{stockName}</span>
+              <span className="font-normal text-fg-dim">{title.slice(stockName.length)}</span>
             </div>
-            <div className="truncate text-xs text-fg-dim font-data">
+            <div className="break-words whitespace-normal text-xs text-fg-dim font-data">
               {formatStudyViewMeta(row)}
             </div>
           </div>

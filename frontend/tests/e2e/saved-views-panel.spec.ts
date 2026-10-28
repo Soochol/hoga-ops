@@ -85,7 +85,7 @@ test('행 위아래 정확한 삽입과 기간 안내, 되돌리기 및 새로�
   await setup(page);
   await start(page, surface(page, 'a'));
   await over(page, row(page, 'b'), .8);
-  await expect(notice(page)).toContainText('삼성전자 · 복기 b (5분봉 · 09.01–09.02) 아래로 이동');
+  await expect(notice(page)).toContainText('삼성전자 · 복기 b (09.01–09.02) 아래로 이동');
   // Assert the insertion destination before releasing the pointer.
   await page.mouse.up();
   await expect.poll(() => order(page)).toEqual(['b', 'a', 'c']);
