@@ -42,7 +42,7 @@ def next_token(cursor: str | None, account: str, date: str) -> str | None:
 
 def toss_row(order: TossOrder, ref: str, date: str) -> ExecutionHistoryRow | None:
     filled = integer(order.execution.filledQuantity, optional=True)
-    if not filled or int(filled) == 0 or not re.fullmatch(r"\d{6}", order.symbol) or order.currency != "KRW":
+    if not filled or int(filled) == 0 or not re.fullmatch(r"[A-Za-z0-9]{6}", order.symbol) or order.currency != "KRW":
         return None
     # An order may fill on a later date; prefer the broker's execution date.
     stamp = order.execution.filledAt or order.orderedAt
