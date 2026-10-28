@@ -1,4 +1,4 @@
-import { compactStudyViewPeriod, studyTimeframeLabel } from './studyViewPeriod';
+import { compactStudyViewPeriod } from './studyViewPeriod';
 import { normalizeStudyViewQuery } from './studyViewTree';
 
 
@@ -25,6 +25,5 @@ export function formatStudyViewTitle(row: { label: string; code: string; name: s
 
 
 export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string; from_ms?: number; to_ms?: number } }): string {
-  const period = compactStudyViewPeriod(row.range, row.timeframe);
-  return row.timeframe === 'D' ? period : `${studyTimeframeLabel(row.timeframe)} · ${period}`;
+  return compactStudyViewPeriod(row.range, row.timeframe);
 }
