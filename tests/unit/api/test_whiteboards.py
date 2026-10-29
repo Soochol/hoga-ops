@@ -57,6 +57,29 @@ def png():
     return output.getvalue()
 
 
+async def test_canvas_capture_stock_codes_are_searchable_without_changing_legacy_records(client):
+    doc = await create(client, review={"date": "2026-10-29"})
+    asset = (await client.post("/api/whiteboards/assets", content=png(), headers={"Content-Type": "image/png"})).json()
+    def image(key, source, **extra):
+        return {"id": key, "type": "image", "fileId": "chart", "customData": {"chartSource": source}, **extra}
+    scene = {"elements": [
+        image("daily", {"code": "0000D0", "timeframe": "D"}),
+        image("minute", {"code": "0000D0", "timeframe": "5m"}),
+        image("index", {"index_id": "KOSPI"}), image("bad", {"code": "../../"}),
+        image("deleted", {"code": "000660"}, isDeleted=True), image("malformed", "invalid"),
+    ], "files": {"chart": {**asset, "created": 1}}, "appState": {}}
+    response = await client.put(f"/api/whiteboards/{doc['id']}", json=write(doc, scene=scene, review=doc["review"]))
+    assert response.status_code == 200, response.text
+    saved = response.json()
+    assert saved["review"]["stocks"] == ["0000D0"]
+    assert saved["review"]["records"] == []
+    assert (await client.get("/api/whiteboards")).json()["boards"][0]["review"]["stocks"] == ["0000D0"]
+    scene["elements"][0]["isDeleted"] = True
+    scene["elements"][1]["isDeleted"] = True
+    removed = await client.put(f"/api/whiteboards/{doc['id']}", json=write(saved, scene=scene, review=saved["review"]))
+    assert removed.json()["review"]["stocks"] == []
+
+
 async def test_crud_unknown_scene_fields_and_restart(client, tmp_path):
     doc = await create(client)
     req = write(

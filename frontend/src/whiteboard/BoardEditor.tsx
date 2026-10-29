@@ -17,6 +17,9 @@ import { hitInk } from './freehandEraser';
 import { externalEmbedsAsNotes, isExternalEmbed } from './externalEmbeds';
 import { useThemePrefsStore } from '../state/themePrefs';
 import { useCanvasTooltips } from './useCanvasTooltips';
+import type { ChartTransfer } from './chartTransfer';
+import { boardId } from '../api/whiteboards';
+import { pageSkeleton, PAGE_WIDTH, reviewPages } from './reviewCanvas';
 
 Object.assign(window, { EXCALIDRAW_ASSET_PATH: '/whiteboard/' });
 
@@ -25,6 +28,7 @@ export interface BoardEditorHandle {
   api: ExcalidrawImperativeAPI;
   addNote: (text?: string) => void;
   addImages: (files: Blob[], source?: Record<string, unknown>) => Promise<void>;
+  addChartTransfer: (transfer: ChartTransfer) => Promise<void>;
   cancelImages: () => void;
 }
 
@@ -177,11 +181,56 @@ export function BoardEditor({
       if (mounted) api.setActiveTool({ type: 'selection' });
       if (errors.length) errorRef.current(errors.join(' · '));
     };
+    const addChartTransfer = async (transfer: ChartTransfer) => {
+      if (!transfer.attachments?.length) return addImages([transfer.blob], transfer.source);
+      const epoch = ++imageEpoch;
+      // Decode everything before touching the scene: a failed image never leaves half a group.
+      const images = await Promise.all(transfer.attachments.map(async attachment => ({
+        ...await imageFile(attachment.blob), source: attachment.source,
+      })));
+      if (epoch !== imageEpoch) return;
+      const existing = mounted ? api.getSceneElementsIncludingDeleted() : session.elements;
+      const pages = reviewPages(existing);
+      const empty = pages.find(page => !existing.some(el => el.frameId === page.id && !el.isDeleted));
+      const left = empty?.x ?? (existing.filter(el => !el.isDeleted).reduce((max, el) => Math.max(max, el.x + el.width), -80) + 80);
+      const top = empty?.y ?? 0;
+      const frameId = empty?.id ?? boardId(), groupId = boardId();
+      let y = top + 42;
+      const elements = images.flatMap(image => {
+        const width = PAGE_WIDTH - 84, height = width * image.height / image.width;
+        const result = convertToExcalidrawElements([{ type: 'image', x: left + 42, y, width, height,
+          fileId: image.file.id, status: 'saved', scale: [1, 1], groupIds: [groupId],
+          frameId, customData: { chartSource: image.source }, link: image.source.url }]);
+        y += height + 24;
+        return result;
+      });
+      const frame = empty ? newElementWith(empty, { height: y - top + 18 }) : convertToExcalidrawElements([
+        { ...pageSkeleton(frameId, left, `페이지 ${pages.length + 1}`), height: y - top + 18 },
+      ], { regenerateIds: false })[0];
+      const next = [...existing.filter(el => el.id !== frameId), frame, ...elements];
+      const files = Object.fromEntries(images.map(image => [image.file.id, image.file]));
+      if (mounted) {
+        api.updateScene({ elements: next, captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+          appState: { selectedElementIds: {}, selectedGroupIds: {} } });
+        // Excalidraw warms its bitmap cache from elements already in the scene.
+        api.addFiles(Object.values(files));
+        api.setActiveTool({ type: 'selection' });
+        // Keep the beginning readable; fitting the whole tall page makes labels too small.
+        const state = api.getAppState();
+        const zoom = Math.min(0.85, Math.max(0.2, (state.width - 80) / PAGE_WIDTH));
+        api.updateScene({ appState: { scrollX: -left + 40 / zoom, scrollY: -top + 60 / zoom,
+          zoom: { value: zoom as AppState['zoom']['value'] } }, captureUpdate: CaptureUpdateAction.NEVER });
+      } else {
+        session.change(next, api.getAppState(), { ...session.files, ...files });
+        await session.persistDraft();
+      }
+    };
     handleRef.current = {
       documentId: session.document.id,
       api,
       addNote,
       addImages,
+      addChartTransfer,
       cancelImages: () => {
         imageEpoch++;
       },
