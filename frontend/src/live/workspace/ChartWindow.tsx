@@ -896,16 +896,6 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           <span aria-hidden className="live-chart-toolbar-divider" />
           <ChartAnalysisActions win={win} code={d.workareaCode} timeframe={view.timeframe}
             viewportRef={imageViewportRef}
-            getReviewContext={!isIndex && !usInstrument && isMinuteTimeframe(view.timeframe) ? () => {
-              const viewport = viewportCaptureRef.current();
-              if (viewport?.leftEdgeMs == null || !Number.isFinite(viewport.rightEdgeMs)) return null;
-              const rows = (d.workareaChartBundle ?? d.workareaBundle)?.candles.filter(row =>
-                row.ts_ms >= viewport.leftEdgeMs! && row.ts_ms <= viewport.rightEdgeMs) ?? [];
-              if (!rows.length) return null;
-              return { name: symbol?.name ?? view.code ?? '', venue,
-                dates: [...new Set(rows.map(row => unixMsToKSTDate(row.ts_ms)))].sort(),
-                fromMs: rows[0].ts_ms, toMs: rows.at(-1)!.ts_ms };
-            } : undefined}
             available={!!(d.workareaChartBundle ?? d.workareaBundle)?.candles.length && !d.workareaCandleEmpty} />
           {!isIndex && isMinuteTimeframe(view.timeframe) && <IconToolbarButton aria-label="초봉으로 확대"
             title="초봉으로 확대 — 화면 오른쪽 봉을 초봉 창에서 엽니다. 측정 도구로 구간을 선택할 수도 있습니다."

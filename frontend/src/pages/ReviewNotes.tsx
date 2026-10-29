@@ -89,11 +89,11 @@ export default function ReviewNotes() {
     setParams(previous => { const next = new URLSearchParams(previous); if (next.get('transfer') === transfer) next.delete('transfer'); return next; }, { replace: true });
     if (!chart) { setError('전달 중인 이미지를 찾지 못했습니다. 차트에서 다시 추가해 주세요'); return; }
     setNotice('차트 이미지를 추가하는 중…');
-    void editor.addChartTransfer(chart).then(() => {
+    void editor.addImages([chart.blob], chart.source).then(() => {
       const note = session.state.review!;
       session.editReview({ ...note, completed: false, stocks: [...new Set([...note.stocks, chart.source.code])] });
       void session.persistDraft(); void session.flush();
-      if (current.current === session) setNotice(chart.attachments?.length ? '시장·순매수·종목 차트 5개 영역을 캔버스에 추가했습니다' : '차트를 캔버스에 추가했습니다');
+      if (current.current === session) setNotice('차트를 캔버스에 추가했습니다');
     }).catch(e => { if (current.current === session) setError(e instanceof Error ? e.message : '차트 추가에 실패했습니다'); });
   }, [session, transfer, editor, sourceView, setParams]);
   async function action(fn: () => Promise<void>) {

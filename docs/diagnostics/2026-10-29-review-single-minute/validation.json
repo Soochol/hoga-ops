@@ -1,0 +1,51 @@
+{
+  "date_kst": "2026-10-29",
+  "base_sha": "a827b5c35918af392e3378a24690730fdfa40e48",
+  "reverts_pr": 2321,
+  "input_sha256": "b5e1f448cdf9f7d94bc1528dd8c77d570819346d66b2f35abe57bee606039a9c",
+  "input_files": 2799,
+  "behavior": "Restore the previous target-note chooser and attach one currently visible stock minute-chart PNG. Remove the automatic market/flow/daily bundle. Persisted note content is not deleted.",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed; final E2E-only wording and request-list adjustment do not change types"
+    },
+    {
+      "command": "npx vitest run src/chart/ChartCaptureActions.test.tsx src/whiteboard",
+      "result": "26 passed in 6 files"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_whiteboards.py tests/unit/api/test_rest_wire_schema_contract.py -m 'not wallclock'",
+      "result": "24 passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/review-single-minute.spec.ts",
+      "result": "1 passed; actual minute PNG persistence/reload, no market/flow capture calls"
+    },
+    {
+      "command": "npx playwright test tests/e2e/chart-image-export.spec.ts",
+      "result": "1 passed in preceding run; copy/download and single attachment regression"
+    },
+    {
+      "command": "Vite production build via Playwright webServer",
+      "result": "passed on final E2E run"
+    },
+    {
+      "command": "git diff 95faca376 --name-only -- frontend/src hoga tests/unit/api/test_whiteboards.py",
+      "result": "empty: production source restored exactly to pre-feature version"
+    },
+    {
+      "command": "git diff --check; git diff --cached --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "python": "Python 3.14.7",
+    "browser": "system Google Chrome, credential-free Playwright fixtures"
+  }
+}

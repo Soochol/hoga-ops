@@ -481,7 +481,7 @@ export default function Whiteboard() {
                       const transfer = takeChartTransfer(token);
                       setParams({ board: session.document.id, legacy: '1' }, { replace: true });
                       if (transfer)
-                        void handle.addChartTransfer(transfer).then(() => {
+                        void handle.addImages([transfer.blob], transfer.source).then(() => {
                           void session.persistDraft();
                           void session.flush();
                           setNotice('차트 이미지를 보드에 추가했습니다');
