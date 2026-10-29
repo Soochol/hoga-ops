@@ -7,8 +7,10 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import { useActivePrefs } from '../../state/chartPrefs';
 import type { VolumeOverlayStyle } from '../../state/chartDisplayPrefs';
 import { formatKoreanK } from '../../util/koreanNumber';
+import { useWindowIndicator } from '../workspace/windowView';
+import type { VolumeColorMode } from '../../state/liveIndicatorsPersistence';
 
-type Context = VolumeOverlayStyle & { swapColors: boolean };
+type Context = VolumeOverlayStyle & { swapColors: boolean; colorMode: VolumeColorMode };
 const SPEC = {
   name: 'candle-volume', stretch: 0,
   series: [{
@@ -18,7 +20,7 @@ const SPEC = {
       priceFormat: { type: 'custom', formatter: formatKoreanK, minMove: 1 },
     },
     legend: { label: '거래량' },
-    data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Context) => projectVolumeCached(bundle, axis, ctx.swapColors, ctx),
+    data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Context) => projectVolumeCached(bundle, axis, ctx.swapColors, ctx, ctx.colorMode),
     afterAdd: (series) => series.setSeriesOrder(0),
   }],
 } satisfies PaneSpec<Context>;
@@ -36,8 +38,9 @@ function VolumeOverlay({ chart, bundle, axis, onLegendReady, onLegendGone }: Pro
   const up = useActivePrefs(p => p.volumeOverlayUpColor);
   const down = useActivePrefs(p => p.volumeOverlayDownColor);
   const swapColors = useActivePrefs(p => p.candleInvertScale && p.candleInvertColors);
+  const colorMode = useWindowIndicator(s => s.volumeColorMode);
   const ctx = useMemo<Context>(() => ({ volumeOverlayTransparency: transparency, volumeOverlayHeight: height,
-    volumeOverlayUpColor: up, volumeOverlayDownColor: down, swapColors }), [transparency, height, up, down, swapColors]);
+    volumeOverlayUpColor: up, volumeOverlayDownColor: down, swapColors, colorMode }), [transparency, height, up, down, swapColors, colorMode]);
   const series = useRef<ISeriesApi<SeriesType> | null>(null);
   const ready = useCallback((s: ISeriesApi<SeriesType>) => { series.current = s; }, []);
   const gone = useCallback(() => { series.current = null; }, []);

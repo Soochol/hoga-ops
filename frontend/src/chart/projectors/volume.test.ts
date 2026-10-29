@@ -65,6 +65,41 @@ describe('projectVolume', () => {
 });
 
 describe('VOLUME_SPEC', () => {
+  it('compares actual preceding volumes across the cache boundary and recolors on live updates and mode changes', () => {
+    const day1 = sessionOpenMs + 86_400_000;
+    const candle = (ts_ms: number, volume: number) => ({ ts_ms, open: 2, close: 1, high: 2, low: 1, vol_a: volume, vol_b: 0 });
+    const past = [candle(sessionOpenMs, 10), candle(sessionOpenMs + 60_000, 20)];
+    const bundle = rangeBundleFixture({
+      segments: [
+        { date: '20260518', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000, source: 'hogaplay' },
+        { date: '20260519', session_open_ms: day1, session_close_ms: day1 + 23_400_000, source: 'hogaplay' },
+      ],
+      candles: [...past, candle(day1, 20), candle(day1 + 60_000, 15)],
+    });
+    const ax = createVirtualAxis(bundle.segments!.map(s => ({ date: s.date, sessionOpenMs: s.session_open_ms, sessionCloseMs: s.session_close_ms })));
+    const style = { ...DEFAULT_VOLUME_OVERLAY_STYLE, volumeOverlayUpColor: '#112233', volumeOverlayDownColor: '#445566', volumeOverlayTransparency: 0 };
+    const colors = (rows: ReturnType<typeof projectVolume>) => rows.map(r => r.color);
+    const comparison = projectVolumeCached(bundle, ax, false, style, 'previous-volume');
+    // First bar falls back to the down candle; equal and lower volumes are down.
+    expect(colors(comparison)).toEqual(['#445566ff', '#112233ff', '#445566ff', '#445566ff']);
+    expect(comparison).toEqual(projectVolume(bundle, ax, false, style, 'previous-volume'));
+    const live = projectVolumeCached({ ...bundle, candles: [...past, candle(day1, 21)] }, ax, false, style, 'previous-volume');
+    expect(live[0]).toBe(comparison[0]);
+    expect(live.at(-1)?.color).toBe('#112233ff');
+    expect(colors(projectVolumeCached(bundle, ax, false, style))).toEqual(Array(4).fill('#445566ff'));
+    expect(colors(projectVolumeCached(bundle, ax, true, style, 'previous-volume')))
+      .toEqual(['#112233ff', '#445566ff', '#112233ff', '#112233ff']);
+  });
+
+  it('compares with an off-axis preceding bar instead of treating the first visible bar as the first observation', () => {
+    const bundle = rangeBundleFixture({ candles: [
+      { ts_ms: sessionOpenMs - 60_000, open: 2, close: 1, high: 2, low: 1, vol_a: 10, vol_b: 0 },
+      { ts_ms: sessionOpenMs, open: 2, close: 1, high: 2, low: 1, vol_a: 20, vol_b: 0 },
+    ] });
+    const style = { ...DEFAULT_VOLUME_OVERLAY_STYLE, volumeOverlayUpColor: '#112233', volumeOverlayTransparency: 0 };
+    expect(projectVolume(bundle, axis, false, style, 'previous-volume')).toMatchObject([{ value: 20, color: '#112233ff' }]);
+  });
+
   it('projects one bar per in-session candle (volume gating is pane mount, not data)', () => {
     const bundle = {
       candles: [{ ts_ms: 0, open: 1, close: 2, high: 2, low: 1, vol_a: 5, vol_b: 5 }],

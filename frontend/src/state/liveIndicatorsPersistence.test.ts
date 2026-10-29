@@ -45,6 +45,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       institutionTradeSide: 'net',
       institutionNetEnabled: false,
       volumeEnabled: true,
+      volumeColorMode: 'candle',
       tradeValueEnabled: false,
       movingAverageHidden: false,
       peakWallPaneEnabled: false,

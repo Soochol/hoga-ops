@@ -13,16 +13,19 @@ import { formatKoreanK } from '../../util/koreanNumber';
 import type { PaneSpec } from '../RangeSeriesPane';
 import type { VolumeOverlayStyle } from '../../state/chartDisplayPrefs';
 import { useMemo } from 'react';
+import { useWindowIndicator } from '../../live/workspace/windowView';
+import type { VolumeColorMode } from '../../state/liveIndicatorsPersistence';
 
 const TOKEN_SPEC = {
   up: ['--price-up', '#F04452'],
   down: ['--price-down', '#3485FA'],
 } as const;
 
-type VolumePaneContext = { swapColors?: boolean };
+type VolumePaneContext = { swapColors?: boolean; colorMode?: VolumeColorMode };
 const useVolumeContext = (): VolumePaneContext => {
   const swapColors = useActivePrefs(p => p.candleInvertScale && p.candleInvertColors);
-  return useMemo(() => ({ swapColors }), [swapColors]);
+  const colorMode = useWindowIndicator(s => s.volumeColorMode);
+  return useMemo(() => ({ swapColors, colorMode }), [swapColors, colorMode]);
 };
 
 const priceFormat = {
@@ -36,6 +39,7 @@ type VolumeCacheEntry = {
   theme: string;
   swapColors: boolean;
   styleKey: string;
+  colorMode: VolumeColorMode;
   pastLen: number;
   pastLastTs: number;
   pastFirstRef: RangeBundle['candles'][number] | null;
@@ -43,7 +47,9 @@ type VolumeCacheEntry = {
   pastData: VolumeProjection[];
 };
 
-const volumeCache = new WeakMap<VirtualAxis, VolumeCacheEntry>();
+// Independent volume instances can use both modes on the same axis without
+// invalidating each other's historical projection on every live tick.
+const volumeCache = new WeakMap<VirtualAxis, Map<VolumeColorMode, VolumeCacheEntry>>();
 
 function lowerBoundCandle(candles: RangeBundle['candles'], t: number): number {
   let lo = 0;
@@ -56,7 +62,10 @@ function lowerBoundCandle(candles: RangeBundle['candles'], t: number): number {
   return lo;
 }
 
-function projectVolumeRows(candles: RangeBundle['candles'], axis: VirtualAxis, swapColors: boolean, style?: VolumeOverlayStyle): VolumeProjection[] {
+function projectVolumeRows(
+  candles: RangeBundle['candles'], axis: VirtualAxis, swapColors: boolean,
+  style: VolumeOverlayStyle | undefined, colorMode: VolumeColorMode, previousVolume?: number,
+): VolumeProjection[] {
   const tokens = resolveTokensThemed(TOKEN_SPEC);
   const alpha = (color: string) => style
     ? `${color}${Math.round(255 * (1 - style.volumeOverlayTransparency / 100)).toString(16).padStart(2, '0')}` : color;
@@ -64,24 +73,29 @@ function projectVolumeRows(candles: RangeBundle['candles'], axis: VirtualAxis, s
   const down = alpha(style?.volumeOverlayDownColor || tokens.down);
   const out: VolumeProjection[] = [];
   for (const c of candles) {
+    const volume = c.vol_a + c.vol_b;
+    const isUp = colorMode === 'previous-volume' && previousVolume !== undefined
+      ? volume > previousVolume : c.close >= c.open;
+    // Keep the actual preceding bar even when it is outside the visible axis.
+    previousVolume = volume;
     const projected = candlePosition(c, axis);
     if (!projected.contained) continue;
     out.push({
       time: (projected.virtual / 1000) as UTCTimestamp,
-      value: c.vol_a + c.vol_b,
-      color: (c.close >= c.open) !== swapColors ? up : down,
+      value: volume,
+      color: isUp !== swapColors ? up : down,
     });
   }
   return out;
 }
 
-export function projectVolume(bundle: RangeBundle, axis: VirtualAxis, swapColors = false, style?: VolumeOverlayStyle): HistogramData<Time>[] {
-  return projectVolumeRows(bundle.candles, axis, swapColors, style);
+export function projectVolume(bundle: RangeBundle, axis: VirtualAxis, swapColors = false, style?: VolumeOverlayStyle, colorMode: VolumeColorMode = 'candle'): HistogramData<Time>[] {
+  return projectVolumeRows(bundle.candles, axis, swapColors, style, colorMode);
 }
 
-export function projectVolumeCached(bundle: RangeBundle, axis: VirtualAxis, swapColors = false, style?: VolumeOverlayStyle): HistogramData<Time>[] {
+export function projectVolumeCached(bundle: RangeBundle, axis: VirtualAxis, swapColors = false, style?: VolumeOverlayStyle, colorMode: VolumeColorMode = 'candle'): HistogramData<Time>[] {
   const segs = bundle.segments ?? [];
-  if (segs.length < 2) return projectVolume(bundle, axis, swapColors, style);
+  if (segs.length < 2) return projectVolume(bundle, axis, swapColors, style, colorMode);
 
   const candles = bundle.candles;
   const todayOpen = segs[segs.length - 1].session_open_ms;
@@ -93,12 +107,18 @@ export function projectVolumeCached(bundle: RangeBundle, axis: VirtualAxis, swap
 
   const styleKey = style ? `${style.volumeOverlayUpColor}|${style.volumeOverlayDownColor}|${style.volumeOverlayTransparency}` : '';
   const theme = currentThemeKey();
-  let entry = volumeCache.get(axis);
+  let modes = volumeCache.get(axis);
+  if (!modes) {
+    modes = new Map();
+    volumeCache.set(axis, modes);
+  }
+  let entry = modes.get(colorMode);
   if (
     !entry ||
     entry.theme !== theme ||
     entry.swapColors !== swapColors ||
     entry.styleKey !== styleKey ||
+    entry.colorMode !== colorMode ||
     entry.pastLen !== pastLen ||
     entry.pastLastTs !== pastLastTs ||
     entry.pastFirstRef !== pastFirstRef ||
@@ -108,16 +128,19 @@ export function projectVolumeCached(bundle: RangeBundle, axis: VirtualAxis, swap
       theme,
       swapColors,
       styleKey,
+      colorMode,
       pastLen,
       pastLastTs,
       pastFirstRef,
       pastLastRef,
-      pastData: projectVolumeRows(candles.slice(0, splitIdx), axis, swapColors, style),
+      pastData: projectVolumeRows(candles.slice(0, splitIdx), axis, swapColors, style, colorMode),
     };
-    volumeCache.set(axis, entry);
+    modes.set(colorMode, entry);
   }
 
-  return entry.pastData.concat(projectVolumeRows(candles.slice(splitIdx), axis, swapColors, style));
+  const previous = candles[splitIdx - 1];
+  const previousVolume = previous ? previous.vol_a + previous.vol_b : undefined;
+  return entry.pastData.concat(projectVolumeRows(candles.slice(splitIdx), axis, swapColors, style, colorMode, previousVolume));
 }
 
 // volumeEnabled gating lives in `paneSpecsForTimeframe` (the pane is removed
@@ -140,7 +163,7 @@ export const VOLUME_SPEC = {
         priceLineVisible: false,
         lastValueVisible: false,
       },
-      data: (bundle: RangeBundle, axis: VirtualAxis, ctx: VolumePaneContext) => projectVolumeCached(bundle, axis, ctx.swapColors),
+      data: (bundle: RangeBundle, axis: VirtualAxis, ctx: VolumePaneContext) => projectVolumeCached(bundle, axis, ctx.swapColors, undefined, ctx.colorMode),
     },
   ],
 } satisfies PaneSpec<VolumePaneContext>;

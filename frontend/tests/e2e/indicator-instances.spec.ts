@@ -140,3 +140,56 @@ test('all indicator kinds mount as independent instances, including daily trade-
   await expect.poll(async () => (await paneValues()).flat(2)).toEqual(expect.arrayContaining([200, 380, 90, 10]));
   expect(errors.filter(message => !message.startsWith('ResizeObserver loop'))).toEqual([]);
 });
+
+for (const theme of ['toss-light', 'toss-dark']) {
+  test(`${theme}: volume color mode updates bars, stays independent per instance and survives undo, reload and overlay`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(theme => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
+    const id = await setup(page);
+    const editor = page.getByTestId('indicator-panel-shell');
+    const histogramColors = () => page.evaluate(id => (window as unknown as ChartWindow).__liveCharts.get(id)!.panes()
+      .flatMap(pane => pane.getSeries().filter(series => series.seriesType() === 'Histogram')
+        .map(series => (series as ISeriesApi<'Histogram'>).data().filter(row => 'value' in row && row.value === 100).slice(1, 100).map(row => 'color' in row ? row.color : undefined))), id);
+    await editor.getByRole('button', { name: '내 지표', exact: true }).click();
+    await editor.getByRole('button', { name: '거래량', exact: true }).click();
+    await expect(editor.getByRole('radio', { name: '캔들 색상과 동일', exact: true })).toBeChecked();
+    await expect.poll(async () => new Set((await histogramColors())[0]).size).toBe(2);
+    await editor.getByRole('radio', { name: '이전 거래량과 비교', exact: true }).check();
+    await expect.poll(async () => new Set((await histogramColors())[0]).size).toBe(1);
+    await expect(editor.getByText('거래량 증가 빨강', { exact: true })).toBeVisible();
+    await editor.getByRole('button', { name: '되돌리기', exact: true }).click();
+    await expect(editor.getByRole('radio', { name: '캔들 색상과 동일', exact: true })).toBeChecked();
+    await expect.poll(async () => new Set((await histogramColors())[0]).size).toBe(2);
+    await editor.getByRole('radio', { name: '이전 거래량과 비교', exact: true }).check();
+    await editor.getByRole('button', { name: '지표 추가', exact: true }).click();
+    await editor.getByRole('button', { name: '거래량', exact: true }).click();
+    await editor.getByRole('radio', { name: '캔들 색상과 동일', exact: true }).check();
+    await editor.getByRole('button', { name: '설정대로 추가', exact: true }).click();
+    await editor.getByRole('button', { name: '내 지표', exact: true }).click();
+    await editor.getByRole('button', { name: '거래량 1 설정', exact: true }).click();
+    await expect(editor.getByRole('radio', { name: '이전 거래량과 비교', exact: true })).toBeChecked();
+    await expect.poll(async () => (await histogramColors()).map(rows => new Set(rows).size)).toEqual([1, 2]);
+    await editor.screenshot({ path: info.outputPath(`volume-color-${theme}.png`) });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await editor.screenshot({ path: info.outputPath(`volume-color-${theme}-390.png`) });
+    const width = await editor.evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.width + 1);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => history.replaceState(null, '', '/live'));
+    await page.reload();
+    await expect.poll(async () => (await state(page, id)).volumeColorMode).toBe('previous-volume');
+    expect((await state(page, id)).indicatorInstances[0].settings.volumeColorMode).toBe('candle');
+    await expect.poll(async () => (await histogramColors()).map(rows => new Set(rows).size)).toEqual([1, 2]);
+    await page.locator(`[data-win="${id}"]`).getByRole('button', { name: '차트 설정', exact: true }).click();
+    await page.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
+    await expect.poll(() => page.evaluate(id => {
+      const series = (window as unknown as ChartWindow).__liveCharts.get(id)!.panes()[0].getSeries()
+        .find(series => series.seriesType() === 'Histogram') as ISeriesApi<'Histogram'> | undefined;
+      if (!series) return null;
+      return new Set(series.data().filter(row => 'value' in row && row.value === 100).slice(1, 100).map(row => 'color' in row ? row.color : undefined)).size;
+    }, id)).toBe(1);
+    expect(errors.filter(message => !message.startsWith('ResizeObserver loop'))).toEqual([]);
+  });
+}

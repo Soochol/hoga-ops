@@ -533,3 +533,21 @@ it('migrates shared investor settings and does not resurrect them after resettin
   expect(settings.institutionTradeSide).toBe('sell');
   expect(restored.byWindow['live:w1'].D).not.toHaveProperty('investorTradeSide');
 });
+
+
+it('persists volume color mode per window, timeframe and instance while older settings keep candle colors', () => {
+  const persisted = normalizeIndicatorsV2({ byWindow: { 'live:volume': {
+    minute: { volumeColorMode: 'previous-volume', indicatorInstances: [
+      { id: 'volume-extra', category: 'volume', settings: { volumeColorMode: 'candle', volumeEnabled: true },
+        prefs: { volumeOverlayUpColor: '#123456', volumeOverlayDownColor: '', volumeOverlayEnabled: false } },
+    ] },
+    D: { volumeColorMode: 'invalid' },
+  } } });
+  const restored = normalizeIndicatorsV2(JSON.parse(JSON.stringify(persisted)));
+  const minute = resolveIndicatorSettings(restored.byWindow['live:volume'], '1m');
+  expect(minute.volumeColorMode).toBe('previous-volume');
+  expect(minute.indicatorInstances?.[0].settings.volumeColorMode).toBe('candle');
+  expect(minute.indicatorInstances?.[0].prefs).toEqual({ volumeOverlayUpColor: '#123456', volumeOverlayDownColor: '', volumeOverlayEnabled: false });
+  expect(resolveIndicatorSettings(restored.byWindow['live:volume'], 'D').volumeColorMode).toBe('candle');
+  expect(resolveIndicatorSettings({}, '1m').volumeColorMode).toBe('candle');
+});
