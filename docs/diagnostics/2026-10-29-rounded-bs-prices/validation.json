@@ -1,0 +1,42 @@
+{
+  "date_kst": "2026-10-29",
+  "base_sha": "4ce118bc53e4d265fe7c81ea2575ddc231d35dc5",
+  "origin_main_sha": "4ce118bc53e4d265fe7c81ea2575ddc231d35dc5",
+  "input_sha256": "20482c6201fd62b6c27aeb177fdf8db980d4b01af0a276b7fea3d91447d27ad3",
+  "input_files": 2799,
+  "behavior": "Selected preview option 2: 20x20px rounded rectangle, radius 5px, 1.25px buy/sell-colored border, chart-background fill, uncompressed 13px/500 B/S centered at the exact candle and fill price. Overlap remains allowed; no ticks, shifting, price averaging or omission. Hit area includes the full badge border.",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed: app, unit-test and E2E projects"
+    },
+    {
+      "command": "npx vitest run src/chart/AccountExecutionsPrimitive.test.ts src/chart/projectors/accountExecutions.test.ts src/live/LiveChartRoot.test.tsx src/live/workspace/ChartTradeAccountControl.test.tsx",
+      "result": "194 passed across 4 files"
+    },
+    {
+      "command": "npx playwright test tests/e2e/account-executions.spec.ts",
+      "result": "6 passed; 1m/3m/D, Kiwoom/Toss, light/dark, zoom/inversion/log scale, 20x20/r5 badge geometry and exact price centers, unchanged measured 13px glyph widths, no ticks, details and cache regression"
+    },
+    {
+      "command": "Vite production build through Playwright webServer",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "scope": "Frontend paint and click hitbox only; projection, broker data, API/wire and credentials unchanged. Credential-free system Chrome fixtures.",
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "chrome": "Google Chrome 156.0.8078.73"
+  },
+  "screenshots": [
+    "obsidian-3px.png",
+    "obsidian-56px.png",
+    "ledger-3px.png",
+    "ledger-56px.png"
+  ]
+}

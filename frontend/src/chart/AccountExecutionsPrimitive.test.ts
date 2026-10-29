@@ -6,7 +6,7 @@ import type { ExecutionMarker } from './projectors/accountExecutions';
 
 function fixture() {
   const ctx = { font: '', save: vi.fn(), restore: vi.fn(), strokeText: vi.fn(), fillText: vi.fn(), beginPath: vi.fn(),
-    rect: vi.fn(), clip: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn() };
+    rect: vi.fn(), roundRect: vi.fn(), fill: vi.fn(), clip: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn() };
   const state = { x: 100, project: (price: number) => price * 2 };
   const primitive = new AccountExecutionsPrimitive();
   primitive.attached({ chart: { timeScale: () => ({ timeToCoordinate: () => state.x }) },
@@ -17,15 +17,18 @@ function fixture() {
 const buy: ExecutionMarker = { time: 1 as Time, price: 100, side: 'BUY', executions: [], barExecutions: [] };
 const sell = { ...buy, side: 'SELL' as const };
 
-it('centers B/S at actual prices, preserves overlap and adds neither ticks nor a width limit', () => {
+it('centers rounded B/S badges at actual prices, preserving overlap without ticks or a glyph width limit', () => {
   const { primitive, ctx, draw } = fixture();
   primitive.setMarkers([buy, sell, { ...buy, price: 105 }]); draw();
   expect(ctx.fillText.mock.calls).toEqual([['B', 100, 200], ['S', 100, 200], ['B', 100, 210]]);
-  expect(ctx.strokeText.mock.calls).toEqual(ctx.fillText.mock.calls);
+  expect(ctx.strokeText).not.toHaveBeenCalled();
+  expect(ctx.roundRect.mock.calls).toEqual([[90, 190, 20, 20, 5], [90, 190, 20, 20, 5], [90, 200, 20, 20, 5]]);
+  expect(ctx.fill).toHaveBeenCalledTimes(3); expect(ctx.stroke).toHaveBeenCalledTimes(3);
   expect(ctx.font).toContain('500 13px');
   expect(ctx.rect.mock.calls).toEqual([[0, 0, 300, 300]]); // Only the pane clips text, never a candle column.
-  expect(ctx.moveTo).not.toHaveBeenCalled(); expect(ctx.lineTo).not.toHaveBeenCalled(); expect(ctx.stroke).not.toHaveBeenCalled();
+  expect(ctx.moveTo).not.toHaveBeenCalled(); expect(ctx.lineTo).not.toHaveBeenCalled();
   expect(primitive.detailAt(108, 200)).toBe(buy); // Full glyph remains clickable outside a narrow candle.
+  expect(primitive.detailAt(100, 189)).toBe(buy); // Include the badge border, beyond the former glyph-only hit area.
   const updatedBuy = { ...buy, executions: [...buy.executions] };
   primitive.setMarkers([updatedBuy, sell, { ...buy, price: 105 }]);
   expect(primitive.detailAt(108, 200)).toBe(updatedBuy);
@@ -44,6 +47,7 @@ it('keeps every nearby price separate and keeps the font fixed as chart coordina
   ctx.fillText.mockClear(); draw();
   expect(ctx.fillText.mock.calls).toEqual([['B', 42, 100], ['B', 42, 104], ['S', 42, 108]]);
   expect(ctx.font).toContain('500 13px');
+  expect(ctx.roundRect.mock.calls.every(([, , width, height, radius]) => width === 20 && height === 20 && radius === 5)).toBe(true);
   expect(primitive.detailAt(42, 104)).toBe(points[1]);
   primitive.detached(); expect(primitive.detailAt(42, 104)).toBeNull();
 });

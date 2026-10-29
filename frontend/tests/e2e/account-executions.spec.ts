@@ -7,6 +7,7 @@ const accountA = `acc_${'a'.repeat(32)}`, accountB = `acc_${'b'.repeat(32)}`;
 const start = Date.parse('2026-05-27T09:00:00+09:00');
 type ChartsWindow = Window & { __liveCharts?: Map<string, IChartApi>;
   __executionPaints?: { text: string; x: number; y: number; maxWidth?: number; font: string; glyphWidth: number }[];
+  __executionBoxes?: { x: number; y: number; width: number; height: number; radius: number }[];
   __executionTicks?: { x: number; endX: number; y: number }[] };
 
 async function fixture(page: Page, timeframe: string) {
@@ -23,6 +24,15 @@ async function fixture(page: Page, timeframe: string) {
     const win = window as ChartsWindow;
     win.__executionPaints = [];
     win.__executionTicks = [];
+    win.__executionBoxes = [];
+    const roundRect = CanvasRenderingContext2D.prototype.roundRect;
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, width, height, radii) {
+      if (this.lineWidth === 1.25 && width === 20 && height === 20 && radii === 5) {
+        win.__executionBoxes!.push({ x, y, width, height, radius: radii });
+        if (win.__executionBoxes!.length > 500) win.__executionBoxes!.splice(0, 250);
+      }
+      roundRect.call(this, x, y, width, height, radii);
+    };
     const paths = new WeakMap<CanvasRenderingContext2D, { x: number; y: number; endX?: number; endY?: number }>();
     const begin = CanvasRenderingContext2D.prototype.beginPath, move = CanvasRenderingContext2D.prototype.moveTo,
       line = CanvasRenderingContext2D.prototype.lineTo, stroke = CanvasRenderingContext2D.prototype.stroke;
@@ -200,7 +210,7 @@ for (const theme of ['obsidian', 'ledger']) test(`${theme}: 頇曤寑路於曥唽路氚橃
     await page.evaluate(view => {
       const win = window as ChartsWindow, chart = win.__liveCharts!.get('fills')!;
       const series = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
-      win.__executionPaints = []; win.__executionTicks = [];
+      win.__executionPaints = []; win.__executionTicks = []; win.__executionBoxes = [];
       chart.timeScale().applyOptions({ barSpacing: view.pitch });
       chart.timeScale().setVisibleLogicalRange({ from: 8 - 300 / view.pitch, to: 8 + 300 / view.pitch });
       series.priceScale().applyOptions({ autoScale: view.log, invertScale: view.inverted, mode: view.log ? 1 : 0 });
@@ -219,6 +229,8 @@ for (const theme of ['obsidian', 'ledger']) test(`${theme}: 頇曤寑路於曥唽路氚橃
         exactPrices: prices.every((price, i) => paints.some(p => p.text === (i < 2 ? 'B' : 'S')
           && Math.abs(p.x - x) < .1 && Math.abs(p.y - series.priceToCoordinate(price)!) < .1)),
         fixedSize: paints.length > 0 && paints.every(p => p.font.includes('13px') && p.maxWidth === undefined),
+        fixedBoxes: prices.every(price => (win.__executionBoxes ?? []).some(box => box.width === 20 && box.height === 20 && box.radius === 5
+          && Math.abs(box.x + 10 - x) < .1 && Math.abs(box.y + 10 - series.priceToCoordinate(price)!) < .1)),
         extendsBody: paints.some(p => p.glyphWidth > pitch * .7),
         labels: [...new Set(paints.map(p => `${p.text}:${p.y.toFixed(2)}`))].length,
         widths: [...new Set(paints.map(p => `${p.text}:${p.glyphWidth.toFixed(3)}`))].sort(),
@@ -227,13 +239,14 @@ for (const theme of ['obsidian', 'ledger']) test(`${theme}: 頇曤寑路於曥唽路氚橃
     }, prices);
     await expect.poll(async () => (await sample()).exactPrices).toBe(true);
     await expect.poll(async () => (await sample()).fixedSize).toBe(true);
+    await expect.poll(async () => (await sample()).fixedBoxes).toBe(true);
     await expect.poll(async () => (await sample()).labels).toBe(4);
     const current = await sample();
     expect(current.ticks).toBe(0);
     if (view.pitch === 3) expect(current.extendsBody).toBe(true);
     baselineWidths ??= current.widths;
     expect(current.widths).toEqual(baselineWidths);
-    await frame.screenshot({ path: info.outputPath(`fixed-bs-${theme}-${view.pitch}-${view.inverted}-${view.log}.png`) });
+    await frame.screenshot({ path: info.outputPath(`rounded-bs-${theme}-${view.pitch}-${view.inverted}-${view.log}.png`) });
   }
   const position = (await markerPosition(page, '1m', 35025))!;
   await page.mouse.click(position.clientX, position.clientY);
