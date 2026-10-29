@@ -10,7 +10,7 @@ import { latestAfterHoursTotals } from '../liveSidebarAdapters';
 import { liveVenueAcceptsFrame, type LiveFrameVenue } from '../liveVenuePolicy';
 import { isKstWeekend, previousDayObExpired, realMsToYyyymmdd, regularSessionCloseMs } from '../liveDateTime';
 import { isKrxAftermarketWindow, krxAftermarketIntroduced } from '../../util/stockSessions';
-import { unixMsToKSTClock } from '../../util/time';
+import { unixMsToKSTClock, unixMsToKSTHhmm } from '../../util/time';
 import { useAftermarketExclusion } from '../../api/aftermarketExclusion';
 
 /** Shared session sources for the 10-level book and live order ladder. */
@@ -27,9 +27,20 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
   const aftermarketExcluded = useKrxAftermarketExcluded(code);
   const effectiveVenue = useEffectiveVenue(code, venue);
   const date = realMsToYyyymmdd(nowMs);
-  const retained = lastValidSnapshot && !previousDayObExpired(lastValidSnapshot.ts_ms, nowMs, effectiveVenue)
+  const latestAfterHours = afterHours.at(-1);
+  const afterHoursAtMs = latestAfterHours?.t_ms;
+  const currentAfterHours = typeof afterHoursAtMs === 'number' && Number.isFinite(afterHoursAtMs)
+    && afterHoursAtMs > 0 && realMsToYyyymmdd(afterHoursAtMs) === date
+    && liveVenueAcceptsFrame(effectiveVenue, latestAfterHours?.venue as LiveFrameVenue | undefined);
+  // A new day's 0E may arrive before 08:30. It replaces yesterday's ladder
+  // immediately; the wall clock is only the latest time to clear that ladder.
+  const expired = (book: OrderbookSnapshot) => previousDayObExpired(book.ts_ms, nowMs, effectiveVenue)
+    || (currentAfterHours && realMsToYyyymmdd(book.ts_ms) !== date);
+  const regular = !isSpot && regularSnapshot && expired(regularSnapshot) ? null : regularSnapshot;
+  const retained = lastValidSnapshot && !expired(lastValidSnapshot)
     ? lastValidSnapshot : null;
-  const latestUsable = hasBookPrices(regularSnapshot) ? regularSnapshot : retained;
+  const latestUsable = hasBookPrices(regular) ? regular : retained;
+  const morningReset = previousDayObExpired(nowMs - 86_400_000, nowMs, effectiveVenue);
   const regularClose = regularSessionCloseMs(date);
   // The clock only selects a saved fallback. It never blocks an arriving book:
   // a usable 15:59:50 frame is immediately preferred to the pre-auction book.
@@ -56,8 +67,8 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
   const knownExcluded = aftermarketExcluded || (aftermarketExclusion?.reasons.length ?? 0) > 0;
   const singlePriceFills = useMemo(() => afterHoursFillRows(afterHoursBook.data), [afterHoursBook.data]);
   const selectedSnapshot = modeGated
-    ? (sessionMode === 'afterHours' ? singlePriceSnapshot : regularSnapshot)
-    : (singlePriceSnapshot ?? regularSnapshot);
+    ? (sessionMode === 'afterHours' ? singlePriceSnapshot : regular)
+    : (singlePriceSnapshot ?? regular);
   const preAuction = hasBookPrices(preAuctionSnapshot) ? preAuctionSnapshot : latestUsable;
   const savedRegular = hasBookPrices(preAuction) && preAuction.ts_ms < preAuctionCutoff(date)
     && realMsToYyyymmdd(preAuction.ts_ms) === date ? preAuction : null;
@@ -78,18 +89,15 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
       || (earlyLive && nowMs - snapshot.ts_ms >= 30_000));
   const afterHoursSample = useMemo(() => {
     if (isSpot || activeSinglePrice !== null) return null;
-    const latest = afterHours.at(-1);
-    const receivedAtMs = latest?.t_ms;
-    if (typeof receivedAtMs !== 'number' || !Number.isFinite(receivedAtMs) || receivedAtMs <= 0
-      || realMsToYyyymmdd(receivedAtMs) !== date
-      || !liveVenueAcceptsFrame(effectiveVenue, latest?.venue as LiveFrameVenue | undefined)) return null;
+    if (!currentAfterHours || typeof afterHoursAtMs !== 'number') return null;
     if (snapshot != null && realMsToYyyymmdd(snapshot.ts_ms) !== todayKst) return null;
     // A 0D reset has no ladder. Compare 0E with the last usable ladder instead,
     // and keep its totals and timestamp together while the saved ladder stays put.
-    const liveBook = hasBookPrices(latestSnapshot) ? latestSnapshot : latestUsable;
+    const liveBook = hasBookPrices(latestSnapshot) && realMsToYyyymmdd(latestSnapshot.ts_ms) === date
+      ? latestSnapshot : latestUsable;
     const totals = latestAfterHoursTotals(afterHours, liveBook?.ts_ms ?? null);
-    return totals === null ? null : { totals, receivedAtMs };
-  }, [isSpot, activeSinglePrice, afterHours, date, effectiveVenue, snapshot, todayKst, latestSnapshot, latestUsable]);
+    return totals === null ? null : { totals, receivedAtMs: afterHoursAtMs };
+  }, [isSpot, activeSinglePrice, afterHours, date, currentAfterHours, afterHoursAtMs, snapshot, todayKst, latestSnapshot, latestUsable]);
   const afterHoursTotals = isSpot ? null : activeSinglePrice !== null
     ? { ask: activeSinglePrice.tot_ask, bid: activeSinglePrice.tot_bid }
     : afterHoursSample?.totals ?? null;
@@ -109,7 +117,11 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
   });
   const timedSessionControl = sessionControl.kind === 'label' && snapshot && !sessionControl.label.includes(':')
     ? { ...sessionControl, label: `${sessionControl.label} · ${unixMsToKSTClock(snapshot.ts_ms)}` } : sessionControl;
+  // ka10004 has no trading date. Once the KRX day starts, it cannot prove
+  // that a cached/just-fetched ladder belongs to today. Wait for dated data.
+  const allowRestBook = afterHoursTotals === null && (effectiveVenue !== 'KRX'
+    || !morningReset || unixMsToKSTHhmm(nowMs) >= 2000);
   return { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
-    afterHoursTotals, afterHoursLabel: activeSinglePrice !== null ? '시간외 단일가' : '시간외',
+    allowRestBook, morningReset, afterHoursTotals, afterHoursLabel: activeSinglePrice !== null ? '시간외 단일가' : '시간외',
     sessionControl: timedSessionControl, sessionMode, selectSessionMode };
 }

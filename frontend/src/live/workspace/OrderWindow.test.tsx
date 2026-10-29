@@ -22,7 +22,7 @@ vi.mock('./orderReceiptSound', () => ({
   subscribeOrderReceiptSoundRecovery: vi.fn(),
 }));
 
-const mock = vi.hoisted(() => ({ configured: true, accountsLoading: false, accountError: null as Error | null, stateError: null as Error | null, unresolved: [] as string[], balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0 as number | null, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ afterHours: [] as Record<string, unknown>[], configured: true, accountsLoading: false, accountError: null as Error | null, stateError: null as Error | null, unresolved: [] as string[], balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0 as number | null, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 const restBookQuery = vi.hoisted(() => ({ data: undefined as RestOrderbookResponse | undefined,
   isLoading: false, isError: false, refetch: vi.fn() }));
@@ -34,7 +34,7 @@ vi.mock('../../api/trading', () => ({
   useTradingAccountList: () => ({ orders: { data: undefined }, holdings: { data: undefined }, paused: false }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
-vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => i < mock.askCount ? { price: 67300 + mock.priceOffset + i * 100, qty: 100 + i } : { price: 0, qty: 0 }), bids: Array.from({ length: 10 }, (_, i) => i < mock.bidCount ? { price: 67200 + mock.priceOffset - i * 100, qty: 200 + i } : { price: 0, qty: 0 }), total_ask_qty: 1000, total_bid_qty: 2000, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }, trade: [], afterHours: [] })) }));
+vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => i < mock.askCount ? { price: 67300 + mock.priceOffset + i * 100, qty: 100 + i } : { price: 0, qty: 0 }), bids: Array.from({ length: 10 }, (_, i) => i < mock.bidCount ? { price: 67200 + mock.priceOffset - i * 100, qty: 200 + i } : { price: 0, qty: 0 }), total_ask_qty: 1000, total_bid_qty: 2000, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }, trade: [], afterHours: mock.afterHours })) }));
 vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }]])) }));
 const stockLimitsState = vi.hoisted(() => ({ code: '005930', dateOffset: 0, lower: 46200 as number | null }));
 vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { code: stockLimitsState.code, fetched_at_ms: mock.now + stockLimitsState.dateOffset, base_price: 66000, upper_limit: 85800, lower_limit: stockLimitsState.lower, high_250: 70000, low_250: 50000 } }) }));
@@ -69,6 +69,7 @@ function enableReceiptSound() {
   fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
 }
 beforeEach(() => {
+  mock.now = 1791856800000; mock.afterHours = [];
   stockLimitsState.code = '005930'; stockLimitsState.dateOffset = 0; stockLimitsState.lower = 46200;
   restBookQuery.data = undefined; restBookQuery.isLoading = false; restBookQuery.isError = false;
   restBookQuery.refetch.mockReset();
@@ -192,11 +193,49 @@ describe('호가 주문', () => {
       tot_ask: 2033, tot_bid: 1759, book_time: '20:00:00' },
   });
 
+  it('08:30에 전일 호가와 전체 호가 탐색을 초기화하고 캐시된 REST 호가를 다시 표시하지 않는다', () => {
+    symbolMaster.nxtEnabled = false;
+    useLiveVenueStore.setState({ venue: 'UN' });
+    mock.now = Date.parse('2026-10-14T08:29:59+09:00');
+    mock.snapshotAt = Date.parse('2026-10-13T20:00:00+09:00');
+    restBookQuery.data = restoredBook();
+    show();
+    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '전체 호가' }));
+    expect(screen.getByRole('button', { name: '전체 호가' })).toHaveAttribute('aria-pressed', 'true');
+    mock.now += 1000;
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
+    expect(screen.getByRole('button', { name: '전체 호가' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: /원 주문 추가/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-rest-book-source')).not.toBeInTheDocument();
+    expect(screen.getByTestId('book-summary')).toBeInTheDocument();
+  });
+
+  it.each(['08:29:50', '08:30:00', '08:32:00'])('장전 잔량 %s 수신 후 현재 WS 호가를 즉시 표시한다', clock => {
+    symbolMaster.nxtEnabled = false;
+    mock.now = Date.parse(`2026-10-14T${clock}+09:00`);
+    mock.snapshotAt = mock.now - 86_400_000;
+    mock.afterHours = [{ t_ms: mock.now, total_ask_qty: 1234, total_bid_qty: 567, venue: 'KRX' }];
+    restBookQuery.data = restoredBook();
+    show();
+    expect(screen.queryByRole('button', { name: /원 주문 추가/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('시간외 매도총잔량 1,234')).toBeInTheDocument();
+    expect(screen.getByLabelText('시간외 매수총잔량 567')).toBeInTheDocument();
+    mock.now = Date.parse('2026-10-14T08:50:00+09:00'); mock.snapshotAt = mock.now;
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
+    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'false');
+    expect(screen.getByLabelText('매도총잔량 1,000')).toBeInTheDocument();
+    expect(screen.getByLabelText('매수총잔량 2,000')).toBeInTheDocument();
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
   it('REST 마지막 호가는 날짜를 만들지 않고 표시하며 신규 주문은 차단하고 실제 호가가 오면 교체한다', () => {
+    mock.now = Date.parse('2026-10-24T10:15:00+09:00'); mock.snapshotAt = mock.now;
     mock.askCount = mock.bidCount = 0;
     restBookQuery.data = restoredBook();
     show();
-    expect(screen.getByTestId('order-rest-book-source')).toHaveTextContent('REST 마지막 호가 · 20:00:00 · KRX · 거래일 미제공');
+    expect(screen.queryByTestId('order-rest-book-source')).not.toBeInTheDocument();
+    expect(screen.queryByText(/거래일 미제공/)).not.toBeInTheDocument();
     expect(screen.queryByText('실시간 연결 운영 시간이 아닙니다')).not.toBeInTheDocument();
     const buy = screen.getByRole('button', { name: /매수 49,500원 주문 추가/ });
     expect(buy).toHaveAttribute('aria-disabled', 'true');
@@ -210,6 +249,7 @@ describe('호가 주문', () => {
   });
 
   it.each(['empty', 'error'] as const)('호가 %s 상태에서도 상세정보를 본문에 유지한다', kind => {
+    mock.now = Date.parse('2026-10-24T10:15:00+09:00'); mock.snapshotAt = mock.now;
     mock.askCount = mock.bidCount = 0;
     restBookQuery.isError = kind === 'error';
     show();
@@ -221,6 +261,7 @@ describe('호가 주문', () => {
   });
 
   it('마지막 호가 최초 조회 중에는 빈 저장본으로 안내하지 않고 상세정보를 유지한다', () => {
+    mock.now = Date.parse('2026-10-24T10:15:00+09:00'); mock.snapshotAt = mock.now;
     mock.askCount = mock.bidCount = 0;
     restBookQuery.isLoading = true;
     show();
@@ -230,10 +271,12 @@ describe('호가 주문', () => {
   });
 
   it('조회 실패 시 저장된 REST 호가를 남기고 다시 조회 동작을 제공한다', () => {
+    mock.now = Date.parse('2026-10-24T10:15:00+09:00'); mock.snapshotAt = mock.now;
     mock.askCount = mock.bidCount = 0;
     restBookQuery.data = { ...restoredBook(), source: 'stored', refresh_failed: true };
     show();
-    expect(screen.getByTestId('order-rest-book-source')).toHaveTextContent('저장된 마지막 호가');
+    expect(screen.getByTestId('order-rest-book-source')).toHaveTextContent('최신 호가 조회 실패');
+    expect(screen.queryByText(/거래일 미제공/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /매수 49,500원 주문 추가/ })).toBeInTheDocument();
     fireEvent.click(within(screen.getByTestId('order-rest-book-source')).getByRole('button', { name: '다시 조회' }));
     expect(restBookQuery.refetch).toHaveBeenCalledOnce();

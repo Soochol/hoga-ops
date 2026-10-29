@@ -47,7 +47,6 @@ import {
   resolveOrderbookCardSnapshot,
 } from '../../sidebar/cursorDetailResolver';
 import { useLiveSeries } from '../../api/liveSeries';
-import { useMinuteClock } from '../useMinuteClock';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { useLiveInvestorTrendEstimate } from '../../api/liveInvestorTrendEstimate';
 import { useLiveDailyProgramTrade } from '../../api/liveDailyProgramTrade';
@@ -96,7 +95,7 @@ import {
   regularSessionBinningSegment,
   volumeDistributionClosePointsFromCandles,
 } from '../continuousTradeVolumeDistribution';
-import { previousDayObExpired, realMsToYyyymmdd, subtractDaysKst, regularSessionOpenMs, regularSessionCloseMs } from '../liveDateTime';
+import { realMsToYyyymmdd, subtractDaysKst, regularSessionOpenMs, regularSessionCloseMs } from '../liveDateTime';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId, isUsIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
@@ -255,22 +254,12 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const venueTrade = live.trade;
   // 시계가 경계를 넘으면 스스로 갱신되게 한다. 두 가지를 함께 떠받친다: 18:00 이후엔
   // 시간외 폴링이 멎어 '시간외 단일가' 라벨이 밤새 얼어붙고, 밤을 넘기면 아래
-  // `latestSnapshot` 의 전일 만료 판정이 갱신될 계기를 잃는다.
-  const nowMs = useMinuteClock();
-  // ⚠ **LATEST 사다리의 전일 만료는 여기서만 건다.** 후보 지점 둘을 각각의 이유로
-  // 물렸다:
-  //   - `useLiveSeries` 의 폴백 memo — 거기서 자르면 **밤새 켜 둔 탭이 안 고쳐진다.**
-  //     프론트 축출은 들어온 프레임이 몰아내는 방식이라(`liveSnapshotBuffer` 의
-  //     quiet-kind caveat) 프레임이 멎으면 어제 꼬리가 버퍼에 그대로 남고, 그 탭은
-  //     `filteredOb` 가 비지 않아 폴백 경로를 **아예 타지 않는다**.
-  //   - `venueOb` 통째 필터 — 과거 커서 호버가 깨진다. `bufferSnap` 이 같은 배열에서
-  //     어제 버킷의 호가를 찾는 정당한 경로다(ADR-0044 개정).
-  // 그래서 **LATEST 표시의 유일한 생산점**인 여기가 답이다 — 버퍼 잔존·latch·서버
-  // last_ob 세 출처가 이미 `venueOb` 로 합류한 뒤라 한 번에 덮이고, 스팟은 안 스친다.
-  const latestSnapshot = useMemo(() => {
-    const snap = latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : venueOb);
-    return snap !== null && previousDayObExpired(snap.ts_ms, nowMs, venue) ? null : snap;
-  }, [venueOb, live.latestOb, nowMs, venue]);
+  // 공유 표시층의 전일 만료 판정이 갱신될 계기를 잃는다.
+  const nowMs = useWallClockSecond();
+  // Expiry belongs to the shared display layer, after resolving this Code's venue.
+  // Historical cursor candidates remain untouched.
+  const latestSnapshot = useMemo(() => latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : venueOb),
+    [venueOb, live.latestOb]);
   // HTS식 순간 증감 뱃지 — 라이브 latest 표시일 때만. 스팟 커서 중에는 비활성
   // (과거 시점 위에 "방금 변화" 뱃지는 거짓 정보) + 상태도 비워 복귀 시 낡은 뱃지 방지.
   const spotSnap = spotOrderbook === undefined ? undefined : spotOrderbook.snapshot;
@@ -292,12 +281,12 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
   const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
-    afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
+    allowRestBook, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
     code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
   // Current REST data must never fill a historical cursor or replace a
   // selected single-price session. Both book windows share the same query key.
-  const needsRestBook = !isSpot && !hasBookPrices(snapshot) && activeSinglePrice === null
+  const needsRestBook = allowRestBook && !isSpot && !hasBookPrices(snapshot) && activeSinglePrice === null
     && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours');
   const rest = useLiveRestOrderbook(code, effectiveVenue, needsRestBook && !live.isLoading);
   const restBook = needsRestBook && rest.data?.code === code && rest.data.venue === effectiveVenue
@@ -485,9 +474,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 시간외 단일가 사다리는 스팟 경로가 아니다 — 그쪽이 사다리를 통째로 대체하고
   // 있으면 스팟 조회의 신선도는 화면에 그려진 것과 무관하다.
   const bookStale = !useSinglePrice && spotOrderbookStale;
-  const availabilityNow = useWallClockSecond();
   const { availability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
-    live, bookMs: snapshot?.ts_ms, nowMs: availabilityNow, exclusion: aftermarketExclusion,
+    live, bookMs: snapshot?.ts_ms, nowMs, exclusion: aftermarketExclusion,
     enabled: !isSpot && (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const bookAvailability = <BookAvailabilityState state={availability} onRetry={retryBook} />;
@@ -550,7 +538,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
             : needsRestBook ? <RestOrderbookEmpty rest={rest} loading={live.isLoading || rest.isLoading} onRetry={retryBook} testId="book-empty-book" />
             : availability ? bookAvailability : undefined}
           snapshot={displayedBook}
-          showEmptySummary={needsRestBook}
+          showEmptySummary={!restBook && !hasBookPrices(snapshot)}
           expectedFill={restBook ? null : !isSpot && !storedLadder && activeSinglePrice === null
             ? { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null } : undefined}
           afterHoursTotals={restBook ? null : afterHoursTotals}

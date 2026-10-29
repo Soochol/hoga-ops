@@ -174,7 +174,7 @@ export function isKrxRegularSessionNow(nowMs: number = Date.now()): boolean {
  *  의 NXT 하한 `time(8, 0)`), 그때부터 오늘 프레임이 들어오기 시작하므로 전일 값이
  *  자리를 비켜 줄 근거가 생긴다. */
 const PREVIOUS_DAY_BOOK_EXPIRY_HHMM = 800;
-const KRX_PREVIOUS_DAY_BOOK_EXPIRY_HHMM = 600;
+const KRX_PREVIOUS_DAY_BOOK_EXPIRY_HHMM = 830;
 
 /**
  * 이 사다리 프레임을 지금 그리면 **어제 것을 오늘처럼 보여주게 되는가**.
@@ -187,7 +187,7 @@ const KRX_PREVIOUS_DAY_BOOK_EXPIRY_HHMM = 600;
  *
  * ## 막는 방향
  *
- * KRX 전일 프레임은 다음 거래일 06:00, 그 외 venue 는 08:00 이후에 숨긴다.
+ * KRX 전일 프레임은 다음 거래일 08:30, 그 외 venue 는 08:00 이후에 숨긴다.
  *
  * ## 못 보는 것 — 평일 공휴일
  *

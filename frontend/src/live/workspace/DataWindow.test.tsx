@@ -1152,13 +1152,13 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
       });
     });
 
-    describe('다음날 아침 — KRX 전일 사다리는 06:00 에 내려간다', () => {
+    describe('다음날 아침 — KRX 전일 사다리는 08:30 에 내려간다', () => {
       /** 2026-08-28(금) 08:11 KST — 사용자가 "어제 정규장 마지막 모습이 보인다" 고
        *  신고한 그 시각. 화면에 남아 있던 것은 `REGULAR_TS`(08-27 15:30)다. */
       const NEXT_DAY_0811 = Date.UTC(2026, 7, 27, 23, 11);
-      /** 같은 아침 05:59 — 만료 직전. */
-      const NEXT_DAY_0559 = Date.UTC(2026, 7, 27, 20, 59);
-      const NEXT_DAY_0600 = Date.UTC(2026, 7, 27, 21, 0);
+      /** 같은 아침 08:29 — 만료 직전. */
+      const NEXT_DAY_0829 = Date.UTC(2026, 7, 27, 23, 29);
+      const NEXT_DAY_0830 = Date.UTC(2026, 7, 27, 23, 30);
       /** 같은 아침 08:05 에 찍힌 **그날** 프레임(NXT 프리마켓은 08:00 에 시작한다). */
       const TODAY_0805 = Date.UTC(2026, 7, 27, 23, 5);
 
@@ -1167,20 +1167,20 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
         afterHoursBookResult.data = undefined;
       });
 
-      it('08:11 에는 전일 사다리를 그리지 않는다 — 이 스펙이 신고 건의 회귀 가드다', () => {
+      it('08:11 에는 전일 사다리를 유지한다', () => {
         vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0811);
-        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
-        expect(screen.getByText('snapshot:null')).toBeInTheDocument();
-      });
-
-      it('05:59 에는 아직 마지막 사다리를 그린다', () => {
-        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0559);
         renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
         expect(screen.getByText(`snapshot:${REGULAR_TS}`)).toBeInTheDocument();
       });
 
-      it('06:00 정각에 전일 사다리를 내린다', () => {
-        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0600);
+      it('08:29 에는 아직 마지막 사다리를 그린다', () => {
+        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0829);
+        renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+        expect(screen.getByText(`snapshot:${REGULAR_TS}`)).toBeInTheDocument();
+      });
+
+      it('08:30 정각에 전일 사다리를 내린다', () => {
+        vi.mocked(Date.now).mockReturnValue(NEXT_DAY_0830);
         renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
         expect(screen.getByText('snapshot:null')).toBeInTheDocument();
       });

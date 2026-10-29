@@ -9,7 +9,7 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed' } = {}) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed' } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   const subject = market.lastBook ? { code: '456160', name: '지투지바이오' } : { code: '005930', name: '삼성전자' };
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
@@ -19,7 +19,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   await page.route('**/api/trading/v2/accounts', route => route.fulfill({ status: 404, json: { detail: 'legacy fixture' } }));
   const ws = await installLiveWs(page);
   await page.route(/^https?:\/\/[^/]+\/api\/symbols\/all$/, route => route.fulfill({ json: {
-    symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI' }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI' }, { code: '456160', name: '지투지바이오', market: 'KOSDAQ', nxt_enabled: true }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
+    symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', nxt_enabled: market.nxtEnabled }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI' }, { code: '456160', name: '지투지바이오', market: 'KOSDAQ', nxt_enabled: true }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/quotes\?/, route => route.fulfill({ json: {
     phase: market.lastBook ? 'closed' : 'open', quotes: [{ code: new URL(route.request().url()).searchParams.get('codes')?.split(',')[0] ?? '005930', price: 67200 + priceOffset, baseline_price: 66000 + priceOffset, change_pct: 1200 / (66000 + priceOffset) * 100, change_won: 1200,
@@ -107,8 +107,9 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   if (maximize) await page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '창 최대화', exact: true }).click();
   const initialSide = orders[0]?.side === 'SELL' ? '매도' : '매수';
   const initialPrice = (initialSide === '매도' ? 67300 : 67200) + priceOffset;
-  if (market.lastBook === 'ready') await expect(window.getByTestId('order-rest-book-source')).toBeVisible();
+  if (market.lastBook === 'ready') await expect(window.getByRole('button', { name: /매수 49,500원 주문 추가/ })).toBeVisible();
   else if (market.lastBook) await expect(window.getByTestId('order-empty-book')).toBeVisible();
+  else if (market.staleBook) await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'true');
   else await expect(window.getByRole('button', { name: new RegExp(`${initialSide} ${initialPrice.toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
   return { window, commands, ws, stateRequests };
 }
@@ -303,7 +304,8 @@ test('호가주문 금액은 전체 호가 버튼 옆 한 줄을 유지하고 �
 test('주말 REST 마지막 호가는 20단과 상세정보를 표시하고 새 주문을 보내지 않는다', async ({ page }, testInfo) => {
   await page.clock.setFixedTime(new Date('2026-10-24T10:15:00+09:00'));
   const { window, commands } = await setup(page, false, true, false, 0, 1, { venue: 'KRX', lastBook: 'ready' });
-  await expect(window.getByTestId('order-rest-book-source')).toContainText('20:00:00 · KRX · 거래일 미제공');
+  await expect(window.getByTestId('order-rest-book-source')).toHaveCount(0);
+  await expect(window.getByText(/거래일 미제공/)).toHaveCount(0);
   await expect(window.getByText('실시간 연결 운영 시간이 아닙니다')).toHaveCount(0);
   await expect(window.locator('.order-price-value')).toHaveCount(20);
   await expect(window.getByTestId('book-summary')).toBeVisible();
@@ -2708,6 +2710,57 @@ test('호가 경계 1px 밖 드롭은 즉시 취소하고 Esc로 중단할 수 �
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
 });
 
+
+for (const arrival of ['08:29:59', '08:30:00', '08:32:00']) {
+  test(`NXT 미지원 장전 잔량 ${arrival}과 정규장 WS 호가는 두 창에 즉시 표시된다`, async ({ page }) => {
+    const at = (clock: string) => Date.parse(`2026-10-14T${clock}+09:00`);
+    await page.clock.install({ time: at('08:28:00') });
+    let restRequests = 0;
+    page.on('request', request => { if (request.url().includes('/api/live/last-orderbook?')) restRequests++; });
+    const { window, ws, commands } = await setup(page, false, false, false, 0, 1,
+      { time: Date.parse('2026-10-13T20:00:00+09:00'), staleBook: true, venue: 'UN', nxtEnabled: false });
+    const book = page.locator('[data-win]').filter({ has: page.getByRole('button', { name: '삼성전자 10호가 창 닫기', exact: true }) });
+    await ws.waitForSubscribe('005930');
+    await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeVisible();
+    const before = restRequests;
+    const advanceTo = async (clock: string) => {
+      const connections = ws.connectionCount();
+      await page.clock.fastForward(at(clock) - await page.evaluate(() => Date.now()));
+      // These jumps exceed the mock heartbeat timeout. Wait for the new socket,
+      // not the subscription recorded on the socket that is about to close.
+      await expect.poll(ws.connectionCount).toBeGreaterThan(connections);
+      await ws.waitForSubscribe('005930');
+    };
+    await advanceTo(arrival);
+    if (arrival !== '08:29:59') {
+      // No new message is necessary to clear yesterday's ladder at the boundary.
+      await expect(window.getByRole('button', { name: /원 주문 추가/ })).toHaveCount(0);
+      await expect(book.locator('.book-price-value')).toHaveCount(0);
+    }
+    await ws.waitForSubscribe('005930');
+    ws.pushLive('005930', { kind: 'ah', venue: 'KRX', t_ms: at(arrival), total_ask_qty: 1234, total_bid_qty: 567 });
+    for (const panel of [window, book]) {
+      await expect(panel.getByLabel('시간외 매도총잔량 1,234', { exact: true })).toBeVisible();
+      await expect(panel.getByLabel('시간외 매수총잔량 567', { exact: true })).toBeVisible();
+    }
+    await expect(window.getByRole('button', { name: /원 주문 추가/ })).toHaveCount(0);
+    for (const clock of ['08:50:00', '09:00:00']) {
+      await advanceTo(clock);
+      const price = clock === '09:00:00' ? 67600 : 67400;
+      const [ask, bid] = clock === '09:00:00' ? [56, 78] : [12, 34];
+      ws.pushLive('005930', { kind: 'ob', venue: 'KRX', t_ms: at(clock),
+        asks: [{ price: price + 100, qty: ask }], bids: [{ price, qty: bid }],
+        total_ask_qty: ask, total_bid_qty: bid });
+      for (const panel of [window, book]) {
+        await expect(panel.getByLabel(`매도총잔량 ${ask}`, { exact: true })).toBeVisible();
+        await expect(panel.getByLabel(`매수총잔량 ${bid}`, { exact: true })).toBeVisible();
+      }
+      await expect(window.getByRole('button', { name: new RegExp(`매수 ${price.toLocaleString('ko-KR')}원 주문 추가`) })).toHaveAttribute('aria-disabled', 'false');
+    }
+    expect(restRequests).toBe(before);
+    expect(commands).toHaveLength(0);
+  });
+}
 
 test('시간외종가의 잔량은 정규장 잔량이 0이어도 두 호가창에 함께 갱신된다', async ({ page }) => {
   const time = Date.UTC(2026, 9, 14, 6, 47); // 15:47 KST
