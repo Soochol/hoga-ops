@@ -1,0 +1,107 @@
+{
+  "recorded_at_kst": "2026-10-30T08:51:59.118353+09:00",
+  "base_sha": "97e0ae3a4bbd153e959395818687db326de65e54",
+  "origin_main_sha": "97e0ae3a4bbd153e959395818687db326de65e54",
+  "working_tree": "uncommitted implementation on base_sha",
+  "code_diff_sha256": "5d57b4b8a598e8cdf459a6309dba09fb1274425bdbe6d662d581dfee9095f549",
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "chrome": "Google Chrome 156.0.8078.73",
+    "timezone": "Asia/Seoul",
+    "e2e_slot": 16,
+    "backend_port": 20016,
+    "frontend_port": 21016,
+    "workers": 1,
+    "credentials": "blank vendor environment variables from unchanged playwright.config.ts"
+  },
+  "inputs": {
+    "frontend_unit": {
+      "algorithm": "sha256(path + NUL + sha256(contents), sorted tracked paths)",
+      "scopes": [
+        "frontend/src",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/tsconfig.json",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.test.json",
+        "frontend/vitest.config.ts",
+        "frontend/vite.config.ts"
+      ],
+      "files": 1771,
+      "sha256": "87c4773e74419502ca49bca212e967dbbe1e8a4e8505cc70d1f2eb64669b458c"
+    },
+    "typecheck_and_e2e": {
+      "algorithm": "sha256(path + NUL + sha256(contents), sorted tracked paths)",
+      "scopes": [
+        "frontend",
+        "hoga",
+        "tests",
+        "pyproject.toml",
+        "uv.lock",
+        ".python-version",
+        "ruff.toml",
+        "VERSION"
+      ],
+      "files": 2837,
+      "sha256": "0c443296fd36ca2b44054fcd5f84d4af8a26c9ddd02f2b41be415546370b917a"
+    },
+    "backend_unit": {
+      "algorithm": "sha256(path + NUL + sha256(contents), sorted tracked paths)",
+      "scopes": [
+        "hoga",
+        "tests",
+        "pyproject.toml",
+        "uv.lock",
+        ".python-version"
+      ],
+      "files": 851,
+      "sha256": "b97ab85c33a2750f27c3ccc22e93a14d48433c99c15c1d8353dbebb024ce859f"
+    }
+  },
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; application, unit-test and E2E TypeScript projects",
+      "inputs": "typecheck_and_e2e"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/live/liveDateTime.test.ts src/live/workspace/useBookSessionDisplay.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/DataWindow.test.tsx src/api/liveSeries.test.tsx src/api/liveRestOrderbook.test.tsx src/live/workspace/BookPanel.test.tsx",
+      "result": "485 passed in 7 files",
+      "inputs": "frontend_unit",
+      "reuse": "Final E2E fixture/clock-only edits do not change frontend unit inputs."
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_session_gate.py tests/unit/live/test_kiwoom_frames.py tests/unit/live/test_kiwoom_session.py -m 'not wallclock'",
+      "result": "139 passed",
+      "inputs": "backend_unit",
+      "reuse": "Backend sources, tests, dependencies and Python version unchanged after this run."
+    },
+    {
+      "command": "cd frontend && npx playwright test live-orders.spec.ts --grep 'NXT 미지원 장전' --repeat-each=5 --reporter=line",
+      "result": "15 passed (3 scenarios, 5 repetitions each)",
+      "inputs": "typecheck_and_e2e"
+    },
+    {
+      "command": "cd frontend && npx playwright test live-orders.spec.ts --grep '주말 REST|호가 empty|호가 failed|시간외종가의 잔량' --reporter=line",
+      "result": "6 passed",
+      "inputs": "typecheck_and_e2e"
+    },
+    {
+      "command": "npx vite build (Playwright webServer command)",
+      "result": "passed; final regression harness built in 4.87s",
+      "inputs": "typecheck_and_e2e"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "limitations": [
+    "Synthetic WS frames in credential-free isolated browser tests; no new live-broker morning measurement.",
+    "Frontend reset retains existing weekday approximation; public holidays are not resolved.",
+    "User servers at ports 5173 and 8000 were not restarted or changed."
+  ]
+}

@@ -36,7 +36,7 @@ import { useLiveVenueStore } from '../../state/liveVenue';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingBookMarker, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
-import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
+import { realMsToYyyymmdd } from '../liveDateTime';
 import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookPanel';
 import { resolveBookBaseline } from './bookDisplay';
 import { useRecentBookTrades } from './useRecentBookTrades';
@@ -139,19 +139,17 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const todayKst = realMsToYyyymmdd(now);
   const krxClose = useLiveKrxClose(code, todayKst);
   const krxPreviousClose = useLiveKrxPreviousClose(code, todayKst);
-  const latestSnapshot = useMemo(() => {
-    const snap = latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : live.ob);
-    return snap !== null && previousDayObExpired(snap.ts_ms, now, venue) ? null : snap;
-  }, [live.latestOb, live.ob, now, venue]);
+  const latestSnapshot = useMemo(() => latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : live.ob),
+    [live.latestOb, live.ob]);
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
   const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
-    afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
+    allowRestBook, morningReset, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
     code, venue, nowMs: now, todayKst, isSpot: false, regularSnapshot: latestSnapshot,
     latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
   const vi = useLiveViStatus(code, effectiveVenue);
-  const needsRestBook = !hasBookPrices(snapshot) && activeSinglePrice === null
+  const needsRestBook = allowRestBook && !hasBookPrices(snapshot) && activeSinglePrice === null
     && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours');
   const rest = useLiveRestOrderbook(code, effectiveVenue, needsRestBook && !live.isLoading);
   const loadingLastBook = live.isLoading || rest.isLoading;
@@ -305,7 +303,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     [lowerLimit, upperLimit, securityType, activeSinglePrice, hasMasterSymbol]);
   const currentPrice = quote?.price ?? null;
   const explorerPrice = currentPrice ?? bids[0]?.price ?? asks.at(-1)?.price ?? null;
-  const explorer = useOrderPriceExplorer(`${displayKey}:${todayKst}`, fullRange, explorerPrice, busy || dragInProgress || !!settingsDraft || !!action, priceViewportRef);
+  const explorer = useOrderPriceExplorer(`${displayKey}:${todayKst}:${morningReset}`, fullRange, explorerPrice, busy || dragInProgress || !!settingsDraft || !!action, priceViewportRef);
   const prices = explorer.enabled ? explorer.prices.map(price => ({ price, qty: 0 })) : asks.concat(bids);
   const dayMarkers = bookDayMarkers(prices.map(level => level.price), summary);
   const showInlineSummary = !explorer.enabled && (expanded || prices.length === 0);
@@ -859,7 +857,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         render={() => settingsDraft && <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
     {snapshot != null && !needsRestBook && <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />}
-    {restBook && <RestOrderbookSource rest={rest} venue={effectiveVenue} testId="order-rest-book-source" />}
+    {restBook && <RestOrderbookSource rest={rest} venue={effectiveVenue} testId="order-rest-book-source" showProvenance={false} />}
     <div ref={priceViewportRef} className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리"
       tabIndex={explorer.enabled ? 0 : undefined} onKeyDown={explorer.onKeyDown}
       onPointerDown={explorer.onPointerDown} onPointerMove={explorer.onPointerMove} onPointerUp={explorer.onPointerUp}

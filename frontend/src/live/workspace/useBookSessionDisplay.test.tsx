@@ -47,6 +47,52 @@ function setup(venue: 'KRX' | 'NXT' | 'UN' = 'KRX', isSpot = false,
 beforeEach(() => { restriction.current = undefined; vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: null }); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
+it('clears KRX at 08:30 using the effective venue and never restores an undated REST ladder during the day', () => {
+  const previous = book(at(20) - 86_400_000);
+  const { result, rerender, props } = setup('UN');
+  rerender({ ...props, nowMs: at(8, 29, 59), latest: previous, retained: previous });
+  expect(result.current.snapshot).toEqual(previous);
+  expect(result.current.allowRestBook).toBe(true);
+  expect(result.current.morningReset).toBe(false);
+  for (const nowMs of [at(8, 30), at(8, 49), at(9), at(19, 59)]) {
+    rerender({ ...props, nowMs, latest: previous, retained: previous });
+    expect(result.current.snapshot).toBeNull();
+    expect(result.current.allowRestBook).toBe(false);
+    expect(result.current.morningReset).toBe(true);
+  }
+});
+
+it.each([at(8, 29, 50), at(8, 30), at(8, 32)])('shows morning totals immediately when they arrive at %s, before any ladder', time => {
+  const previous = book(at(20) - 86_400_000);
+  const { result, rerender, props } = setup('UN');
+  rerender({ ...props, nowMs: time, latest: previous, retained: previous, afterHours: [ah(time, 1234, 567)] });
+  expect(result.current.snapshot).toBeNull();
+  expect(result.current.afterHoursTotals).toEqual({ ask: 1234, bid: 567 });
+  expect(result.current.allowRestBook).toBe(false);
+  rerender({ ...props, nowMs: at(8, 30), latest: previous, retained: previous,
+    afterHours: [ah(time, 1234, 567)] });
+  expect(result.current.afterHoursTotals).toEqual({ ask: 1234, bid: 567 });
+});
+
+it.each([at(8, 49, 59), at(8, 50), at(9)])('switches from morning totals to the first current WS ladder at %s', time => {
+  const { result, rerender, props } = setup('UN');
+  const afterHours = [ah(at(8, 30), 1234, 567)];
+  const live = book(time);
+  rerender({ ...props, nowMs: time, latest: live, retained: live, afterHours });
+  expect(result.current.snapshot).toEqual(live);
+  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.afterHoursTotals).toBeNull();
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: `정규장 · ${new Date(time + 9 * 3600_000).toISOString().slice(11, 19)}` });
+});
+
+it('keeps historical cursor ladders after the morning reset', () => {
+  const previous = book(at(20) - 86_400_000);
+  const { result, rerender, props } = setup('UN', true);
+  rerender({ ...props, nowMs: at(9), latest: previous, retained: previous, afterHours: [ah(at(8, 30))] });
+  expect(result.current.snapshot).toEqual(previous);
+  expect(result.current.afterHoursTotals).toBeNull();
+});
+
 it('recovers pre-auction data after an empty reset and replaces it at 15:59:50 without a clock gate', async () => {
   const api = vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: saved });
   const { result, rerender, props } = setup('UN');
