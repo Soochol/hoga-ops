@@ -592,6 +592,12 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 ## Color
 
+2026-10-29 사용자 요청 — 차트 그리기 속성 패널의 색상 선택을 보조지표와 통일한다.
+`MA_COLOR_ROWS`의 32색을 같은 8열 × 4행 순서로 공유하고, 22px 원형 스와치와
+`--fg` 선택 외곽선·공통 체크 표시를 사용한다. 단일·다중 선택에 함께 적용하며
+기존 드로잉·도구별 기본값의 저장 색은 새 색을 고르기 전까지 유지한다.
+ADR-0032의 16색 고정 팔레트 결정을 대체한다.
+
 - **Approach:** Restrained. Single UI accent per theme. Three mutually-exclusive color categories for UI state, status semantic, and price direction. All palettes share one token contract (see below) — components never branch on theme, they only read tokens.
 - **Themes (seven, selectable):** the app ships seven full palettes behind `<html data-theme>`:
   - **Obsidian** (dark) — warm graphite surfaces + brass accent. The trading-terminal / live surfaces.
