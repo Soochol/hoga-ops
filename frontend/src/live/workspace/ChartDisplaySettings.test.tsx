@@ -46,30 +46,12 @@ describe('chart display settings', () => {
     expect(useWindowSettingsStore.getState().byWindow.b.chart).toMatchObject({ highLowHighLineColor: '#123456', highLowHighLineWidth: 2 });
     expect(useChartPrefsStore.getState()).toMatchObject({ highLowHighLineEnabled: false, highLowHighLineColor: '', highLowHighLineWidth: 1 });
   });
-  it('shows overlay styles only when on, applies them locally and undoes color edits through the palette portal', async () => {
+  it('leaves saved volume placement values intact without exposing their controls', () => {
+    useWindowSettingsStore.getState().patch('a', 'chart', { volumeOverlayEnabled: true, volumeOverlayHeight: 35 });
     render(<ChartDisplaySettings windowId="a" />);
-    expect(screen.queryByRole('slider', { name: '거래량 투명도' })).toBeNull();
-    fireEvent.click(screen.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' }));
-    const details = screen.getByLabelText('거래량을 캔들에 겹쳐 표시 세부 설정');
-    expect(details.closest('details')).not.toHaveAttribute('open');
-    fireEvent.click(details);
-    expect(screen.getByRole('slider', { name: '거래량 투명도' })).toHaveValue('65');
-    expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('25');
-    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
-    fireEvent.change(screen.getByRole('slider', { name: '거래량 표시 높이' }), { target: { value: '40' } });
-    await waitFor(() => expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayHeight).toBe(40));
-    fireEvent.click(screen.getByRole('button', { name: '상승봉 거래량 색상 선택' }));
-    fireEvent.click(screen.getAllByRole('button', { name: /^상승봉 거래량 색상 #/ })[0]);
-    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
-    expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayUpColor).toMatch(/^#/);
-    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
-    await waitFor(() => expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayUpColor).toBe(''));
-    expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayHeight).toBe(40);
-    expect(useChartPrefsStore.getState().volumeOverlayHeight).toBe(25);
-    fireEvent.click(details);
-    expect(details.closest('details')).not.toHaveAttribute('open');
-    fireEvent.click(details);
-    expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
+    expect(screen.queryByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' })).toBeNull();
+    expect(screen.queryByLabelText('거래량을 캔들에 겹쳐 표시 세부 설정')).toBeNull();
+    expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject({ volumeOverlayEnabled: true, volumeOverlayHeight: 35 });
   });
   it('defaults color swapping on, gates it by inversion and preserves the choice when inversion is off', async () => {
     render(<ChartDisplaySettings windowId="a" />);
@@ -95,7 +77,7 @@ describe('chart display settings', () => {
     fireEvent.click(screen.getByLabelText('차트 거꾸로 보기 세부 설정'));
     fireEvent.click(screen.getByLabelText('고저 극값 라벨 세부 설정'));
     // Edit dependent lines while the master is on, then test turning it off.
-    const definitions = [...CHART_DISPLAY_TOGGLES.filter(def => def.key !== 'highLowLabelsEnabled'),
+    const definitions = [...CHART_DISPLAY_TOGGLES.filter(def => def.key !== 'highLowLabelsEnabled' && def.key !== 'volumeOverlayEnabled'),
       ...CHART_DISPLAY_TOGGLES.filter(def => def.key === 'highLowLabelsEnabled')];
     expect(screen.getAllByRole('switch')).toHaveLength(definitions.length);
     for (const def of definitions) {

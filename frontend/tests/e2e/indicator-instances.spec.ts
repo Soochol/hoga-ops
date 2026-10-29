@@ -182,8 +182,9 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await expect.poll(async () => (await state(page, id)).volumeColorMode).toBe('previous-volume');
     expect((await state(page, id)).indicatorInstances[0].settings.volumeColorMode).toBe('candle');
     await expect.poll(async () => (await histogramColors()).map(rows => new Set(rows).size)).toEqual([1, 2]);
-    await page.locator(`[data-win="${id}"]`).getByRole('button', { name: '차트 설정', exact: true }).click();
-    await page.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
+    await page.locator(`[data-win="${id}"]`).getByTestId('live-indicators-button').click();
+    await editor.getByRole('button', { name: '거래량 1 설정', exact: true }).click();
+    await editor.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
     await expect.poll(() => page.evaluate(id => {
       const series = (window as unknown as ChartWindow).__liveCharts.get(id)!.panes()[0].getSeries()
         .find(series => series.seriesType() === 'Histogram') as ISeriesApi<'Histogram'> | undefined;

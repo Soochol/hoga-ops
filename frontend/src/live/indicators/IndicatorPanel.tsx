@@ -163,9 +163,11 @@ export default function IndicatorPanel({
   const ind = useWindowIndicators();
   const theme = useThemePrefsStore(s => s.themePreference);
   const { windowKey, instrumentKind } = useWindowIndicatorScope();
-  const ambient = useContext(WindowViewContext) === null;
-  const read = useCallback(() => readIndicatorEditor({ windowKey, instrumentKind }, timeframe, ambient), [windowKey, instrumentKind, timeframe, ambient]);
-  const restore = useCallback((patch: Parameters<typeof restoreIndicatorEditor>[2]) => restoreIndicatorEditor({ windowKey, instrumentKind }, timeframe, patch), [windowKey, instrumentKind, timeframe]);
+  const view = useContext(WindowViewContext);
+  const ambient = view === null;
+  const windowId = view?.windowId;
+  const read = useCallback(() => readIndicatorEditor({ windowKey, instrumentKind }, timeframe, ambient, windowId), [windowKey, instrumentKind, timeframe, ambient, windowId]);
+  const restore = useCallback((patch: Parameters<typeof restoreIndicatorEditor>[2]) => restoreIndicatorEditor({ windowKey, instrumentKind }, timeframe, patch, windowId), [windowKey, instrumentKind, timeframe, windowId]);
   const undo = useSettingsUndo({ scopeKey: `${windowKey ?? 'ambient'}:${timeframe}`, read, restore, subscribe: subscribeIndicatorEditor });
   const actions = useIndicatorActions();
   const prefs = useScopedChartPrefs();

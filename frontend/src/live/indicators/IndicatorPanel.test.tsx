@@ -813,7 +813,7 @@ describe('IndicatorPanel', () => {
     renderPanel();
     openDetail('거래량');
     expect(screen.queryByText('거래량 — 체결강도 누적')).toBeNull();
-    expect(screen.getByText(/캔들 차트 설정에서 거래량/)).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '캔들 색상과 동일' })).toBeChecked();
   });
 
   it('navigating to a category does NOT toggle its master switch', async () => {
