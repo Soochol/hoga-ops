@@ -63,6 +63,44 @@ async function move(page: Page, source: Locator, target: Locator, fraction: numb
   await expect(page.getByTestId('saved-view-drag-ghost')).toHaveCount(0);
 }
 
+test('저장뷰 이름과 기간은 한 줄이며 긴 기간도 생략 없이 오른쪽에 정렬한다', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.clock.setFixedTime(new Date('2026-10-29T09:00:00+09:00'));
+  const daily: StudyViewReference = { ...saved('a'), name: '돌파 후 거래량이 증가한 긴 저장 이름', timeframe: 'D' };
+  const intraday = { ...saved('b'), range: {
+    from_date: '20261028', to_date: '20261028',
+    from_ms: Date.parse('2026-10-28T09:10:00+09:00'), to_ms: Date.parse('2026-10-28T10:30:00+09:00'),
+  } };
+  await setup(page, [daily, intraday]);
+  const dailyName = surface(page, 'a').getByText('삼성전자', { exact: true });
+  const dailyPeriod = surface(page, 'a').getByText('09.01–09.02', { exact: true });
+  const minutePeriod = surface(page, 'b').getByText('10.28 09:10–10:30', { exact: true });
+  for (const fontSize of [16, 20]) {
+    await page.addStyleTag({ content: `:root { font-size: ${fontSize}px !important; } #right-rail-saved-views-panel { width: 280px !important; }` });
+    await expect(dailyPeriod).toBeVisible();
+    await expect(minutePeriod).toBeVisible();
+    await expect.poll(async () => {
+      const nameBox = await dailyName.boundingBox();
+      const dateBox = await dailyPeriod.boundingBox();
+      const minuteBox = await minutePeriod.boundingBox();
+      return Math.max(Math.abs(nameBox!.y - dateBox!.y), Math.abs(dateBox!.x + dateBox!.width - minuteBox!.x - minuteBox!.width));
+    }).toBeLessThan(1);
+    for (const period of [dailyPeriod, minutePeriod]) {
+      expect(await period.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+      await expect(period).toHaveCSS('white-space', 'nowrap');
+    }
+    expect(await dailyName.evaluate(node => {
+      const title = node.parentElement!;
+      return title.scrollWidth > title.clientWidth && getComputedStyle(title).textOverflow === 'ellipsis';
+    })).toBe(true);
+    const firstHeight = (await surface(page, 'a').boundingBox())!.height;
+    const secondHeight = (await surface(page, 'b').boundingBox())!.height;
+    expect(firstHeight).toBeCloseTo(secondHeight, 1);
+    await expect(panel(page)).not.toContainText('분봉');
+    await panel(page).screenshot({ path: `/tmp/hoga-saved-view-single-line-${fontSize}.png` });
+  }
+});
+
 test('검색은 접힌 결과를 임시로 펼치며 이름 정렬은 수동 정렬로 전환할 수 있다', async ({ page }) => {
   await setup(page);
   await page.getByRole('button', { name: '돌파 복기 접기' }).click();

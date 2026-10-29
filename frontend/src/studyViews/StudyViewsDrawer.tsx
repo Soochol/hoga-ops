@@ -456,12 +456,12 @@ export function StudyViewsDrawer() {
             {memoState.error && <div className="text-xs text-danger">{memoState.error}</div>}
           </div>
         ) : (
-          <div className="min-w-0 flex-1 leading-tight">
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(6em,1fr)_max-content] items-center gap-2 text-xs leading-tight">
             <div className="truncate text-xs">
               <span className={isActive ? 'font-semibold text-accent' : 'text-fg'}>{stockName}</span>
               <span className="font-normal text-fg-dim">{title.slice(stockName.length)}</span>
             </div>
-            <div className="break-words whitespace-normal text-xs text-fg-dim font-data">
+            <div className="shrink-0 whitespace-nowrap text-right text-xs leading-tight text-fg-dim font-data tabular-nums">
               {formatStudyViewMeta(row)}
             </div>
           </div>
@@ -543,6 +543,7 @@ export function StudyViewsDrawer() {
             onDragEnd={handleDragEnd} onDragCancel={finishDrag}
           >
             <DragPanelAssist collapsed={NO_COLLAPSED_GROUPS} onExpand={ignoreExpand} pointRef={pointRef} scrollSelector='[data-testid="saved-views-scroll"]' />
+            <div className="w-min min-w-full">
             <SortableContext items={visibleGroups.map((group) => studyViewGroupDndId(group.key))} strategy={verticalListSortingStrategy}>
               {visibleGroups.map((group) => {
                 const groupCollapsed = isCollapsed(group.key);
@@ -593,6 +594,7 @@ export function StudyViewsDrawer() {
                 );
               })}
             </SortableContext>
+            </div>
             <RailDragOverlay droppedOnChart fitContentHeight>
               {ghost && <li data-testid="saved-view-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">{ghost}</li>}
             </RailDragOverlay>
