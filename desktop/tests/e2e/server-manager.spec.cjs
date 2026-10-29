@@ -337,11 +337,13 @@ test('status view fits the compact window and live service failure reveals logs'
       await expect(page.getByRole('button', { name: '관리 앱 종료', exact: true })).toBeInViewport();
       await page.locator('summary').click();
     }
+    await page.screenshot({ path: test.info().outputPath('trading-desk-running.png') });
     const frontend = await f.marker('frontend'); process.kill(-frontend.pid, 'SIGTERM');
     await expect(page.locator('body')).toHaveAttribute('data-phase', 'error');
     await expect(page.locator('#log-details')).toHaveJSProperty('open', true);
     await expect(page.getByRole('status')).toContainText('서버가 종료됐습니다');
     await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeEnabled();
+    await page.screenshot({ path: test.info().outputPath('trading-desk-error.png') });
     await page.getByRole('button', { name: '다시 시도', exact: true }).click(); await running(page);
     expect(errors).toEqual([]);
   } finally { if (app) await app.close(); await f.dispose(); }

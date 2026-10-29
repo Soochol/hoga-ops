@@ -46,7 +46,7 @@ test('editing manager HTML, CSS and JS reloads only the renderer and preserves m
 
     await page.locator('summary').click();
     await page.getByLabel('자동 스크롤').uncheck();
-    await save('server.css', css => css.replace('--accent: #f0b429', '--accent: #f5c542'));
+    await save('server.css', css => css.replace(/--accent: #[0-9a-f]{6}/i, '--accent: #f5c542'));
     await expect(page.locator('#primary')).toHaveCSS('background-color', 'rgb(245, 197, 66)');
     await expect(page.locator('#log-details')).toHaveJSProperty('open', true);
     await expect(page.getByLabel('자동 스크롤')).not.toBeChecked();

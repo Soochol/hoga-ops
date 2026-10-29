@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <title>Ticklane server</title>
-  <rect x="16" y="16" width="480" height="480" rx="112" fill="#121216"/>
-  <path d="M256 320v64M168 384h176M168 384v24M344 384v24" fill="none" stroke="#f0b429" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="104" y="116" width="304" height="94" rx="24" fill="#f0b429"/>
-  <rect x="104" y="236" width="304" height="94" rx="24" fill="#f0b429"/>
-  <circle cx="146" cy="163" r="11" fill="#121216"/>
-  <circle cx="146" cy="283" r="11" fill="#121216"/>
-  <path d="M218 163h132M218 283h132" stroke="#121216" stroke-width="14" stroke-linecap="round"/>
-  <circle cx="168" cy="408" r="13" fill="#f0b429"/>
-  <circle cx="344" cy="408" r="13" fill="#f0b429"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#0b0f0b"/>
+  <path d="M256 320v64M168 384h176M168 384v24M344 384v24" fill="none" stroke="#c7fa79" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="104" y="116" width="304" height="94" rx="24" fill="#c7fa79"/>
+  <rect x="104" y="236" width="304" height="94" rx="24" fill="#c7fa79"/>
+  <circle cx="146" cy="163" r="11" fill="#0b0f0b"/>
+  <circle cx="146" cy="283" r="11" fill="#0b0f0b"/>
+  <path d="M218 163h132M218 283h132" stroke="#0b0f0b" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="168" cy="408" r="13" fill="#c7fa79"/>
+  <circle cx="344" cy="408" r="13" fill="#c7fa79"/>
 </svg>

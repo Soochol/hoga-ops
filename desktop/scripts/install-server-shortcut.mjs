@@ -43,7 +43,7 @@ try {
   }
 } catch { /* XDG fallback */ }
 for (const folder of [bin, library, state, applications, desktopDirectory, icons]) await mkdir(folder, { recursive: true });
-const icon = join(icons, 'ticklane-server-v2.png');
+const icon = join(icons, 'ticklane-server-v3.png');
 await copyFile(join(desktop, 'assets/server-icon.png'), icon);
 const config = join(library, 'servers.json');
 await writeFile(config, JSON.stringify({ project, uv, npm, node: process.execPath }, null, 2) + '\n', { mode: 0o600 });
