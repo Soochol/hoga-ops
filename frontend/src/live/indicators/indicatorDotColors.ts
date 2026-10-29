@@ -29,6 +29,7 @@ export function dotColorsFor(id: CategoryId, ind: IndicatorSettings, theme?: str
   const capped = (colors: string[]) => colors.slice(0, INDICATOR_DOT_LIMIT);
 
   switch (id) {
+    case 'new-high-bearish': return [ind.newHighBearishColor];
     case 'supertrend':
       return [ind.supertrendUpColor, ind.supertrendDownColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, i ? 'supertrendDown' : 'supertrendUp'));
     case 'bollinger':

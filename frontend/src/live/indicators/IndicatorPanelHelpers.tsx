@@ -3,6 +3,7 @@
 
 export type CategoryId =
   | 'supertrend'
+  | 'new-high-bearish'
   | 'bollinger'
   | 'envelope'
   | 'moving-average'
@@ -47,6 +48,8 @@ export const CATEGORIES: ReadonlyArray<{
 }> = [
   { id: 'moving-average',  label: '이동평균선',       group: 'top',  placement: 'overlay',
     description: '설정한 봉 수의 평균 가격을 선으로 표시합니다.' },
+  { id: 'new-high-bearish', label: '신고가 음봉 시가선', group: 'top', placement: 'overlay',
+    description: 'N거래일 신고가 이후 조건 음봉의 시가를 오른쪽으로 확장합니다. 국내 종목 일봉 전용입니다.' },
   { id: 'supertrend', label: '슈퍼트렌드', group: 'top', placement: 'overlay',
     description: 'ATR 변동성을 바탕으로 상승·하락 추세를 표시합니다.' },
   { id: 'bollinger', label: '볼린저 밴드', group: 'top', placement: 'overlay',

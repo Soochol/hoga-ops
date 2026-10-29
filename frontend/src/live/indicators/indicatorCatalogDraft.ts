@@ -19,6 +19,7 @@ export function indicatorIsPresent(id: CategoryId, settings: IndicatorSettings):
   switch (id) {
     case 'moving-average': return settings.movingAverages.some(m => m.enabled);
     case 'daily-moving-average': return settings.dailyMovingAverages.some(m => m.enabled);
+    case 'new-high-bearish': return settings.newHighBearishEnabled;
     case 'supertrend': return settings.supertrendEnabled;
     case 'bollinger': return settings.bollingerEnabled;
     case 'envelope': return settings.envelopeEnabled;
@@ -45,6 +46,7 @@ export function createCatalogDraft(id: CategoryId, base: IndicatorSettings, base
     case 'daily-moving-average':
       if (!base.dailyMovingAverages.length) patch({ dailyMovingAverages: FACTORY_INDICATOR_SETTINGS.dailyMovingAverages });
       actions.setAllDailyMovingAveragesEnabled(true); break;
+    case 'new-high-bearish': actions.setNewHighBearishEnabled(true); break;
     case 'supertrend': actions.setSupertrendEnabled(true); break;
     case 'bollinger': actions.setBollingerEnabled(true); break;
     case 'envelope': actions.setEnvelopeEnabled(true); break;

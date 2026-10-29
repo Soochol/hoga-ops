@@ -29,6 +29,7 @@ const FLAG_FIELD_PREFIXES: Record<string, string> = {
   bollinger: 'bollinger',
   envelope: 'envelope',
   supertrend: 'supertrend',
+  newHighBearish: 'new-high-bearish',
   brokerLateEntry: 'broker-late-entry',
 };
 

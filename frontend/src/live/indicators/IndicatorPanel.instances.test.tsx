@@ -34,7 +34,7 @@ describe('all indicator instances', () => {
   });
 
   it.each(CATEGORIES)('$label can be added twice from the catalog', async category => {
-    const tf = category.id === 'trade-value' ? 'D' : '1m';
+    const tf = ['trade-value', 'new-high-bearish'].includes(category.id) ? 'D' : '1m';
     useLivePageStore.setState({ movingAverages: [], volumeEnabled: false, indicatorTimeframe: tf });
     render(<IndicatorPanel timeframe={tf} onClose={() => {}} />);
     select(category.label); add();

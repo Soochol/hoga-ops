@@ -14,6 +14,7 @@ import MovingAverageOverlay from './MovingAverageOverlay';
 import DailyMovingAverageOverlay from './DailyMovingAverageOverlay';
 import BollingerOverlay from './BollingerOverlay';
 import EnvelopeOverlay from './EnvelopeOverlay';
+import NewHighBearishOverlay from './NewHighBearishOverlay';
 import SupertrendOverlay from './SupertrendOverlay';
 import DepthHeatmapOverlay from '../DepthHeatmapOverlay';
 import type { DepthHeatmapPoint } from '../depthHeatmapWire';
@@ -31,6 +32,7 @@ import { usePeakWallCountsPublisher } from './peakWallCountsRegistry';
 import type { TradeVolumePoc } from '../tradeVolumePoc';
 
 export type InstanceOverlayProps = {
+  candleVenue?: LiveVenueOption;
   adjustFactors?: import('../scaleRangeBundlePrices').AdjustFactors;
   pocs: readonly TradeVolumePoc[]; category: CategoryId; chart: IChartApi; bundle: RangeBundle; liveBundle: RangeBundle; axis: VirtualAxis;
   paneSeries: PaneSeriesMap; code: string | null; timeframe: LiveTimeframe; venue: LiveVenueOption; todayKst: string;
@@ -43,6 +45,7 @@ export function IndicatorInstanceOverlays(props: InstanceOverlayProps) {
   if (category === 'moving-average') return <MovingAverageOverlay chart={chart} bundle={bundle} axis={axis} />;
   if (category === 'bollinger') return <BollingerOverlay chart={chart} bundle={bundle} axis={axis} />;
   if (category === 'envelope') return <EnvelopeOverlay chart={chart} bundle={bundle} axis={axis} />;
+  if (category === 'new-high-bearish') return <NewHighBearishOverlay bundle={bundle} axis={axis} paneSeries={props.paneSeries} timeframe={props.timeframe} venue={props.candleVenue ?? props.venue} code={props.code} />;
   if (category === 'supertrend') return <SupertrendOverlay chart={chart} bundle={bundle} axis={axis} />;
   if (category === 'daily-moving-average') return <DailyMovingAverageOverlay chart={chart} bundle={bundle} axis={axis}
     code={props.code} timeframe={props.timeframe} venue={props.venue} todayKst={props.todayKst}

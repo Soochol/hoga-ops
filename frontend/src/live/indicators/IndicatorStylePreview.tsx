@@ -49,6 +49,10 @@ function previewLines(category: CategoryId, s: IndicatorSettings, cumulative: bo
       values: middle.slice(-40).map((value, i) => (value ?? 100) + (1 - line) * spread[i]),
     })).filter((_, i) => lineVisible(s.indicatorLineVisibility, (['bollingerUpper', 'bollingerMiddle', 'bollingerLower'] as const)[i]));
   }
+  if (category === 'new-high-bearish') return Array.from({ length: s.newHighBearishMaxCount }, (_, n) => ({
+    label: `시가선 ${n + 1}`, color: s.newHighBearishColor, width: s.newHighBearishLineWidth,
+    values: DISPLAY.map((_, i) => i < 12 + n * 8 ? null : 108 - n * 8),
+  }));
   if (category === 'supertrend') {
     const points = computeSupertrend(SAMPLE, s.supertrendPeriod, s.supertrendMultiplier).slice(-40);
     return (['up', 'down'] as const).map((direction, i) => ({

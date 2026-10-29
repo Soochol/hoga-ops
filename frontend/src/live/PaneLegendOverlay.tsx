@@ -414,6 +414,7 @@ const FLAG_SET_HIDDEN: Record<
   'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
   bollinger: (a, h) => a.setBollingerHidden(h),
   envelope: (a, h) => a.setEnvelopeHidden(h),
+  'new-high-bearish': (a, h) => a.setNewHighBearishHidden(h),
   supertrend: (a, h) => a.setSupertrendHidden(h),
   // 이 지표는 배열로 승격돼 **인스턴스의 `enabled` 가 유일 게이트**다 — 타입 눈이
   // 따로 없으므로 행의 눈은 그 인스턴스를 끄고 켠다.
@@ -905,6 +906,13 @@ function PaneLegendOverlay({
   // 가시성이 슬롯 안(`enabled`)으로 접혀 배열 하나만 구독하면 된다 — 칩 토글이
   // 새 배열을 만들므로 재렌더 입도는 그대로다.
   const lineVisibility = useWindowIndicator(s => s.indicatorLineVisibility);
+  const newHighBearishEnabled = useWindowIndicator(s => s.newHighBearishEnabled);
+  const newHighBearishHidden = useWindowIndicator(s => s.newHighBearishHidden);
+  const newHighBearishLookback = useWindowIndicator(s => s.newHighBearishLookback);
+  const newHighBearishDropPct = useWindowIndicator(s => s.newHighBearishDropPct);
+  const newHighBearishMaxCount = useWindowIndicator(s => s.newHighBearishMaxCount);
+  const newHighBearishMonths = useWindowIndicator(s => s.newHighBearishMonths);
+  const newHighBearishColor = useWindowIndicator(s => s.newHighBearishColor);
   const supertrendEnabled = useWindowIndicator((s) => s.supertrendEnabled);
   const supertrendHidden = useWindowIndicator((s) => s.supertrendHidden);
   const supertrendPeriod = useWindowIndicator((s) => s.supertrendPeriod);
@@ -970,13 +978,14 @@ function PaneLegendOverlay({
   // Hoga-only ticks retain candles/axis and do not trigger another legend render;
   // the provider registry itself stays non-reactive.
   useEffect(() => {
-    if (!bollingerEnabled && !envelopeEnabled && !supertrendEnabled) return;
+    if (!bollingerEnabled && !envelopeEnabled && !supertrendEnabled && !newHighBearishEnabled) return;
     const raf = requestAnimationFrame(() => tick());
     return () => cancelAnimationFrame(raf);
   }, [chart, windowId, candles, axis, bollingerEnabled, bollingerPeriod, bollingerMultiplier,
     bollingerSource, bollingerUpperColor, bollingerMiddleColor, bollingerLowerColor,
     envelopeEnabled, envelopePeriod, envelopePercent, envelopeSource, envelopeUpperColor, envelopeMiddleColor, envelopeLowerColor,
-    supertrendEnabled, supertrendPeriod, supertrendMultiplier, supertrendUpColor, supertrendDownColor]);
+    supertrendEnabled, supertrendPeriod, supertrendMultiplier, supertrendUpColor, supertrendDownColor,
+    newHighBearishEnabled, newHighBearishLookback, newHighBearishDropPct, newHighBearishMaxCount, newHighBearishMonths, newHighBearishColor]);
 
   // Share the time grid with the tooltip; OHLC updates keep both maps stable.
   const { drawn: drawnCandles, vsecToIndex } = useMemo(
@@ -1136,6 +1145,14 @@ function PaneLegendOverlay({
     indicatorLegendsVisible && isMinute && enabled && LEGEND_FLAG_IDS.has(type)
       ? readFlagLegendValues(windowId, type, instanceId, cursorTimeSec) : [];
   const indicatorFlags: LegendFlagInput[] = [
+    {
+      type: 'new-high-bearish', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
+      label: `신고가 음봉 시가선 (${newHighBearishLookback}일, -${newHighBearishDropPct}%, ${newHighBearishMaxCount}개, ${newHighBearishMonths}개월)`,
+      enabled: newHighBearishEnabled, hidden: newHighBearishHidden, applicable: timeframe === 'D',
+      swatches: [newHighBearishColor],
+      cells: indicatorLegendsVisible && newHighBearishEnabled
+        ? readFlagLegendValues(windowId, 'new-high-bearish', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
+    },
     {
       type: 'supertrend', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
       label: `슈퍼트렌드 (${supertrendPeriod}, ${supertrendMultiplier})`,

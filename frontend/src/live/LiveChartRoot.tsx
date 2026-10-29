@@ -68,6 +68,7 @@ import { alignSidebarCursorMs, sidebarCursorPublishDelayMs, LIVE_SIDEBAR_CURSOR_
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import BollingerOverlay from './indicators/BollingerOverlay';
 import EnvelopeOverlay from './indicators/EnvelopeOverlay';
+import NewHighBearishOverlay from './indicators/NewHighBearishOverlay';
 import SupertrendOverlay from './indicators/SupertrendOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
@@ -2836,7 +2837,7 @@ export function LiveChartRoot({
             <>
               {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false, isUsWorkareaCode(code))).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
                 <IndicatorInstanceOverlays category={row.category} pocs={tradeVolumePocs} chart={chart} bundle={cb} liveBundle={liveBundle ?? cb} axis={axis}
-                  paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst}
+                  paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} candleVenue={candleVenue ?? venue} todayKst={todayKst}
                   dayAskPeaks={dayAskPeaks} dayBidPeaks={dayBidPeaks} liveTradeSnapshots={liveTradeSnapshots}
                   dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate}
                   depthHeatmapPoints={depthHeatmapPoints} />
@@ -2845,6 +2846,7 @@ export function LiveChartRoot({
               <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
               <EnvelopeOverlay chart={chart} bundle={cb} axis={axis} />
               <SupertrendOverlay chart={chart} bundle={cb} axis={axis} />
+              <NewHighBearishOverlay bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} venue={candleVenue ?? venue} code={code} />
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} override={dailyMovingAverageOverride} />
             </>
           )}
@@ -2877,7 +2879,7 @@ export function LiveChartRoot({
             <>
               {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false, isUsWorkareaCode(code))).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
                 <IndicatorInstanceOverlays category={row.category} pocs={tradeVolumePocs} chart={chart} bundle={cb} liveBundle={liveBundle ?? cb} axis={axis}
-                  paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst}
+                  paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} candleVenue={candleVenue ?? venue} todayKst={todayKst}
                   dayAskPeaks={dayAskPeaks} dayBidPeaks={dayBidPeaks} liveTradeSnapshots={liveTradeSnapshots}
                   dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate}
                   depthHeatmapPoints={depthHeatmapPoints} />
@@ -2886,6 +2888,7 @@ export function LiveChartRoot({
               <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
               <EnvelopeOverlay chart={chart} bundle={cb} axis={axis} />
               <SupertrendOverlay chart={chart} bundle={cb} axis={axis} />
+              <NewHighBearishOverlay bundle={cb} axis={axis} paneSeries={paneSeries} timeframe={timeframe} venue={candleVenue ?? venue} code={code} />
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} override={dailyMovingAverageOverride} />
             </>
           )}

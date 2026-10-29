@@ -16,6 +16,7 @@ export interface IndicatorInstance {
 
 const PREFIXES: Record<CategoryId, readonly string[]> = {
   'moving-average': ['movingAverages'], 'daily-moving-average': ['dailyMovingAverages'],
+  'new-high-bearish': ['newHighBearish'],
   envelope: ['envelope'], bollinger: ['bollinger'], supertrend: ['supertrend'], volume: ['volume'],
   'trade-value': ['tradeValue'], 'quote-totals': ['quoteTotals', 'surge'], ratio: ['ratio'],
   'fill-strength': ['fillStrength'], 'program-trade': ['programTrade'],
@@ -72,6 +73,7 @@ export function indicatorInstanceSummary(category: CategoryId, settings: Indicat
   switch (category) {
     case 'envelope': return `${settings.envelopePeriod}봉 · ±${settings.envelopePercent}%`;
     case 'bollinger': return `${settings.bollingerPeriod}봉 · ${settings.bollingerMultiplier}배`;
+    case 'new-high-bearish': return `${settings.newHighBearishLookback}일 · -${settings.newHighBearishDropPct}% · ${settings.newHighBearishMaxCount}개 · ${settings.newHighBearishMonths}개월`;
     case 'supertrend': return `ATR ${settings.supertrendPeriod} · ${settings.supertrendMultiplier}배`;
     case 'moving-average': return settings.movingAverages.filter(m => m.enabled).map(m => `${m.period}`).join(' · ') || '이동평균선';
     case 'daily-moving-average': return settings.dailyMovingAverages.filter(m => m.enabled).map(m => `${m.period}일`).join(' · ') || '일봉 이동평균선';
