@@ -3,7 +3,8 @@ import { useCallback, useId, useMemo, useState, useRef, type MouseEvent as React
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { eligibleFor, planAlign, planDistribute, type AlignCoords, type AlignEdge, type DistributeAxis } from './drawing/translate';
-import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES, RECT_FILL_OPACITIES, TEXT_FONT_SIZES, isLocked, isExtendedRight, type DrawingKind, type LineStyle, type Drawing } from './drawing/types';
+import { STROKE_WIDTHS, LINE_STYLES, RECT_FILL_OPACITIES, TEXT_FONT_SIZES, isLocked, isExtendedRight, type DrawingKind, type LineStyle, type Drawing } from './drawing/types';
+import { MA_COLOR_ROWS } from '../live/indicators/MAStylePickerHelpers';
 import { type PatternSpan, patternButtonState } from './DrawingPropertyPanelHelpers';
 import { DrawingPanelFrame, DrawingPanelPopover } from './DrawingPanelFrame';
 
@@ -138,7 +139,7 @@ function PopoverShell({
       className={
         'absolute top-full left-0 bg-bg-card border border-border rounded-md shadow-xl ' +
         // min-w-max: containing block 인 툴바가 좁아지면 shrink-to-fit 으로 눌려
-        // grid-cols-4 의 minmax(0,1fr) 열이 붕괴하고 스와치가 겹친다(형제 메뉴들의
+        // grid-cols-8 의 minmax(0,1fr) 열이 붕괴하고 스와치가 겹친다(형제 메뉴들의
         // min-w-[7rem] 과 달리 색 격자는 고정폭 자식이라 max-content 가 기준).
         (wide ? 'min-w-max p-2' : 'p-1 min-w-[7rem]')
       }
@@ -185,17 +186,34 @@ function ColorPalettePopover({
 }: { popoverRef: PopoverRef; current: string | null; onPick: (hex: string) => void }) {
   return (
     <PopoverShell popoverRef={popoverRef} wide>
-      <div className="grid grid-cols-4 gap-1.5">
-        {COLOR_PALETTE.map((hex) => (
-          <button
-            key={hex}
-            type="button"
-            data-testid={`drawing-color-swatch-${hex}`}
-            onClick={() => onPick(hex)}
-            className={'w-6 h-6 rounded border-2 ' + (hex === current ? 'border-white' : 'border-transparent')}
-            style={{ background: hex }}
-            aria-label={hex}
-          />
+      <div className="flex flex-col" style={{ gap: 'var(--space-xs)' }}>
+        {MA_COLOR_ROWS.map((row, ri) => (
+          <div key={ri} className="grid grid-cols-8" style={{ gap: 'var(--space-xs)' }}>
+            {row.map((hex) => {
+              const selected = hex.toLowerCase() === current?.toLowerCase();
+              return (
+                <button
+                  key={hex}
+                  type="button"
+                  data-testid={`drawing-color-swatch-${hex}`}
+                  onClick={() => onPick(hex)}
+                  className="ui-color-swatch"
+                  style={{
+                    backgroundColor: hex,
+                    width: 22,
+                    height: 22,
+                    borderRadius: '50%',
+                    outline: selected ? '2px solid var(--fg)' : 'none',
+                    outlineOffset: '2px',
+                    border: 'none',
+                    padding: 0,
+                  }}
+                  aria-label={`그리기 색상 ${hex}`}
+                  aria-pressed={selected}
+                />
+              );
+            })}
+          </div>
         ))}
       </div>
     </PopoverShell>

@@ -339,19 +339,6 @@ export type LineStyle = 'solid' | 'dashed' | 'dotted';
 export const STROKE_WIDTHS = [1, 2, 3, 4, 5] as const;
 export const LINE_STYLES = ['solid', 'dashed', 'dotted'] as const;
 
-/**
- * Sixteen-colour palette for user-authored Drawings. A fourth "user
- * annotation layer" category alongside DESIGN.md's three system / status /
- * market-direction categories — distinct because annotations are user
- * content, not system chrome. See ADR-0032.
- */
-export const COLOR_PALETTE = [
-  '#14B8A6', '#10B981', '#F43F5E', '#F59E0B',
-  '#EF4444', '#F97316', '#EAB308', '#84CC16',
-  '#06B6D4', '#3B82F6', '#8B5CF6', '#EC4899',
-  '#FFFFFF', '#9CA3AF', '#4B5563', '#1F2937',
-] as const;
-
 /** The last-used sticky style for ONE drawing tool (kind). Uniform shape across
  *  every kind so `styleByKind` is a plain `Record` — `fontSize` is only
  *  meaningful for `text` and `fillOpacity` only for `rect`, but every slot

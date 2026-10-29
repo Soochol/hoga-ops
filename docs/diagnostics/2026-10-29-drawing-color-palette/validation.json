@@ -1,0 +1,55 @@
+{
+  "checked_at": "2026-10-29T21:52:08.593136+09:00",
+  "commit": "e362267deda7fac77259c4d12c3cabaf585c8698",
+  "base_sha": "e362267deda7fac77259c4d12c3cabaf585c8698",
+  "state": "uncommitted working tree on the recorded commit",
+  "input_fingerprint": {
+    "algorithm": "sha256(sorted path + NUL + sha256(file bytes))",
+    "sha256": "eb64e6882f18e5f49c1dc1b2853218d7979c757ba858a6ed968972d78872512f",
+    "files": 2334,
+    "scope": "tracked frontend src/tests/public/configs/package and lockfile, backend hoga, fixtures, Python dependency configuration"
+  },
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.73",
+    "python": "3.14.7",
+    "uv": "0.11.8",
+    "e2e_workers": 1,
+    "e2e_backend_port": 20108,
+    "e2e_frontend_port": 21108,
+    "credentials": "empty vendor variables from unchanged playwright.config.ts"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/chart/DrawingPropertyPanel.test.tsx src/live/indicators/MAStylePicker.test.tsx src/chart/drawing/persistence.test.ts",
+      "result": "passed",
+      "files": 3,
+      "tests": 154
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/drawing-panel-position.spec.ts --reporter=line",
+      "result": "passed",
+      "tests": 3,
+      "build": "vite production build passed through unchanged Playwright webServer command",
+      "notes": "existing chunk size warnings; no build failure"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "visual_check": "Inspected edge-palette.png from the existing drawing panel position E2E; 8-column, 4-row circular palette fits within the chart at its edge."
+}
