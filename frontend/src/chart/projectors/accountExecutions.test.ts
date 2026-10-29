@@ -29,11 +29,8 @@ describe('individual account execution projection', () => {
     expect(result.markers).toHaveLength(3);
     expect(result.markers[0].executions).toHaveLength(2);
     expect(result.markers.every(m => m.barExecutions.length === 4)).toBe(true);
-    const positions = layoutExecutionMarkers(result.markers.map(m => ({ marker: m, x: 100, y: m.price })), 300, 300, 28);
-    expect(positions.ticks.map(p => p.y)).toEqual([100, 100, 110]);
-    expect(positions.labels.map(p => p.y)).toEqual([105, 100]);
-    expect(positions.labels[0].x).toBeLessThan(100);
-    expect(positions.labels[1].x).toBeGreaterThan(100);
+    const positions = layoutExecutionMarkers(result.markers.map(m => ({ marker: m, x: 100, y: m.price })), 300, 300);
+    expect(positions.map(p => [p.x, p.y])).toEqual([[100, 100], [100, 100], [100, 110]]);
   });
   it('uses the displayed daily close and verified original close for that exact day', () => {
     const axis = createVirtualAxis([segment], start, { mode: 'calendar' });
@@ -66,47 +63,28 @@ describe('individual account execution projection', () => {
   });
 });
 
-describe('execution price ticks and same-side labels', () => {
+describe('fixed-size execution label positions', () => {
   const marker = (time = 1, side: 'BUY' | 'SELL' = 'BUY') => ({ time: time as import('lightweight-charts').Time,
     side, price: 100, executions: [], barExecutions: [] });
   const point = (y: number, time = 1, side: 'BUY' | 'SELL' = 'BUY', x = 100) => ({ marker: marker(time, side), x, y });
 
-  it('groups only nearby same-side labels in the same bar and preserves every exact tick', () => {
-    const points = [point(100), point(105), point(100, 1, 'SELL'), point(150), point(101, 2, 'BUY', 128)];
-    const result = layoutExecutionMarkers(points, 300, 300, 28);
-    expect(result.ticks.map(t => t.y)).toEqual([100, 105, 100, 150, 101]);
-    expect(result.labels.map(l => [l.marker.time, l.marker.side, l.y])).toEqual([
-      [1, 'BUY', 102.5], [1, 'BUY', 150], [1, 'SELL', 100], [2, 'BUY', 101],
-    ]);
-    expect(result.ticks[0].endX).toBeLessThan(100);
-    expect(result.ticks[2].endX).toBeGreaterThan(100);
-    expect(points.map(p => p.y)).toEqual([100, 105, 100, 150, 101]);
+  it('keeps nearby prices and both directions exactly at their candle and price coordinates', () => {
+    const points = [point(100), point(105), point(100, 1, 'SELL'), point(113), point(114), point(101, 2, 'BUY', 101)];
+    const result = layoutExecutionMarkers(points, 300, 300);
+    expect(result).toEqual(points);
+    expect(result).toHaveLength(6);
+    expect(result[0]).toBe(points[0]);
   });
-  it.each([.5, 3, 6, 28, 120])('keeps labels and ticks inside their candle column at %s px pitch', pitch => {
-    const result = layoutExecutionMarkers([point(100), point(100, 1, 'SELL')], 300, 300, pitch);
-    expect(result.labels).toHaveLength(2);
-    for (const label of result.labels) {
-      expect(Math.abs(label.x - 100) + label.maxWidth / 2).toBeLessThanOrEqual(pitch * .35 + .00001);
-    }
-    for (const tick of result.ticks) expect(Math.abs(tick.endX - 100)).toBeLessThanOrEqual(pitch * .35);
+  it('does not omit any labels in a dense cluster of neighboring candles', () => {
+    const points = Array.from({ length: 1000 }, (_, i) => point(100 + i % 3, i + 1, i % 2 ? 'BUY' : 'SELL', 100 + (i % 10) * .5));
+    expect(layoutExecutionMarkers(points, 300, 300)).toEqual(points);
   });
-  it('splits labels once the price scale separates them, including inverted coordinates', () => {
-    const rows = [point(100), point(105)];
-    expect(layoutExecutionMarkers(rows, 300, 300, 28).labels).toHaveLength(1);
-    const expanded = layoutExecutionMarkers(rows.map(p => ({ ...p, y: 100 + (p.y - 100) * 4 })), 300, 300, 50);
-    expect(expanded.labels.map(p => p.y)).toEqual([100, 120]);
-    const inverted = layoutExecutionMarkers(rows.map(p => ({ ...p, y: 200 - (p.y - 100) * 4 })), 300, 300, 50);
-    expect(inverted.labels.map(p => p.y)).toEqual([180, 200]);
-    expect(inverted.ticks.map(p => p.y)).toEqual([200, 180]);
+  it('preserves exact coordinates and input order on an inverted price scale', () => {
+    const points = [point(200), point(180), point(200, 1, 'SELL')];
+    expect(layoutExecutionMarkers(points, 300, 300)).toEqual(points);
   });
-  it('does not let a chain of close prices collapse to a distant price or overlapping labels', () => {
-    const result = layoutExecutionMarkers([point(100), point(113), point(114), point(128)], 300, 300, 28);
-    expect(result.ticks).toHaveLength(4);
-    expect(result.labels.map(l => l.y)).toEqual([106.5, 128]);
-  });
-  it('keeps edge ticks while rejecting offscreen and non-finite coordinates', () => {
-    const result = layoutExecutionMarkers([point(0), point(300), point(-1), point(301), point(NaN), point(100, 1, 'BUY', Infinity)], 300, 300, 28);
-    expect(result.ticks.map(t => t.y)).toEqual([0, 300]);
-    expect(layoutExecutionMarkers([point(100)], 300, 300, NaN)).toEqual({ ticks: [], labels: [] });
+  it('keeps edge labels and rejects only offscreen or non-finite anchor coordinates', () => {
+    const points = [point(0, 1, 'BUY', 0), point(300, 2, 'SELL', 300), point(-1), point(301), point(NaN), point(100, 1, 'BUY', Infinity)];
+    expect(layoutExecutionMarkers(points, 300, 300)).toEqual(points.slice(0, 2));
   });
 });

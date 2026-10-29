@@ -6,7 +6,7 @@ import { apiExact } from './helpers/apiRoutes';
 const accountA = `acc_${'a'.repeat(32)}`, accountB = `acc_${'b'.repeat(32)}`;
 const start = Date.parse('2026-05-27T09:00:00+09:00');
 type ChartsWindow = Window & { __liveCharts?: Map<string, IChartApi>;
-  __executionPaints?: { text: string; x: number; y: number; maxWidth?: number }[];
+  __executionPaints?: { text: string; x: number; y: number; maxWidth?: number; font: string; glyphWidth: number }[];
   __executionTicks?: { x: number; endX: number; y: number }[] };
 
 async function fixture(page: Page, timeframe: string) {
@@ -41,8 +41,8 @@ async function fixture(page: Page, timeframe: string) {
     };
     const original = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function(text, x, y, maxWidth) {
-      if ((text === 'B' || text === 'S') && this.font.includes('13px')) {
-        win.__executionPaints!.push({ text, x, y, maxWidth });
+      if (text === 'B' || text === 'S') {
+        win.__executionPaints!.push({ text, x, y, maxWidth, font: this.font, glyphWidth: this.measureText(text).width });
         if (win.__executionPaints!.length > 500) win.__executionPaints!.splice(0, 250);
       }
       if (maxWidth === undefined) original.call(this, text, x, y); else original.call(this, text, x, y, maxWidth);
@@ -118,9 +118,8 @@ for (const timeframe of ['1m', '3m', 'D']) test(`${timeframe}: 설정 토글·�
   const position = await markerPosition(page, timeframe);
   expect(position).not.toBeNull();
   await expect.poll(() => page.evaluate(position => (window as ChartsWindow).__executionPaints?.some(
-    p => p.text === 'B' && p.x < position!.x && p.x > position!.x - 17 && Math.abs(p.y - position!.y) < 1), position)).toBe(true);
-  await expect.poll(() => page.evaluate(position => (window as ChartsWindow).__executionTicks?.some(
-    p => Math.abs(p.x - position!.x) < 1 && p.endX < p.x && Math.abs(p.y - position!.y) < 1), position)).toBe(true);
+    p => p.text === 'B' && Math.abs(p.x - position!.x) < 1 && Math.abs(p.y - position!.y) < 1), position)).toBe(true);
+  expect(await page.evaluate(() => (window as ChartsWindow).__executionTicks)).toEqual([]);
   await page.mouse.click(position!.clientX, position!.clientY);
   const detail = frame.getByRole('region', { name: '이 봉의 매매내역' });
   await expect(detail).toBeVisible();
@@ -135,7 +134,7 @@ for (const timeframe of ['1m', '3m', 'D']) test(`${timeframe}: 설정 토글·�
   const averagePosition = await markerPosition(page, timeframe, 35040.25);
   expect(averagePosition).not.toBeNull();
   await expect.poll(() => page.evaluate(position => (window as ChartsWindow).__executionPaints?.some(
-    p => p.text === 'B' && p.x < position!.x && p.x > position!.x - 17 && Math.abs(p.y - position!.y) < 1), averagePosition)).toBe(true);
+    p => p.text === 'B' && Math.abs(p.x - position!.x) < 1 && Math.abs(p.y - position!.y) < 1), averagePosition)).toBe(true);
   await page.mouse.click(averagePosition!.clientX, averagePosition!.clientY);
   await expect(detail).toBeVisible();
   await expect(detail.getByText('주문 평균가 기준 · 마지막 체결 시각에 표시합니다.', { exact: true })).toBeVisible();
@@ -174,7 +173,7 @@ for (const timeframe of ['1m', '3m', 'D']) test(`${timeframe}: 설정 토글·�
   expect(await page.evaluate(() => (window as ChartsWindow).__executionPaints)).toEqual([]);
 });
 
-for (const theme of ['obsidian', 'ledger']) test(`${theme}: 확대·축소·가격축 반전에도 눈금 유지와 봉 안 B/S 묶음`, async ({ page }, info) => {
+for (const theme of ['obsidian', 'ledger']) test(`${theme}: 확대·축소·반전·로그에도 체결가의 B/S 13px 고정과 겹침 유지`, async ({ page }, info) => {
   await fixture(page, '1m');
   await page.addInitScript(theme => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
   const prices = [35020, 35025, 35020, 35026];
@@ -194,16 +193,19 @@ for (const theme of ['obsidian', 'ledger']) test(`${theme}: 확대·축소·가�
   await page.keyboard.press('Escape');
   await frame.getByRole('combobox', { name: '매매 계좌' }).selectOption(accountA);
   await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__executionPaints?.some(p => p.text === 'S'))).toBe(true);
-  for (const view of [{ pitch: 8, inverted: false, zoom: false }, { pitch: 56, inverted: false, zoom: true },
-    { pitch: 56, inverted: true, zoom: true }]) {
+  let baselineWidths: string[] | undefined;
+  for (const view of [{ pitch: 3, inverted: false, zoom: false, log: false },
+    { pitch: 8, inverted: false, zoom: false, log: false }, { pitch: 56, inverted: false, zoom: true, log: false },
+    { pitch: 56, inverted: true, zoom: true, log: false }, { pitch: 8, inverted: false, zoom: true, log: true }]) {
     await page.evaluate(view => {
       const win = window as ChartsWindow, chart = win.__liveCharts!.get('fills')!;
       const series = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
       win.__executionPaints = []; win.__executionTicks = [];
       chart.timeScale().applyOptions({ barSpacing: view.pitch });
       chart.timeScale().setVisibleLogicalRange({ from: 8 - 300 / view.pitch, to: 8 + 300 / view.pitch });
-      series.priceScale().applyOptions({ autoScale: false, invertScale: view.inverted });
-      series.priceScale().setVisibleRange(view.zoom ? { from: 35000, to: 35050 } : { from: 34000, to: 36000 });
+      series.priceScale().applyOptions({ autoScale: view.log, invertScale: view.inverted, mode: view.log ? 1 : 0 });
+      // Let logarithmic autoscaling choose its own transformed range; setVisibleRange uses raw scale space.
+      if (!view.log) series.priceScale().setVisibleRange(view.zoom ? { from: 35000, to: 35050 } : { from: 34000, to: 36000 });
     }, view);
     const sample = () => page.evaluate(prices => {
       const win = window as ChartsWindow, chart = win.__liveCharts!.get('fills')!;
@@ -212,20 +214,26 @@ for (const theme of ['obsidian', 'ledger']) test(`${theme}: 확대·축소·가�
       const logical = chart.timeScale().coordinateToLogical(x)!;
       const pitch = Math.abs(chart.timeScale().logicalToCoordinate((Math.round(logical) + 1) as typeof logical)!
         - chart.timeScale().logicalToCoordinate(Math.round(logical) as typeof logical)!);
-      const paints = (win.__executionPaints ?? []).filter(p => Math.abs(p.x - x) < pitch / 2);
-      const ticks = win.__executionTicks ?? [];
-      return { pitch, paints,
-        tickPrices: prices.every((price, i) => ticks.some(t => Math.abs(t.x - x) < .1
-          && Math.abs(t.y - series.priceToCoordinate(price)!) < .1 && (i < 2 ? t.endX < t.x : t.endX > t.x))),
-        inside: paints.length > 0 && paints.every(p => Math.abs(p.x - x) + (p.maxWidth ?? 0) / 2 <= pitch * .35 + .1
-          && (p.text === 'B' ? p.x < x : p.x > x)),
+      const paints = win.__executionPaints ?? [];
+      return {
+        exactPrices: prices.every((price, i) => paints.some(p => p.text === (i < 2 ? 'B' : 'S')
+          && Math.abs(p.x - x) < .1 && Math.abs(p.y - series.priceToCoordinate(price)!) < .1)),
+        fixedSize: paints.length > 0 && paints.every(p => p.font.includes('13px') && p.maxWidth === undefined),
+        extendsBody: paints.some(p => p.glyphWidth > pitch * .7),
         labels: [...new Set(paints.map(p => `${p.text}:${p.y.toFixed(2)}`))].length,
+        widths: [...new Set(paints.map(p => `${p.text}:${p.glyphWidth.toFixed(3)}`))].sort(),
+        ticks: (win.__executionTicks ?? []).length,
       };
     }, prices);
-    await expect.poll(async () => (await sample()).tickPrices).toBe(true);
-    await expect.poll(async () => (await sample()).inside).toBe(true);
-    await expect.poll(async () => (await sample()).labels).toBe(view.zoom ? 4 : 2);
-    await frame.screenshot({ path: info.outputPath(`ticks-${theme}-${view.pitch}-${view.inverted}.png`) });
+    await expect.poll(async () => (await sample()).exactPrices).toBe(true);
+    await expect.poll(async () => (await sample()).fixedSize).toBe(true);
+    await expect.poll(async () => (await sample()).labels).toBe(4);
+    const current = await sample();
+    expect(current.ticks).toBe(0);
+    if (view.pitch === 3) expect(current.extendsBody).toBe(true);
+    baselineWidths ??= current.widths;
+    expect(current.widths).toEqual(baselineWidths);
+    await frame.screenshot({ path: info.outputPath(`fixed-bs-${theme}-${view.pitch}-${view.inverted}-${view.log}.png`) });
   }
   const position = (await markerPosition(page, '1m', 35025))!;
   await page.mouse.click(position.clientX, position.clientY);
