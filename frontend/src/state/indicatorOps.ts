@@ -519,6 +519,9 @@ export const INDICATOR_OPS = {
       ? null
       : { dailyMovingAverages: cur.dailyMovingAverages.map((m) => ({ ...m, enabled, ...(enabled && m.hidden ? { hidden: false } : {}) })) }),
 
+  setVolumeColorMode: (cur: IndicatorSettings, mode: IndicatorSettings['volumeColorMode']): Patch =>
+    cur.volumeColorMode === mode ? null : { volumeColorMode: mode },
+
   setVolumeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeEnabled: enabled }),
   /**

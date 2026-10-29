@@ -666,6 +666,14 @@ _Avoid_: "baseline" alone (collides with lightweight-charts' `BaselineSeries`, w
 The deep module that owns chart-pane lifecycle for any indicator derived from a **RangeBundle**. Replaces the prior pattern of five near-clone pane components (CandlePane, VolumePane, RatioPane, QuoteTotalsPane, FillStrengthPane), each repeating the same useEffect → addSeries → `axis.contains` filter → `axis.toVirtual` mapping → `setData` → `try { removeSeries } catch` shape with only the per-series projection differing. Takes a **PaneSpec** describing series count, type, options, and a `(bundle, axis, ctx?) => DataPoint[]` projection per series; the module owns the lifecycle invariants (pre-open auction point drop, real-ms → virtual-second mapping, ChartErrorBoundary teardown race guard around `removeSeries`). New indicators add one PaneSpec entry instead of a new component file; cross-cutting policy changes (e.g., a chart-wide setting toggle, a label format change) land in one place. Lives at `frontend/src/chart/RangeSeriesPane.tsx`; the five historical panes survive as named PaneSpec exports (`CANDLE_SPEC`, `VOLUME_SPEC`, `RATIO_SPEC`, `QUOTE_TOTALS_SPEC`, `FILL_STRENGTH_SPEC`).
 _Avoid_: "ChartPane" (collides with lightweight-charts' own "pane" terminology), "BundlePane" (loses the per-`paneIndex` series semantic), "SeriesView" (loses the multi-series-per-pane semantic).
 
+**거래량 색상 기준 (Volume Color Mode)**:
+거래량 보조지표별 `volumeColorMode`는 `candle`(기본, 캔들의 양봉·음봉 방향)과
+`previous-volume`(같은 주기 직전 봉의 거래량과 비교) 중 하나다. 비교는 증가일 때만
+양봉 색상이며 동일·감소는 음봉 색상이다. 직전 봉이 없는 첫 관측은 캔들 방향을 따른다.
+화면 범위·거래일·과거 캐시 경계에서 비교를 초기화하지 않고 진행 중 봉은 누적량으로
+갱신한다. 창·봉 프로필·반복 지표별로 저장하며 기본 거래량 겹쳐 표시도 같은 값을 쓴다.
+색상·투명도·반전 설정은 기존 표시 규칙을 따른다.
+
 **거래량 겹쳐 표시 (Volume Overlay)**:
 차트 헤더 설정의 창별 표시 방식이다. 기본 거래량을 캔들 pane 하단에 숨은 독립 축으로
 그리고 별도 volume pane을 마운트하지 않는다. 가격축·거래량 원본·공용 Pane Group은

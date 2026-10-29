@@ -162,6 +162,8 @@ export const QUOTE_LEVEL_LINE_DEFAULT_STYLE: LineStyle = 'dashed';
 // dotted 로 갈라 둘을 구분한다(현재값 dashed / 데이터 라인 solid width 3).
 export const QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE: LineStyle = 'dotted';
 
+export type VolumeColorMode = 'candle' | 'previous-volume';
+
 export type PersistedIndicators = {
   indicatorInstances?: IndicatorInstance[];
   indicatorPrimaryHidden?: import('../live/indicators/IndicatorPanelHelpers').CategoryId[];
@@ -214,6 +216,7 @@ export type PersistedIndicators = {
   institutionNetEnabled: boolean;
   /** Pane Legend: volume pane on/off. Default TRUE (kept for legacy stores). */
   volumeEnabled: boolean;
+  volumeColorMode: VolumeColorMode;
   /** Calendar turnover pane for stocks and indices. Opt-in; independent of volume. */
   tradeValueEnabled: boolean;
   /** @deprecated 레거시 입력 전용 — `movingAverageEnabled` 주석 참조. */
@@ -751,6 +754,7 @@ export function mergeLiveIndicatorPrefs(
     institutionTradeSide: normalizeInvestorTradeSide(obj?.institutionTradeSide ?? obj?.investorTradeSide),
     institutionNetEnabled: iNet,
     volumeEnabled: vol,
+    volumeColorMode: obj?.volumeColorMode === 'previous-volume' ? 'previous-volume' : 'candle',
     tradeValueEnabled: obj?.tradeValueEnabled === true,
     movingAverageHidden: hidden,
     peakWallPaneEnabled: pwPaneEnabled,

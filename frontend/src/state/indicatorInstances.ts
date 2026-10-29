@@ -59,9 +59,12 @@ export function normalizeIndicatorInstances(raw: unknown, normalize: (raw: unkno
       || !INDICATOR_CATEGORIES.includes(row.category)) return [];
     seen.add(row.id);
     const settings = normalize({ ...(row.settings && typeof row.settings === 'object' ? row.settings : {}), indicatorInstances: [] });
-    // Persist only finite primitives; the category registry prevents sibling/global preference leakage.
+    // Keep the volume overlay's existing optional hex colors as well as numeric
+    // and boolean preferences when independently configured instances reload.
     const prefs = Object.fromEntries(Object.entries(row.prefs && typeof row.prefs === 'object' ? row.prefs : {}).filter(([key, value]) =>
-      ownsIndicatorKey(row.category, key) && (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value)))));
+      ownsIndicatorKey(row.category, key) && (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))
+        || ((key === 'volumeOverlayUpColor' || key === 'volumeOverlayDownColor') && typeof value === 'string'
+          && (value === '' || /^#[0-9a-fA-F]{6}$/.test(value))))));
     return [{ id: row.id, category: row.category, ...(row.hidden === true ? { hidden: true } : {}), settings: captureIndicatorSettings(row.category, settings), prefs }];
   });
 }
@@ -78,6 +81,7 @@ export function indicatorInstanceSummary(category: CategoryId, settings: Indicat
     case 'peak-walls': return [settings.askPeakEnabled ? '매도' : '', settings.bidPeakEnabled ? '매수' : ''].filter(Boolean).join(' · ');
     case 'trade-volume-poc': return `투명도 ${Math.round(settings.tradeVolumePocOpacity * 100)}%`;
     case 'depth-heatmap': return `최대 ${Math.round(settings.depthHeatmapMaxOpacity * 100)}%`;
+    case 'volume': return settings.volumeColorMode === 'previous-volume' ? '이전 거래량과 비교' : '캔들 색상과 동일';
     case 'program-trade': return '누적 순매수';
     case 'volume-distribution': return `${settings.volumeDistributionRangeCount}구간`;
     case 'foreign-net': return { net: '순매수', buy: '총매수', sell: '총매도' }[settings.foreignTradeSide];
