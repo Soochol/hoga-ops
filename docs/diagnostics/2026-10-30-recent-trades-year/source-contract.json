@@ -1,0 +1,31 @@
+{
+  "url": "https://openapi.kiwoom.com/m/guide/apiguide/08/kt00015",
+  "retrieved_at_utc": "2026-10-29T15:15:24.863458+00:00",
+  "html_sha256": "e205e52beb53b3c3d2843a524df41c111a4ae81a773c57968ac7e60aac1eee9c",
+  "api_id": "kt00015",
+  "method": "POST",
+  "path": "/api/dostk/acnt",
+  "request": {
+    "strt_dt": "from_date",
+    "end_dt": "to_date",
+    "tp": "3",
+    "stk_cd": "",
+    "crnc_cd": "KRW",
+    "gds_tp": "1",
+    "frgn_stex_code": "",
+    "dmst_stex_tp": "%",
+    "qry_sort_tp": "1"
+  },
+  "response_array": "trst_ovrl_trde_prps_array",
+  "fields_used": [
+    "stk_cd",
+    "stk_nm",
+    "cntr_dt",
+    "trde_qty_jwa_cnt",
+    "trde_ocr_tp",
+    "trde_prtc_tp",
+    "crnc_cd"
+  ],
+  "date_policy": "cntr_dt is the reported fill date. trde_dt and proc_tm are not substituted for fill dates/times. Optional classification fields may be blank; explicit non-stock or foreign classifications are excluded.",
+  "limit": "Documentation supports date-range requests but does not guarantee a full year of retained data. No production credential validation was performed."
+}

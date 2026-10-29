@@ -66,6 +66,7 @@ class Kiwoom:
         self.writes = []
         self.opens = [open_order()]
         self.history = []
+        self.ledger = []
         self.failure = ""
         self.capacity = "1000"
         self.next_id = 10
@@ -85,6 +86,8 @@ class Kiwoom:
             result = {"oso": self.opens}
         elif api == "kt00007":
             result = {"acnt_ord_cntr_prps_dtl": self.history}
+        elif api == "kt00015":
+            result = {"trst_ovrl_trde_prps_array": self.ledger}
         elif api == "kt00018":
             result = {
                 "acnt_evlt_remn_indv_tot": [
@@ -753,6 +756,23 @@ async def test_execution_history_rejects_foreign_account_and_invalid_date_before
         response = await api.get('/api/trading/v2/execution-history', params=params)
         assert response.status_code == status, response.text
     assert not [r for r in broker.requests if r.headers['api-id'] == 'kt00007']
+
+
+async def test_recent_year_stocks_use_ledger_period_read_through_the_pinned_gateway_without_writes(setup):
+    broker, _, adapter, _, api = setup
+    broker.ledger = [{'stk_cd': 'A0099A0', 'stk_nm': '과거 종목', 'cntr_dt': '20251101',
+        'trde_dt': '20251103', 'proc_tm': '10:30:00', 'trde_ocr_tp': '9', 'trde_prtc_tp': '11',
+        'crnc_cd': 'KRW', 'trde_qty_jwa_cnt': '10'}]
+    response = await api.get('/api/trading/v2/execution-history-range', params={
+        'account_ref': adapter.account_ref, 'from_date': '20251028', 'to_date': '20261028'})
+    assert response.status_code == 200, response.text
+    assert response.json()['rows'] == [{'code': '0099A0', 'name': '과거 종목', 'date': '20251101', 'filled_at': None}]
+    reads = [request for request in broker.requests if request.headers['api-id'] == 'kt00015']
+    assert len(reads) == 1
+    assert json.loads(reads[0].content) == {'strt_dt': '20251028', 'end_dt': '20261028',
+        'tp': '3', 'stk_cd': '', 'crnc_cd': 'KRW', 'gds_tp': '1', 'frgn_stex_code': '',
+        'dmst_stex_tp': '%', 'qry_sort_tp': '1'}
+    assert not broker.writes
 
 
 async def test_execution_history_pages_are_account_bound_and_preserve_modified_order_fills(setup, monkeypatch):

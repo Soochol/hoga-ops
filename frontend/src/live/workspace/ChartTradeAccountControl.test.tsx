@@ -61,6 +61,11 @@ function recentSetup() {
   vi.mocked(apiCall).mockImplementation(async url => {
     if (url === '/api/trading/v2/accounts') return { configured: true,
       accounts: [{ account_ref: a, label: '계좌 A' }, { account_ref: b, label: '계좌 B' }], errors: {} };
+    if (String(url).includes('execution-history-range')) {
+      const p = new URL(String(url), 'http://localhost').searchParams;
+      return { account_ref: p.get('account_ref'), from_date: p.get('from_date'), to_date: p.get('to_date'),
+        rows: [], next_key: null, scanned_through: p.get('from_date'), fetched_at_ms: 1, events_connected: true };
+    }
     if (String(url).includes('execution-history')) {
       if (String(url).includes(b)) return history(b, [fill('035720', '카카오', '10:00')]);
       if (String(url).includes('next_key=')) return history(a, [fill('0099A0', null, '08:10')]);
@@ -88,7 +93,7 @@ it('loads only when opened with a known account, lists deduplicated fills, and p
   expect([...dialog.querySelectorAll('[data-recent-code]')].map(el => el.getAttribute('data-recent-code'))).toEqual(['005930', '000660', '035420']);
   expect(within(dialog).getByRole('button', { name: /삼성전자/ })).toHaveAttribute('aria-pressed', 'true');
   const naver = await within(dialog).findByRole('button', { name: /NAVER/ });
-  expect(naver.querySelector('time')).toBeEmptyDOMElement();
+  expect(naver.querySelector('time span:last-child')).toBeEmptyDOMElement();
   fireEvent.keyDown(dialog, { key: 'Home' });
   expect(within(dialog).getByRole('button', { name: /삼성전자/ })).toHaveFocus();
   fireEvent.keyDown(dialog, { key: 'ArrowDown' });

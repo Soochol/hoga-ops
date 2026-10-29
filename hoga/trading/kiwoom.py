@@ -21,7 +21,7 @@ from hoga.trading.contracts import BrokerAccount, BrokerBalances, BrokerOrder, B
 from hoga.trading.toss import TradingError
 from hoga.util.timeenc import KST
 
-READS = {"ka00001", "ka10075", "kt00007", "kt00009", "kt00018", "kt00011", "ka10081"}
+READS = {"ka00001", "ka10075", "kt00007", "kt00009", "kt00015", "kt00018", "kt00011", "ka10081"}
 WRITES = {"kt10000", "kt10001", "kt10002", "kt10003"}
 HOSTS = {"real": "https://api.kiwoom.com", "mock": "https://mockapi.kiwoom.com"}
 PREFIXED_CODE_LENGTH = 7

@@ -20,6 +20,7 @@ from hoga.trading.contracts import (
     CancelBrokerOrders,
     CreateBrokerOrder,
     ExecutionHistoryPage,
+    ExecutionHistoryRangePage,
     ModifyBrokerOrder,
     ReviewBrokerCommand,
 )
@@ -83,6 +84,15 @@ def build_router(service: BrokerTradingService) -> APIRouter:
         next_key: str | None = Query(default=None, min_length=1, max_length=8192),
     ) -> ExecutionHistoryPage:
         return await invoke(execution_history(service, account_ref, date, next_key))
+
+    @router.get("/execution-history-range")
+    async def account_execution_history_range(
+        account_ref: AccountRef,
+        from_date: str = Query(pattern=r"^\d{8}$"),
+        to_date: str = Query(pattern=r"^\d{8}$"),
+        next_key: str | None = Query(default=None, min_length=1, max_length=8192),
+    ) -> ExecutionHistoryRangePage:
+        return await invoke(service.execution_range.read(service, account_ref, from_date, to_date, next_key))
 
     @router.get("/executions")
     async def executions(

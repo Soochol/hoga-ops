@@ -149,6 +149,24 @@ class ExecutionHistoryPage(BaseModel):
     events_connected: bool
 
 
+class RecentTradedStock(BaseModel):
+    code: str
+    name: str | None
+    date: str
+    filled_at: str | None
+
+
+class ExecutionHistoryRangePage(BaseModel):
+    account_ref: str
+    from_date: str
+    to_date: str
+    rows: list[RecentTradedStock]
+    next_key: str | None
+    scanned_through: str | None
+    fetched_at_ms: int
+    events_connected: bool
+
+
 class BrokerCommandStatus(BaseModel):
     command_id: str
     state: str
