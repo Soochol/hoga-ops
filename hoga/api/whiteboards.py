@@ -136,6 +136,22 @@ def _error(status: int, code: str, message: str) -> HTTPException:
     return HTTPException(status, detail={"code": code, "message": message})
 
 
+def _review_stocks(review: ReviewNote, scene: WhiteboardScene) -> list[str]:
+    stocks = [record.stock or record.code for record in review.records if record.stock or record.code]
+    recorded_codes = {record.code for record in review.records if record.code}
+    # Free-canvas captures have no legacy structured record. Derive their
+    # searchable Codes from visible images instead of discarding them.
+    for element in scene.elements:
+        if element.get("type") != "image" or element.get("isDeleted"):
+            continue
+        custom = element.get("customData")
+        source = custom.get("chartSource") if isinstance(custom, dict) else None
+        code = source.get("code") if isinstance(source, dict) else None
+        if isinstance(code, str) and re.fullmatch(r"[A-Z0-9]{6}", code) and code not in recorded_codes:
+            stocks.append(code)
+    return list(dict.fromkeys(stocks))[:200]
+
+
 class WhiteboardStore:
     def __init__(self, data_dir: Path):
         self.root = data_dir / "whiteboards"
@@ -234,9 +250,7 @@ class WhiteboardStore:
                 raise _error(422, "review_duplicate_record", "기록 ID가 중복되었습니다")
             if any(record.image_file_id and record.image_file_id not in req.scene.files for record in review.records):
                 raise _error(422, "whiteboard_missing_asset", "기록에 필요한 이미지가 없습니다")
-            review = review.model_copy(update={"stocks": list(dict.fromkeys(
-                record.stock or record.code for record in review.records if record.stock or record.code
-            ))})
+            review = review.model_copy(update={"stocks": _review_stocks(review, req.scene)})
         now = int(time.time() * 1000)
         doc = WhiteboardDocument(
             id=board_id,

@@ -1,0 +1,60 @@
+{
+  "date_kst": "2026-10-29",
+  "base_sha": "95faca376d4f75ed8d703940511fb9f9cee648a5",
+  "origin_main_sha": "95faca376d4f75ed8d703940511fb9f9cee648a5",
+  "working_tree": "uncommitted implementation",
+  "input_sha256": "27dcb8da949089b097acc8d7cae35035665b6d3b4bac7cd0fda61b1e1b23e5b5",
+  "input_file_count": 2804,
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "chrome": "Google Chrome 156.0.8078.73"
+  },
+  "checks": {
+    "unit": {
+      "command": "npx vitest run src/chart/ChartCaptureActions.test.tsx src/chart/reviewCaptureData.test.ts src/whiteboard src/live/LiveChartRoot.test.tsx src/live/LivePage.test.tsx src/live/workspace/SecondChartWindow.viewport.test.tsx src/chart/DrawingPropertyPanel.test.tsx src/live/indicators/IndicatorPanel.reset.test.tsx src/live/indicators/indicatorReset.test.ts src/live/indicators/VolumeConfig.test.tsx",
+      "result": "421 passed; 14 files",
+      "reuse": "Only capture tooltip wording changed afterward; the affected ChartCaptureActions suite was rerun."
+    },
+    "backend": {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_whiteboards.py tests/unit/api/test_rest_wire_schema_contract.py -m 'not wallclock'",
+      "result": "25 passed"
+    },
+    "ruff": {
+      "command": "uv run --extra dev ruff check .",
+      "result": "All checks passed!"
+    },
+    "e2e": {
+      "command": "npx playwright test tests/e2e/review-auto-capture.spec.ts tests/e2e/chart-image-export.spec.ts tests/e2e/review-notes.spec.ts",
+      "result": "11 passed",
+      "scope": "Credential-free system Chrome; mocked price/flow inputs, actual PNG generation, real API asset persistence, group movement, reload, existing canvas regressions."
+    },
+    "e2e_confirmation": {
+      "command": "npx playwright test tests/e2e/review-auto-capture.spec.ts",
+      "result": "1 passed after backend helper extraction",
+      "reuse": "Final later change only separates the already-existing PNG/copy tooltip from the review tooltip; no capture, persistence or interaction change."
+    },
+    "typecheck": {
+      "command": "npm run typecheck",
+      "result": "passed: app, unit-test and E2E TypeScript projects"
+    },
+    "build": {
+      "command": "npx vite build",
+      "result": "passed in 6.08s; existing large-chunk advisory remains"
+    },
+    "actions_final": {
+      "command": "npx vitest run src/chart/ChartCaptureActions.test.tsx",
+      "result": "6 passed after final tooltip correction"
+    },
+    "diff": {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  },
+  "limitations": [
+    "Market flow historical lookup uses the existing 120-calendar-day confirmed history response; unavailable dates remain missing.",
+    "Provider freshness and live brokerage access were not tested; no credentials were used."
+  ],
+  "screenshot": "review-auto-capture.png"
+}

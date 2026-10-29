@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { MemoryRouter } from 'react-router';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChartCaptureActions } from './ChartCaptureActions';
@@ -13,10 +14,10 @@ vi.mock('./chartImage', () => ({
 function Host({ available = true }: { available?: boolean }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   useDrawingToolContextMenuReset();
-  return <div ref={viewportRef} data-testid="chart">
+  return <MemoryRouter><div ref={viewportRef} data-testid="chart">
     <div data-testid="overlay" onContextMenu={() => useDrawingsStore.getState().exitDrawingMode()} />
     <ChartCaptureActions viewportRef={viewportRef} code="005930" timeframe="1m" available={available} />
-  </div>;
+  </div></MemoryRouter>;
 }
 
 const blob = new Blob(['png'], { type: 'image/png' });
