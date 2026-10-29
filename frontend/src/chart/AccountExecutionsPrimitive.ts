@@ -2,7 +2,8 @@ import type { CanvasRenderingTarget2D } from 'fancy-canvas';
 import type { IPrimitivePaneRenderer, IPrimitivePaneView, ISeriesPrimitive, SeriesAttachedParameter, Time } from 'lightweight-charts';
 import { CANVAS_FONT_STACK } from '../styles/design-tokens';
 import { resolveTokensThemed } from '../util/tokens';
-import { layoutExecutionMarkers, type ExecutionMarker, type PlottedExecution } from './projectors/accountExecutions';
+import { barPitchPx } from './drawing/chartCoordinates';
+import { layoutExecutionMarkers, type ExecutionMarker, type ExecutionLabel, type ExecutionTick } from './projectors/accountExecutions';
 
 const TOKENS = { buy: ['--price-up', '#F04452'], sell: ['--price-down', '#3485FA'], bg: ['--bg-card', '#121216'] } as const;
 
@@ -10,7 +11,7 @@ const TOKENS = { buy: ['--price-up', '#F04452'], sell: ['--price-down', '#3485FA
 export class AccountExecutionsPrimitive implements ISeriesPrimitive<Time> {
   private attachedTo: SeriesAttachedParameter<Time> | null = null;
   private points: readonly ExecutionMarker[] = [];
-  private hits: PlottedExecution[] = [];
+  private hits: (ExecutionLabel | ExecutionTick)[] = [];
   private readonly renderer: IPrimitivePaneRenderer = { draw: target => this.draw(target) };
   private readonly view: IPrimitivePaneView = { renderer: () => this.renderer, zOrder: () => 'top' };
 
@@ -34,10 +35,11 @@ export class AccountExecutionsPrimitive implements ISeriesPrimitive<Time> {
     this.attachedTo?.requestUpdate();
   }
   detailAt(x: number, y: number): ExecutionMarker | null {
-    let nearest: PlottedExecution | undefined, distance = Infinity;
+    let nearest: ExecutionLabel | ExecutionTick | undefined, distance = Infinity;
     for (const point of this.hits) {
       const d = Math.hypot(x - point.x, y - point.y);
-      if (Math.abs(x - point.x) <= 12 && Math.abs(y - point.y) <= 10 && d < distance) { nearest = point; distance = d; }
+      if (Math.abs(x - point.candleX) <= point.halfBarWidth && Math.abs(x - point.x) <= 12
+        && Math.abs(y - point.y) <= 10 && d < distance) { nearest = point; distance = d; }
     }
     return nearest?.marker ?? null;
   }
@@ -45,23 +47,39 @@ export class AccountExecutionsPrimitive implements ISeriesPrimitive<Time> {
     const attachment = this.attachedTo;
     if (!attachment) return;
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
-      const positions: PlottedExecution[] = [];
+      const positions = [];
       for (const marker of this.points) {
         const x = attachment.chart.timeScale().timeToCoordinate(marker.time);
         const y = attachment.series.priceToCoordinate(marker.price);
         if (x !== null && y !== null) positions.push({ marker, x, y });
       }
-      this.hits = layoutExecutionMarkers(positions, mediaSize.width, mediaSize.height);
+      const pitch = barPitchPx(attachment.chart) ?? attachment.chart.timeScale().options().barSpacing;
+      const layout = layoutExecutionMarkers(positions, mediaSize.width, mediaSize.height, pitch);
+      this.hits = [...layout.labels, ...layout.ticks];
       const tokens = resolveTokensThemed(TOKENS);
       ctx.save();
       ctx.font = `500 13px ${CANVAS_FONT_STACK}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = tokens.bg;
-      for (const point of this.hits) {
+      ctx.beginPath(); ctx.rect(0, 0, mediaSize.width, mediaSize.height); ctx.clip();
+      for (const point of layout.labels) {
+        // Keep even the text outline inside this candle's body column at every zoom.
+        ctx.save(); ctx.beginPath();
+        const halfBody = pitch * .35;
+        ctx.rect(point.candleX - halfBody, 0, halfBody * 2, mediaSize.height); ctx.clip();
         const text = point.marker.side === 'BUY' ? 'B' : 'S';
-        ctx.strokeText(text, point.x, point.y);
+        ctx.strokeText(text, point.x, point.y, point.maxWidth);
         ctx.fillStyle = point.marker.side === 'BUY' ? tokens.buy : tokens.sell;
-        ctx.fillText(text, point.x, point.y);
+        ctx.fillText(text, point.x, point.y, point.maxWidth);
+        ctx.restore();
+      }
+      // Paint ticks last so a grouped label can never erase an exact price position.
+      ctx.lineCap = 'butt';
+      for (const point of layout.ticks) {
+        ctx.beginPath(); ctx.moveTo(point.x, point.y); ctx.lineTo(point.endX, point.y);
+        ctx.lineWidth = 3; ctx.strokeStyle = tokens.bg; ctx.stroke();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = point.marker.side === 'BUY' ? tokens.buy : tokens.sell; ctx.stroke();
       }
       ctx.restore();
     });
