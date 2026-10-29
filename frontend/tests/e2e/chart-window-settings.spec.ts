@@ -6,6 +6,7 @@ import { CHART_DISPLAY_TOGGLES, DEFAULT_CHART_DISPLAY_PREFS } from '../../src/st
 import type { LiveLayoutPreset, LiveLayoutPresetPayload } from '../../src/api/liveLayoutPresets';
 
 type ChartsWindow = Window & { __liveCharts?: Map<string, IChartApi> };
+const chartSettingToggles = CHART_DISPLAY_TOGGLES.filter(def => def.key !== 'volumeOverlayEnabled');
 const initial = { ...DEFAULT_CHART_DISPLAY_PREFS, candlePaneCandleOnlyScale: true, auctionWindowMask: false };
 
 async function setup(page: Page, timeframe = '1m') {
@@ -29,8 +30,17 @@ async function open(page: Page, id: string) {
   await expect(panel.getByText('이 차트에 적용', { exact: true })).toBeVisible();
   await panel.getByLabel('차트 거꾸로 보기 세부 설정').click();
   await panel.getByLabel('고저 극값 라벨 세부 설정').click();
-  const volumeDetails = panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정');
-  if (await volumeDetails.isVisible()) await volumeDetails.click();
+  await expect(panel.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true })).toHaveCount(0);
+  return panel;
+}
+
+async function openVolume(page: Page, id: string, expand = true) {
+  await page.locator(`[data-win="${id}"]`).getByTestId('live-indicators-button').click();
+  const panel = page.getByTestId('indicator-panel-shell');
+  await panel.getByRole('button', { name: '내 지표', exact: true }).click();
+  await panel.getByRole('button', { name: '거래량', exact: true }).click();
+  const details = panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정');
+  if (expand && await details.isVisible()) await details.click();
   return panel;
 }
 
@@ -275,8 +285,8 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   await scaleFixtures(page);
   await page.goto('/live');
   const a = await open(page, 'a');
-  const editOrder = [...CHART_DISPLAY_TOGGLES.filter(def => def.key !== 'highLowLabelsEnabled'),
-    ...CHART_DISPLAY_TOGGLES.filter(def => def.key === 'highLowLabelsEnabled')];
+  const editOrder = [...chartSettingToggles.filter(def => def.key !== 'highLowLabelsEnabled'),
+    ...chartSettingToggles.filter(def => def.key === 'highLowLabelsEnabled')];
   for (const def of editOrder) {
     const toggle = a.getByRole('switch', { name: def.label, exact: true });
     await expect(toggle).toHaveAttribute('aria-checked', String(initial[def.key]));
@@ -309,11 +319,11 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   await expect(page.locator('[data-win="a"]').getByTestId('candle-tooltip')).toHaveCSS('font-size', '11.5px');
   await expect(page.locator('[data-win="b"]').getByTestId('candle-tooltip')).toHaveCount(0);
   const b = await open(page, 'b');
-  for (const def of CHART_DISPLAY_TOGGLES) await expect(b.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(initial[def.key]));
+  for (const def of chartSettingToggles) await expect(b.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(initial[def.key]));
   await page.keyboard.press('Escape');
   await page.reload();
   const restored = await open(page, 'a');
-  for (const def of CHART_DISPLAY_TOGGLES) await expect(restored.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(!initial[def.key]));
+  for (const def of chartSettingToggles) await expect(restored.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(!initial[def.key]));
   await page.keyboard.press('Escape');
   await expectGrid(page, 'a', false, false);
   await expectGrid(page, 'b', true, true);
@@ -321,7 +331,7 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   // Same window keeps its display choices when switching timeframe.
   await page.locator('[data-win="a"]').getByTestId('chart-window-header').getByRole('button', { name: '일', exact: true }).click();
   const calendar = await open(page, 'a');
-  for (const def of CHART_DISPLAY_TOGGLES) await expect(calendar.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(!initial[def.key]));
+  for (const def of chartSettingToggles) await expect(calendar.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(!initial[def.key]));
   await page.keyboard.press('Escape');
   await expectPriceScale(page, 'a', true, true);
   for (const name of ['주', '월']) {
@@ -336,7 +346,7 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   await expect(added).toHaveCount(1);
   const addedId = (await added.getAttribute('data-win'))!;
   const copied = await open(page, addedId);
-  for (const def of CHART_DISPLAY_TOGGLES) await expect(copied.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(!initial[def.key]));
+  for (const def of chartSettingToggles) await expect(copied.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(!initial[def.key]));
   await copied.getByRole('switch', { name: '가로 구분선', exact: true }).click();
   await page.keyboard.press('Escape');
   await added.getByRole('button', { name: /창 닫기$/ }).click();
@@ -348,7 +358,7 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   await scaleFixtures(otherTab);
   await otherTab.goto('/live');
   const inherited = await open(otherTab, 'a');
-  for (const def of CHART_DISPLAY_TOGGLES) await expect(inherited.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(!initial[def.key]));
+  for (const def of chartSettingToggles) await expect(inherited.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(!initial[def.key]));
   await expectPriceScale(otherTab, 'a', true, true);
   await otherTab.close();
   await page.evaluate(async () => {
@@ -475,7 +485,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
       Object.assign(window, { __volumeBefore: { chart, candle, rows: volume.data(),
         paneCount: chart.panes().length, range: chart.timeScale().getVisibleLogicalRange(), spacing: chart.timeScale().options().barSpacing } });
     });
-    let panel = await open(page, 'a');
+    let panel = await openVolume(page, 'a', false);
     await panel.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
     await expect(panel.getByRole('slider', { name: '거래량 투명도' })).not.toBeVisible();
     await panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정').press('Enter');
@@ -512,7 +522,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
       await page.keyboard.press('Escape');
       await expect(page.locator('[data-win="a"]').getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
       await page.screenshot({ path: info.outputPath('volume-overlay-default.png'), animations: 'disabled' });
-      panel = await open(page, 'a');
+      panel = await openVolume(page, 'a');
     }
     await panel.getByRole('slider', { name: '거래량 표시 높이' }).press('End');
     await panel.getByRole('slider', { name: '거래량 투명도' }).press('Home');
@@ -525,6 +535,8 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
     await panel.getByRole('button', { name: '하락봉 거래량 색상 선택', exact: true }).click();
     await page.keyboard.press('Escape');
     await expect(panel).toBeVisible();
+    await page.keyboard.press('Escape');
+    panel = await open(page, 'a');
     await panel.getByRole('switch', { name: '로그 스케일', exact: true }).click();
     await panel.getByRole('switch', { name: '차트 거꾸로 보기', exact: true }).click();
     await expectPriceScale(page, 'a', true, true);
@@ -541,12 +553,12 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
     if (timeframe === 'D') {
       await page.screenshot({ path: info.outputPath('volume-overlay-comparison.png'), animations: 'disabled' });
       await page.reload();
-      panel = await open(page, 'a');
+      panel = await openVolume(page, 'a');
       await expect(panel.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
       await expect(panel.getByRole('slider', { name: '거래량 투명도' })).toHaveValue('0');
       await expect(page.locator('[data-win="a"]').getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
       await page.screenshot({ path: info.outputPath('volume-overlay-settings.png'), animations: 'disabled' });
-    } else panel = await open(page, 'a');
+    } else panel = await openVolume(page, 'a');
     await panel.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toBeVisible();
     await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts!.get('a')!.panes()[0]

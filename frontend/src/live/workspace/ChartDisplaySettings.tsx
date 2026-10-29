@@ -4,7 +4,6 @@ import { useWindowSettingsStore, WindowSettingsScope } from '../../state/windowS
 import { normalizeChartDisplayPrefs } from '../../state/chartDisplayPrefs';
 import { seedSettingsForWindow } from '../../state/windowSettingsLifecycle';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
-import { VolumeOverlaySettings } from './VolumeOverlaySettings';
 import { SettingsDescriptionTooltipContext } from '../settings/SettingsRow';
 import { SettingsUndoContext } from '../settings/settingsUndoContext';
 import { useSettingsUndo, type SettingsSnapshot } from '../settings/useSettingsUndo';
@@ -26,10 +25,6 @@ export function ChartDisplaySettings({ windowId }: { windowId: string }) {
       <div className="settings-editor-content">
         {groups.map(group => <section key={group.id} className="settings-editor-group" aria-label={group.label}>
           <h4>{group.label}</h4>
-          {group.id === 'candle' && <>
-            <IndicatorPrefRows toggleKeys={['volumeOverlayEnabled']} />
-            <VolumeOverlaySettings windowId={windowId} />
-          </>}
           <IndicatorPrefRows toggleKeys={group.keys.filter(key => key !== 'volumeOverlayEnabled')} />
         </section>)}
       </div>

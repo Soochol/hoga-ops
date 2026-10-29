@@ -163,6 +163,10 @@ export const DEFAULT_VOLUME_OVERLAY_STYLE = {
   volumeOverlayDownColor: '',
 };
 export type VolumeOverlayStyle = typeof DEFAULT_VOLUME_OVERLAY_STYLE;
+export const VOLUME_OVERLAY_PREF_KEYS = [
+  'volumeOverlayEnabled', 'volumeOverlayTransparency', 'volumeOverlayHeight',
+  'volumeOverlayUpColor', 'volumeOverlayDownColor',
+] as const;
 export type ChartDisplayLineStyleKey = (typeof CHART_DISPLAY_LINE_STYLES)[number]['key'];
 export type ChartDisplayLineStyles = { [K in ChartDisplayLineStyleKey as `${K}Color`]: string }
   & { [K in ChartDisplayLineStyleKey as `${K}Width`]: 1 | 2 | 3 | 4 };
