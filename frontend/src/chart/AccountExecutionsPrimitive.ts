@@ -5,6 +5,7 @@ import { resolveTokensThemed } from '../util/tokens';
 import { layoutExecutionMarkers, type ExecutionMarker, type PlottedExecution } from './projectors/accountExecutions';
 
 const TOKENS = { buy: ['--price-up', '#F04452'], sell: ['--price-down', '#3485FA'], bg: ['--bg-card', '#121216'] } as const;
+const BADGE_HALF_SIZE = 10;
 
 /** Paints in the candle's own pass, so pan, zoom, log and inverted scales share its coordinates. */
 export class AccountExecutionsPrimitive implements ISeriesPrimitive<Time> {
@@ -37,8 +38,8 @@ export class AccountExecutionsPrimitive implements ISeriesPrimitive<Time> {
     let nearest: PlottedExecution | undefined, distance = Infinity;
     for (const point of this.hits) {
       const d = Math.hypot(x - point.x, y - point.y);
-      if (Math.abs(x - point.x) <= 12
-        && Math.abs(y - point.y) <= 10 && d < distance) { nearest = point; distance = d; }
+      if (Math.abs(x - point.x) <= BADGE_HALF_SIZE + 2
+        && Math.abs(y - point.y) <= BADGE_HALF_SIZE + 2 && d < distance) { nearest = point; distance = d; }
     }
     return nearest?.marker ?? null;
   }
@@ -57,12 +58,16 @@ export class AccountExecutionsPrimitive implements ISeriesPrimitive<Time> {
       ctx.save();
       ctx.font = `500 13px ${CANVAS_FONT_STACK}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = tokens.bg;
+      ctx.lineJoin = 'round'; ctx.lineWidth = 1.25;
       ctx.beginPath(); ctx.rect(0, 0, mediaSize.width, mediaSize.height); ctx.clip();
       for (const point of this.hits) {
         const text = point.marker.side === 'BUY' ? 'B' : 'S';
-        ctx.strokeText(text, point.x, point.y);
-        ctx.fillStyle = point.marker.side === 'BUY' ? tokens.buy : tokens.sell;
+        const color = point.marker.side === 'BUY' ? tokens.buy : tokens.sell;
+        ctx.beginPath();
+        ctx.roundRect(point.x - BADGE_HALF_SIZE, point.y - BADGE_HALF_SIZE, BADGE_HALF_SIZE * 2, BADGE_HALF_SIZE * 2, 5);
+        ctx.fillStyle = tokens.bg; ctx.fill();
+        ctx.strokeStyle = color; ctx.stroke();
+        ctx.fillStyle = color;
         ctx.fillText(text, point.x, point.y);
       }
       ctx.restore();
