@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type { IChartApi } from 'lightweight-charts';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
+import type { ExecutionHistoryRow } from '../../src/api/executionHistory';
 
 const accountA = `acc_${'a'.repeat(32)}`, accountB = `acc_${'b'.repeat(32)}`;
 const start = Date.parse('2026-05-27T09:00:00+09:00');
@@ -10,8 +11,9 @@ type ChartsWindow = Window & { __liveCharts?: Map<string, IChartApi>;
   __executionBoxes?: { x: number; y: number; width: number; height: number; radius: number }[];
   __executionTicks?: { x: number; endX: number; y: number }[] };
 
-async function fixture(page: Page, timeframe: string) {
+async function fixture(page: Page, timeframe: string, controlTimers = false) {
   await page.setViewportSize({ width: 1280, height: 900 });
+  if (controlTimers) await page.clock.install({ time: new Date('2026-05-28T18:00:00+09:00') });
   await page.clock.setFixedTime(new Date('2026-05-28T18:00:00+09:00'));
   await page.addInitScript(timeframe => {
     if (!sessionStorage.getItem('execution-fixture')) {
@@ -184,7 +186,7 @@ for (const timeframe of ['1m', '3m', 'D']) test(`${timeframe}: 설정 토글·�
 });
 
 for (const theme of ['obsidian', 'ledger']) test(`${theme}: 확대·축소·반전·로그에도 체결가의 B/S 13px 고정과 겹침 유지`, async ({ page }, info) => {
-  await fixture(page, '1m');
+  await fixture(page, '1m', true);
   await page.addInitScript(theme => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
   const prices = [35020, 35025, 35020, 35026];
   await page.route(apiExact('trading/v2/executions'), route => {
@@ -248,6 +250,8 @@ for (const theme of ['obsidian', 'ledger']) test(`${theme}: 확대·축소·반�
     expect(current.widths).toEqual(baselineWidths);
     await frame.screenshot({ path: info.outputPath(`rounded-bs-${theme}-${view.pitch}-${view.inverted}-${view.log}.png`) });
   }
+  // Finish the overlay's 200ms range-change debounce before opening fresh details.
+  await page.clock.runFor(250);
   const position = (await markerPosition(page, '1m', 35025))!;
   await page.mouse.click(position.clientX, position.clientY);
   const detail = frame.getByRole('region', { name: '이 봉의 매매내역' });
@@ -287,4 +291,81 @@ test('과거 이동은 새 거래일만 조회하고 돌아오면 빈 날짜와 
   await expect(frame.getByTestId('account-execution-status')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__executionPaints?.some(p => p.text === 'B'))).toBe(true);
   expect(requested).toEqual(['20260527', '20260526', '20260525']);
+});
+
+for (const theme of ['obsidian', 'ledger']) test(`${theme}: 최근 매매 목록의 계좌 범위·종목 전환·키보드·좁은 창 배치`, async ({ page }, info) => {
+  await fixture(page, '1m');
+  await page.addInitScript(theme => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
+  const requested: string[] = [];
+  const fill = (code: string, name: string, clock: string): ExecutionHistoryRow => ({
+    order_ref: `${code}-${clock}`, broker_order_id: code, code, name, side: 'BUY', quantity: '10', order_quantity: '10',
+    price: '35000', price_basis: 'execution', amount: null, route: 'KRX',
+    filled_at: `2026-05-28T${clock}:00+09:00`, ordered_at: null,
+  });
+  await page.route(apiExact('trading/v2/execution-history'), route => {
+    const params = new URL(route.request().url()).searchParams;
+    requested.push(params.toString());
+    const account = params.get('account_ref'), older = params.has('next_key');
+    return route.fulfill({ json: { account_ref: account, date: params.get('date'),
+      rows: account === accountB ? [fill('035720', '카카오', '13:20')]
+        : older ? [fill('0099A0', '추가 체결 종목', '08:10')]
+        : [fill('098460', '고영', '09:10'), fill('005930', '삼성전자', '14:20'), fill('098460', '고영', '09:30')],
+      next_key: account === accountA && !older ? 'older' : null, fetched_at_ms: Date.now(), events_connected: true,
+    } });
+  });
+  await page.goto('/live');
+  const frame = page.locator('[data-win="fills"]');
+  await expect(frame.getByRole('button', { name: '최근 매매' })).toHaveCount(0);
+  await frame.getByRole('button', { name: '차트 설정', exact: true }).click();
+  await page.getByRole('dialog', { name: '차트 설정', exact: true }).getByRole('switch', { name: '매매내역 표시', exact: true }).check();
+  await page.keyboard.press('Escape');
+  const trigger = frame.getByRole('button', { name: '최근 매매' });
+  const account = frame.getByRole('combobox', { name: '매매 계좌' });
+  await expect(trigger).toBeDisabled();
+  await account.selectOption(accountA);
+  expect(requested).toEqual([]);
+  const triggerBox = (await trigger.boundingBox())!, accountBox = (await account.boundingBox())!;
+  expect(triggerBox.x + triggerBox.width).toBeLessThan(accountBox.x);
+  await trigger.click();
+  const popup = page.getByRole('dialog', { name: '최근 매매 종목', exact: true });
+  await expect(popup.locator('[data-recent-code]')).toHaveCount(2);
+  await expect(popup.locator('[data-recent-code]')).toHaveText(['삼성전자00593014:20', '고영09846009:30']);
+  await expect(popup.getByRole('button', { name: /고영/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(requested.every(url => url.includes('date=20260528') && url.includes(`account_ref=${accountA}`))).toBe(true);
+  await popup.press('Home');
+  await expect(popup.getByRole('button', { name: /삼성전자/ })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(popup.getByRole('button', { name: /고영/ })).toBeFocused();
+  await popup.getByRole('button', { name: '더 조회' }).click();
+  await expect(popup.getByRole('button', { name: /추가 체결 종목/ })).toBeVisible();
+  await page.screenshot({ path: info.outputPath(`recent-trades-${theme}-wide.png`) });
+  await popup.getByRole('button', { name: /삼성전자/ }).click();
+  await expect(popup).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(account).toHaveValue(accountA);
+  await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('live.workspace.v1')!).groupSymbols[1].code)).toBe('005930');
+  await trigger.click();
+  await expect(popup.getByRole('button', { name: /삼성전자/ })).toHaveAttribute('aria-pressed', 'true');
+  await account.selectOption(accountB);
+  await expect(popup).toHaveCount(0);
+  await trigger.click();
+  await expect(popup.locator('[data-recent-code]')).toHaveCount(1);
+  await expect(popup.getByRole('button', { name: /카카오/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+  await page.setViewportSize({ width: 640, height: 720 });
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  await expect(popup.getByRole('button', { name: /카카오/ })).toBeVisible();
+  const bounds = (await popup.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(640);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(720);
+  await page.screenshot({ path: info.outputPath(`recent-trades-${theme}-narrow.png`) });
+  await page.keyboard.press('Escape');
+  await frame.getByRole('button', { name: '차트 설정', exact: true }).click();
+  await page.getByRole('dialog', { name: '차트 설정', exact: true }).getByRole('switch', { name: '매매내역 표시', exact: true }).uncheck();
+  await page.keyboard.press('Escape');
+  await expect(trigger).toHaveCount(0);
+  await expect(account).toHaveCount(0);
 });

@@ -1,6 +1,7 @@
 import { useTradingAccounts } from '../../api/trading';
 import { useChartTradeAccounts } from '../../state/chartTradeAccounts';
 import { useWindowSettingsStore } from '../../state/windowSettings';
+import { ChartRecentTrades } from './ChartRecentTrades';
 import './ChartTradeAccountControl.css';
 
 export function ChartTradeAccountControl({ windowId }: { windowId: string }) {
@@ -13,6 +14,7 @@ function AccountSelect({ windowId }: { windowId: string }) {
   const selected = useChartTradeAccounts(s => s.byWindow[windowId] ?? '');
   const known = accounts.data?.accounts.some(a => a.account_seq === selected);
   return <div className="chart-trade-account" onPointerDown={event => event.stopPropagation()}>
+    <ChartRecentTrades key={known ? selected : ''} windowId={windowId} account={known ? selected : null} />
     <label><span>매매 계좌</span><select aria-label="매매 계좌" value={selected}
       onChange={event => useChartTradeAccounts.getState().select(windowId, event.target.value)}>
       <option value="">{accounts.isLoading ? '계좌 조회 중…' : '계좌 선택'}</option>
