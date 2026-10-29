@@ -57,20 +57,50 @@ export function projectAccountExecutions(
 
 export type PlottedExecution = { marker: ExecutionMarker; x: number; y: number };
 
-/** Change horizontal label position only. Its y always denotes the exact execution price. */
-export function layoutExecutionMarkers(points: readonly PlottedExecution[], width: number, height: number): PlottedExecution[] {
-  const placed: PlottedExecution[] = [];
+type ExecutionPosition = PlottedExecution & { candleX: number; halfBarWidth: number };
+export type ExecutionTick = ExecutionPosition & { endX: number };
+export type ExecutionLabel = ExecutionPosition & { maxWidth: number };
+export type ExecutionLayout = { ticks: ExecutionTick[]; labels: ExecutionLabel[] };
+
+/** Price ticks never move or disappear when labels are grouped. All geometry stays in its bar column. */
+export function layoutExecutionMarkers(
+  points: readonly PlottedExecution[], width: number, height: number, barPitch: number,
+): ExecutionLayout {
+  const ticks: ExecutionTick[] = [], labels: ExecutionLabel[] = [];
+  if (!Number.isFinite(barPitch) || barPitch <= 0) return { ticks, labels };
+  // A conservative interior of the candle body; reserve the gaps for neighboring candles.
+  const halfBody = barPitch * .35, halfBarWidth = barPitch / 2;
+  const groups = new Map<Time, Map<ExecutionMarker['side'], PlottedExecution[]>>();
   for (const point of points) {
-    if (point.x < 0 || point.x > width || point.y < 7 || point.y > height - 7) continue;
-    const shared = points.some(p => p !== point && p.x === point.x && Math.abs(p.y - point.y) < 12 && p.marker.side !== point.marker.side);
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)
+      || point.x < 0 || point.x > width || point.y < 0 || point.y > height) continue;
     const side = point.marker.side === 'BUY' ? -1 : 1;
-    const offsets = shared ? [side * 8, side * 20] : [0, side * 14, -side * 14];
-    for (const offset of offsets) {
-      const x = point.x + offset;
-      if (x < 7 || x > width - 7 || placed.some(p => Math.abs(p.x - x) < 12 && Math.abs(p.y - point.y) < 13)) continue;
-      placed.push({ ...point, x });
-      break;
+    ticks.push({ ...point, candleX: point.x, halfBarWidth, endX: point.x + side * Math.min(6, halfBody * .3) });
+    let bar = groups.get(point.marker.time);
+    if (!bar) { bar = new Map(); groups.set(point.marker.time, bar); }
+    const peers = bar.get(point.marker.side) ?? [];
+    peers.push(point); bar.set(point.marker.side, peers);
+  }
+  for (const bar of groups.values()) {
+    for (const [side, peers] of bar) {
+      peers.sort((a, b) => a.y - b.y);
+      let previousY = -Infinity;
+      for (let start = 0; start < peers.length;) {
+        let end = start + 1, sumY = peers[start].y;
+        // Bound the whole group, rather than merging a chain spanning many different prices.
+        while (end < peers.length && peers[end].y - peers[start].y < 14) sumY += peers[end++].y;
+        const point = peers[start], direction = side === 'BUY' ? -1 : 1;
+        const y = sumY / (end - start);
+        // A sparse cluster next to a dense one can still collide; keep its ticks instead.
+        if (y - previousY >= 14) {
+          labels.push({ ...point, candleX: point.x, halfBarWidth,
+            x: point.x + direction * Math.min(16, halfBody * .65), y,
+            maxWidth: Math.min(10, halfBody * .7) });
+          previousY = y;
+        }
+        start = end;
+      }
     }
   }
-  return placed;
+  return { ticks, labels };
 }
