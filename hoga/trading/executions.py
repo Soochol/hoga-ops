@@ -56,9 +56,7 @@ def toss_row(order: TossOrder, ref: str, date: str) -> ExecutionHistoryRow | Non
     )
 
 
-async def toss_page(
-    adapter, account: str, date: str, cursor: str | None,
-) -> tuple[list[ExecutionHistoryRow], str | None]:
+async def toss_orders_page(adapter, account: str, cursor: str | None) -> tuple[list[TossOrder], str | None]:
     seq = await adapter.authorize(account)
     client = adapter.service._client()
     closed_params: dict = {"status": "CLOSED", "limit": 50}
@@ -74,17 +72,26 @@ async def toss_page(
     following = closed.get("nextCursor") if closed.get("hasNext") else None
     if closed.get("hasNext") and (not isinstance(following, str) or not following or following == cursor):
         raise TradingError(503, "invalid-order-history", "이전 체결내역 조회를 완료하지 못했습니다.")
-    rows = []
+    orders = []
     for page in pages:
         if not isinstance(page.get("orders"), list):
             raise TradingError(503, "invalid-order-history", "체결내역 응답을 확인할 수 없습니다.")
         for raw in page["orders"]:
-            order = TossOrder.model_validate(raw)
-            # Bind using the actual order date, not the requested execution day.
-            order_date = datetime.fromisoformat(order.orderedAt).astimezone(KST).strftime("%Y%m%d")
-            row = toss_row(order, adapter.reference(account, order.orderId, order_date), date)
-            if row:
-                rows.append(row)
+            orders.append(TossOrder.model_validate(raw))
+    return orders, following
+
+
+async def toss_page(
+    adapter, account: str, date: str, cursor: str | None,
+) -> tuple[list[ExecutionHistoryRow], str | None]:
+    orders, following = await toss_orders_page(adapter, account, cursor)
+    rows = []
+    for order in orders:
+        # Bind using the actual order date, not the requested execution day.
+        order_date = datetime.fromisoformat(order.orderedAt).astimezone(KST).strftime("%Y%m%d")
+        row = toss_row(order, adapter.reference(account, order.orderId, order_date), date)
+        if row:
+            rows.append(row)
     return rows, following
 
 

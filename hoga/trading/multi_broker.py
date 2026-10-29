@@ -24,6 +24,7 @@ from hoga.trading.contracts import (
     CreateBrokerOrder,
     ModifyBrokerOrder,
 )
+from hoga.trading.execution_range import ExecutionHistoryRange
 from hoga.trading.kiwoom import KiwoomAccountGateway, KiwoomTradingAdapter
 from hoga.trading.models import TradingCommand
 from hoga.trading.service import TradingService
@@ -49,6 +50,7 @@ class BrokerTradingService:
         self.on_event = on_event or (lambda event: None)
         self.execution_history = ExecutionHistory(data_dir)
         self.toss_execution_history = TossExecutionHistory(data_dir)
+        self.execution_range = ExecutionHistoryRange(data_dir)
 
     def adapters(self) -> list[KiwoomTradingAdapter]:
         if self._kiwoom is None:

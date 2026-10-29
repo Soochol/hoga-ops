@@ -3,6 +3,7 @@ import type { IChartApi } from 'lightweight-charts';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
 import type { ExecutionHistoryRow } from '../../src/api/executionHistory';
+import type { RecentTradedStock } from '../../src/api/executionHistoryRange';
 
 const accountA = `acc_${'a'.repeat(32)}`, accountB = `acc_${'b'.repeat(32)}`;
 const start = Date.parse('2026-05-27T09:00:00+09:00');
@@ -79,6 +80,12 @@ async function fixture(page: Page, timeframe: string, controlTimers = false) {
     { account_ref: accountA, broker: 'kiwoom', environment: 'real', label: '키움 · 실전 · ****1234', routes: ['KRX'] },
     { account_ref: accountB, broker: 'toss', environment: 'real', label: '토스 · 실전 · ****5678', routes: ['SOR'] },
   ] } }));
+  await page.route(apiExact('trading/v2/execution-history-range'), route => {
+    const p = new URL(route.request().url()).searchParams;
+    return route.fulfill({ json: { account_ref: p.get('account_ref'), from_date: p.get('from_date'),
+      to_date: p.get('to_date'), rows: [], next_key: null, scanned_through: p.get('from_date'),
+      fetched_at_ms: Date.now(), events_connected: true } });
+  });
   await page.route(apiExact('trading/v2/executions'), route => {
     const p = new URL(route.request().url()).searchParams, account = p.get('account_ref')!, date = p.get('date')!;
     const rows = date === '20260527' ? (account === accountA ? [
@@ -329,7 +336,7 @@ for (const theme of ['obsidian', 'ledger']) test(`${theme}: 최근 매매 목록
   await trigger.click();
   const popup = page.getByRole('dialog', { name: '최근 매매 종목', exact: true });
   await expect(popup.locator('[data-recent-code]')).toHaveCount(2);
-  await expect(popup.locator('[data-recent-code]')).toHaveText(['삼성전자00593014:20', '고영09846009:30']);
+  await expect(popup.locator('[data-recent-code]')).toHaveText(['삼성전자0059302026.05.2814:20', '고영0984602026.05.2809:30']);
   await expect(popup.getByRole('button', { name: /고영/ })).toHaveAttribute('aria-pressed', 'true');
   expect(requested.every(url => url.includes('date=20260528') && url.includes(`account_ref=${accountA}`))).toBe(true);
   await popup.press('Home');
@@ -368,4 +375,67 @@ for (const theme of ['obsidian', 'ledger']) test(`${theme}: 최근 매매 목록
   await page.keyboard.press('Escape');
   await expect(trigger).toHaveCount(0);
   await expect(account).toHaveCount(0);
+});
+
+test('최근 1년 매매를 자동으로 이어 읽고, 과거 날짜·오류 재시도·재열기 캐시를 유지한다', async ({ page }, info) => {
+  await fixture(page, '1m');
+  const requests: string[] = [];
+  let failOlder = true;
+  const fill = (code: string, name: string, date: string): RecentTradedStock => ({ date, code, name, filled_at: null });
+  await page.route(apiExact('trading/v2/execution-history'), route => {
+    const p = new URL(route.request().url()).searchParams;
+    return route.fulfill({ json: { account_ref: p.get('account_ref'), date: p.get('date'), rows: [], next_key: null,
+      fetched_at_ms: Date.now(), events_connected: true } });
+  });
+  await page.route(apiExact('trading/v2/execution-history-range'), route => {
+    const p = new URL(route.request().url()).searchParams, cursor = p.get('next_key');
+    requests.push(p.toString());
+    if (cursor === 'older' && failOlder) {
+      failOlder = false;
+      return route.fulfill({ status: 503, json: { detail: { code: 'unavailable', message: '조회 실패' } } });
+    }
+    const other = p.get('account_ref') === accountB;
+    const rows = other ? [] : cursor === null ? [fill('098460', '고영', '20260528')]
+      : cursor === 'older' ? [fill('0099A0', '작년 매매 종목', '20251101'), fill('098460', '고영', '20251101')]
+      : [fill('035720', '1년 전 매매 종목', '20250528'), fill('035420', '기간 밖 종목', '20250527')];
+    return route.fulfill({ json: { account_ref: p.get('account_ref'), from_date: p.get('from_date'),
+      to_date: p.get('to_date'), rows, next_key: other || cursor === 'last' ? null : cursor ? 'last' : 'older',
+      scanned_through: cursor === 'last' ? '20250528' : '20260528', fetched_at_ms: Date.now(), events_connected: true } });
+  });
+  await page.goto('/live');
+  const frame = page.locator('[data-win="fills"]');
+  await frame.getByRole('button', { name: '차트 설정', exact: true }).click();
+  await page.getByRole('dialog', { name: '차트 설정', exact: true }).getByRole('switch', { name: '매매내역 표시', exact: true }).check();
+  await page.keyboard.press('Escape');
+  const account = frame.getByRole('combobox', { name: '매매 계좌' });
+  await account.selectOption(accountA);
+  const trigger = frame.getByRole('button', { name: '최근 매매' });
+  await trigger.click();
+  const popup = page.getByRole('dialog', { name: '최근 매매 종목', exact: true });
+  await expect(popup).toContainText('2025.05.28 ~ 2026.05.28');
+  await expect(popup.getByRole('alert')).toContainText('과거 내역 조회 실패');
+  await expect(popup.getByRole('button', { name: /고영/ })).toBeVisible();
+  await expect(popup).not.toContainText('체결 종목이 없습니다');
+  await popup.getByRole('button', { name: '다시 조회', exact: true }).click();
+  await expect(popup.getByRole('button', { name: /1년 전 매매 종목/ })).toBeVisible();
+  await expect(popup.locator('[data-recent-code]')).toHaveCount(3);
+  await expect(popup.locator('[data-recent-code]')).toHaveText([
+    '고영0984602026.05.28', '작년 매매 종목0099A02025.11.01', '1년 전 매매 종목0357202025.05.28',
+  ]);
+  await expect(popup).not.toContainText('기간 밖 종목');
+  await expect(popup.getByText('과거 내역 조회 중…', { exact: false })).toHaveCount(0);
+  expect(requests.every(url => url.includes('from_date=20250528') && url.includes('to_date=20260528'))).toBe(true);
+  const count = requests.length;
+  await page.screenshot({ path: info.outputPath('recent-trades-year.png') });
+  await page.keyboard.press('Escape');
+  await trigger.click();
+  await expect(popup.getByRole('button', { name: /작년 매매 종목/ })).toBeVisible();
+  expect(requests).toHaveLength(count);
+  await popup.getByRole('button', { name: /작년 매매 종목/ }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem('live.workspace.v1')!).groupSymbols[1].code)).toBe('0099A0');
+  await expect(account).toHaveValue(accountA);
+  await account.selectOption(accountB);
+  await trigger.click();
+  await expect(popup).toContainText('최근 1년 조회 범위에 체결 종목이 없습니다.');
+  await expect(popup.getByRole('button', { name: /작년 매매 종목/ })).toHaveCount(0);
 });

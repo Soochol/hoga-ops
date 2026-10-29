@@ -1,0 +1,60 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "cdc1422bf8fe236fcffd082bed30eeecdf530723",
+  "origin_main_sha": "cdc1422bf8fe236fcffd082bed30eeecdf530723",
+  "input_sha256": "911497f279e964f0c36f81cb213ea3ddd0561119d60003d6e5c99e2f02785064",
+  "input_files": 2808,
+  "frontend_input_sha256": "8a6db3c1ca1aa24a0e669d78bf42663fb8f59a1cda6cd8953f6d7562f2fc4bfc",
+  "backend_input_sha256": "8f153380e7795a98131ea7617d3c5606e853c1f2ae8b41503b0c2630adbb5833",
+  "behavior": "Recent trades defaults to a calendar year, displays YYYY.MM.DD plus actual fill time if provided, and deduplicates by stock across dates. Kiwoom uses kt00015 period pagination, Toss traverses OPEN/CLOSED pages once. Today keeps the existing live query; past-year pages advance one at a time only while open, cancel/resume, share caches, stop on errors/cycles, and reset expired signed cursors on explicit retry.",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed: app, unit-test and E2E TypeScript projects"
+    },
+    {
+      "command": "npx vitest run src/api/executionHistoryRange.test.tsx src/api/executionHistory.test.tsx src/live/workspace/ChartTradeAccountControl.test.tsx src/live/workspace/recentTradedSymbols.test.ts src/live/LivePage.test.tsx src/live/workspace/ExecutionHistoryWindow.test.tsx",
+      "result": "61 passed across 6 files"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_execution_history_range.py tests/unit/api/test_execution_history.py tests/unit/api/test_broker_trading.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/api/test_account_executions.py tests/unit/api/test_toss_account_executions.py tests/unit/live/test_kiwoom_trading_design_evidence.py tests/unit/live/test_kiwoom_trading_events.py",
+      "result": "119 passed; HTTP serialization, real gateway with mock transport, signed account/range scopes, caching authorization, malformed/missing dates, domestic trade filtering, no writes, existing broker/chart regressions"
+    },
+    {
+      "command": "npx playwright test tests/e2e/account-executions.spec.ts --reporter=list",
+      "result": "9 passed: one-year boundaries, past stocks and dates, sequential pages, duplicate removal, retained data/retry on errors, reopen cache, account isolation, keyboard, narrow light/dark, existing 1m/3m/D and B/S regressions"
+    },
+    {
+      "command": "Vite production build through Playwright webServer",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "verification_reuse": "Final frontend checks precede the final backend-only optional-classification adjustment. Frontend sources, tests, contracts and configs are unchanged since those passes; the full affected backend/Ruff suite was rerun after that adjustment.",
+  "scope": "New read-only API and matching TypeScript mirrors; order write paths and B/S marker rendering unchanged. One-year range requests are supported by code, but actual provider retention/completeness has not been tested with production credentials. Completed pages are held in memory, not archived as individual fills.",
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "chrome": "Google Chrome 156.0.8078.73",
+    "python": "3.14.7",
+    "timezone": "Asia/Seoul",
+    "workers": 1,
+    "ports": [
+      20005,
+      21005
+    ],
+    "credentials": "empty vendor environment in Playwright config"
+  },
+  "screenshots": [
+    "recent-trades-year.png",
+    "recent-trades-obsidian-narrow.png",
+    "recent-trades-ledger-narrow.png"
+  ]
+}
