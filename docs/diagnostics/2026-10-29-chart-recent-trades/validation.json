@@ -1,0 +1,44 @@
+{
+  "date_kst": "2026-10-29",
+  "base_sha": "76a9d60a54cb2de35cf3f544f57b3d1fa82c06da",
+  "origin_main_sha": "76a9d60a54cb2de35cf3f544f57b3d1fa82c06da",
+  "input_sha256": "6b7cb5a2441ff68f87734b6a184660114776950863ad1be8e7fc4405f652b155",
+  "input_files": 2804,
+  "behavior": "Recent trades popup left of the chart trading-account selector, visible only with account execution display enabled. Selected account and current KST day; deduplicated stocks sorted by actual latest fill time, missing times blank/last, shared execution history query only while open, manual older pages. Selection targets its own unpinned linked chart and preserves account and B/S settings. Pinned charts remain pinned.",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed: app, unit-test and E2E TypeScript projects"
+    },
+    {
+      "command": "npx vitest run src/live/workspace/ChartTradeAccountControl.test.tsx src/live/workspace/recentTradedSymbols.test.ts src/api/executionHistory.test.tsx src/state/workspace.pin.test.ts src/live/workspace/ExecutionHistoryWindow.test.tsx src/live/LivePage.test.tsx",
+      "result": "85 passed across 6 files"
+    },
+    {
+      "command": "npx playwright test tests/e2e/account-executions.spec.ts --reporter=list",
+      "result": "8 passed, system Chrome, one worker; account/day scoping, deduplication/time sorting, pagination, account switches, chart selection/preserved settings, keyboard focus, 1280/640px and light/dark; existing 1m/3m/D and B/S price/scale/detail/cache regression"
+    },
+    {
+      "command": "Vite production build through Playwright webServer",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "test_stabilization": "Initial ledger scale regression clicked before the existing 200ms range-change detail-clear debounce finished. Controlled timers now finish that debounce before opening details; no B/S production behavior changed. Final full 8-test suite passes.",
+  "scope": "Frontend UI only. Existing backend APIs/contracts and execution marker rendering unchanged. Credential-free E2E on worktree ports 20005/21005. /browse skill unavailable on host; repository Playwright E2E used.",
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "chrome": "Google Chrome 156.0.8078.73",
+    "timezone": "Asia/Seoul"
+  },
+  "screenshots": [
+    "recent-trades-obsidian-wide.png",
+    "recent-trades-obsidian-narrow.png",
+    "recent-trades-ledger-wide.png",
+    "recent-trades-ledger-narrow.png"
+  ]
+}

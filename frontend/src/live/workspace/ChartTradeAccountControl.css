@@ -3,6 +3,24 @@
 .chart-trade-account label > span { white-space: nowrap; }
 .chart-trade-account select { min-width: 0; max-width: 16rem; padding: var(--space-xs); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--fg); font: inherit; }
 .chart-trade-account button { color: var(--accent); }
+.chart-trade-account .chart-recent-trades-trigger { display: inline-flex; align-items: center; gap: var(--space-xs); flex-shrink: 0; padding: var(--space-xs) var(--space-sm); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--fg); font: inherit; white-space: nowrap; }
+.chart-recent-trades-trigger:disabled { color: var(--fg-dim); cursor: default; opacity: .5; }
+.chart-recent-trades-popover { display: flex; flex-direction: column; max-height: min(24rem, calc(100vh - 8px)); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--fg); box-shadow: var(--shadow-overlay); font-size: var(--text-sm); }
+.chart-recent-trades-popover header, .chart-recent-trades-popover footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-xs); padding: var(--space-sm); }
+.chart-recent-trades-popover header { border-bottom: 1px solid var(--border); }
+.chart-recent-trades-popover header strong { font-weight: 500; }
+.chart-recent-trades-popover header > span, .chart-recent-trades-popover footer > span, .chart-recent-trades-popover p { color: var(--fg-dim); }
+.chart-recent-trades-popover p { padding: var(--space-sm); }
+.chart-recent-trades-popover p button, .chart-recent-trades-popover footer button { color: var(--accent); }
+.chart-recent-trades-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.chart-recent-trades-list > button { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); width: 100%; padding: var(--space-sm); text-align: left; }
+.chart-recent-trades-list > button:hover:not(:disabled) { background: var(--bg-input-hover); }
+.chart-recent-trades-list > button[aria-pressed="true"] .chart-recent-trades-name > span { color: var(--accent); font-weight: 500; }
+.chart-recent-trades-list > button:disabled { cursor: default; }
+.chart-recent-trades-name { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.chart-recent-trades-name small, .chart-recent-trades-list time { color: var(--fg-dim); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.chart-recent-trades-list time { flex-shrink: 0; }
+.chart-recent-trades-popover footer { border-top: 1px solid var(--border); }
 .account-execution-notice { position: absolute; left: var(--space-sm); bottom: 2rem; z-index: 25; max-width: calc(100% - 5rem); background: var(--bg-card); color: var(--fg-dim); font-size: var(--text-sm); padding: var(--space-xs) var(--space-sm); }
 .account-execution-notice button { color: var(--accent); margin-left: var(--space-sm); }
 .account-execution-detail { position: absolute; left: var(--space-sm); bottom: 2rem; z-index: 30; max-width: calc(100% - 1rem); max-height: 50%; overflow: auto; padding: var(--space-sm); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-card); box-shadow: var(--shadow-overlay); font-size: var(--text-sm); color: var(--fg); font-variant-numeric: tabular-nums; }
