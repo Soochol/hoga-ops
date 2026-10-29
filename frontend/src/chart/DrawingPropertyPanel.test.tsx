@@ -4,7 +4,10 @@ import DrawingPropertyPanel from './DrawingPropertyPanel';
 import { patternButtonState } from './DrawingPropertyPanelHelpers';
 import { useDrawingsStore } from '../state/drawings';
 import type { Drawing } from './drawing/types';
-import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES } from './drawing/types';
+import { STROKE_WIDTHS, LINE_STYLES } from './drawing/types';
+import { MA_COLOR_ROWS } from '../live/indicators/MAStylePickerHelpers';
+
+const COLOR_PALETTE = MA_COLOR_ROWS.flat();
 
 const HLINE: Drawing = {
   id: 'h1', kind: 'hline', price: 1000,
@@ -94,7 +97,7 @@ describe('DrawingPropertyPanel — thickness', () => {
   it('only one popover open at a time — opening thickness closes color', () => {
     render(<DrawingPropertyPanel scope="005930|minute" />);
     fireEvent.click(screen.getByTestId('drawing-color-trigger'));
-    expect(screen.getAllByTestId(/^drawing-color-swatch-/)).toHaveLength(16);
+    expect(screen.getAllByTestId(/^drawing-color-swatch-/)).toHaveLength(32);
     fireEvent.click(screen.getByTestId('drawing-thickness-trigger'));
     expect(screen.queryAllByTestId(/^drawing-color-swatch-/)).toHaveLength(0);
     expect(screen.getAllByTestId(/^drawing-thickness-item-/)).toHaveLength(5);
@@ -115,11 +118,14 @@ describe('DrawingPropertyPanel — color', () => {
     expect(bar.style.background).toBe('rgb(20, 184, 166)'); // #14B8A6 normalized
   });
 
-  it('clicking the color trigger opens a 16-swatch popover', () => {
+  it('opens the same 32 colors in the same order as the indicator palette', () => {
     render(<DrawingPropertyPanel scope="005930|minute" />);
     fireEvent.click(screen.getByTestId('drawing-color-trigger'));
     const swatches = screen.getAllByTestId(/^drawing-color-swatch-/);
-    expect(swatches).toHaveLength(16);
+    expect(swatches.map(swatch => swatch.getAttribute('aria-label'))).toEqual(
+      COLOR_PALETTE.map(hex => `그리기 색상 ${hex}`),
+    );
+    expect(screen.getByTestId('drawing-color-swatch-#14B8A6')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('clicking a swatch updates the drawing and defaults, closes popover', () => {

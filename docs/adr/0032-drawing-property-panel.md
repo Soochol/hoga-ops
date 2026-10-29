@@ -48,3 +48,12 @@ Persistent panel position would be feature creep — the panel's role is "edit t
 - **Free-form hex input.** Rejected — colour-token discipline + accessibility cost (see "Why the palette is fixed").
 - **Persistent panel position.** Rejected — feature creep with low return.
 - **Locked drawings.** Out of scope for v1. The model doesn't need a `locked` field yet; if added later, the panel grows a lock toggle.
+
+## 2026-10-29 — 보조지표 색상 팔레트 공유
+
+사용자 요청으로 위의 **16색 고정 팔레트** 결정을 대체한다. 그리기 속성 패널은
+보조지표의 `MA_COLOR_ROWS`(8열 × 4단계 명도, 32색)를 같은 순서로 사용하며,
+원형 스와치·테마를 따르는 선택 외곽선·체크 표시도 보조지표와 통일한다.
+단일·다중 선택에 같은 팔레트를 쓰고 선택 즉시 적용·닫기 계약을 유지한다.
+자유 HEX 입력은 추가하지 않는다. 팔레트에서 빠진 기존 색도 저장된 드로잉과
+도구별 기본값에서 그대로 유지하며, 사용자가 새 색을 고를 때만 바뀐다.
