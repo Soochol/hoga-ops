@@ -91,3 +91,22 @@ it('does not expose window placement in catalog drafts or repeated volume instan
   expect(screen.queryByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' })).toBeNull();
   expect(useWindowSettingsStore.getState().byWindow).toEqual({});
 });
+
+it('resets only primary volume settings and placement in its window, and undoes the complete reset', async () => {
+  const saved = { volumeOverlayEnabled: true, volumeOverlayTransparency: 42, volumeOverlayHeight: 35,
+    volumeOverlayUpColor: '#123456', volumeOverlayDownColor: '#654321' };
+  useWindowSettingsStore.getState().patch('a', 'chart', { ...saved, candleLogScale: true });
+  useWindowSettingsStore.getState().patch('b', 'chart', { volumeOverlayEnabled: true, volumeOverlayHeight: 40 });
+  useLivePageStore.getState().patchIndicatorsScoped({ windowKey: 'live:a' }, '1m', { volumeEnabled: true, volumeColorMode: 'previous-volume' });
+  render(content()); selectVolume();
+  fireEvent.click(screen.getByRole('button', { name: '거래량 초기화' }));
+  expect(overlay()).toHaveAttribute('aria-checked', 'false');
+  expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject({ volumeOverlayEnabled: false, volumeOverlayTransparency: 65, volumeOverlayHeight: 25,
+    volumeOverlayUpColor: '', volumeOverlayDownColor: '', candleLogScale: true });
+  expect(useWindowSettingsStore.getState().byWindow.b.chart).toMatchObject({ volumeOverlayEnabled: true, volumeOverlayHeight: 40 });
+  expect(screen.getByLabelText('캔들 색상과 동일')).toBeChecked();
+  await undo();
+  expect(overlay()).toHaveAttribute('aria-checked', 'true');
+  expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject(saved);
+  expect(screen.getByLabelText('이전 거래량과 비교')).toBeChecked();
+});
