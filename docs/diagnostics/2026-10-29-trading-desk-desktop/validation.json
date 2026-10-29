@@ -1,0 +1,130 @@
+{
+  "date": "2026-10-29T20:33:20.825771+09:00",
+  "tested_code_commit": "5aaa8b7ca70274ef97bcb4370d0c03b26e9d7323",
+  "base": "fb928099a7b250a1bdbaf695fa1058a3acf242d7",
+  "desktop_input_sha256": "8100c507977ce3035efab555e95e4ebe93939ceac31744eec3e5e48a3edfc2ef",
+  "files": {
+    "desktop/README.md": "c57da5cac7fbc0cf8b5239628da4f95302eb35845da3241b2951fc81cf0a5eb5",
+    "desktop/assets/README.md": "313e20a26f00ec9a818f4959f953c8997eca902288a0c363144066083625d65f",
+    "desktop/assets/icon.png": "7750307ca6f896343dee44b3d0f5be3c94c8e2dd38d92e281d597682d22536ed",
+    "desktop/assets/proposals/2026-10-16/a-orderbook.png": "3a59e2efdf1e0e6144cab596d7729a8bd39f3aeb6b820cd03980b6af64119e97",
+    "desktop/assets/proposals/2026-10-16/b-candles.png": "3c6991a1256c0200684e8a84d0891affa96983a16797586ec5f5298302819821",
+    "desktop/assets/proposals/2026-10-16/c-price-flow.png": "081eee17f20ed6bff86530c73c9ec6cac365f9e6cd414b4447425ad8fefcdfb0",
+    "desktop/assets/proposals/2026-10-16/d-trade-pulse.png": "cc177ad1df48e6089a43d4a439ed7df57074b13abefea7324ba7d4794357b6df",
+    "desktop/assets/proposals/2026-10-16/e-market-dial.png": "4caefb7416078f3ef9c42a7d92603503cbe8628de2a207bce1191093ae200963",
+    "desktop/assets/proposals/2026-10-16/f-price-ticks.png": "96d8ecda854b1d4d20ebde6ab13ab472fb4ef06806d50bb07cb3cb926c2ae6a6",
+    "desktop/assets/proposals/2026-10-16/prompts-round-2.json": "3a6a639e284e223393ab30274702349f25934a8223b439783bc1cd802d8c0f2e",
+    "desktop/assets/proposals/2026-10-16/prompts.json": "1687b7fa5e97298acf5d30486f01fbe8a00f54411a844f227ec32cc9aca3fee6",
+    "desktop/assets/server-icon.png": "325933ee241f37f6479c60f91913768064e727c3ef924530e76ff6564001a360",
+    "desktop/assets/server-icon.svg": "56e5f32635a5d1d6c46a829cf5d1fc40196b0560c9534bf89dc16f5b8a61d7f3",
+    "desktop/assets/server-tray-busy.png": "073bfc441c15a3edcef26e22e54278ed4e1e60d760b00247552026fc23c318a5",
+    "desktop/assets/server-tray-busy@2x.png": "d82460ee801287d11fe314b5175a08bacd23abb97ad7dd758032be2f05a82c17",
+    "desktop/assets/server-tray-error.png": "d67d993c95c1c86bb925ab4cc3e8b6a048edb053932189d7a145241e15838bb8",
+    "desktop/assets/server-tray-error@2x.png": "223bae628f1f9f4dd613148d793472dda40e63b53f6adb2b4136ad693a4e623d",
+    "desktop/assets/server-tray-running.png": "ca6419c12e2ed7f9c2d46791583c7870fbec8112cd9281d2439acdf6aaef37d4",
+    "desktop/assets/server-tray-running@2x.png": "d5219955f87f3bff37ee345aef0ca13bb9c18f055cee7744ba7ce9a7c950f191",
+    "desktop/assets/server-tray-stopped.png": "b0a64321419a28261d63623595a4634774f0452c3ed5640595ce787ab9a65ab7",
+    "desktop/assets/server-tray-stopped@2x.png": "e198eb4bb6b5f598a15c32ec99d83798ab0ea5131171661e74025627fa26905a",
+    "desktop/assets/server-tray.svg": "85edb2b8b1a8f769996d73f58c48c4f9160d73a79849c88346368eadb490943d",
+    "desktop/eslint.config.mjs": "081f701a9f8cdb90a4b24bd5de4fb5fc078976abe8d86a02ca44d344c2e61da4",
+    "desktop/forge.config.cjs": "926ab05d0d4a6c9c9a15f22d1559753c68cffa9d254e49e9262ccaa7ed63244c",
+    "desktop/package-lock.json": "913027885f935c6077429db3bf2cabdc39c5dbc0577bf786344ded7ef73e0609",
+    "desktop/package.json": "6e2e2b6e7a9229d2c402b06eb7049e42b6f8dac506967c1e7f6c4fe59739ecc2",
+    "desktop/playwright.config.cjs": "6c49425f8c8fcf846fc1680b6b252a7dffba334160e5b1747941febe6d9ec249",
+    "desktop/scripts/build.mjs": "15ed3a987e6b149f0d2d3912a6a464891df31f07030d85c6b051976410ea5c54",
+    "desktop/scripts/generate-tray-icons.cjs": "49362328fab5fc24c218cf502c28183851db269469b2bcdd709513b6b7874ee5",
+    "desktop/scripts/install-server-shortcut.mjs": "a7325715f323ea0f032033c543ac7b3a3e54fb50d71e96138e60f2e101792845",
+    "desktop/scripts/install-shortcut.mjs": "9bf1a725e8289f0ccb9775686f65d765b6ed55c24081158a8625ca835c37b168",
+    "desktop/scripts/sandbox-profile.mjs": "f607ff01292e201dbce8866f811abc73db4acd7850f72b1b8d498180fc05e493",
+    "desktop/scripts/setup-sandbox.mjs": "201469be665743b8536393a8679917ecc812f7d12305a36100fe926f8ae46470",
+    "desktop/scripts/verify-deb.mjs": "0961e72249bbdd2c66444d7d194aaa974bff6c498512090e3d15fe5185da4548",
+    "desktop/scripts/version.mjs": "a0b531e8861b4ef35775315648de318b90666666d8d2b9c291cc98b03aae5f9f",
+    "desktop/src/bootstrap.cjs": "37f42d0c7598d12d9e653cf992bef606ba93e63c97b7f418442683fe4e557000",
+    "desktop/src/connection.ts": "c6f4b5fc574aa29b974fcd1732f358c5ad54b53403c8d78ca691139d17ead4b0",
+    "desktop/src/launcher/index.html": "50837c08c2ebde36de129e000049937c4f1e49482426705ae78284b8ee16da89",
+    "desktop/src/launcher/launcher.css": "27326dac5c91d6d681b8cc37854df017361e1cbf6fd6f171c35faed36efe19e4",
+    "desktop/src/launcher/launcher.js": "f94beefb3c5e252470ec9002404cc4325dc344f0d752deb8da748f2657e23091",
+    "desktop/src/main.ts": "83e167ce6536e189d6eb636122c97d83ba1ecab0aba5034e22ffd41c73c7a2b8",
+    "desktop/src/navigation.ts": "467d69356a62c920b093da9ec62af87b0c28dfc995d5e1ef4d6242aa55e19a45",
+    "desktop/src/preload/content.cjs": "34506b704a256d8f1a4fb5cec343389738bf303b1bc7837e56b71325f06d9610",
+    "desktop/src/preload/launcher.cjs": "0d1791e5bc91fd1cd38638f113fa805b3fb6614c40663042bdb9678e4fca3d84",
+    "desktop/src/preload/server.cjs": "0eecb0841945cf1e676a9c5577ca78df5e508ddd9b44675528ce2bfce52d1ff7",
+    "desktop/src/profiles.ts": "cb0a7de0a8b14f378d7cb96cf5abbc4ea249ec69beb90f4eec0f9b86962cdac1",
+    "desktop/src/server-ui/index.html": "378d58788c1ac6b6ac8284acc3553ea968a03d25ad619c76eca4b913d82977ae",
+    "desktop/src/server-ui/server.css": "0de304d87194d5ef944cc330760524ae325f1a433c4c3d1955c16c6fade1663f",
+    "desktop/src/server-ui/server.js": "a61f259714919982e78f81b891988c4623bb7d896e280ae651ad6366051c708c",
+    "desktop/src/server/controller.ts": "382bea1b06d4271acb416c8f134956f75cb8e0f7e9e547ee89c9979fa7ec5c58",
+    "desktop/src/server/main.ts": "35ea06af6a61a712824621d389f059558feb9a5ae05df4a9fed625ed08ff5bc8",
+    "desktop/src/server/processes.ts": "b767dc30c9a9ef508756d9d54d2cb811408174eeb31b2b1d5b316e1185b79c0e",
+    "desktop/src/server/tray.ts": "d8f59e90a5b050c1cbc4e95c43ec1c135c55351af83c18323f7b58f41ab9c015",
+    "desktop/src/zoom.ts": "dd13534b9d8a692a9a2e7b42b3fe7c7f53ffb98288a6829edd18d92b46af4aa3",
+    "desktop/tests/core.test.cjs": "7b1c179c44c3a3dc51718f83d8f2596077e924dda9000961f90808b24c137462",
+    "desktop/tests/e2e/desktop.spec.cjs": "64d033e58c631d8933b7422fd5749900bd178a3506f4b576ac4b7c9404a0c900",
+    "desktop/tests/e2e/full-app.spec.cjs": "63b51e1c8ca54e3d261edb2139d546cd0faa36788a7bb5974c4422558137c44a",
+    "desktop/tests/e2e/server-manager.spec.cjs": "5e31bcfa7daba9bdb91e4b941d47b762650ba34fe23d1b4911254d63ecad4a2a",
+    "desktop/tests/e2e/server-tray.spec.cjs": "eb132e1341b9ff7414b13f6c2e289889dd93f3a3d703082136a140397d28df9f",
+    "desktop/tests/e2e/server-ui-reload.spec.cjs": "7ef7276d3516d0e60c04893f7652b040f8fd75c1887eb72c12a4f2c0d0b5f334",
+    "desktop/tests/e2e/whiteboard.spec.cjs": "f5a744d6f9e7874ecc528aef76a911766145c57372fde2c127b5beb07b424cbd",
+    "desktop/tests/helpers/server-fixture.cjs": "c99f5f3ee8bc9c734f81bfddc8cc96d75b0ca70bf3fe7f39ed7973be6d3567ca",
+    "desktop/tests/server-config.test.cjs": "d78717f91984d6779ca56f2377b820226c237a527acc707595a95a542197abb8",
+    "desktop/tests/server-processes.test.cjs": "ab232179c7b481be95260a42660ecb13f2e705455058950c0fc75ea358ce8804",
+    "desktop/tsconfig.json": "41a72ac33c1680f827054ba6605e01c8bc8818392aca297d3492776c30167857",
+    "VERSION": "d263dcddd50bcd79007ca311d2e5a30923115d610b88e4692600795787978d59"
+  },
+  "environment": {
+    "os": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "electron": "44.8.0",
+    "playwright": "1.64.1",
+    "ELECTRON_OVERRIDE_DIST_PATH": "/home/dev/code/hoga-ops/desktop/node_modules/electron/dist",
+    "HOGA_DESKTOP_TEST_PLATFORM": "x11",
+    "workers": 1,
+    "sandbox": true,
+    "electron_binary_sha256": "447dc011502a0a5ab4da365d3004646c86aee4eb03aa1643cdf672c7491b64cd"
+  },
+  "checks": [
+    {
+      "command": "cd desktop && npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "command": "cd desktop && npm run lint",
+      "result": "passed"
+    },
+    {
+      "command": "cd desktop && npm test",
+      "result": "passed",
+      "tests": 19
+    },
+    {
+      "command": "cd desktop && ELECTRON_OVERRIDE_DIST_PATH=/home/dev/code/hoga-ops/desktop/node_modules/electron/dist HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/server-manager.spec.cjs tests/e2e/server-ui-reload.spec.cjs --grep 'status view fits|editing manager HTML|manager automatically starts'",
+      "result": "passed",
+      "tests": 3
+    },
+    {
+      "command": "node --check desktop/scripts/install-shortcut.mjs && node --check desktop/scripts/install-server-shortcut.mjs && git diff --check",
+      "result": "passed"
+    }
+  ],
+  "images": {
+    "icon.png": {
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA",
+      "transparent_corners": true,
+      "sha256": "7750307ca6f896343dee44b3d0f5be3c94c8e2dd38d92e281d597682d22536ed"
+    },
+    "server-icon.png": {
+      "size": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "transparent_corners": true,
+      "sha256": "325933ee241f37f6479c60f91913768064e727c3ef924530e76ff6564001a360"
+    }
+  }
+}
