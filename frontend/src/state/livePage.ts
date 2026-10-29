@@ -391,6 +391,9 @@ type Store = Persisted & IndicatorSettings & {
   setIndicatorLineVisible: import('./indicatorOps').BoundIndicatorOps['setIndicatorLineVisible'];
   setAllMovingAveragesVisible: (visible: boolean) => void;
   setAllDailyMovingAveragesVisible: (visible: boolean) => void;
+  setNewHighBearishEnabled: (enabled: boolean) => void;
+  setNewHighBearishHidden: (hidden: boolean) => void;
+  setNewHighBearishSettings: import('./indicatorOps').BoundIndicatorOps['setNewHighBearishSettings'];
   setSupertrendEnabled: (enabled: boolean) => void;
   setSupertrendHidden: (hidden: boolean) => void;
   setSupertrendSettings: import('./indicatorOps').BoundIndicatorOps['setSupertrendSettings'];

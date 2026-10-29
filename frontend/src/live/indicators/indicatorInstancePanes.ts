@@ -50,6 +50,7 @@ export function filterPrimaryPaneGroups(groups: readonly (readonly BoundPaneSpec
   }).filter(group => group.length > 0);
 }
 export function indicatorInstanceApplicable(category: CategoryId, tf: LiveTimeframe, hogaPanes: boolean, priceOnly = false): boolean {
+  if (category === 'new-high-bearish') return tf === 'D' && !priceOnly;
   if (priceOnly) return ['moving-average', 'bollinger', 'envelope', 'supertrend'].includes(category);
   if (tf.endsWith('s')) return ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(category);
   if (category === 'daily-moving-average') return !['D', 'W', 'M'].includes(tf);

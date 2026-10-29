@@ -66,6 +66,7 @@ const ZERO_LINE = (
  * 지표가 조용히 빈칸으로 렌더되지 않는다.
  */
 export const INDICATOR_GLYPH: Record<CategoryId, ReactNode> = {
+  'new-high-bearish': svg(<>{GHOST_CANDLES}<path d="M5 6H15 M9 10H15" stroke="currentColor" strokeWidth="1.4" /></>),
   supertrend: svg(
     <>
       {GHOST_CANDLES}

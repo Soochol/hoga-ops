@@ -249,6 +249,7 @@ export const FLAG_INDICATOR_TYPES = [
   'bollinger',
   'envelope',
   'supertrend',
+  'new-high-bearish',
   'broker-late-entry',
 ] as const;
 
@@ -263,6 +264,7 @@ export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
   bollinger: '볼린저 밴드',
   envelope: '엔벨로프',
   supertrend: '슈퍼트렌드',
+  'new-high-bearish': '신고가 음봉 시가선',
   'broker-late-entry': '신규 거래원 등장',
 };
 
@@ -307,6 +309,10 @@ export const FLAG_INDICATOR_FIELDS: Record<
   ],
   // 배열로 승격된 지표는 **필드가 하나**다 — 삭제 = 공장 배열로 되돌리기.
   'broker-late-entry': ['brokerLateEntries'],
+  'new-high-bearish': [
+    'newHighBearishEnabled', 'newHighBearishHidden', 'newHighBearishLookback', 'newHighBearishDropPct',
+    'newHighBearishMaxCount', 'newHighBearishMonths', 'newHighBearishColor', 'newHighBearishLineWidth',
+  ],
   supertrend: [
     'supertrendEnabled', 'supertrendHidden', 'supertrendPeriod', 'supertrendMultiplier',
     'supertrendUpColor', 'supertrendDownColor', 'supertrendLineWidth',
@@ -414,6 +420,19 @@ export const INDICATOR_OPS = {
   setAllDailyMovingAveragesVisible: (cur: IndicatorSettings, visible: boolean): Patch => ({
     dailyMovingAverages: cur.dailyMovingAverages.map(m => ({ ...m, ...(visible ? { enabled: true } : {}), hidden: !visible })),
   }),
+  setNewHighBearishEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    enabled ? { newHighBearishEnabled: true, newHighBearishHidden: false } : { newHighBearishEnabled: false },
+  setNewHighBearishHidden: (_cur: IndicatorSettings, hidden: boolean): Patch => ({ newHighBearishHidden: hidden }),
+  setNewHighBearishSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
+    'newHighBearishLookback' | 'newHighBearishDropPct' | 'newHighBearishMaxCount' | 'newHighBearishMonths' | 'newHighBearishColor' | 'newHighBearishLineWidth'>>): Patch => {
+    if (patch.newHighBearishLookback !== undefined && (!Number.isInteger(patch.newHighBearishLookback) || patch.newHighBearishLookback < 1 || patch.newHighBearishLookback > 400)) return null;
+    if (patch.newHighBearishDropPct !== undefined && (!Number.isFinite(patch.newHighBearishDropPct) || patch.newHighBearishDropPct < 0.1 || patch.newHighBearishDropPct > 100)) return null;
+    if (patch.newHighBearishMonths !== undefined && (!Number.isInteger(patch.newHighBearishMonths) || patch.newHighBearishMonths < 1 || patch.newHighBearishMonths > 120)) return null;
+    if (patch.newHighBearishMaxCount !== undefined && ![1, 2].includes(patch.newHighBearishMaxCount)) return null;
+    if (patch.newHighBearishColor !== undefined && !/^#[0-9a-f]{6}$/i.test(patch.newHighBearishColor)) return null;
+    if (patch.newHighBearishLineWidth !== undefined && ![1, 2, 3, 4].includes(patch.newHighBearishLineWidth)) return null;
+    return { ...patch };
+  },
   setSupertrendEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     enabled ? { supertrendEnabled: true, supertrendHidden: false } : { supertrendEnabled: false },
   setSupertrendHidden: (_cur: IndicatorSettings, hidden: boolean): Patch => ({ supertrendHidden: hidden }),

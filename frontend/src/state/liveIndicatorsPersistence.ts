@@ -168,6 +168,14 @@ export type PersistedIndicators = {
   indicatorInstances?: IndicatorInstance[];
   indicatorPrimaryHidden?: import('../live/indicators/IndicatorPanelHelpers').CategoryId[];
   indicatorLineVisibility: IndicatorLineVisibility;
+  newHighBearishEnabled: boolean;
+  newHighBearishHidden: boolean;
+  newHighBearishLookback: number;
+  newHighBearishDropPct: number;
+  newHighBearishMaxCount: 1 | 2;
+  newHighBearishMonths: number;
+  newHighBearishColor: string;
+  newHighBearishLineWidth: 1 | 2 | 3 | 4;
   supertrendEnabled: boolean;
   supertrendHidden: boolean;
   supertrendPeriod: number;
@@ -703,6 +711,19 @@ export function mergeLiveIndicatorPrefs(
     indicatorInstances: normalizeIndicatorInstances(obj?.indicatorInstances, value => mergeLiveIndicatorPrefs(value)),
     indicatorPrimaryHidden: Array.isArray(obj?.indicatorPrimaryHidden) ? [...new Set(obj.indicatorPrimaryHidden.filter(c => INDICATOR_CATEGORIES.includes(c)))] : [],
     indicatorLineVisibility: normalizeLineVisibility(obj?.indicatorLineVisibility),
+    newHighBearishEnabled: obj?.newHighBearishEnabled === true,
+    newHighBearishHidden: obj?.newHighBearishHidden === true,
+    newHighBearishLookback: typeof obj?.newHighBearishLookback === 'number' && Number.isFinite(obj.newHighBearishLookback)
+      ? Math.max(1, Math.min(400, Math.floor(obj.newHighBearishLookback))) : 200,
+    newHighBearishDropPct: typeof obj?.newHighBearishDropPct === 'number' && Number.isFinite(obj.newHighBearishDropPct)
+      ? Math.max(0.1, Math.min(100, obj.newHighBearishDropPct)) : 7,
+    newHighBearishMaxCount: obj?.newHighBearishMaxCount === 2 ? 2 : 1,
+    newHighBearishMonths: typeof obj?.newHighBearishMonths === 'number' && Number.isFinite(obj.newHighBearishMonths)
+      ? Math.max(1, Math.min(120, Math.floor(obj.newHighBearishMonths))) : 6,
+    newHighBearishColor: typeof obj?.newHighBearishColor === 'string' && HEX_COLOR.test(obj.newHighBearishColor)
+      ? obj.newHighBearishColor : '#F04452',
+    newHighBearishLineWidth: typeof obj?.newHighBearishLineWidth === 'number' && VALID_LINE_WIDTHS.has(obj.newHighBearishLineWidth)
+      ? obj.newHighBearishLineWidth as 1 | 2 | 3 | 4 : 1,
     supertrendEnabled: obj?.supertrendEnabled === true,
     supertrendHidden: obj?.supertrendHidden === true,
     supertrendPeriod: typeof obj?.supertrendPeriod === 'number' && Number.isFinite(obj.supertrendPeriod)

@@ -1,6 +1,7 @@
 import MovingAverageConfig from './MovingAverageConfig';
 import BollingerConfig from './BollingerConfig';
 import EnvelopeConfig from './EnvelopeConfig';
+import NewHighBearishConfig from './NewHighBearishConfig';
 import SupertrendConfig from './SupertrendConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
@@ -25,6 +26,7 @@ export default function IndicatorConfigContent({ category, capabilities }: { cat
   const settings = useWindowIndicators();
   return <>
     <IndicatorStylePreview category={category} settings={settings} />
+    {category === 'new-high-bearish' && <NewHighBearishConfig />}
     {category === 'supertrend' && <SupertrendConfig />}
     {category === 'bollinger' && <BollingerConfig />}
     {category === 'envelope' && <EnvelopeConfig />}

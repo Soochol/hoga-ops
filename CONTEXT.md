@@ -222,6 +222,19 @@ _Avoid_: "snapshot", "fixed view", "captured chart"; saying it restores saved in
 HogaPlay 전용 모드의 디스크 전용 계약은 유지한다. 과거 하루짜리 저장뷰의 보충 기준일은
 저장 끝일이 아니라 실제 KST 오늘이며 최초 구간 배치는 보충 후 한 번 적용한다.
 
+**신고가 음봉 시가선**:
+국내 종목 일봉에서 당일 고가가 직전 N거래일 고가를 초과한 다음 날부터 조건 음봉을
+찾는 가격 오버레이다. 음봉(close < open), 저가의 전일 종가 대비 설정 하락률 이상,
+종가의 SMA5 미만을 같은 봉에서 모두 만족해야 한다. 동일 고가는 갱신이 아니며
+신고가 당일은 제외한다. 새 신고가는 탐색 개수를 초기화하고 이전 선은 보존한다.
+기본 N=200, 하락률=7%, 음봉=1개(1/2), 우측 확장=6개월이다. 선은 발생 봉의 시가에서
+설정 개월 뒤의 같은 날짜까지 표시하며 월말은 도착 월 말일로 보정한다. 실제 이력은
+종료일 이전 마지막 봉까지, 이후 여백은 기존 그리기의 FutureBand 좌표 규칙으로 투영한다.
+마감 판정은 KRX 15:30·NXT/통합 20:00이며 진행 중인 일봉을 포함하지 않는다.
+창별·일봉 버킷·반복 인스턴스·프리셋의 기존 지표 저장을 공유한다.
+_Avoid_: 거래일 6개월 환산; 저가 대신 종가 하락률 적용; 이전 선을 새 신고가에서 삭제;
+신고가 발생 봉에 선 표시; SMA5에서 당일 종가 제외; 조회 전 전체 이력을 보장하는 표현.
+
 **공용 지표 셋업 (Shared Indicator Setup)**:
 The current analysis indicator setup. It is **not owned by a saved study view**: opening a 복기뷰 reloads the saved period and re-analyzes it with whatever this setup currently is. Since #699 (PR-A/PR-B) the **entire** setup — every drawer-visible toggle, parameter, and color — is profiled per **LiveTimeframe** group (초봉 / 분봉 / 일봉 / 주봉 / 월봉, 5 sparse buckets over factory defaults), and since ADR-0152 each chart window carries its own set. Storage is split across two blobs: indicator fields in `live.indicators.v2`, and drawer-visible chartPrefs sub-options (indicator-modal keys) in `hoga.chart.prefs.v1` under `indicatorModalByTimeframe`; chart-wide chartPrefs stay flat/global. The chart's current timeframe is the lookup key. The **page axis** (`IndicatorPageScope`) still exists in those blobs but has only one inhabitant since ADR-0157 — the `study` buckets are legacy data no surface writes to.
 같은 종류를 여러 개 추가한 항목은 `indicatorInstances`에서 각자의 설정·표시 상태·지표 전용 prefs를 소유한다. 기존 flat 필드는 첫 항목이며, 원본 시세 수요는 활성 항목들의 합집합이다.
