@@ -22,6 +22,7 @@ import { SettingsEditor } from '../settings/SettingsEditor';
 import { useSettingsUndo } from '../settings/useSettingsUndo';
 import { readIndicatorEditor, restoreIndicatorEditor, subscribeIndicatorEditor } from '../settings/editorSnapshots';
 import { type CategoryId, type GroupId, type Placement, CATEGORIES } from './IndicatorPanelHelpers';
+import { indicatorResetPatch } from './indicatorReset';
 
 const GROUP_LABEL: Record<GroupId, string> = {
   top: '상단 지표',
@@ -201,6 +202,7 @@ export default function IndicatorPanel({
   const [mode, setMode] = useState<'mine' | 'catalog'>('mine');
   const [selectedInstance, setSelectedInstance] = useState(PRIMARY_INDICATOR_ID);
   const [lastAdded, setLastAdded] = useState<CategoryId | null>(null);
+  const [formEpoch, setFormEpoch] = useState(0);
   // 검색어와 ↑↓ 커서. 창을 바꾸면 패널이 재마운트되므로(`key={windowId}`) 둘 다
   // 초기화된다 — 이전 창에서 치던 검색어가 따라오지 않는 것이 맞다.
   const [query, setQuery] = useState('');
@@ -399,6 +401,12 @@ export default function IndicatorPanel({
   const currentInstances = instancesFor(selectedId);
   const currentInstance = currentInstances.find(row => row.id === selectedInstance) ?? currentInstances[0];
   const currentId = currentInstance?.id ?? PRIMARY_INDICATOR_ID;
+  const resetCurrentInstance = () => {
+    restore(indicatorResetPatch(selectedId, currentId, read()));
+    // Remount only the form: discard uncommitted inputs/errors even when the
+    // saved settings were already defaults. Chart instances keep their IDs.
+    setFormEpoch(epoch => epoch + 1);
+  };
 
   return (
     // App settings and indicators share the same header, scope, navigation and undo shell.
@@ -526,6 +534,7 @@ export default function IndicatorPanel({
               <button type="button" onClick={() => toggleInstance(selectedId, currentId)}>{currentInstance.hidden ? '표시' : '숨기기'}</button>
               <button type="button" onClick={() => removeFor(selectedId, currentId)}>삭제</button>
               <button type="button" onClick={copyInstance}>설정 복사해서 추가</button>
+              <button type="button" aria-label={`${selectedCategory.label} 초기화`} onClick={resetCurrentInstance}>초기화</button>
             </div>}
             <p className="settings-editor-description mt-1">{emptyCatalog ? '' : selectedCategory.description}</p>
           </div>
@@ -536,8 +545,8 @@ export default function IndicatorPanel({
               {emptyCatalog ? <p className="text-sm text-fg-dim">모든 지표를 사용 중이에요.</p> : draft ? <CatalogDraftProvider key={selectedId} draft={draft}>
                 <IndicatorConfigContent category={selectedId} capabilities={capabilities} />
               </CatalogDraftProvider> : selectedAdded ? currentId === PRIMARY_INDICATOR_ID
-                ? <IndicatorConfigContent key={selectedId} category={selectedId} capabilities={capabilities} />
-                : <IndicatorInstanceProvider key={currentId} id={currentId}><IndicatorConfigContent category={selectedId} capabilities={capabilities} /></IndicatorInstanceProvider>
+                ? <IndicatorConfigContent key={`${selectedId}:${formEpoch}`} category={selectedId} capabilities={capabilities} />
+                : <IndicatorInstanceProvider key={`${currentId}:${formEpoch}`} id={currentId}><IndicatorConfigContent category={selectedId} capabilities={capabilities} /></IndicatorInstanceProvider>
                 : <p className="text-sm text-fg-dim">{mode === 'mine' ? '지표 추가에서 원하는 지표를 골라 주세요.' : '추가할 수 있는 지표를 전부 쓰고 있습니다.'}</p>}
           </section>
       </SettingsEditor>
