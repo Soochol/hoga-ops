@@ -1,4 +1,22 @@
-:root { color-scheme: dark; font: 14px/1.55 system-ui, -apple-system, sans-serif; --bg: #131418; --panel: #1a1c21; --raised: #22252b; --fg: #f1f2f4; --muted: #a1a7b3; --line: #30333b; --accent: #f0b429; --good: #6dd5a7; --bad: #ff8d90; }
+/* Trading Desk palette, shared with frontend/src/styles/tokens.css. */
+:root {
+  color-scheme: dark;
+  font: 14px/1.55 system-ui, -apple-system, sans-serif;
+  --bg: #0b0f0b;
+  --panel: #121811;
+  --raised: #182014;
+  --fg: #e7eddf;
+  --muted: #9ca791;
+  --line: #2b3625;
+  --accent: #c7fa79;
+  --accent-fg: #18220e;
+  --accent-hover: #a9d563;
+  --good: #81c69b;
+  --bad: #f093ad;
+  --warn: #dec184;
+  --good-bg: rgba(129, 198, 155, .10);
+  --bad-bg: rgba(240, 147, 173, .10);
+}
 * { box-sizing: border-box; }
 .icon-definitions { position: absolute; width: 0; height: 0; overflow: hidden; }
 .icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
@@ -6,8 +24,8 @@ body { margin: 0; height: 100vh; display: flex; flex-direction: column; overflow
 button { font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 16px; font-weight: 500; }
 button:hover:not(:disabled) { background: var(--raised); }
 button:disabled { opacity: .5; cursor: default; }
-button.primary { background: var(--accent); color: #19160d; border-color: transparent; min-width: 174px; display: inline-flex; justify-content: center; align-items: center; gap: 8px; }
-button.primary:hover:not(:disabled) { background: #ffca4a; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; min-width: 174px; display: inline-flex; justify-content: center; align-items: center; gap: 8px; }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 button.subtle { background: transparent; color: var(--muted); font-size: 12px; padding: 6px 8px; }
 button.danger { color: var(--bad); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -19,7 +37,7 @@ button.danger { color: var(--bad); }
 button.window-control { display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); width: 34px; height: 30px; padding: 0; }
 .window-control .icon { width: 16px; height: 16px; }
 button.window-control:hover:not(:disabled) { color: var(--fg); background: var(--raised); }
-button.window-close:hover { color: var(--bad); background: #342328; }
+button.window-close:hover { color: var(--bad); background: var(--bad-bg); }
 main { display: flex; flex-direction: column; padding: 30px; flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 main > * { flex-shrink: 0; }
 .heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; }
@@ -29,9 +47,9 @@ h1 { font-size: 20px; letter-spacing: -.4px; font-weight: 500; line-height: 1.4;
 .hero { display: flex; gap: 13px; align-items: flex-start; }
 .state-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; background: var(--raised); color: var(--muted); display: grid; place-items: center; font-size: 21px; }
 .state-icon .icon { width: 21px; height: 21px; }
-body[data-phase="running"] .state-icon { background: #1b3029; color: var(--good); }
-body[data-phase="error"] .state-icon { background: #342328; color: var(--bad); }
-body[data-phase="starting"] .state-icon, body[data-phase="stopping"] .state-icon { color: var(--accent); }
+body[data-phase="running"] .state-icon { background: var(--good-bg); color: var(--good); }
+body[data-phase="error"] .state-icon { background: var(--bad-bg); color: var(--bad); }
+body[data-phase="starting"] .state-icon, body[data-phase="stopping"] .state-icon { color: var(--warn); }
 h2 { font-size: 19px; line-height: 1.45; letter-spacing: -.4px; font-weight: 500; margin: 0 0 5px; }
 p { margin: 0; color: var(--muted); }
 #message { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -57,7 +75,7 @@ h3 { margin: 0; font-size: 14px; font-weight: 500; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
 .service[data-phase="running"] .dot { background: var(--good); }
 .service[data-phase="error"] .dot { background: var(--bad); }
-.service[data-phase="starting"] .dot, .service[data-phase="stopping"] .dot { background: var(--accent); }
+.service[data-phase="starting"] .dot, .service[data-phase="stopping"] .dot { background: var(--warn); }
 .note { font-size: 12px; margin-top: 14px; }
 #log-details { margin-top: 19px; }
 #log-details[open] { display: flex; flex-direction: column; flex: 1 0 240px; min-height: 240px; }

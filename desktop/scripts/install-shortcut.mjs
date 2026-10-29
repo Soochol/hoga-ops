@@ -12,7 +12,7 @@ const data = join(home, '.config/hoga-ops-local-dev');
 const launcher = join(home, '.local/bin/ticklane');
 const applications = join(home, '.local/share/applications');
 // Versioned basename refreshes desktop-shell caches when the design changes.
-const icon = join(home, '.local/share/icons/hicolor/256x256/apps/ticklane-local-v1.png');
+const icon = join(home, '.local/share/icons/hicolor/256x256/apps/ticklane-local-v2.png');
 const binary = join(root, 'node_modules/electron/dist/electron');
 await access(binary);
 await access(join(root, 'dist/bootstrap.cjs'));
