@@ -33,6 +33,8 @@ export interface QuoteRowProps {
    *  자동으로 확정치로 복귀(백엔드 게이트 SSOT). 미전달 시 기존 동작 그대로. */
   expectedPrice?: number | null;
   expectedPct?: number | null;
+  /** Hosts can omit the expected/last-traded price hover detail. */
+  showExpectedPriceTooltip?: boolean;
   active: boolean;
   ariaLabel: string;
   testId: string;
@@ -99,7 +101,7 @@ function formatPct(pct: number | null): string {
 }
 
 export function QuoteRow({
-  name, code, price, flow, pct, changeWon: _changeWon, expectedPrice, expectedPct,
+  name, code, price, flow, pct, changeWon: _changeWon, expectedPrice, expectedPct, showExpectedPriceTooltip = true,
   active, ariaLabel, testId, onClick, leading, indentContent, trailingAction, compact = false, columnLayout, nameTooltip, nameDetail, beforePrice,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
@@ -119,7 +121,7 @@ export function QuoteRow({
   // 히트맵은 캔들 글리프가 정규장 종가를 남기지만 이 행엔 캔들이 없어(폭 4.75rem)
   // 두 숫자를 나란히 둘 수 없다 — 확정가를 title 로 보존해 호버로 되찾게 한다.
   // 개장 동시호가엔 확정 등락률이 숨겨진 상태(price 만 있음)라 이 힌트가 특히 값싸다.
-  const priceTitle = showExpected && price != null
+  const priceTitle = showExpectedPriceTooltip && showExpected && price != null
     ? `예상 ${expectedPrice.toLocaleString('ko-KR')} · 직전 체결 ${price.toLocaleString('ko-KR')}`
     : undefined;
   const setRowRef = (node: HTMLElement | null) => {

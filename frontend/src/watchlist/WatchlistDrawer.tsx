@@ -516,6 +516,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
       changeWon={props.changeWon}
       expectedPrice={props.expectedPrice}
       expectedPct={props.expectedPct}
+      showExpectedPriceTooltip={false}
       active={props.active}
       ariaLabel={[entry.name, entry.code, props.collectionLabel, '차트 열기'].filter(Boolean).join(' ')}
       testId={`watchlist-row-${entry.code}`}
@@ -673,6 +674,7 @@ function WatchlistDragGhost({ ghost, columnLayout }: { ghost: DragGhost; columnL
       changeWon={null}
       expectedPrice={ghost.expectedPrice}
       expectedPct={ghost.expectedPct}
+      showExpectedPriceTooltip={false}
       active={false}
       ariaLabel={ghost.name}
       testId="watchlist-drag-ghost"
