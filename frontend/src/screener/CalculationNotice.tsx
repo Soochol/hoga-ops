@@ -1,3 +1,4 @@
+import { isRankCondition } from './rankConditions';
 import { useState } from 'react';
 import { apiCall } from '../api/client';
 import type { ScanRequest, ScreenerResponse } from '../api/screener';
@@ -27,7 +28,8 @@ export function CalculationNotice({ scan }: { scan: PanelScan | null }) {
     try { return JSON.parse(scan.requestJson ?? '{}') as ScanRequest; } catch { return null; }
   })();
   const archivable = request?.calculation_policy === 'separate_bases_v2' && request.conditions?.every(leaf =>
-    !leaf.type.includes('depth') && !('timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')));
+    !isRankCondition(leaf) && !leaf.type.includes('depth')
+    && !('timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')));
   const save = async () => {
     if (!request) return;
     setBusy(true); setError(null);

@@ -22,7 +22,7 @@ from pydantic import (
 
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.params import CODE_PATTERN, WATCHLIST_CODE_PATTERN
-from hoga.api.screener_expression import parse_expression
+from hoga.api.screener_expression import active_conditions, parse_expression
 from hoga.api.sources import SourceName
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
@@ -1916,6 +1916,15 @@ class TradeValueParams(CandleParams):
     min_eok: float = Field(ge=0, allow_inf_nan=False)
 
 
+class TradeValueRankParams(BaseModel):
+    model_config = {"extra": "forbid"}
+    top_n: int = Field(default=100, ge=1, le=5000, strict=True)
+
+
+class ChangePctRankParams(TradeValueRankParams):
+    """Highest signed previous-close change percentages, not absolute changes."""
+
+
 class TradeValuePeriodParams(TradeValueParams):
     lookback: int = Field(ge=1)
 
@@ -2112,6 +2121,16 @@ class TradeValueLeaf(BaseModel):
     id: str
     params: TradeValueParams
 
+class TradeValueRankLeaf(BaseModel):
+    type: Literal["trade_value_rank"] = "trade_value_rank"
+    id: str
+    params: TradeValueRankParams
+
+class ChangePctRankLeaf(BaseModel):
+    type: Literal["change_pct_rank"] = "change_pct_rank"
+    id: str
+    params: ChangePctRankParams
+
 class TradeValuePeriodLeaf(BaseModel):
     type: Literal["trade_value_period"] = "trade_value_period"
     id: str
@@ -2241,7 +2260,7 @@ class BidDepthRenewalLeaf(BaseModel):
     params: DepthRenewalParams
 
 ConditionLeaf = Annotated[
-    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -2322,6 +2341,7 @@ class ScreenerConditionExpression(BaseModel):
 
 
 class ScanRequest(ScreenerConditionExpression):
+    venue: Literal["KRX", "NXT", "UN"] = "KRX"
     universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)
     limit: int = Field(1000, ge=1, le=2000)
     basis: ScanBasis = "eod"
@@ -2329,6 +2349,11 @@ class ScanRequest(ScreenerConditionExpression):
 
     @model_validator(mode="after")
     def validate_snapshot_policy(self):
+        if self.snapshot_id is not None and any(
+            leaf.type in {"trade_value_rank", "change_pct_rank"}
+            for leaf in active_conditions(self.conditions, self.expression)
+        ):
+            raise ValueError("당일 시장 순위는 과거 스냅샷 조회를 지원하지 않습니다")
         if self.snapshot_id is not None and (self.calculation_policy != "separate_bases_v2" or self.basis != "eod"):
             raise ValueError("스냅샷 지정 조회는 새 계산 기준의 확정 데이터만 지원합니다")
         return self
@@ -2449,7 +2474,25 @@ class BarVolumeCoverage(BaseModel):
     realtime: BarRealtimeCoverage | None = None
 
 
+class TradeValueRankMatch(BaseModel):
+    rank: int
+    trade_value_won: int | None
+    market: Literal["all", "kospi", "kosdaq"]
+    venue: Literal["KRX", "NXT", "UN"]
+    fetched_at_ms: int
+
+
+class ChangePctRankMatch(BaseModel):
+    rank: int
+    change_pct: float = Field(allow_inf_nan=False)
+    market: Literal["all", "kospi", "kosdaq"]
+    venue: Literal["KRX", "NXT", "UN"]
+    fetched_at_ms: int
+
+
 class ScreenerOccurrence(BaseModel):
+    change_pct_rank_match: ChangePctRankMatch | None = None
+    trade_value_rank_match: TradeValueRankMatch | None = None
     volume_evidence: ScreenerVolumeEvidence | None = None
     amount_evidence: ScreenerAmountEvidence | None = None
     condition_id: str

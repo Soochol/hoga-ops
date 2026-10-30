@@ -39,6 +39,7 @@ from hoga.api.screener_bar_policy import (
     BOLLINGER_TYPES,
     CANDLE_TYPES,
     RANGE_PARAMS,
+    RANK_TYPES,
     TRADE_VALUE_TYPES,
     VOLUME_TYPES,
     comparison_period,
@@ -66,6 +67,8 @@ def leaves(conditions):
 
 
 def needs_daily_overlay(leaf, today: str) -> bool:
+    if leaf.type in RANK_TYPES:
+        return False
     if leaf.type in CANDLE_TYPES and getattr(leaf.params, "timeframe", "D").endswith("m"):
         return False
     if isinstance(leaf.params, HistoryDateRangeParams):

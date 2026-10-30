@@ -2,6 +2,7 @@
 from hoga.api.models import BarTradeValueRangeParams, BarVolumeRangeParams
 
 BOLLINGER_POSITION_TYPES = frozenset({"bollinger_position_today", "bollinger_position"})
+RANK_TYPES = frozenset({"trade_value_rank", "change_pct_rank"})
 BOLLINGER_TYPES = BOLLINGER_POSITION_TYPES | frozenset({"bollinger_breakout_today", "bollinger_breakout"})
 
 CANDLE_TYPES = BOLLINGER_TYPES | frozenset({"new_high", "new_high_today", "new_high_vol", "new_high_vol_today",

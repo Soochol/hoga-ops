@@ -14,7 +14,7 @@ from hoga.api.models import (
     ScreenerRow,
     ScreenerUniverse,
 )
-from hoga.api.screener_bar_policy import needs_bars
+from hoga.api.screener_bar_policy import RANK_TYPES, needs_bars
 from hoga.api.screener_exclusions import condition_key
 from hoga.api.screener_expression import expression_sql, parse_expression
 from hoga.api.screener_trade_value import TRADE_VALUE_SQL as _TV, WON_PER_EOK as _WON_PER_EOK
@@ -150,6 +150,8 @@ _DAILY_EXCLUSION_FIELDS = 3
 
 
 def _condition_source(con, leaf, i, *, bar_events, history_pass, depth_pass, occurrence_dates):
+    if leaf.type in RANK_TYPES and leaf.id not in bar_events:
+        raise ValueError("시장 순위 조건은 키움 순위 평가가 필요합니다")
     if needs_bars(leaf) and leaf.id not in bar_events:
         raise ValueError("주기별 조건은 봉 이력 평가가 필요합니다")
     if leaf.id in bar_events:

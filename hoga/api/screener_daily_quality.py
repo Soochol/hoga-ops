@@ -8,6 +8,7 @@ from pathlib import Path
 
 from hoga.api import screener_daily_ingest as ingest
 from hoga.api.models import BarVolumeCoverage, BarVolumeCoverageItem
+from hoga.api.screener_bar_policy import RANK_TYPES
 
 
 @lru_cache(maxsize=8)
@@ -46,7 +47,8 @@ def legacy_coverage(data_dir, conditions, codes, clock, intraday=False):
     previous = dict(zip(calendar[1:], calendar[:-1], strict=True))
     required = {}
     for leaf in conditions:
-        if leaf.type in screener_depth.DEPTH_TYPES or getattr(leaf.params, "timeframe", "D").endswith("m"):
+        if (leaf.type in RANK_TYPES or leaf.type in screener_depth.DEPTH_TYPES
+                or getattr(leaf.params, "timeframe", "D").endswith("m")):
             continue
         windows = evaluation._windows(leaf, calendar, clock)
         dates = {day for window, _ in windows for bucket, _, _ in window for day in bucket}

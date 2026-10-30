@@ -12,6 +12,7 @@ from hoga.api import (
     screener_exclusions,
     screener_history_coverage,
     screener_intraday,
+    screener_rankings,
     screener_scan,
     screener_universe,
     symbols,
@@ -67,6 +68,7 @@ async def _run_legacy_scan(
     conditions = active_conditions(req.conditions, req.expression)
     codes = await asyncio.to_thread(screener_universe.codes_for_universe,
         sdir / "stocks.parquet", req.universe, scope=scope, etf_codes=etf_codes)
+    rank_eval = await screener_rankings.evaluate(data_dir, req, now_value, codes)
     confirmed_at, basis, daily_coverage, codes, scope = await _basis_quality(
         data_dir, conditions, codes, scope, req.basis, now_value, warnings)
     history = screener_history_coverage.history_leaves(conditions)
@@ -140,12 +142,12 @@ async def _run_legacy_scan(
         scope_codes=scope,
         etf_codes=etf_codes,
         history_pass=history_eval.passing if history_eval else None,
-        bar_events=bar_eval.events if bar_eval else None,
+        bar_events={**(bar_eval.events if bar_eval else {}), **(rank_eval.events if rank_eval else {})},
         occurrence_dates=occurrence_dates, excluded=excluded,
     )
     if history_eval:
         _attach_history(rows, history_eval)
-    return ScreenerResponse(
+    return screener_rankings.with_basis(ScreenerResponse(
         daily_coverage=daily_coverage,
         history_coverage=history_eval.coverage if history_eval else None,
         bar_coverage=bar_eval.coverage if bar_eval else None,
@@ -159,7 +161,7 @@ async def _run_legacy_scan(
         intraday_failure=intraday_failure,
         depth_coverage=depth_eval.coverage if depth_eval is not None else None,
         depth_values=depth_eval.values if depth_eval is not None else None,
-    )
+    ), req, rank_eval)
 
 
 async def _basis_quality(data_dir, conditions, codes, scope, requested_basis, now_value, warnings):

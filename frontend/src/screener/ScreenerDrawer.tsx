@@ -1,3 +1,5 @@
+import { isRankCondition, hasRankEvidence } from './rankConditions';
+import { MarketRankEvidence } from './MarketRankEvidence';
 import { CalculationNotice } from "./CalculationNotice";
 import { useScreenerJump } from "./useScreenerJump";
 import { BarVolumeCoverage } from './BarVolumeCoverage';
@@ -34,7 +36,8 @@ import { resultLimitText } from './resultLimitText';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
-import { useScreenerMonitor, MONITOR_PERIOD_SCOPED_MS, MONITOR_PERIOD_FULL_MS } from './useScreenerMonitor';
+import { useScreenerMonitor, monitorPeriod } from './useScreenerMonitor';
+import { useLiveVenueStore } from '../state/liveVenue';
 import { useNewEntryFlash } from './useNewEntryFlash';
 import { useEntryOrder } from './useEntryOrder';
 import { QuoteRowGroupMenu } from '../rightrail/QuoteRowGroupMenu';
@@ -91,6 +94,8 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
       columnLayout={columnLayout}
       name={row.name} code={row.code}
       nameTooltip=""
+      nameDetail={row.occurrences?.some(hasRankEvidence)
+        ? <MarketRankEvidence row={row} /> : undefined}
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
@@ -147,6 +152,7 @@ function ScreenerDragGhost({ ghost, row, columnLayout }: {
  * screenerPanel store so they survive close/reopen; cleared on full reload.
  */
 export function ScreenerDrawer() {
+  const venue = useLiveVenueStore(s => s.venue);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeCode = useLivePageStore((s) => s.activeCode);
   const { pathname } = useLocation();
@@ -215,6 +221,7 @@ export function ScreenerDrawer() {
     try {
       const request = {
         conditions: sel.conditions, universe: sel.universe,
+        ...(sel.conditions.some(isRankCondition) ? { venue } : {}),
         ...(sel.calculation_policy ? { calculation_policy: sel.calculation_policy } : {}), basis: DRAWER_SCAN_BASIS,
         ...(sel.expression != null ? { expression: sel.expression } : {}),
       };
@@ -259,11 +266,12 @@ export function ScreenerDrawer() {
   const scoped = (selected?.universe.scopes?.length ?? 0) > 0;
   const monitorPeriodMs = useScreenerPanelStore((s) => s.monitorPeriodMs);
   const setMonitorPeriodMs = useScreenerPanelStore((s) => s.setMonitorPeriodMs);
-  const effectivePeriodMs = monitorPeriodMs ?? (scoped ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS);
+  const effectivePeriodMs = monitorPeriodMs ?? monitorPeriod(selected?.conditions ?? [], scoped);
   const monitor = useScreenerMonitor({
     acceptsVolumeEvent: screener.acceptsVolumeEvent,
     active: monitoringActive,
-    selectedId: selectedSavedId,
+    selectedId: selected?.conditions.some(isRankCondition)
+      ? `${selectedSavedId}:${venue}` : selectedSavedId,
     periodMs: effectivePeriodMs,
     disabled: notSeeded || !selected,
     resultCodes,

@@ -5,6 +5,20 @@ const PRICE = { open: '시가', high: '고가', low: '저가', close: '종가' }
 const won = (value: number) => value.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
 
 export function BarMatchEvidence({ event }: { event: ScreenerOccurrence }) {
+  const changeRank = event.change_pct_rank_match;
+  if (changeRank) return <span className="font-data text-xs text-fg-dim">
+    {{ all: '전체', kospi: '코스피', kosdaq: '코스닥' }[changeRank.market]}
+    {' · '}{changeRank.venue === 'UN' ? '통합' : changeRank.venue} · 등락률 {changeRank.rank}위
+    {' · '}전일 종가 대비 {changeRank.change_pct > 0 ? '+' : ''}{won(changeRank.change_pct)}%
+    {' · '}{new Date(changeRank.fetched_at_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} 조회
+  </span>;
+  const rank = event.trade_value_rank_match;
+  if (rank) return <span className="font-data text-xs text-fg-dim">
+    {{ all: '전체', kospi: '코스피', kosdaq: '코스닥' }[rank.market]}
+    {' · '}{rank.venue === 'UN' ? '통합' : rank.venue} · 거래대금 {rank.rank}위
+    {rank.trade_value_won != null ? ` · ${won(rank.trade_value_won / 1e8)}억` : ''}
+    {' · '}{new Date(rank.fetched_at_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} 조회
+  </span>;
   const quantity = event.volume_evidence;
   if (quantity) return <span className="font-data text-xs text-fg-dim">
     {quantity.basis === 'share_adjusted' ? '주식 수 단위 보정' : '실제 거래량'} {quantity.compared_volume}주
