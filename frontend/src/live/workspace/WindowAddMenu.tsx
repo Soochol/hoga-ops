@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 /**
  * WindowAddMenu — 창 추가 드롭다운 (ADR-0119 후속, /live 툴바 A안).
  *
@@ -170,9 +171,7 @@ export function WindowAddMenu() {
         aria-expanded={open}
         className={open ? 'bg-bg-input-hover text-fg' : undefined}
         icon={(
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <AppIcon name="plus" />
         )}
       >
         <span>창 추가</span>

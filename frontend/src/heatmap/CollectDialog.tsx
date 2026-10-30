@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { coveragePreview, bulkItems } from '../api/captures';
@@ -140,10 +141,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
           {visibleRange && (
             <button type="button" aria-pressed={useVisible} onClick={selectVisible}
               className={`inline-flex items-center gap-1.5 self-start px-3 py-1.5 rounded-md text-sm ${useVisible ? 'bg-tint-selection text-accent' : 'bg-bg-input text-fg-dim hover:bg-bg-input-hover'}`}>
-              <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
+              <AppIcon name="eye" />
               보이는 구간
             </button>
           )}

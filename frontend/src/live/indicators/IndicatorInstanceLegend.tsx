@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import type { MouseEventParams, Time } from 'lightweight-charts';
 import { resolveMaColor } from '../../util/maColor';
 import { useThemePrefsStore } from '../../state/themePrefs';
@@ -65,6 +66,6 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }
     <span className={hidden ? 'text-fg-dimmer' : undefined} data-tooltip={title}>{title}</span>
     {!hidden && values.length > 0 && <span className="font-data">{values.join(' · ')}</span>}
     <button type="button" aria-label={`${title} ${hidden ? '표시' : '숨기기'}`} onClick={() => update(false)}><EyeGlyph hidden={hidden === true} /></button>
-    <button type="button" aria-label={`${title} 삭제`} onClick={() => update(true)}>✕</button>
+    <button type="button" aria-label={`${title} 삭제`} onClick={() => update(true)}><AppIcon name="close" /></button>
   </div>;
 }

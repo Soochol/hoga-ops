@@ -47,6 +47,8 @@ export function useDismissablePopover(
    *  레이어 ref 를 함께 넘기면 그 안의 mousedown 도 앵커와 동등하게 억제한다.
    *  `FolderAddButton` 이 인라인 effect 로 복붙하던 예외를 이 계약 안으로 들인 것. */
   layerRef?: RefObject<HTMLElement | null>,
+  /** Keyboard dismissal may restore focus even if a pending action blurred it. */
+  onEscape: () => void = onDismiss,
 ): void {
   useEffect(() => {
     if (!isOpen) return;
@@ -68,7 +70,7 @@ export function useDismissablePopover(
       if (e.defaultPrevented) onMouseDown(e);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onDismiss();
+      if (e.key === 'Escape') onEscape();
     };
     window.addEventListener('mousedown', onMouseDown);
     window.addEventListener('pointerdown', onPointerDown);
@@ -79,5 +81,5 @@ export function useDismissablePopover(
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKey);
     };
-  }, [isOpen, anchorRef, onDismiss, layerRef]);
+  }, [isOpen, anchorRef, onDismiss, layerRef, onEscape]);
 }

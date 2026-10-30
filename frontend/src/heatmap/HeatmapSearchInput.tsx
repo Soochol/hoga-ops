@@ -1,15 +1,9 @@
+import { AppIcon } from '../ui/AppIcon';
 import { ClearSearchIcon } from '../ui/ClearSearchIcon';
 import type { Ref } from 'react';
 
 /** 검색 돋보기 아이콘 (SVG 통일). */
-function SearchIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
-    </svg>
-  );
-}
+function SearchIcon() { return <AppIcon name="search" />; }
 
 /** 히트맵 목록 필터 검색창(controlled) — /heatmap 페이지와 우측 레일 드로어가 공유.
  *  query 는 호출측 로컬 상태(저장 설정 아님 — 필터는 일시적 조회 보조). Escape 로 클리어(전파 차단).

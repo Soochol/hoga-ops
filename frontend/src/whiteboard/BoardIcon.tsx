@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 const paths = {
   calendar: 'M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2z M7 2v4 M17 2v4 M3 10h18 M7 14h2 M15 14h2 M7 18h2',
   board: 'M3 3h18v18H3z M3 9h18 M9 9v12',
@@ -16,11 +17,12 @@ const paths = {
   check: 'M4 12l5 5L20 6',
 } as const;
 export function BoardIcon({ name, size = 16 }: { name: keyof typeof paths; size?: number }) {
+  if (name === "plus" || name === "copy" || name === "trash" || name === "close") return <AppIcon name={name} size={size} />;
   return (
-    <svg
+    <svg data-ui-icon=""
       aria-hidden="true"
-      width={size}
-      height={size}
+      width={`${size / 16}rem`}
+      height={`${size / 16}rem`}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

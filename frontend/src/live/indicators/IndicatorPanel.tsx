@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { useThemePrefsStore } from '../../state/themePrefs';
 import { useState, useEffect, useRef, useCallback, useContext, Fragment, type ReactNode } from 'react';
 import { useStore } from 'zustand';
@@ -137,7 +138,7 @@ function IndicatorNavRow({
         // 길어진다(실측 45px/행 → 목록 827px). 밀도는 이 패널의 성격이다.
         className="ml-2 flex size-[22px] shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
       >
-        ✕
+        <AppIcon name="close" />
       </button>}
     </ListRow>
   );
@@ -440,10 +441,7 @@ export default function IndicatorPanel({
               ]}
               onChange={next => { setMode(next); setLastAdded(null); setQuery(''); setKbdIndex(-1); }} />
             <div className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-2 focus-within:border-accent">
-              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-fg-dim">
-                <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <line x1="10.2" y1="10.2" x2="13.5" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
+              <AppIcon name="search" className="text-fg-dim" />
               <input
                 type="text"
                 data-modal-autofocus
@@ -508,7 +506,7 @@ export default function IndicatorPanel({
                         <span className="font-data">{ri + 1}</span><span>{indicatorInstanceSummary(c.id, row.settings)}</span>
                       </button>
                       <button type="button" aria-label={`${c.label} ${ri + 1} ${row.hidden ? '표시' : '숨기기'}`} onClick={() => toggleInstance(c.id, row.id)}><EyeGlyph hidden={row.hidden === true} /></button>
-                      <button type="button" aria-label={`${c.label} ${ri + 1} 삭제`} onClick={() => removeFor(c.id, row.id)}>✕</button>
+                      <button type="button" aria-label={`${c.label} ${ri + 1} 삭제`} onClick={() => removeFor(c.id, row.id)}><AppIcon name="close" /></button>
                     </div>)}
                   </div>}
                 </Fragment>

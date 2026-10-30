@@ -8,12 +8,12 @@
 export function CheckIcon({ filled, size = 18 }: { filled: boolean; size?: number }) {
   if (filled) {
     return (
-      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <svg data-ui-icon="" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="12" r="10" fill="var(--accent)" />
         <path
           d="M7.5 12.5l3 3 6-6"
           stroke="var(--accent-fg, #07100f)"
-          strokeWidth="2.5"
+          strokeWidth="1.6"
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
@@ -22,19 +22,19 @@ export function CheckIcon({ filled, size = 18 }: { filled: boolean; size?: numbe
     );
   }
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <svg data-ui-icon="" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
       <circle
         cx="12"
         cy="12"
         r="10"
         fill="none"
         stroke="var(--fg-dimmer)"
-        strokeWidth="1.5"
+        strokeWidth="1.6"
       />
       <path
         d="M7.5 12.5l3 3 6-6"
         stroke="var(--fg-dimmer)"
-        strokeWidth="1.5"
+        strokeWidth="1.6"
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"

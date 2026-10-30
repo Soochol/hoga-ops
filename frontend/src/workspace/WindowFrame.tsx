@@ -13,6 +13,7 @@
  * 리사이즈 핸들이 이 틈(이음매)에 닿으며, 잡은 핸들의 창 하나만 리사이즈한다.
  */
 import { memo } from 'react';
+import { WindowHeaderIcon } from './WindowHeaderIcon';
 import type { ResizeMode } from './snapEngine';
 
 /** 인접 창 사이 시각 간격(px). 카드는 바깥 rect 에서 이 값의 절반씩 물러난다. */
@@ -127,12 +128,12 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
             <button
               type="button"
               aria-label={closeLabel}
-              className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-sm leading-none text-fg-dim hover:bg-tint-selection hover:text-fg"
+              className="ui-icon-button window-close-button ml-auto"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => onClose(id)}
               data-tooltip={closeTitle ?? undefined}
             >
-              ×
+              <WindowHeaderIcon kind="close" />
             </button>
           )}
         </div>

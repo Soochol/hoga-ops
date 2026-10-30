@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 /**
  * 차트 액션 버튼 — 낱개 부품 (#759 결정 7).
  *
@@ -34,10 +35,7 @@ export function IndicatorsButton({
       className={className}
       style={showLabel ? undefined : { paddingInline: COMPACT_PADDING_INLINE }}
       icon={(
-        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
+        <AppIcon name="plus" />
       )}
     >
       {showLabel && <span className="live-action-label">보조지표</span>}

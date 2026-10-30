@@ -1,3 +1,4 @@
+import { SortDirectionIcon } from '../ui/SortDirectionIcon';
 import { MarketRankEvidence } from './MarketRankEvidence';
 import { useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -132,7 +133,6 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
   onSortChange?: (mode: ScreenerResultSortMode) => void;
 }) {
   const active = sortMode !== 'default' && sortMode.field === field;
-  const arrow = active ? (sortMode.direction === 'asc' ? '▲' : '▼') : '↕';
   return (
     <button
       type="button"
@@ -143,7 +143,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
       } ${active ? 'text-accent' : 'text-fg-dim hover:text-fg'}`}
     >
       <span className="truncate">{label}</span>
-      <span className="font-data text-2xs" aria-hidden="true">{arrow}</span>
+      <SortDirectionIcon direction={active ? sortMode.direction : 'none'} className="h-3.5 w-3.5" />
     </button>
   );
 }

@@ -8,6 +8,7 @@
 import { memo, useState } from 'react';
 import type { ResizeMode } from '../../workspace/snapEngine';
 import { WindowFrameCore, type WindowRectPx } from '../../workspace/WindowFrame';
+import { WindowHeaderIcon } from '../../workspace/WindowHeaderIcon';
 import { LiveGroupBadge } from './LiveGroupBadge';
 import type { GroupId, WindowKind } from '../../state/workspace';
 // 창 제목은 창 추가 메뉴와 같은 문자열이어야 "고른 것 = 생긴 것" 이 맞는다
@@ -59,30 +60,6 @@ export interface WindowFrameProps {
   headerContent?: React.ReactNode;
   tradeMinAmountManwon?: number;
   onTradeMinAmountChange?: (amount: number) => void;
-}
-
-/**
- * 압정 글리프 — 리포 관례대로 손으로 그린다(`windowKindIcons` 와 같은 규격:
- * 24 viewBox · `currentColor` 스트로크 · round cap). 고정 상태에서는 머리를 채워
- * 색뿐 아니라 **형태로도** 켜짐을 말한다(색만으로 상태를 말하지 않는다 — DESIGN).
- */
-function PinGlyph({ filled }: { filled: boolean }) {
-  return (
-    <svg
-      aria-hidden="true"
-      width="11"
-      height="11"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M10 3.5v6L7 14h10l-3-4.5v-6" fill={filled ? 'currentColor' : 'none'} />
-      <path d="M8.5 3.5h7M12 14v6.5" />
-    </svg>
-  );
 }
 
 function WindowFrameImpl(props: WindowFrameProps) {
@@ -142,12 +119,10 @@ function WindowFrameImpl(props: WindowFrameProps) {
       closeLabel={marketWide ? `${title} 창 닫기` : `${title} ${KIND_LABEL[kind]} 창 닫기`}
       headerEnd={
         onToggleMaximize && (
-          <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
+          <button type="button" className="live-window-maximize live-icon-button"
             aria-label={maximized ? '원래 크기로 복원' : '창 최대화'}
             onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              {maximized ? <><path d="M8 8V4h12v12h-4" /><rect x="4" y="8" width="12" height="12" /></> : <rect x="4" y="4" width="16" height="16" />}
-            </svg>
+            <WindowHeaderIcon kind={maximized ? 'restore' : 'maximize'} />
           </button>
         )
       }
@@ -193,16 +168,11 @@ function WindowFrameImpl(props: WindowFrameProps) {
                 type="button"
                 aria-label="항상 위"
                 aria-pressed={alwaysOnTop}
-                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${alwaysOnTop
-                  ? 'bg-tint-selection text-accent hover:brightness-125'
-                  : 'text-fg-dim hover:bg-tint-selection hover:text-fg'}`}
+                className="live-icon-button"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => onToggleAlwaysOnTop(id)}
               >
-                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 4h16M12 18V8m-5 5 5-5 5 5" />
-                  {alwaysOnTop && <path d="M4 21h16" />}
-                </svg>
+                <WindowHeaderIcon kind="top" />
               </button>
             )}
             {!marketWide && onTogglePin && (
@@ -213,17 +183,11 @@ function WindowFrameImpl(props: WindowFrameProps) {
                   aria-label="종목 고정"
                   aria-pressed={pinned}
                   disabled={!canPin}
-                  className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${
-                    pinned
-                      ? 'bg-tint-selection text-accent hover:brightness-125'
-                      : canPin
-                        ? 'text-fg-dim hover:bg-tint-selection hover:text-accent'
-                        : 'cursor-not-allowed text-fg-dimmer'
-                  }`}
+                  className="live-icon-button"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => onTogglePin(id)}
                 >
-                  <PinGlyph filled={pinned} />
+                  <WindowHeaderIcon kind="pin" filled={pinned} />
                 </button>
               </>
             )}

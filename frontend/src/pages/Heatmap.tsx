@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { HeatmapPanelDropTarget } from '../heatmap/HeatmapPanelDropTarget';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -229,11 +230,11 @@ export function Heatmap() {
               흐름 비교
             </ToolbarButton>
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>
-              ＋ 새 그룹
+              <AppIcon name="plus" /> 새 그룹
             </ToolbarButton>
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowCollect(true)}
               disabled={collectScopes.length === 0}>
-              ⬇ 데이터 수집
+              <AppIcon name="collect" /> 데이터 수집
             </ToolbarButton>
             <HeatmapSearchInput query={query} onQuery={setQuery} inputRef={searchRef} testId="heatmap-search" className="w-44" />
             {/* 정렬 = 우측 레일 드로어와 공유하는 아이콘 순환 버튼(manual→desc→asc). 종목=그룹 내

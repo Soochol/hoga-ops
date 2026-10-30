@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   CHART_LINE_STYLES,
@@ -277,10 +278,7 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
       <nav className="flex min-h-0 flex-1 flex-col" aria-label="설정 카테고리">
         <div className="p-2 pb-1">
           <div className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-2 focus-within:border-accent">
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-fg-dim">
-              <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-              <line x1="10.2" y1="10.2" x2="13.5" y2="13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <AppIcon name="search" className="text-fg-dim" />
             <input
               type="text"
               value={query}
@@ -305,7 +303,7 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
                 onClick={() => setQuery('')}
                 className="shrink-0 px-0.5 text-sm leading-none text-fg-dim transition-colors hover:text-fg"
               >
-                ✕
+                <AppIcon name="close" />
               </button>
             )}
           </div>

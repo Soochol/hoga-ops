@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDismissablePopover } from '../../util/useDismissablePopover';
@@ -126,7 +127,7 @@ export default function IndicatorPanelMenu({
         onClick={toggle}
         className="flex size-6 items-center justify-center rounded-md text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
       >
-        ⋯
+        <AppIcon name="more" />
       </button>
       {menu && createPortal(menu, document.body)}
     </div>

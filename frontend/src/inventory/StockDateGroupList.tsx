@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useMemo, useState } from 'react';
 import type { StockDate } from '../api/types';
 import { useStockDateGroups } from './useStockDateGroups';
@@ -63,7 +64,7 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
               onClick={() => setSearch('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg text-sm leading-none"
             >
-              ×
+              <AppIcon name="close" />
             </button>
           )}
         </div>

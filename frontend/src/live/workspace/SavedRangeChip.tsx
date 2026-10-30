@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { noticeStyle } from '../../ui/noticeTone';
 /**
  * `/live` 차트 창의 **저장뷰 기간 칩** — 지금 무엇이 걸려 있는지, 그리고 푸는 문.
@@ -84,7 +85,7 @@ export function SavedRangeChip({
         className="live-chart-chip-dismiss shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
         style={{ color: 'var(--fg-muted)' }}
       >
-        ×
+        <AppIcon name="close" />
       </button>
     </div>
   );

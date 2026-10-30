@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { PencilIcon } from '../ui/PencilIcon';
 import { TrashIcon } from '../ui/TrashIcon';
 import { HeatmapContextMenu, type HeatmapMenuItem } from './HeatmapContextMenu';
@@ -25,7 +26,7 @@ export function HeatmapGroupMenu({ x, y, name, onRename, onDelete, onCollect, on
       icon: <PencilIcon />,
       onClick: onRename,
     }] : []),
-    ...(onCollect ? [{ key: 'collect', label: '보충 수집', icon: <span aria-hidden="true">⬇</span>, onClick: onCollect }] : []),
+    ...(onCollect ? [{ key: 'collect', label: '보충 수집', icon: <AppIcon name="collect" />, onClick: onCollect }] : []),
     ...(onDelete ? [{
       key: 'delete',
       label: '그룹 삭제',

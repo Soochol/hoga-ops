@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useUsStocks } from '../api/usDailyCandles';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -232,10 +233,7 @@ export function LiveSymbolSearch() {
         </button>
       </div>
       <div className="flex shrink-0 items-center gap-3 h-11 px-3 rounded-lg border border-border-strong bg-bg-input focus-within:border-accent focus-within:ring-1 focus-within:ring-accent [@media(pointer:coarse)]:h-14">
-        <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dim w-[18px] h-[18px] shrink-0">
-          <circle cx="11" cy="11" r="7" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
+        <AppIcon name="search" size={18} className="text-fg-dim" />
         <input
           ref={inputRef}
           id={`${searchId}-input`}
@@ -339,10 +337,7 @@ export function LiveSymbolSearch() {
           open ? 'border-accent' : 'border-border-strong'
         }`}
       >
-        <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-fg-dimmer w-[14px] h-[14px] shrink-0">
-          <circle cx="11" cy="11" r="7" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
+        <AppIcon name="search" className="text-fg-dimmer" />
         {/* min-w-0 + truncate: 헤더가 좁아지면(드로어 열림 등) 두 줄 줄바꿈 대신 한 줄 말줄임. */}
         <span className="flex-1 min-w-0 truncate text-sm text-fg-dim">종목명 또는 코드 검색…</span>
         {/* kbd 는 shrink-0 이라 좁은 헤더에서 버튼 밖으로 흘러 Settings 라벨과 겹쳤다 —

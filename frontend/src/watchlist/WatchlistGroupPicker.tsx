@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useMemo, useState, type RefObject } from 'react';
 import { useWatchlist, useAddMember, useRemoveMember, useCreateFolder } from './useWatchlist';
 import { useWatchlistMembership } from './useWatchlistMembership';
@@ -120,9 +121,7 @@ export function WatchlistGroupPickerContent({ code, name, selectionRole = 'check
         {!visibleFolders.length && <p className="px-3 py-2 text-xs text-fg-dim">{folders.length ? '검색 결과가 없습니다' : '관심 그룹을 만들어 추가하세요'}</p>}
       </div> : <p className="px-3 py-2 text-xs text-fg-dim">{isError ? <button type="button" onClick={() => void refetch()}>불러오기 실패 · 다시 시도</button> : '관심 그룹을 불러오는 중…'}</p>}
       <form onSubmit={(e) => { e.preventDefault(); void createAndAdd(); }} className="mt-1 flex shrink-0 items-center gap-2 border-t border-border px-3 py-2">
-        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-fg-dim">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
+        <AppIcon name="plus" className="text-fg-dim" />
         <input value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40}
           placeholder="새 그룹 만들기" aria-label="새 그룹 만들기" disabled={busy}
           onKeyDown={event => { if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault(); }}

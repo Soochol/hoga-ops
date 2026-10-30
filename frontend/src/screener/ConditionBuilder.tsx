@@ -1,3 +1,5 @@
+import { ChevronIcon } from '../ui/ChevronIcon';
+import { AppIcon } from '../ui/AppIcon';
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type DragEvent } from 'react';
 import type { CalculationPolicy, ConditionLeaf, ConditionType, ScreenerUniverse } from '../api/screener';
 import { CONDITION_CATALOG, makeLeaf } from './catalog';
@@ -109,7 +111,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
         <div ref={wrapRef} className="relative flex-1">
           <button ref={btnRef} type="button" aria-label="조건 추가" aria-expanded={menuOpen} disabled={invalidExpression} onClick={toggleMenu}
             className="w-full border border-dashed border-border-strong rounded-md text-fg-dim text-sm py-2 hover:bg-bg-input-hover">
-            ＋ 조건 추가 ▾
+            <AppIcon name="plus" /> 조건 추가 <ChevronIcon collapsed={false} size={14} />
           </button>
           {menuOpen && anchorRect && (
             <ul ref={menuRef} role="menu"

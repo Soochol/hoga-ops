@@ -16,11 +16,11 @@ interface Props {
 }
 
 /** 메뉴 아이콘 — 유니코드 글리프 대신 SVG 통일(WatchlistDrawer MenuGlyph와 동일 근거:
- *  폰트별 렌더 불일치 회피). 1em 스케일이라 텍스트 크기를 따른다. */
+ *  폰트별 렌더 불일치 회피). 14px·선 1.6의 공통 액션 규격을 따른다. */
 function MenuGlyph({ children }: { children: React.ReactNode }) {
   return (
-    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg data-ui-icon="" width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
     </svg>
   );

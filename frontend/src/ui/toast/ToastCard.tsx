@@ -1,3 +1,4 @@
+import { AppIcon } from '../AppIcon';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { noticeColors } from '../noticeTone';
 import { useToastPresence } from './useToastPresence';
@@ -43,7 +44,7 @@ export function ToastCard({
   const className = 'toast-card pointer-events-auto relative w-full overflow-hidden rounded border bg-bg-card px-3 py-2 text-left shadow-overlay' +
     (clickable ? ' hover:bg-bg-input' : '');
   const dismiss = onDismiss && <button type="button" aria-label={dismissLabel} onClick={onDismiss}
-    className="shrink-0 rounded px-1 text-base leading-none text-fg-dim hover:text-fg">×</button>;
+    className="shrink-0 rounded px-1 text-base leading-none text-fg-dim hover:text-fg"><AppIcon name="close" /></button>;
   const actionButton = action && <ToastAction onClick={action.onClick}>{action.label}</ToastAction>;
   const inner = <>
     {title != null ? <>

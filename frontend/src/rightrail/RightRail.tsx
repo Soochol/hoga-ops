@@ -38,7 +38,7 @@ export default function RightRail({ settingsOpen = false }: { settingsOpen?: boo
         data-tooltip={open ? '우측 패널 닫기' : '마지막 우측 패널 열기'}
         className="w-full py-2 grid place-items-center text-fg-dim hover:text-fg hover:bg-bg-input-hover"
       >
-        <DoubleChevronIcon direction={open ? 'right' : 'left'} />
+        <DoubleChevronIcon size={18} direction={open ? 'right' : 'left'} />
       </button>
 
       <RailItem
@@ -47,7 +47,7 @@ export default function RightRail({ settingsOpen = false }: { settingsOpen?: boo
         controls="right-rail-watchlist-panel"
         active={activePanel === 'watchlist'}
         onClick={() => togglePanel('watchlist')}
-        icon={<HeartIcon filled={activePanel === 'watchlist'} className="w-[1.125em] h-[1.125em]" />}
+        icon={<HeartIcon filled={activePanel === 'watchlist'} className="rail-navigation-icon" />}
       />
       <RailItem
         label="히트맵"
@@ -55,7 +55,7 @@ export default function RightRail({ settingsOpen = false }: { settingsOpen?: boo
         controls="right-rail-heatmap-panel"
         active={activePanel === 'heatmap'}
         onClick={() => togglePanel('heatmap')}
-        icon={<HeatmapIcon filled={activePanel === 'heatmap'} className="w-[1.125em] h-[1.125em]" />}
+        icon={<HeatmapIcon filled={activePanel === 'heatmap'} className="rail-navigation-icon" />}
       />
       <RailItem
         label="스크리너"
@@ -63,7 +63,7 @@ export default function RightRail({ settingsOpen = false }: { settingsOpen?: boo
         controls="right-rail-screener-panel"
         active={activePanel === 'screener'}
         onClick={() => togglePanel('screener')}
-        icon={<FunnelIcon filled={activePanel === 'screener'} className="w-[1.125em] h-[1.125em]" />}
+        icon={<FunnelIcon filled={activePanel === 'screener'} className="rail-navigation-icon" />}
       />
       <RailItem
         label="순위"
@@ -71,7 +71,7 @@ export default function RightRail({ settingsOpen = false }: { settingsOpen?: boo
         controls="right-rail-ranking-panel"
         active={activePanel === 'ranking'}
         onClick={() => togglePanel('ranking')}
-        icon={<RankingIcon filled={activePanel === 'ranking'} className="w-[1.125em] h-[1.125em]" />}
+        icon={<RankingIcon filled={activePanel === 'ranking'} className="rail-navigation-icon" />}
       />
       <RailItem
         label="패턴"
@@ -79,7 +79,7 @@ export default function RightRail({ settingsOpen = false }: { settingsOpen?: boo
         controls="right-rail-pattern-panel"
         active={activePanel === 'pattern'}
         onClick={() => togglePanel('pattern')}
-        icon={<PatternIcon filled={activePanel === 'pattern'} className="w-[1.125em] h-[1.125em]" />}
+        icon={<PatternIcon filled={activePanel === 'pattern'} className="rail-navigation-icon" />}
       />
       <RailItem
         label="저장뷰"
@@ -87,7 +87,7 @@ export default function RightRail({ settingsOpen = false }: { settingsOpen?: boo
         controls="right-rail-saved-views-panel"
         active={activePanel === 'savedViews'}
         onClick={() => togglePanel('savedViews')}
-        icon={<BookmarkIcon filled={activePanel === 'savedViews'} className="w-[1.125em] h-[1.125em]" />}
+        icon={<BookmarkIcon filled={activePanel === 'savedViews'} className="rail-navigation-icon" />}
       />
       <RailItem
         label="알림"
@@ -95,10 +95,10 @@ export default function RightRail({ settingsOpen = false }: { settingsOpen?: boo
         controls="right-rail-signal-alerts-panel"
         active={activePanel === 'signalAlerts'}
         onClick={() => togglePanel('signalAlerts')}
-        icon={<BellIcon className="w-[1.125em] h-[1.125em]" />}
+        icon={<BellIcon className="rail-navigation-icon" />}
       />
       <RailButton active={settingsOpen} onClick={requestSettingsModal} aria-label="설정" aria-haspopup="dialog" aria-expanded={settingsOpen}>
-        <SettingsIcon className="w-[1.125em] h-[1.125em]" />
+        <SettingsIcon className="rail-navigation-icon" />
         <span className="text-2xs leading-tight">설정</span>
       </RailButton>
     </nav>

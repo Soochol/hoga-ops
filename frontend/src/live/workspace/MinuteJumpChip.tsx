@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { noticeStyle } from '../../ui/noticeTone';
 /**
  * 분봉 창 헤더의 **점프 칩** — 이 창이 지금 어느 날에 잡혀 있는지, 그리고 푸는 문.
@@ -85,7 +86,7 @@ export function MinuteJumpChip({
         className="live-chart-chip-dismiss shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
         style={{ color: 'var(--fg-muted)' }}
       >
-        ×
+        <AppIcon name="close" />
       </button>
     </div>
   );

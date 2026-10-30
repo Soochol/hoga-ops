@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { QuickAddSymbolForm } from '../capture/QuickAddSymbolForm';
@@ -91,7 +92,7 @@ export function FolderAddButton({ folderId, isDuplicate, onDuplicate, autoOpen, 
   return (
     <div className="relative">
       <button ref={btnRef} aria-label="종목 추가" className="text-xs text-fg-dim hover:text-accent"
-        onClick={() => { if (open) close(); else setOpen(true); }}>＋종목</button>
+        onClick={() => { if (open) close(); else setOpen(true); }}><AppIcon name="plus" />종목</button>
       {open && createPortal(
         // Keep the inline list mounted until its sibling action gets the click;
         // collapsing it on mousedown moves Undo/Close out from under the pointer.
