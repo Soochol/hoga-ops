@@ -225,6 +225,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const [spacious, setSpacious] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoPage, setInfoPage] = useState<0 | 1>(0);
+  const [infoChangePct, setInfoChangePct] = useState(false);
   const infoId = useId();
   const closeInfo = useCallback(() => {
     setInfoOpen(false);
@@ -715,6 +716,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     krxPreviousClose={krxPreviousClose.data?.as_of === todayKst ? krxPreviousClose.data.price : null}
     vi={vi.data?.vi} height={height} page={infoPage} onNextPage={() => setInfoPage(page => page === 0 ? 1 : 0)}
+    showChangePct={infoChangePct} onToggleChangePct={() => setInfoChangePct(show => !show)}
     expectedFill={{
       price: restBook ? 0 : storedLadder || activeSinglePrice !== null ? snapshot?.exp_price ?? 0 : quote?.expected_price ?? 0,
       qty: restBook ? null : storedLadder || activeSinglePrice !== null ? snapshot?.exp_qty ?? 0 : quote?.expected_qty ?? null,

@@ -1905,7 +1905,7 @@ test('두 호가창의 시고저 칩·상세 가격은 일반 포커스로 열�
     await page.clock.runFor(200);
     const targets = [
       { target: panel.getByRole('img', { name: '시가 67,400원', exact: true }), text: '시가 67,400원' },
-      { target: panel.getByLabel('시작 가격 67,400원'), text: '전일 KRX 종가 대비 +2.12%' },
+      { target: panel.getByRole('button', { name: '시작 가격·등락률 전환' }), text: '전일 KRX 종가 대비 +2.12%' },
     ];
     for (const { target, text } of targets) {
       await target.scrollIntoViewIfNeeded();
@@ -3636,7 +3636,12 @@ test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상
   expect(commands).toHaveLength(0);
 });
 
-test('정보 영역 전체 클릭·키보드 전환과 예상 체결값 갱신은 두 창의 호가 위치를 유지한다', async ({ page }, testInfo) => {
+test('정보 시고저 함께 전환·점 버튼 페이지 전환은 두 창의 호가 위치를 유지한다', async ({ page }, testInfo) => {
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/krx-previous-close\?/, route => {
+    const as_of = new URL(route.request().url()).searchParams.get('as_of');
+    return route.fulfill({ json: { code: '005930', as_of, session_date: as_of,
+      date: '20261014', price: 65000, fetched_at_ms: Date.now() } });
+  });
   const { window, ws, commands } = await setup(page, false, false);
   const book = page.locator('.book-panel');
   for (const [panel, left, width] of [[book, 0, 680], [window, 700, 576]] as const) {
@@ -3654,6 +3659,9 @@ test('정보 영역 전체 클릭·키보드 전환과 예상 체결값 갱신�
   }));
   await expect(window).toHaveClass(/order-expanded/);
   await ws.waitForSubscribe('005930');
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(),
+    day_open: 68000, day_high: 70000, day_low: 64000, trades: [] });
+  for (const panel of [book, window]) await expect(panel.getByTestId('book-summary').getByLabel('시작 가격 68,000원')).toBeVisible();
   const before = await Promise.all([book, window].map(geometry));
   for (const panel of [book, window]) {
     const summary = panel.getByTestId('book-summary');
@@ -3669,13 +3677,35 @@ test('정보 영역 전체 클릭·키보드 전환과 예상 체결값 갱신�
     const headingBackground = await heading.evaluate(el => getComputedStyle(el).backgroundColor);
     await heading.hover();
     await expect(heading).toHaveCSS('background-color', headingBackground);
+    await expect(summary.getByText('KRX종가', { exact: true }).locator('..')).toHaveCSS('border-top-width', '1px');
     await summary.getByText('시작', { exact: true }).click();
+    await expect(summary).toHaveAttribute('data-page', '1');
+    for (const [label, pct] of [['시작', '+4.62%'], ['최고', '+7.69%'], ['최저', '-1.54%']]) {
+      const row = summary.getByRole('button', { name: `${label} 가격·등락률 전환` });
+      await expect(row).toHaveAttribute('aria-pressed', 'true');
+      await expect(row).toContainText(pct);
+    }
+    expect(await Promise.all([book, window].map(geometry))).toEqual(before);
+    await panel.screenshot({ path: testInfo.outputPath(`${panel === book ? 'book' : 'order'}-information-percent.png`) });
+    await summary.getByText('최저', { exact: true }).click();
+    await expect(summary.getByLabel('시작 가격 68,000원')).toBeVisible();
+    await summary.getByRole('button', { name: '최고 가격·등락률 전환' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(summary.getByLabel('시작 등락률 +4.62%')).toBeVisible();
+    await page.keyboard.press('Space');
+    await expect(summary.getByLabel('시작 가격 68,000원')).toBeVisible();
+    await summary.getByText('KRX종가', { exact: true }).click();
+    await summary.locator('.book-summary-heading').click({ position: { x: 4, y: 4 } });
+    await expect(summary).toHaveAttribute('data-page', '1');
+    await heading.click();
     await expect(summary).toHaveAttribute('data-page', '2');
     await expect(summary.locator('.book-summary-dot').nth(1)).toHaveClass(/is-active/);
     await expect(summary.getByText('상한가', { exact: true })).toBeVisible();
     await expect(summary.getByText('250일', { exact: true })).toHaveCount(0);
     await expect(summary.locator('.book-summary-row').first()).toHaveCSS('border-top-width', '0px');
     await summary.click({ position: { x: 5, y: (await summary.boundingBox())!.height - 4 } });
+    await expect(summary).toHaveAttribute('data-page', '2');
+    await heading.click();
     await expect(summary).toHaveAttribute('data-page', '1');
     await summary.getByRole('button', { name: /다음 정보 페이지로 전환/ }).focus();
     await page.keyboard.press('Enter');
@@ -3704,6 +3734,23 @@ test('정보 영역 전체 클릭·키보드 전환과 예상 체결값 갱신�
     await expect(panel.getByTestId('book-summary').getByText('시작', { exact: true })).toBeVisible();
   }
   expect(await Promise.all([book, window].map(geometry))).toEqual(before);
+  for (const panel of [book, window]) {
+    const frame = page.locator('[data-win]').filter({ has: panel });
+    await frame.evaluate(el => { (el as HTMLElement).style.width = '420px'; });
+    await panel.getByRole('button', { name: '종목 상세 정보', exact: true }).click();
+    let popup = page.getByRole('dialog', { name: '종목 상세 정보', exact: true });
+    const summary = popup.getByTestId('book-summary');
+    await summary.getByText('최고', { exact: true }).click();
+    await expect(summary.getByLabel('시작 등락률 +4.62%')).toBeVisible();
+    await expect(summary).toHaveAttribute('data-page', '1');
+    await popup.getByRole('button', { name: /정보 닫기/ }).click();
+    await panel.getByRole('button', { name: '종목 상세 정보', exact: true }).click();
+    popup = page.getByRole('dialog', { name: '종목 상세 정보', exact: true });
+    await expect(popup.getByLabel('시작 등락률 +4.62%')).toBeVisible();
+    await popup.getByRole('button', { name: /다음 정보 페이지로 전환/ }).click();
+    await expect(popup.getByText('상한가', { exact: true })).toBeVisible();
+    await popup.getByRole('button', { name: /정보 닫기/ }).click();
+  }
   expect(commands).toHaveLength(0);
 });
 
