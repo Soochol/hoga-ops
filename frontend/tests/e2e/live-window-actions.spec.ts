@@ -222,7 +222,7 @@ test('차트 설정은 제목줄에서 열리고 각 창에 독립적으로 저�
   await settings.click();
   await expect(dialog.getByText('이 차트에 적용')).toBeVisible();
   // 거래량 겹쳐 표시는 보조지표 편집기로 이동해 차트 설정에 표시하지 않는다.
-  await expect(dialog.getByRole('switch', { includeHidden: true })).toHaveCount(
+  await expect(dialog.locator('[role="switch"], input[type="checkbox"]')).toHaveCount(
     CHART_DISPLAY_TOGGLES.filter(toggle => toggle.key !== 'volumeOverlayEnabled').length,
   );
   const scale = dialog.getByRole('switch', { name: '캔들 기준 Y축', exact: true });

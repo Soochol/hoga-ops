@@ -63,14 +63,14 @@ describe('major indices window', () => {
   it('disables the linked stock source, legend, notices and tooltip when stock display is OFF', () => {
     const { rerender, container } = render(<MajorIndicesWindow frameProps={frameProps} />);
     fireEvent.click(screen.getByRole('button', { name: '주요 지수 설정' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: '그룹 종목 표시' }));
+    fireEvent.click(screen.getByRole('switch', { name: '그룹 종목 표시' }));
     expect(useMajorIndicesStock).toHaveBeenLastCalledWith(null, '20261015');
     expect(screen.getByRole('list', { name: '표시 항목' })).not.toHaveTextContent('삼성전자');
     expect(screen.queryByRole('status')).toBeNull();
     expect(container.querySelector('[data-stock-series]')).toBeNull();
     rerender(<MajorIndicesWindow frameProps={{ ...frameProps, symbolCode: '000660', symbolLabel: 'SK하이닉스' }} />);
     expect(useMajorIndicesStock).toHaveBeenLastCalledWith(null, '20261015');
-    fireEvent.click(screen.getByRole('checkbox', { name: '그룹 종목 표시' }));
+    fireEvent.click(screen.getByRole('switch', { name: '그룹 종목 표시' }));
     expect(useMajorIndicesStock).toHaveBeenLastCalledWith('000660', '20261015');
     expect(screen.getByRole('list', { name: '표시 항목' })).toHaveTextContent('SK하이닉스');
   });

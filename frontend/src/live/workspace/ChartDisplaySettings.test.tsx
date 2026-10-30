@@ -10,34 +10,33 @@ beforeEach(() => useWindowSettingsStore.setState({ byWindow: {} }));
 afterEach(() => useChartPrefsStore.setState(initial, true));
 
 describe('chart display settings', () => {
-  it('uses shared label tooltips for descriptions, including nested price line styles', () => {
+  it('uses shared label tooltips and edits price-line styles inline', () => {
     render(<ChartDisplaySettings windowId="a" />);
     const definition = CHART_DISPLAY_TOGGLES.find(def => def.key === 'candleLogScale')!;
     expect(screen.queryByText(definition.description)).toBeNull();
     const label = screen.getByText(definition.label, { exact: true });
     expect(label).toHaveAttribute('data-tooltip', definition.description);
-    expect(label).toHaveAttribute('tabindex', '0');
+    expect(label.tagName).toBe('LABEL');
     expect(label).not.toHaveAttribute('title');
     fireEvent.click(screen.getByLabelText('고저 극값 라벨 세부 설정'));
-    expect(screen.getByText('고가 가격선 스타일', { exact: true })).toHaveAttribute('data-tooltip',
-      '선 색상·두께를 정합니다. 기본 색상은 테마의 상승색을 따릅니다.');
+    fireEvent.click(screen.getByRole('checkbox', { name: '고가 가격선' }));
+    expect(screen.getByLabelText('고가 가격선 색상')).toHaveAttribute('type', 'color');
+    expect(screen.getByRole('combobox', { name: '고가 가격선 두께' })).toHaveValue('1');
     expect(document.querySelector('.chart-display-settings .settings-row-description')).toBeNull();
   });
   it('owns high/low line styles and their undo in the edited chart only', async () => {
     useWindowSettingsStore.getState().patch('b', 'chart', { highLowHighLineColor: '#123456', highLowHighLineWidth: 2 });
     render(<ChartDisplaySettings windowId="a" />);
     const details = screen.getByLabelText('고저 극값 라벨 세부 설정');
-    expect(details.closest('details')).not.toHaveAttribute('open');
+    expect(details).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(details);
-    expect(screen.getByRole('switch', { name: '고가 가격선' })).toHaveAttribute('aria-checked', 'false');
-    fireEvent.click(screen.getByRole('switch', { name: '고가 가격선' }));
+    expect(screen.getByRole('checkbox', { name: '고가 가격선' })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: '고가 가격선' }));
     await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 스타일 선택' }));
-    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 색상 #22C55E' }));
+    fireEvent.change(screen.getByLabelText('고가 가격선 색상'), { target: { value: '#22C55E' } });
     await waitFor(() => expect(useWindowSettingsStore.getState().byWindow.a.chart!.highLowHighLineColor).toBe('#22C55E'));
     await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 스타일 선택' }));
-    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 굵기 4px' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '고가 가격선 두께' }), { target: { value: '4' } });
     await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
     expect(useWindowSettingsStore.getState().byWindow.a.chart!.highLowHighLineWidth).toBe(4);
     fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
@@ -45,6 +44,10 @@ describe('chart display settings', () => {
     expect(useWindowSettingsStore.getState().byWindow.a.chart!.highLowHighLineColor).toBe('#22C55E');
     expect(useWindowSettingsStore.getState().byWindow.b.chart).toMatchObject({ highLowHighLineColor: '#123456', highLowHighLineWidth: 2 });
     expect(useChartPrefsStore.getState()).toMatchObject({ highLowHighLineEnabled: false, highLowHighLineColor: '', highLowHighLineWidth: 1 });
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: '고가 가격선 자동 색상' }));
+    expect(useWindowSettingsStore.getState().byWindow.a.chart!.highLowHighLineColor).toBe('');
+    expect(screen.getByRole('button', { name: '고가 가격선 자동 색상' })).toHaveAttribute('aria-pressed', 'true');
   });
   it('leaves saved volume placement values intact without exposing their controls', () => {
     useWindowSettingsStore.getState().patch('a', 'chart', { volumeOverlayEnabled: true, volumeOverlayHeight: 35 });
@@ -79,10 +82,10 @@ describe('chart display settings', () => {
     // Edit dependent lines while the master is on, then test turning it off.
     const definitions = [...CHART_DISPLAY_TOGGLES.filter(def => def.key !== 'highLowLabelsEnabled' && def.key !== 'volumeOverlayEnabled'),
       ...CHART_DISPLAY_TOGGLES.filter(def => def.key === 'highLowLabelsEnabled')];
-    expect(screen.getAllByRole('switch')).toHaveLength(definitions.length);
+    expect([...screen.getAllByRole('switch'), ...screen.getAllByRole('checkbox')]).toHaveLength(definitions.length);
     for (const def of definitions) {
       const original = useWindowSettingsStore.getState().byWindow.a.chart![def.key];
-      fireEvent.click(screen.getByRole('switch', { name: def.label }));
+      fireEvent.click(screen.getByRole(def.key.startsWith('highLow') && def.key !== 'highLowLabelsEnabled' ? 'checkbox' : 'switch', { name: def.label }));
       expect(useWindowSettingsStore.getState().byWindow.a.chart![def.key]).toBe(!original);
       expect(useChartPrefsStore.getState()[def.key]).toBe(initial[def.key]);
       await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());

@@ -1,0 +1,51 @@
+{
+  "checked_at_kst": "2026-10-30T21:17:08.320694+09:00",
+  "branch": "codex/compact-window-settings",
+  "head_and_base_sha": "c8edb4d59ec3cc5647124c4d04d4261246da5848",
+  "origin_main_sha": "c8edb4d59ec3cc5647124c4d04d4261246da5848",
+  "worktree_changes": "Uncommitted implementation on the recorded base; input hashes identify the tested source.",
+  "inputs": {
+    "scope": "All tracked/untracked frontend, hoga and tests files, plus .python-version, pyproject.toml and uv.lock. Ignored dependencies/build outputs excluded.",
+    "file_count": 2891,
+    "sha256": "55043b383f10dd3f2ed4b5f9c7c4daee793ebb45da3b12640124cfbea3a408a5"
+  },
+  "runtime": {
+    "node": "v24.13.1",
+    "react": "18.3.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "python": "Python 3.14.7",
+    "browser": "Google Chrome 156.0.8078.73"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed (app, unit-test and E2E TypeScript projects)"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/settings src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowSettingsPopover.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx src/live/workspace/ChartWindowSettings.test.tsx src/live/workspace/MajorIndicesWindow.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/ChartTradeAccountControl.test.tsx src/state/windowSettings.test.ts src/state/windowSettingsLifecycle.test.ts src/state/chartPrefs.test.ts",
+      "result": "passed: 16 files, 371 tests"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build",
+      "result": "passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/live-window-settings.spec.ts tests/e2e/live-window-actions.spec.ts tests/e2e/live-orders.spec.ts --grep '공통 24px|차트 설정은 제목줄|체결 설정과 긴|차트 헤더의 축|헤더 주문 설정은|소리 미리듣기는|주문 설정은 즉시 저장' --reporter=line",
+      "result": "passed: 9 tests; desktop Chrome, one worker; dedicated backend 20318/frontend 21318; vendor credentials explicitly blank"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "review": "Inspected Playwright screenshots for chart and order sheets; all four settings types checked in light/dark themes and at 320px width. 260px-high viewport verifies order-body scrolling with header/footer retained. Native label toggling, inline line styles, undo, window-local persistence and validation covered.",
+  "main_update": "Fast-forwarded to c8edb4d59ec3cc5647124c4d04d4261246da5848 before the recorded final checks. Earlier checks on cb2bbfd5a were not reused.",
+  "limits": "Frontend-only change. No live vendor credentials or production orders used. User development/production servers were not restarted or deployed."
+}

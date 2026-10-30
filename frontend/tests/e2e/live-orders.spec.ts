@@ -2269,11 +2269,11 @@ test('헤더 주문 설정은 차트 팝오버와 같은 UI로 즉시 저장하�
   const sharedStyles = (popover: Locator) => popover.evaluate(element => [
     ['.window-settings-heading', ['padding', 'borderBottomWidth']],
     ['.window-settings-heading h2', ['fontFamily', 'fontSize', 'fontWeight', 'color']],
-    ['.settings-editor-content', ['padding']],
-    ['.settings-editor-group', ['padding', 'borderTopWidth']],
+    ['.window-settings-body', ['padding']],
+    ['.window-settings-group', ['padding', 'borderTopWidth']],
     ['.settings-row', ['minHeight', 'padding', 'borderBottomWidth']],
     ['.settings-row [role=switch]', ['width', 'height', 'borderRadius']],
-    ['.settings-editor-footer', ['padding', 'fontSize', 'borderTopWidth']],
+    ['.window-settings-footer', ['padding', 'fontSize', 'borderTopWidth']],
   ].map(([selector, properties]) => {
     const style = getComputedStyle(element.querySelector(selector as string)!);
     return (properties as string[]).map(property => String(style[property as keyof CSSStyleDeclaration]));
@@ -2323,21 +2323,21 @@ test('헤더 주문 설정은 차트 팝오버와 같은 UI로 즉시 저장하�
     await expect(dialog).toHaveCount(0);
     await expect(settings).toBeFocused();
   }
-  await page.setViewportSize({ width: 320, height: 360 });
+  await page.setViewportSize({ width: 320, height: 260 });
   await settings.scrollIntoViewIfNeeded();
   await expect(settings).toBeInViewport();
   await settings.click();
   const bounds = (await dialog.boundingBox())!;
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(360);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(260);
   await expect(dialog.getByRole('button', { name: '주문 설정 닫기', exact: true })).toBeInViewport();
-  await expect(dialog.locator('.settings-editor-footer')).toBeInViewport();
-  const body = dialog.locator('.order-settings-body');
+  await expect(dialog.locator('.window-settings-footer')).toBeInViewport();
+  const body = dialog.locator('.window-settings-body');
   await expect.poll(() => body.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
   await dialog.getByRole('button', { name: '매도 체결 소리 들어보기', exact: true }).scrollIntoViewIfNeeded();
   await expect(dialog.getByRole('button', { name: '매도 체결 소리 들어보기', exact: true })).toBeInViewport();
-  await expect(dialog.locator('.settings-editor-footer')).toBeInViewport();
+  await expect(dialog.locator('.window-settings-footer')).toBeInViewport();
   await expect(dialog.getByRole('spinbutton')).toHaveCount(6);
   await dialog.screenshot({ path: testInfo.outputPath('order-settings-short-viewport.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();

@@ -2,9 +2,10 @@ import { useCallback, useId, useLayoutEffect, useRef, useState, type ReactNode }
 import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { WindowHeaderIcon } from '../../workspace/WindowHeaderIcon';
+import './WindowSettingsEditor.css';
 
 /** Shared title-bar settings button. Window actions stay visible at every width. */
-export function WindowSettingsPopover({ title, scope, width = 320, render, open: controlledOpen, onOpenChange, disabled = false }: {
+export function WindowSettingsPopover({ title, scope = '이 창에 적용', width = 380, render, open: controlledOpen, onOpenChange, disabled = false }: {
   title: string;
   scope?: string;
   width?: number;
@@ -33,6 +34,7 @@ export function WindowSettingsPopover({ title, scope, width = 320, render, open:
   return <>
     <button ref={anchor} type="button" className="live-window-settings live-icon-button"
       aria-label={title} aria-haspopup="dialog" aria-expanded={open}
+      data-tooltip={title}
       aria-controls={open ? dialogId : undefined}
       disabled={disabled} onPointerDown={event => event.stopPropagation()} onClick={() => setOpen(!open)}>
       <WindowHeaderIcon kind="settings" />

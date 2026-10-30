@@ -21,6 +21,8 @@ const glyphs = {
   saveView: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M7 7h10M7 12h10M7 17h6" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 6v6l4 2" /></>,
   arrowRight: <path d="M4 12h16m-6-6 6 6-6 6" />,
+  chevronRight: <path d="m9 5 7 7-7 7" />,
+  play: <path d="m8 4 12 8-12 8Z" />,
   arrowLeft: <path d="M20 12H4m6-6-6 6 6 6" />,
   arrowDownRight: <path d="M5 5l14 14M9 19h10V9" />,
   arrowToRight: <path d="M3 12h14m-5-5 5 5-5 5M21 4v16" />,
