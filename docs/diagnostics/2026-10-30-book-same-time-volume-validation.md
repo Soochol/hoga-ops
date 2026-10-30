@@ -1,7 +1,7 @@
 # 호가 정보 전일 전체/동시간 거래량 비교 검증
 
 - 검증일: 2026-10-30 KST.
-- Base: `fbc6267ffd919bc354fdd4b964559dc55ffe9aad` 위의 작업 소스.
+- Base: `f9ad45cd13fe2bd0c9f719f2de5cf77c39f3b180` 위의 작업 소스.
 - 10호가·호가주문의 `어제보다` 행은 클릭으로 `동시간비`와 전환한다. 라벨·값을
   함께 바꾸고 기존 행 높이·위치·중립색·소수 둘째 자리를 유지한다. 100%가 동일한
   거래량이며 증감률이 아니다. 선택은 창별로 인라인 정보와 팝오버가 공유한다.
@@ -54,11 +54,13 @@ Playwright 1.60.0, Python 3.14.7, 시스템 Chrome. workers=1, 빈 벤더 자격
 
 ## 입력 지문
 
-2,845개 경로의 SHA-256:
-`b5315a9f5c83523a9a78d01d0fac5234e84c8642b24c6d8741117cf7ab79bf64`.
+2,850개 경로의 SHA-256:
+`e4b988c368c2cc48f8440bcd128e6b578d2287ed90d741a0af2b155dbb8bc1e6`.
 
 `git ls-files --cached --others --exclude-standard`의 일반 파일 중 `frontend/`, `hoga/`,
 `tests/` 아래와 루트 `pyproject.toml`, `uv.lock`, `.python-version`, `VERSION`, `ruff.toml`을
 정렬했다. 각 `UTF-8 경로 + NUL + SHA-256(파일 바이트)`를 이어 붙여 해시를 계산했다.
 진단 문서·CONTEXT.md·DESIGN.md는 검사 입력에서 제외했다. 검사 입력과 실행 조건이
 동일할 때만 기록을 재사용하며, 변경 시 영향받는 검사를 다시 실행한다.
+
+최신 main 병합 후 검사 대상 HEAD: `95602b2ff8127fb4c7194f797ceea9ba0d4a3c58`. 위 검사를 모두 다시 실행했다.
