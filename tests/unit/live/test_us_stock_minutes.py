@@ -108,7 +108,7 @@ async def test_every_page_uses_governor_and_native_period_with_cursor(monkeypatc
     assert result.pages == 2 and not result.failed and not result.more
     assert [c[2:] for c in calls] == [(False, ""), (True, "next")]
     assert all(c[1] == dict(stex_tp="ND", stk_cd="NVDA", strt_dt="20261018", tic_scope="5",
-                            upd_stkpc_tp="0", exrt_appl_tp="0") for c in calls)
+                            upd_stkpc_tp="1", exrt_appl_tp="0") for c in calls)
     assert all(s["api_id"] == "usa06011" and s["priority"] == "user_visible" for s in submits)
     assert len({s["key"] for s in submits}) == 2
     assert [b.volume for b in result.bars] == [7079, 7079]

@@ -1,0 +1,101 @@
+{
+  "recorded_at": "2026-10-30T20:27:13.774641+09:00",
+  "workspace": "/home/dev/.codex/worktrees/d9c1/hoga-ops",
+  "head_sha": "51732d1b0182cc00077967e16e0c30934874c635",
+  "base_sha": "51732d1b0182cc00077967e16e0c30934874c635",
+  "working_tree": "Uncommitted source; exact validation input hashes below.",
+  "tools": {
+    "python": "Python 3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "os": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_us_daily_candles.py tests/unit/live/test_us_stock_minutes.py tests/unit/live/test_us_stock_adjustment.py tests/unit/live/test_us_stock_realtime.py tests/api/test_us_daily_routes.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "133 passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/api/usStockMinuteHistory.test.tsx src/api/usStockRealtime.test.ts src/live/useLiveChartData.test.tsx",
+      "result": "37 passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed (app, unit and E2E TypeScript projects)"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test us-daily-candles.spec.ts us-stock-minute-history.spec.ts us-stock-minutes.spec.ts us-stock-realtime.spec.ts --reporter=list",
+      "result": "31 passed on final source (1.4m); includes Vite production build",
+      "ports": [
+        20359,
+        21359
+      ],
+      "workers": 1,
+      "log": "/tmp/hoga-us-adjusted-e2e-final.log"
+    }
+  ],
+  "live_evidence": "live-probe.json",
+  "limitations": [
+    "No deployment or restart of the user app/server.",
+    "2022 US minute history was empty upstream; split boundary minute cache behavior covered by deterministic tests."
+  ],
+  "input_fingerprints": {
+    "algorithm": "Each file SHA-256; each group SHA-256 of sorted path:hash JSON with compact separators. Groups include all git-tracked and nonignored added paths under the named roots.",
+    "groups": {
+      "hoga/": {
+        "files": 337,
+        "sha256": "b85060ae13e31dd6c95827b4baccc1425ab46a07edf8a67310b54b4b7361bb46"
+      },
+      "tests/": {
+        "files": 515,
+        "sha256": "5fd48911c30c7b87e38205d142583ab1bc048d2a71e61953759a5a2cb28f42ef"
+      },
+      "frontend/src/": {
+        "files": 1791,
+        "sha256": "68407d50ef2047d8fd4f3704bfbd01618d3ae22a8695d5a0a4fe65486b842d42"
+      },
+      "frontend/tests/": {
+        "files": 206,
+        "sha256": "fc33a6a20c5d713a0cd45d0c2c3c65d58531737772b1b4d3b37cc75203f45938"
+      }
+    },
+    "changed_and_configuration_sha256": {
+      ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+      "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+      "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+      "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+      "frontend/src/api/usDailyCandles.ts": "cc6a25dd6ada9a47730800e5921be4f161b1be084be31fb96b295a7397da45ff",
+      "frontend/src/api/usStockMinuteHistory.test.tsx": "d3359d223fd4ec271a797b46a33ba62771962f20b0f2acc3f94f0928ca407466",
+      "frontend/src/api/usStockRealtime.test.ts": "7c7d56599486dae0c9ad5771d54f0c0c5433b7c6329213709ab57fcbc7894e3c",
+      "frontend/src/api/usStockRealtime.ts": "55636aac7bcd28fe2c518d1e2ad39d20394af30dcf3feab4db6350cc50fdd39f",
+      "frontend/src/live/useLiveChartData.ts": "9466ea282d6bb48397329e2f3654d5a4c8a5b21a195c707689c5c7833ea3e01e",
+      "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+      "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+      "frontend/tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+      "frontend/tsconfig.node.json": "90a22c920cbc14624fb4658b58f15c875abf3234224f3933f211849c3ada3242",
+      "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+      "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+      "hoga/live/kiwoom_us_daily_candles.py": "ccf5e4a108b4440ae6d20d635eb7c50a3987b561b1aa9ad7fdf31e544f8cee5c",
+      "hoga/live/us_daily_candles.py": "9285f70e66f8c4adf43ced8cc151c87303b1f6c5d8825c51b6b7d2f4941d2680",
+      "hoga/live/us_market_api.py": "2e93a3193e5aa734472100aabecc34c391056bd24619dedd9d7509206ace5aec",
+      "hoga/live/us_stock_current_day.py": "31d0aedfc9949ddd47426e71ea446e4124dbcaa8bc8b89cd4e2b3a50cd73b7ee",
+      "hoga/live/us_stock_minutes.py": "d74fd82afa3af2700bf39e2ec61e283034a8697e55762b82cea40117fed0966f",
+      "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+      "ruff.toml": "422277b5742ea124f25690201cb540117de803f74719052a6dbdc3bfa8aa7d07",
+      "tests/api/test_us_daily_routes.py": "86a8e750e8bdd9eb75831b833fd374ac55a70a2575a83dd77942f6c9af1be177",
+      "tests/unit/api/test_rest_wire_schema_contract.py": "09f41ae29637ad87d6a6418250357619ac9d48e4b3b477d3d81c4dadfb86427a",
+      "tests/unit/live/test_us_daily_candles.py": "c9fb0b9b3d7275e75edc7d8dab4856df51831944ffbcf5cd5291a5a83703fc81",
+      "tests/unit/live/test_us_stock_adjustment.py": "37053d57f340a745685d9e559cabf06d6d776557ddc797624b91dceaba105d36",
+      "tests/unit/live/test_us_stock_minutes.py": "3fa79808c45fa2daafa965071068481951cde375e76749c6127a12675c48f0de",
+      "tests/unit/live/test_us_stock_realtime.py": "30db4108a2b8492ea56c65108b3945f10fba346f1488ae0586ebff4c8fc2a0d1",
+      "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+    }
+  }
+}

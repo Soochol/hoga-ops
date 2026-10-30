@@ -13,6 +13,7 @@ export interface UsDailyMetadata {
   market_timezone: string;
   source: string;
   price_basis: string;
+  adjusted_as_of?: string | null;
   currency: string;
   session_scope: string;
   history_start: string | null;
@@ -42,14 +43,15 @@ export function useUsStocks() {
 }
 export function usDailyRefetchInterval(meta: UsDailyMetadata | undefined, currentTo: string, count: number): number | false {
   // Continue bounded partial walks while they make progress; never spin on errors.
-  if (meta?.refresh_status === 'partial' && count < 8) return 1000;
+  const maxWalks = meta?.price_basis === 'adjusted' ? 32 : 8;
+  if (meta?.refresh_status === 'partial' && count < maxWalks) return 1000;
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).replaceAll('-', '');
   return currentTo >= today ? 300_000 : false;
 }
 export function useUsStockDaily(instrument: LiveInstrument | null, timeframe: LiveTimeframe, from: string, to: string) {
   const stock = instrument?.kind === 'us_stock' ? instrument : null;
   return useQuery<UsStockDailyResponse & { realtimeBaseMs?: number }>({
-    queryKey: ['live', 'us-stock-daily', stock?.exchange, stock?.symbol, timeframe, from, to],
+    queryKey: ['live', 'us-stock-daily', stock?.exchange, stock?.symbol, timeframe, from, to, 'adjusted-USD'],
     enabled: !!stock && ['D', 'W', 'M'].includes(timeframe),
     queryFn: async ({ signal }) => {
       const realtimeBaseMs = Date.now();
@@ -60,15 +62,17 @@ export function useUsStockDaily(instrument: LiveInstrument | null, timeframe: Li
     staleTime: 300_000,
     refetchInterval: (query) => {
       const interval = usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount);
-      return timeframe === 'D' && interval === 300_000 ? 60_000 : interval;
+      // Historical adjusted prices also change when the NY adjustment day rolls.
+      return timeframe === 'D' && interval === 300_000 ? 60_000 : interval || 300_000;
     },
-    refetchOnWindowFocus: (query) => usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount) !== false,
+    refetchOnWindowFocus: true,
   });
 }
 
 
 export interface UsStockMinuteMetadata extends UsMinuteMetadata {
   price_basis: string;
+  adjusted_as_of?: string | null;
   currency: string;
   bar_limit: number;
   pages_fetched: number;
@@ -95,7 +99,8 @@ export function mergeUsMinuteBars(...parts: UsDailyBar[][]): UsDailyBar[] {
 }
 
 export function retainUsMinuteWindow(old: UsStockMinuteResponse | undefined, next: UsStockMinuteResponse): UsStockMinuteResponse {
-  if (!old || old.instrument_key !== next.instrument_key || old.timeframe !== next.timeframe) return next;
+  if (!old || old.instrument_key !== next.instrument_key || old.timeframe !== next.timeframe
+    || !sameUsMinuteBasis(old, next)) return next;
   const candles = mergeUsMinuteBars(old.candles, next.candles);
   const keepCursor = !!old.candles.length && !!next.candles.length && old.candles[0].t_ms < next.candles[0].t_ms;
   return { ...next, candles, from: candles[0]?.trading_date ?? next.from,
@@ -103,10 +108,16 @@ export function retainUsMinuteWindow(old: UsStockMinuteResponse | undefined, nex
       ...(keepCursor ? { next_cursor: old.minute_metadata.next_cursor, more_available: old.minute_metadata.more_available } : {}) } };
 }
 
+function sameUsMinuteBasis(a: UsStockMinuteResponse, b: UsStockMinuteResponse): boolean {
+  return a.minute_metadata.price_basis === b.minute_metadata.price_basis
+    && a.minute_metadata.currency === b.minute_metadata.currency
+    && a.minute_metadata.adjusted_as_of === b.minute_metadata.adjusted_as_of;
+}
+
 export function useUsStockMinutes(instrument: LiveInstrument | null, timeframe: LiveTimeframe) {
   const stock = instrument?.kind === 'us_stock' ? instrument : null;
   const client = useQueryClient();
-  const key = ['live', 'us-stock-minute', stock?.exchange, stock?.symbol, timeframe];
+  const key = ['live', 'us-stock-minute', stock?.exchange, stock?.symbol, timeframe, 'adjusted-USD'];
   const url = `/api/live/us-stock-minute-candles?exchange=${stock?.exchange}&symbol=${encodeURIComponent(stock?.symbol ?? '')}&timeframe=${timeframe}`;
   const latest = useQuery<UsStockMinuteResponse & { realtimeBaseMs?: number }>({
     queryKey: key,
@@ -123,13 +134,17 @@ export function useUsStockMinutes(instrument: LiveInstrument | null, timeframe: 
     refetchIntervalInBackground: true,
   });
   const history = useInfiniteQuery({
-    queryKey: [...key, 'history'],
+    queryKey: [...key, 'history', latest.data?.minute_metadata.price_basis,
+      latest.data?.minute_metadata.currency, latest.data?.minute_metadata.adjusted_as_of],
     enabled: false,
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam, signal }) => {
-      const cursor = pageParam ?? client.getQueryData<UsStockMinuteResponse>(key)?.minute_metadata.next_cursor;
+      const baseline = client.getQueryData<UsStockMinuteResponse>(key);
+      const cursor = pageParam ?? baseline?.minute_metadata.next_cursor;
       if (!cursor) throw new Error('과거 조회 연결 정보가 없습니다. 차트를 새로고침하세요.');
       const page = await apiCall<UsStockMinuteResponse>(`${url}&cursor=${encodeURIComponent(cursor)}`, { signal });
+      if (baseline && !sameUsMinuteBasis(baseline, page))
+        throw new Error('수정주가 기준일이 바뀌었습니다. 차트를 새로고침하세요.');
       if (!page.candles.length && page.minute_metadata.refresh_status !== 'normal')
         throw new Error('과거 조회에 실패했습니다. 다시 시도하세요.');
       return page;
@@ -146,7 +161,8 @@ export function useUsStockMinutes(instrument: LiveInstrument | null, timeframe: 
   const pages = history.data?.pages;
   const data = useMemo(() => {
     if (!latest.data) return undefined;
-    const candles = mergeUsMinuteBars(...(history.data?.pages ?? []).map(p => p.candles), latest.data.candles);
+    const matching = (history.data?.pages ?? []).filter(p => sameUsMinuteBasis(p, latest.data!));
+    const candles = mergeUsMinuteBars(...matching.map(p => p.candles), latest.data.candles);
     return { ...latest.data, candles, from: candles[0]?.trading_date ?? latest.data.from };
   }, [history.data, latest.data]);
   const candles = data?.candles ?? [];

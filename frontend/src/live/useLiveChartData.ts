@@ -274,8 +274,11 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const usBaseBundle = useMemo(() => activeUsStock && usCandles.data
     ? buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: INDEX_BUCKET_MS[timeframe as keyof typeof INDEX_BUCKET_MS], observedSessions: isMinuteTimeframe(timeframe), candles: usCandles.data.candles.map(c => ({ ...c, volume: 0 })) })
     : null, [activeUsStock, usCandles.data, timeframe]);
+  const usAdjustedAsOf = isMinuteTimeframe(timeframe)
+    ? usMinuteCandles.data?.minute_metadata.adjusted_as_of : usDailyCandles.data?.daily_metadata.adjusted_as_of;
   const usBundle = useMemo(() => overlayUsBundle(usBaseBundle, usRealtime, timeframe,
-    usCandles.data?.realtimeBaseMs ?? 0, today), [usBaseBundle, usRealtime, timeframe, usCandles.data, today]);
+    usCandles.data?.realtimeBaseMs ?? 0, today, usAdjustedAsOf),
+  [usBaseBundle, usRealtime, timeframe, usCandles.data, today, usAdjustedAsOf]);
   const remoteHistory = !!activeIndexId || !!activeUsStock;
   const stockMinuteMetadata = usMinuteCandles.data?.minute_metadata;
   const minuteMetadata = stockMinuteMetadata ?? indexCandles.data?.minute_metadata;
