@@ -1,7 +1,9 @@
 # 10호가·호가주문 정보란 전환 검증
 
 - 검증일: 2026-10-30 KST.
-- Base / 반영한 main: `1d485b5e15f6c559f109a17024b1c037b3074958`.
+- Base / 반영한 main: `9c8ce7441fae24da1b8fceb9a28c1df55633b767`.
+- PR #2333에서 최신 main을 반영한 `574c9d04a899cb5675aa6fba8e45e28caa39a776`의
+  소스에 아래 검사를 다시 실행했다. 이 기록 문서의 후속 갱신은 검사 입력을 바꾸지 않는다.
 - 해당 base 위의 작업 파일을 검증했다. 시고저 행 클릭은 세 값의 가격/등락률을 함께
   전환하고, 정보 페이지 전환은 상단 점 두 개 버튼에만 연결했다. 최저와 KRX종가
   사이에 기존 border 토큰의 1px 구분선을 추가했다.
@@ -36,7 +38,7 @@ workers=1, 슬롯 291의 전용 포트 20291/21291과 데이터·dist 경로를 
 
 ## 입력 지문
 
-SHA-256: `9e54cc4e25dd97451b62de5e46c821a4e0ae37c1a6e413bddcb63de2f46a3b5d`
+SHA-256: `c8d3502d3a523d9497313c3bb75c7e1a85cd11ca70b13028f7336d5ea39cf70c`
 (2,354개 경로).
 
 `git ls-files --cached --others --exclude-standard`의 일반 파일 중 `frontend/`, `hoga/`,
