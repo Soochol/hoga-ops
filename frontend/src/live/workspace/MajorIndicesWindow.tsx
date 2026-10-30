@@ -6,6 +6,12 @@ import { stockCloseRange } from './majorIndicesStockModel';
 import { useMajorIndicesStock } from './useMajorIndicesStock';
 import { majorIndicesTimeAxis } from './majorIndicesTimeAxis';
 import { unixMsToKSTHhmm } from '../../util/time';
+import { useWindowSettingsStore } from '../../state/windowSettings';
+import { seedSettingsForWindow } from '../../state/windowSettingsLifecycle';
+import { DEFAULT_MAJOR_INDICES_SETTINGS } from '../../state/majorIndicesSettings';
+import { MajorIndicesSettings } from './MajorIndicesSettings';
+import { WindowHeaderAction } from './WindowHeaderAction';
+import { WindowSettingsPopover } from './WindowSettingsPopover';
 import './MajorIndicesWindow.css';
 
 type Overview = ReturnType<typeof useMajorIndices>;
@@ -17,10 +23,16 @@ const timeLabel = (ms: number) => {
 };
 
 export function MajorIndicesWindow({ frameProps }: { frameProps: Omit<WindowFrameProps, 'children' | 'headerContent'> }) {
-  const model = useMajorIndices();
-  const code = frameProps.isIndex ? null : frameProps.symbolCode;
+  const windowId = frameProps.id;
+  useLayoutEffect(() => seedSettingsForWindow({ id: windowId, kind: 'market-indices' }), [windowId]);
+  const settings = useWindowSettingsStore(state => state.byWindow[windowId]?.majorIndices) ?? DEFAULT_MAJOR_INDICES_SETTINGS;
+  const model = useMajorIndices(settings.indices);
+  const code = !settings.showStock || frameProps.isIndex ? null : frameProps.symbolCode;
   const stock = useMajorIndicesStock(code, model.date);
   return <WindowFrame {...frameProps}>
+    <WindowHeaderAction><WindowSettingsPopover title="주요 지수 설정" scope="이 창에 적용"
+      render={() => <MajorIndicesSettings settings={settings}
+        onChange={patch => useWindowSettingsStore.getState().patch(windowId, 'majorIndices', patch)} />} /></WindowHeaderAction>
     <MajorIndicesChart key={model.date} model={model} stock={stock} stockLabel={code ? frameProps.symbolLabel ?? code : null} />
   </WindowFrame>;
 }
@@ -103,8 +115,15 @@ function MajorIndicesChart({ model, stock, stockLabel }: {
   };
   const cursorX = cursorTime === null ? left : x(cursorTime);
   const tooltipX = Math.max(2, Math.min(width - 132, cursorX + (cursorX > left + (right - left) * .6 ? -132 : 10)));
-  return <div ref={container} className="major-indices-chart" data-testid="major-indices-chart">
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${model.date} 코스피·코스닥·K200 당일 등락률 비교 · 오른쪽 Y축 등락률 %${stockLabel ? ` · ${stockLabel} 종가 · 독립 배율` : ''}`}
+  return <div className="major-indices-view">
+    <div className="major-indices-legend text-xs text-fg-dim" role="list" aria-label="표시 항목">
+      {model.series.map(series => <span key={series.id} role="listitem">
+        <i aria-hidden style={{ background: series.color }} />{series.label}
+      </span>)}
+      {stockLabel && <span role="listitem"><i aria-hidden style={{ background: 'var(--accent)' }} />{stockLabel}</span>}
+    </div>
+    <div ref={container} className="major-indices-chart" data-testid="major-indices-chart">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${model.date} ${model.series.map(series => series.label).join('·')} 당일 등락률 비교 · 오른쪽 Y축 등락률 %${stockLabel ? ` · ${stockLabel} 종가` : ''}`}
       onPointerMove={event => { if (!pinned) setHover(pointerFraction(event)); }}
       onPointerLeave={() => { if (!pinned) setHover(null); }}
       onClick={event => {
@@ -127,7 +146,7 @@ function MajorIndicesChart({ model, stock, stockLabel }: {
           <path d={linePath(s.points, x, y, point => point.percent)} fill="none" stroke={s.color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
           {s.points.length > 0 && <circle cx={x(s.points.at(-1)!.tMs)} cy={y(s.points.at(-1)!.percent)} r={2} fill={s.color} />}
         </g>)}
-        {stockLabel && stock.points.length > 0 && <g data-stock-series="" aria-label={`${stockLabel} 종가 · 독립 배율`}>
+        {stockLabel && stock.points.length > 0 && <g data-stock-series="" aria-label={`${stockLabel} 종가`}>
           <path d={linePath(stock.points, x, stockY, point => point.close)} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           <circle cx={x(stock.points.at(-1)!.tMs)} cy={stockY(stock.points.at(-1)!.close)} r={2} fill="var(--accent)" />
         </g>}
@@ -147,5 +166,5 @@ function MajorIndicesChart({ model, stock, stockLabel }: {
       {hovered.map(s => <div key={s.id}><i aria-hidden style={{ background: s.color }} /><span>{s.label}</span><span>{formatPercent(s.at)}</span></div>)}
       {stockLabel && <div><i aria-hidden style={{ background: 'var(--accent)' }} /><span>{stockLabel}</span><span>{stockAt === null ? '—' : `${stockAt.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}원`}</span></div>}
     </div>}
-  </div>;
+  </div></div>;
 }
