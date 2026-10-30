@@ -91,6 +91,25 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     await expect(detached.getByTestId('floating-workspace')).toBeVisible();
     await expect(frame).toHaveCount(0);
     await expect(detached.getByRole('navigation')).toHaveCount(0);
+    await expect(detached.getByTestId('app-content-grid')).toHaveAttribute('data-floating-tool', '');
+    const header = detached.locator('.live-window-titlebar');
+    expect(await header.evaluate(el => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
+    expect(await header.getByRole('button', { name: '항상 위', exact: true }).evaluate(el => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
+    const toolId = await app.evaluate(({ BrowserWindow }, url) => BrowserWindow.getAllWindows().find(win => win.webContents.getURL() === url).id, detached.url());
+    const parentId = await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).getParentWindow().id, toolId);
+    await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isVisible(), toolId)).toBe(true);
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).minimize(), parentId);
+      // OS minimize/restore requests are asynchronous. Await the owner's actual
+      // hidden state before restoring, rather than cancelling an in-flight minimize.
+      if (process.env.HOGA_DESKTOP_TEST_PLATFORM === 'x11')
+        await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isMinimized(), parentId)).toBe(true);
+      await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isVisible(), toolId)).toBe(false);
+      await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).restore(), parentId);
+      if (process.env.HOGA_DESKTOP_TEST_PLATFORM === 'x11')
+        await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isMinimized(), parentId)).toBe(false);
+      await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isVisible(), toolId)).toBe(true);
+    }
     await detached.getByRole('button', { name: '항상 위', exact: true }).click();
     await expect.poll(() => detached.evaluate(() => window.hogaDesktop.controls.floatingState())).toMatchObject({ alwaysOnTop: true });
     const floatingSize = await detached.evaluate(() => ({ w: innerWidth, h: innerHeight }));

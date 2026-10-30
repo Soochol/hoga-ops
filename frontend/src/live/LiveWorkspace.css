@@ -187,3 +187,11 @@
 
 .live-floating-shell, .live-floating-workspace { min-width: 0; min-height: 0; overflow: hidden; }
 .live-floating-workspace { padding: 0; gap: 0; }
+
+/* Frameless native tools keep one title bar. Interactive descendants remain clickable. */
+.live-floating-shell[data-floating-tool] .live-window-titlebar {
+  -webkit-app-region: drag;
+}
+.live-floating-shell[data-floating-tool] .live-window-titlebar :is(button, input, select, textarea, a, [role="button"], [tabindex]) {
+  -webkit-app-region: no-drag;
+}

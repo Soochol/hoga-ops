@@ -1,0 +1,108 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "d451039c9dea4fe99a8d56ea43aafcda3a7b152f",
+  "origin_main_sha": "d451039c9dea4fe99a8d56ea43aafcda3a7b152f",
+  "branch": "codex/floating-tool-windows",
+  "scope": [
+    "All Electron LivePage floating windows use their workspace as non-modal parent, frame:false, skipTaskbar:true and minimizable:false. Linux requests utility type.",
+    "Only the owning workspace hides/restores its ready tools. Loading while hidden stays hidden. Separate workspace tools remain visible. Owner closure removes its tools.",
+    "Frameless tools retain one compact header, native drag on blank header areas and no-drag on interactive controls. Existing top, maximize, dock and original layout restoration remain usable."
+  ],
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E projects"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/App.test.tsx src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowFrame.pin.test.tsx src/live/workspace/WorkspaceCanvas.errorBoundary.test.tsx src/live/workspace/useBookSessionDisplay.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/DataWindow.test.tsx src/api/sharedLiveSeries.test.tsx src/api/liveTickOverlay.test.tsx src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx",
+      "result": "11 files, 445 passed (20.36s), after integrating main"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build",
+      "result": "passed as Playwright webServer startup after integrating main; existing large-chunk advisory"
+    },
+    {
+      "cwd": "frontend",
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-tool-pr-2344 npx playwright test tests/e2e/live-floating-windows.spec.ts tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts tests/e2e/book-availability.spec.ts tests/e2e/krx-aftermarket.spec.ts --reporter=line",
+      "result": "52 passed (2.3m), after integrating main"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run typecheck && npm run lint && npm test",
+      "result": "passed; 20 unit tests; npm test also rebuilds desktop"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/desktop.spec.cjs --grep 'floating controls|tool windows hide' --reporter=line",
+      "result": "2 passed (3.0s)"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=wayland npx playwright test tests/e2e/desktop.spec.cjs --grep 'floating controls|tool windows hide' --reporter=line",
+      "result": "2 passed (3.0s)"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/full-app.spec.cjs --repeat-each=3 --reporter=line",
+      "result": "3 passed (33.6s); actual production React + isolated FastAPI + Electron; 9 total minimize/restore cycles, header drag/no-drag CSS, click top/maximize/restore/dock, viewport and original rect; repeated after integrating main"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=wayland npx playwright test tests/e2e/full-app.spec.cjs --reporter=line",
+      "result": "1 passed (10.2s); 3 minimize/restore cycles plus same full integration flow; repeated after integrating main"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "input_reuse": "Desktop main/preload/tests/fixtures/config/dependencies and backend/root runtime inputs are byte-identical to fb01d8858 (git diff fb01d8858..verified_code_head -- desktop hoga tests pyproject.toml uv.lock .python-version VERSION ruff.toml is empty). Reuse desktop type/lint/unit and native fixture results. Frontend type/unit/build/browser and full native integrations were repeated after integrating main.",
+  "fingerprint_method": "Sorted tracked/nonignored regular paths; digest UTF-8 path + NUL + SHA256(file bytes).digest(). Include root pyproject.toml, uv.lock, .python-version, VERSION and ruff.toml. Documentation and ignored build outputs excluded.",
+  "frontend_inputs": {
+    "file_count": 2019,
+    "sha256": "a18dc58d9d68fc9c0f0578ad48cdc447024e8eca639f224ee73a3b765c239cb3"
+  },
+  "combined_inputs": {
+    "file_count": 2935,
+    "sha256": "83e1ef713aeb5a585ac0b15ae597dce2ee8afdbfa80e6709fd7428066f99daed"
+  },
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3 frontend / 6.0.2 desktop",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0 frontend / 1.64.1 desktop",
+    "electron": "44.8.0",
+    "python": "3.14.7",
+    "browser_chrome": "156.0.8078.73",
+    "workers": 1,
+    "browser_backend_port": 20439,
+    "browser_frontend_port": 21439,
+    "vendor_credentials": "Empty environment variables; isolated native FastAPI test blanks all six Kiwoom accounts and mock account.",
+    "user_servers": "5173/8000 preserved; native test servers use random isolated ports; no permanent launcher/install paths changed"
+  },
+  "native_evidence": {
+    "x11": "xprop verifies transient parent XID, _NET_WM_STATE_SKIP_TASKBAR and _NET_WM_WINDOW_TYPE_DIALOG (WM maps requested utility + parent to dialog). Frame/content dimensions have zero inset.",
+    "wayland": "API-driven parent/frameless and hide/restore integration passed. Shell taskbar appearance and compositor-driven titlebar minimization were not visually inspected.",
+    "platform_scope": "Linux X11 and Wayland verified; Windows/macOS not run in this environment."
+  },
+  "regressions_resolved": [
+    "Document navigation hides the old page without requiring a visible event for its replacement; refresh visibility at each DOMContentLoaded and read current main-frame state instead of stale queued payloads.",
+    "Linux transient dialogs can reject native maximize; fill monitor work area and keep explicit restore bounds.",
+    "Closing native parent/child windows during shutdown must not notify a destroyed owner webContents."
+  ],
+  "visual_qa": [
+    "electron-tool-window.png inspected: single compact header; close followed by maximize, no duplicate in-content titlebar, chart fills tool viewport. Native frame absence additionally asserted through zero frame insets."
+  ],
+  "references": [
+    "https://www.electronjs.org/docs/latest/api/browser-window#page-visibility"
+  ],
+  "original_implementation_sha": "fb01d8858aa54077d9121461d5ecf9203633589f",
+  "verified_code_head": "78399f4f1422cbf611713be8dad92424e9893f87",
+  "main_update": "Integrated PR #2345 (d451039c9) after main advanced immediately before merge. DESIGN.md retained both approved additions. Repeated affected frontend and real-app integration checks on the combined code."
+}

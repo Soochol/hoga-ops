@@ -21,6 +21,6 @@ export interface DesktopControls {
 declare global {
   interface Window {
     /** Narrow app controls from the sandboxed preload; no arbitrary IPC or URLs. */
-    hogaDesktop?: Readonly<{ strictConfig: true; apiOrigin: string; controls?: DesktopControls }>;
+    hogaDesktop?: Readonly<{ floatingToolWindow?: boolean; strictConfig: true; apiOrigin: string; controls?: DesktopControls }>;
   }
 }

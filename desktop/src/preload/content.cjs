@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('hogaDesktop', Object.freeze({
       return () => ipcRenderer.removeListener('desktop:zoom-state', listener);
     },
   }),
+  floatingToolWindow: process.argv.includes('--hoga-floating-tool-window'),
   strictConfig: true,
   apiOrigin: argument ? argument.slice('--hoga-api-origin='.length) : '',
 }));
@@ -82,3 +83,9 @@ ipcRenderer.on('desktop:zoom-changed', (_event, factor) => {
 window.addEventListener('DOMContentLoaded', () => {
   if (pendingZoom !== undefined) { showZoom(pendingZoom); pendingZoom = undefined; }
 }, { once: true });
+
+// Refresh on each document load as well: navigation hides the old document,
+// but an initially visible replacement need not emit another visibilitychange.
+const refreshOwnerVisibility = () => { void ipcRenderer.invoke('desktop:content-visibility').catch(() => {}); };
+document.addEventListener('visibilitychange', refreshOwnerVisibility);
+window.addEventListener('DOMContentLoaded', refreshOwnerVisibility, { once: true });
