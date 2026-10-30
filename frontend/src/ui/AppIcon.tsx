@@ -23,6 +23,7 @@ const glyphs = {
   arrowRight: <path d="M4 12h16m-6-6 6 6-6 6" />,
   chevronRight: <path d="m9 5 7 7-7 7" />,
   play: <path d="m8 4 12 8-12 8Z" />,
+  help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 0 1 5 .2c0 1.6-2.5 2-2.5 3.8M12 16.5h.01" /></>,
   arrowLeft: <path d="M20 12H4m6-6-6 6 6 6" />,
   arrowDownRight: <path d="M5 5l14 14M9 19h10V9" />,
   arrowToRight: <path d="M3 12h14m-5-5 5 5-5 5M21 4v16" />,

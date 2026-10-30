@@ -1,0 +1,4 @@
+/* Compact binary controls shared by window sheets and the indicator editor. */
+.window-settings-switch { width: 1.625rem; height: .9375rem; }
+.window-settings-switch-knob { width: .6875rem; height: .6875rem; transform: translateX(1px); }
+.window-settings-switch[aria-checked=true] > .window-settings-switch-knob { transform: translateX(.75rem); }

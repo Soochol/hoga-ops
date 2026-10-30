@@ -1,6 +1,7 @@
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
 import ToggleRow from '../settings/ToggleRow';
 import ColorSwatchPicker from './ColorSwatchPicker';
+import { IndicatorExplanation } from './IndicatorExplanation';
 
 export default function VolumeDistributionConfig() {
   const ind = useWindowIndicators();
@@ -54,9 +55,9 @@ export default function VolumeDistributionConfig() {
           </div>
         </div>
       </div>
-      <div className="text-xs leading-5 text-fg-dim">
+      <IndicatorExplanation>
         거래일 내 체결량이 가장 많은 구간을 별도 색상으로 강조합니다.
-      </div>
+      </IndicatorExplanation>
     </div>
   );
 }

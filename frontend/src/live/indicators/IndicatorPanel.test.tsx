@@ -299,7 +299,8 @@ describe('IndicatorPanel', () => {
     // Controls are available without enabling the live indicator.
     expect(screen.getByTestId('settings-toggle-askPeakIntraMax')).toBeTruthy();
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
-    // 설명은 카드 안팎 어디에 있든 계속 읽힌다(카테고리 표가 소유).
+    // 카테고리의 설명은 필요할 때 도움말에서 읽는다. 실제 지표는 추가하지 않는다.
+    fireEvent.click(screen.getByRole('button', { name: '당일 최대벽 설명' }));
     expect(screen.getByText(/거래일별 10호가의 최대 매수·매도벽/)).toBeTruthy();
   });
 
@@ -610,6 +611,7 @@ describe('IndicatorPanel', () => {
   it('프로그램 순매수 라벨 클릭 → 설명 표시', () => {
     renderPanel();
     openDetail('프로그램 순매수');
+    fireEvent.click(screen.getByRole('button', { name: '프로그램 순매수 설명' }));
     expect(screen.getByText(/시간별 프로그램 누적 순매수 금액/)).toBeTruthy();
   });
 
@@ -785,27 +787,28 @@ describe('IndicatorPanel', () => {
 
   it('renders MovingAverageConfig in the right pane', () => {
     renderPanel();
-    expect(screen.getByText('설정한 봉 수의 평균 가격을 선으로 표시합니다.')).toBeTruthy();
+    expect(screen.getByRole('spinbutton', { name: '기간1 길이' })).toBeInTheDocument();
+    expect(screen.queryByText('설정한 봉 수의 평균 가격을 선으로 표시합니다.')).toBeNull();
   });
 
   it('clicking a category label navigates the right pane to that indicator detail', () => {
     renderPanel();
     // Default detail is 이동평균선.
-    expect(screen.getByText(/설정한 봉 수의 평균 가격/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '이동평균선' })).toBeInTheDocument();
 
     // 거래량 → 거래량 detail (MA detail gone). The label is a button; the
     // on/off control is the separate role=checkbox icon.
     openDetail('거래량');
-    expect(screen.getByText(/거래량을 막대로/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '거래량' })).toBeInTheDocument();
     expect(screen.queryByText(/설정한 봉 수의 평균 가격/)).toBeNull();
 
     // 외국인 순매수량 → its detail.
     openDetail('외국인 순매수량');
-    expect(screen.getByText(/외국인.*순매수·총매수·총매도 수량/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '외국인 순매수량' })).toBeInTheDocument();
 
     // 기관 순매수량 → its detail.
     openDetail('기관 순매수량');
-    expect(screen.getByText(/기관.*순매수·총매수·총매도 수량/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '기관 순매수량' })).toBeInTheDocument();
   });
 
 
@@ -893,9 +896,9 @@ describe('IndicatorPanel', () => {
   it('체크박스 클릭은 상세 pane을 전환하지 않는다', () => {
     renderPanel();
     // 기본 상세는 이동평균선. 다른 카테고리 체크박스를 눌러도 이동평균선 상세가 유지된다.
-    expect(screen.getByText(/설정한 봉 수의 평균 가격/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '이동평균선' })).toBeInTheDocument();
     togglePresence('거래량');
-    expect(screen.getByText(/설정한 봉 수의 평균 가격/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '이동평균선' })).toBeInTheDocument();
     expect(screen.queryByText(/거래량을 막대로/)).toBeNull();
   });
 
@@ -1162,6 +1165,7 @@ describe('IndicatorPanel', () => {
   it('일봉 이동평균선 라벨 클릭 → DailyMovingAverageConfig 노출', () => {
     renderPanel();
     openDetail('일봉 이동평균선');
+    fireEvent.click(screen.getByRole('button', { name: '일봉 이동평균선 설명' }));
     expect(screen.getByText(/일봉 종가의 이동평균선을 분봉 차트에 표시/)).toBeTruthy();
   });
 

@@ -1,0 +1,69 @@
+/* Keep the existing modal/navigation layout; simplify only indicator editor chrome. */
+.settings-editor.indicator-editor .settings-editor-heading { min-height: 2.75rem; padding: var(--space-sm) var(--space-lg); }
+.settings-editor.indicator-editor .settings-editor-detail-heading { padding: var(--space-md) var(--space-lg) var(--space-sm); }
+.indicator-detail-title { display: flex; align-items: center; gap: var(--space-xs); }
+.indicator-detail-title > h3 { min-width: 0; margin: 0; }
+.indicator-detail-title > button { flex-shrink: 0; }
+.settings-editor.indicator-editor .indicator-instance-actions { gap: var(--space-xs); margin-top: var(--space-xs); font-size: var(--text-xs); }
+.settings-editor.indicator-editor .indicator-instance-actions button { min-height: 1.5rem; padding: var(--space-2xs) var(--space-xs); border: 0; border-radius: var(--radius-md); color: var(--fg-dim); }
+.indicator-editor .indicator-instance-actions button:hover { background: var(--bg-input-hover); color: var(--fg); }
+.indicator-editor .indicator-help-description { margin-top: var(--space-sm); padding: var(--space-sm); background: var(--bg-subtle); border-radius: var(--radius-md); }
+.settings-editor.indicator-editor .settings-editor-content { padding: var(--space-sm) var(--space-lg) var(--space-lg); }
+.settings-editor.indicator-editor .indicator-config > :not([hidden]) ~ :not([hidden]) { margin-top: var(--space-sm); }
+.indicator-editor .indicator-config > .space-y-3 > :not([hidden]) ~ :not([hidden]),
+.indicator-editor .indicator-config > div > .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: var(--space-xs); }
+.settings-editor.indicator-editor .settings-row { align-items: center; min-height: 1.5rem; padding: 0; gap: var(--space-sm); }
+.settings-editor.indicator-editor .settings-dependent .settings-row { min-height: 1.5rem; }
+.settings-editor.indicator-editor .settings-row > div:first-child { align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
+.indicator-editor .settings-row-label { display: flex; align-items: center; flex: 1; padding-block: var(--space-2xs); line-height: 1.5; cursor: pointer; }
+.indicator-editor .opacity-50 .settings-row-label { cursor: not-allowed; }
+.settings-editor.indicator-editor .settings-row-control { max-width: 60%; }
+.settings-editor.indicator-editor .settings-dependent { padding-left: var(--space-sm); margin: var(--space-xs) 0 var(--space-xs) var(--space-sm); border-left-width: 1px; }
+.settings-editor.indicator-editor .settings-dependent > summary { padding-block: var(--space-xs); }
+.indicator-editor .indicator-parameter-row { min-height: 1.5rem; }
+.indicator-editor .indicator-config input:not([type=checkbox]):not([type=radio]):not([type=range]),
+.indicator-editor .indicator-config select { min-height: 1.5rem; padding-block: var(--space-2xs); padding-inline: var(--space-xs); }
+.indicator-editor .indicator-config [aria-label$="스타일 선택"] { min-height: 1.5rem; }
+.settings-editor.indicator-editor .ma-config-row { min-height: 1.5rem; border-top: 0; }
+.settings-editor.indicator-editor .ma-config-grid { grid-template-columns: 32px 56px 88px minmax(68px, 1fr) 24px; gap: var(--space-sm); }
+.settings-editor.indicator-editor .ma-config-heading { padding-bottom: var(--space-xs); }
+.settings-editor.indicator-editor .ma-config-visibility { display: flex; align-items: center; min-height: 1.5rem; cursor: pointer; }
+.settings-editor.indicator-editor .ma-config-add { margin-top: var(--space-sm); min-height: 1.5rem; padding: var(--space-2xs) var(--space-sm); }
+.settings-editor.indicator-editor .indicator-line-row { min-height: 1.5rem; gap: var(--space-xs); }
+.indicator-editor .indicator-line-label { display: flex; align-items: center; min-height: 1.5rem; cursor: pointer; }
+.settings-editor.indicator-editor .indicator-style-preview { margin: 0 0 var(--space-md); padding: var(--space-sm); }
+.settings-editor.indicator-editor .indicator-style-preview > figcaption { margin-bottom: var(--space-xs); }
+.settings-editor.indicator-editor .indicator-style-preview > svg { max-height: 6rem; }
+.indicator-editor .indicator-explanation { line-height: 1.5; }
+.indicator-config-notice { margin-top: var(--space-xs); font-size: var(--text-xs); color: var(--fg-dim); line-height: 1.5; }
+.settings-editor.indicator-editor .settings-editor-footer { min-height: 2.25rem; padding: var(--space-xs) var(--space-lg); gap: var(--space-sm); }
+.settings-editor.indicator-editor .settings-editor-footer-actions { gap: var(--space-sm); }
+.settings-editor.indicator-editor .settings-editor-footer-actions > .indicator-catalog-add { min-height: 1.75rem; padding: var(--space-xs) var(--space-lg); }
+@container (max-width: 340px) {
+  .settings-editor.indicator-editor .ma-config-grid { grid-template-columns: 28px 44px minmax(46px, 1fr) 20px; gap: var(--space-xs); }
+  .settings-editor.indicator-editor .ma-config-style { grid-column: 2 / 4; grid-row: 2; padding-bottom: var(--space-xs); }
+  .settings-editor.indicator-editor .ma-config-remove { grid-column: 4; }
+  .settings-editor.indicator-editor .ma-config-heading > span:nth-child(4) { display: none; }
+}
+@container (max-width: 220px) {
+  .settings-editor.indicator-editor .ma-config-grid { grid-template-columns: 28px minmax(0, 1fr) 20px; }
+  .settings-editor.indicator-editor .ma-config-source { grid-column: 2; grid-row: 2; max-width: none; }
+  .settings-editor.indicator-editor .ma-config-style { grid-column: 2; grid-row: 3; }
+  .settings-editor.indicator-editor .ma-config-remove { grid-column: 3; }
+  .settings-editor.indicator-editor .ma-config-heading > span:nth-child(3) { display: none; }
+  .settings-editor.indicator-editor .indicator-line-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--space-xs); padding-block: var(--space-2xs); }
+  .settings-editor.indicator-editor .indicator-line-row > label { grid-column: 2; grid-row: 1; }
+  .settings-editor.indicator-editor .indicator-line-row > div { grid-column: 2; grid-row: 2; }
+  .settings-editor.indicator-editor .settings-row-control { max-width: 100%; }
+}
+@media (max-width: 460px) {
+  .settings-editor.indicator-editor .settings-editor-content,.settings-editor.indicator-editor .settings-editor-detail-heading { padding-inline: var(--space-sm); }
+  .settings-editor.indicator-editor .settings-row { flex-wrap: wrap; gap: var(--space-xs); }
+}
+@media (pointer: coarse) {
+  .settings-editor.indicator-editor .settings-row,.settings-editor.indicator-editor .settings-dependent .settings-row,
+  .settings-editor.indicator-editor .indicator-line-row,.indicator-editor .indicator-line-label,
+  .settings-editor.indicator-editor .ma-config-visibility,.indicator-editor .indicator-parameter-row { min-height: 2.75rem; }
+  .indicator-editor .indicator-config input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  .indicator-editor .indicator-config select { min-height: 2.75rem; font-size: 1rem; }
+}

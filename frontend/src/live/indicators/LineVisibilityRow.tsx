@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useContext, useId, type ReactNode } from 'react';
 import { lineVisible, type IndicatorLineKey } from '../../state/indicatorLineVisibility';
-import { ToggleSwitch } from '../settings/SettingsRow';
+import { CompactSettingsContext, ToggleSwitch } from '../settings/SettingsRow';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
 /** The switch affects drawing only; style controls stay editable when hidden. */
@@ -21,9 +21,12 @@ export default function LineVisibilityRow({ lineKey, label, toggleLabel, childre
 export function LineDisplayRow({ label, toggleLabel = `${label} 표시`, checked, onToggle, children, testId }: {
   label: string; toggleLabel?: string; checked: boolean; onToggle: () => void; children?: ReactNode; testId?: string;
 }) {
+  const id = useId();
+  const compact = useContext(CompactSettingsContext);
   return <div className="indicator-line-row" data-testid={testId}>
-    <ToggleSwitch size="sm" label={toggleLabel} checked={checked} onClick={onToggle} />
-    <span className={`min-w-0 flex-1 text-sm ${checked ? 'text-fg' : 'text-fg-dim'}`}>{label}</span>
+    <ToggleSwitch id={id} size="sm" label={toggleLabel} checked={checked} onClick={onToggle} />
+    {compact ? <label htmlFor={id} className={`indicator-line-label min-w-0 flex-1 text-sm ${checked ? 'text-fg' : 'text-fg-dim'}`}>{label}</label>
+      : <span className={`min-w-0 flex-1 text-sm ${checked ? 'text-fg' : 'text-fg-dim'}`}>{label}</span>}
     {children}
   </div>;
 }

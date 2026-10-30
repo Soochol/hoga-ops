@@ -1,8 +1,8 @@
 import { AppIcon } from '../../ui/AppIcon';
-import { useState } from 'react';
+import { useContext, useId, useState } from 'react';
 import { useThemePrefsStore } from '../../state/themePrefs';
 import { resolveMaColor } from '../../util/maColor';
-import { ToggleSwitch } from '../settings/SettingsRow';
+import { CompactSettingsContext, ToggleSwitch } from '../settings/SettingsRow';
 import type { LiveMAConfig } from '../../state/livePage';
 import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
 import MAStylePicker from './MAStylePicker';
@@ -44,6 +44,8 @@ export default function MovingAverageRow({
   index, config, canRemove, onChange, onRemove, periodLabel, editorLayout = false,
 }: Props) {
   const label = periodLabel ?? `기간${index + 1}`;
+  const controlId = useId();
+  const compact = useContext(CompactSettingsContext);
   const theme = useThemePrefsStore(s => s.themePreference);
   const [edit, setEdit] = useState<{ base: number; text: string } | null>(null);
   const draft = edit?.base === config.period ? edit.text : String(config.period);
@@ -73,10 +75,11 @@ export default function MovingAverageRow({
     className={`${editorLayout ? 'ma-config-period' : 'w-[72px]'} text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums`} />;
   const remove = canRemove ? <button type="button" aria-label="슬롯 삭제" onClick={onRemove}
     className={`${editorLayout ? 'ma-config-remove' : ''} text-fg-dim hover:text-fg text-base leading-none`}><AppIcon name="close" /></button> : <span aria-hidden="true" />;
-  return editorLayout ? <div className="ma-config-grid ma-config-row">
-      <ToggleSwitch className="ma-config-visibility" size="sm" label={`${label} 표시`}
+  const visibility = <ToggleSwitch id={controlId} className={compact ? undefined : 'ma-config-visibility'} size="sm" label={`${label} 표시`}
         checked={config.enabled && !config.hidden}
-        onClick={() => onChange({ enabled: true, hidden: config.enabled && !config.hidden })} />
+        onClick={() => onChange({ enabled: true, hidden: config.enabled && !config.hidden })} />;
+  return editorLayout ? <div className="ma-config-grid ma-config-row">
+      {compact ? <label htmlFor={controlId} className="ma-config-visibility"><span className="sr-only">{label} 표시</span>{visibility}</label> : visibility}
       {period}{source}{style}{remove}</div>
     : <div className={`${MA_ROW_GRID} py-1.5`}><div className="text-sm text-fg tabular-nums">{label}</div>{style}{source}{period}{remove}</div>;
 }

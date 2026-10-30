@@ -39,7 +39,8 @@ export default function ToggleRow({
   return (
     <SettingsRow label={highlightLabel(label, highlight)} description={description} testId={testId} disabled={disabled}
       controlId={compact ? controlId : undefined} className={className}>
-      <ToggleSwitch id={controlId} label={label} checked={checked} onClick={onToggle} disabled={disabled} aria-description={description} />
+      <ToggleSwitch id={controlId} label={label} checked={checked} onClick={onToggle} disabled={disabled} aria-description={description}
+        data-tooltip={compact ? description : undefined} />
       {actions}
     </SettingsRow>
   );

@@ -4,6 +4,7 @@ import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
 import MAStylePicker from './MAStylePicker';
 import MASourceSelect from './MASourceSelect';
+import { IndicatorExplanation } from './IndicatorExplanation';
 
 export default function EnvelopeConfig() {
   const settings = useWindowIndicators();
@@ -54,7 +55,7 @@ export default function EnvelopeConfig() {
             })} />
         </LineVisibilityRow>
       ))}
-      <p className="text-xs text-fg-dim">중심선은 단순이동평균이며 상·하단선은 중심선에서 이격률(%)만큼 떨어져 있습니다. 설정한 봉 수가 쌓이면 표시되며, 세 선의 두께는 함께 적용됩니다.</p>
+      <IndicatorExplanation summary="세 선의 두께는 함께 적용됩니다.">중심선은 단순이동평균이며 상·하단선은 중심선에서 이격률(%)만큼 떨어져 있습니다. 설정한 봉 수가 쌓이면 표시되며, 세 선의 두께는 함께 적용됩니다.</IndicatorExplanation>
     </div>
   );
 }

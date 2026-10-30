@@ -1,4 +1,5 @@
 import { MA_SLOT_LIMIT } from '../../state/livePage';
+import { AppIcon } from '../../ui/AppIcon';
 import MovingAverageRow from './MovingAverageRow';
 import ToggleRow from '../settings/ToggleRow';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
@@ -43,9 +44,9 @@ export default function DailyMovingAverageConfig() {
         type="button"
         onClick={addMA}
         disabled={atLimit}
-        className="ma-config-add mt-3 px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded disabled:opacity-50 disabled:cursor-not-allowed"
+        className="ma-config-add inline-flex items-center gap-1 mt-3 px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        ⊕ 기간 추가
+        <AppIcon name="plus" size={12} />기간 추가
       </button>
     </div>
   );

@@ -44,6 +44,8 @@ export const CATEGORIES: ReadonlyArray<{
   label: string;
   group: GroupId;
   description: string;
+  /** Display limits remain visible even when explanatory help is collapsed. */
+  notice?: string;
   placement: Placement;
 }> = [
   { id: 'moving-average',  label: '이동평균선',       group: 'top',  placement: 'overlay',
@@ -57,6 +59,7 @@ export const CATEGORIES: ReadonlyArray<{
   { id: 'envelope', label: '엔벨로프', group: 'top', placement: 'overlay',
     description: '단순이동평균선 위아래에 설정한 비율의 가격 밴드를 표시합니다.' },
   { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top',  placement: 'overlay',
+    notice: '분봉 전용',
     description: '일봉 종가의 이동평균선을 분봉 차트에 표시합니다. 분봉 전용입니다.' },
   { id: 'volume',          label: '거래량',           group: 'top',  placement: 'pane',
     description: '봉별 거래량을 막대로 표시합니다.' },
@@ -69,12 +72,16 @@ export const CATEGORIES: ReadonlyArray<{
   { id: 'fill-strength',   label: '체결강도',         group: 'hoga', placement: 'pane',
     description: '분봉별 매수·매도 체결량을 막대로 표시합니다.' },
   { id: 'volume-distribution', label: '연속체결 매물대 분포', group: 'hoga', placement: 'overlay',
+    notice: '동시호가는 제외합니다.',
     description: '거래일별 가격대에 쌓인 연속체결량을 표시합니다. 동시호가는 제외합니다.' },
   { id: 'trade-volume-poc', label: '당일 최대 매물대', group: 'hoga', placement: 'overlay',
+    notice: '동시호가는 제외합니다.',
     description: '연속체결량이 가장 많은 가격대를 밴드로 표시합니다. 동시호가는 제외합니다.' },
   { id: 'peak-walls',      label: '당일 최대벽',     group: 'hoga', placement: 'overlay',
+    notice: '분봉 전용',
     description: '거래일별 10호가의 최대 매수·매도벽을 표시합니다. 분봉 전용입니다.' },
   { id: 'depth-heatmap',   label: '호가 잔량 히트맵', group: 'hoga', placement: 'overlay',
+    notice: '분봉 전용 · 보이는 구간의 최대 잔량 기준',
     description: '10호가 잔량을 색상 강도로 표시합니다. 보이는 구간의 최대 잔량 기준이며, 분봉 전용입니다.' },
   { id: 'foreign-net',     label: '외국인 순매수량',  group: 'broker',  placement: 'pane',
     description: '외국인의 일별 순매수·총매수·총매도 수량을 표시합니다.' },

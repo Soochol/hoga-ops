@@ -5,6 +5,7 @@ import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { VolumeOverlaySettings } from '../workspace/VolumeOverlaySettings';
 import { isSecondTimeframe } from '../../state/livePage';
 import SignColorLegend from './SignColorLegend';
+import { IndicatorExplanation } from './IndicatorExplanation';
 
 // Placement edits the existing chart-window values, only for the primary volume.
 export default function VolumeConfig() {
@@ -36,9 +37,9 @@ export default function VolumeConfig() {
           </label>
         ))}
       </fieldset>
-      <p className="text-xs text-fg-dim">{compare
+      <IndicatorExplanation>{compare
         ? '직전 봉보다 거래량이 많으면 양봉 색상, 같거나 적으면 음봉 색상으로 표시합니다. 직전 봉이 없으면 캔들 색상을 사용합니다.'
-        : '해당 캔들의 양봉·음봉 색상으로 표시합니다.'}</p>
+        : '해당 캔들의 양봉·음봉 색상으로 표시합니다.'}</IndicatorExplanation>
       <SignColorLegend up={compare ? '거래량 증가' : '상승봉'} down={compare ? '같거나 감소' : '하락봉'} />
       {draft?.instanceId && <p className="text-xs text-fg-dim">추가한 거래량은 별도 패널에 표시합니다. 캔들에 겹쳐 표시는 기본 거래량에서 설정할 수 있습니다.</p>}
       {seconds && <p className="text-xs text-fg-dim">수집된 체결의 관측 거래량입니다. 미수집 구간은 포함되지 않습니다.</p>}

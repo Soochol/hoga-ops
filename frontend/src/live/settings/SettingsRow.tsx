@@ -1,4 +1,5 @@
 import { createContext, useContext, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import './SettingsControls.css';
 
 /** Compact window editors use delegated tooltips; other editors keep prose. */
 export const SettingsDescriptionTooltipContext = createContext(false);
@@ -65,7 +66,7 @@ export function ToggleSwitch({
   checked: boolean;
   size?: keyof typeof SWITCH_SIZE;
 }) {
-  const compact = useContext(CompactSettingsContext) && size === undefined;
+  const compact = useContext(CompactSettingsContext);
   const dim = SWITCH_SIZE[size ?? 'md'];
   return (
     <button
