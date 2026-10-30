@@ -122,8 +122,8 @@ it.each(WINDOW_KINDS)('%s 항상 위 버튼은 상태와 토글을 제공하며 
   expect(button).toHaveAttribute('aria-pressed', 'true');
   expect(button.closest('.live-window-titlebar')!.querySelectorAll('[title]')).toHaveLength(0);
   const maximize = screen.getByRole('button', { name: '창 최대화' });
-  expect(maximize.previousElementSibling).toHaveAccessibleName(/창 닫기$/);
-  expect(maximize.nextElementSibling).toBeNull();
+  expect(maximize.nextElementSibling).toHaveAccessibleName(/창 닫기$/);
+  expect(maximize.nextElementSibling!.nextElementSibling).toBeNull();
   await userEvent.click(button);
   expect(onToggleAlwaysOnTop).toHaveBeenCalledWith('w1');
   expect(onHandleDown).not.toHaveBeenCalled();
