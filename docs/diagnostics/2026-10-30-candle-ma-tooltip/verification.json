@@ -1,0 +1,101 @@
+{
+  "verified_at": "2026-10-30T10:26:26.495485+09:00",
+  "head_and_integrated_main_sha": "c5bf36a1b103c72451e5721206cdf28770ef8401",
+  "state": "Validated after integrating current origin/main; the following commit updates only this verification record and reuses the same source, test, dependency, configuration and runtime inputs.",
+  "scope": "Add MA price and signed close-to-MA gap to candle tooltip; existing cross-window tooltip synchronization is unchanged (hover-only behavior remains a proposal).",
+  "input_fingerprint": {
+    "algorithm": "SHA-256 over sorted relative path, NUL, SHA-256(file bytes)",
+    "digest": "788a04d7c91c9d12db211422f1c3a0f5c2be7da337f4d76b5e31114bc6681eeb",
+    "file_count": 2352,
+    "paths": [
+      "frontend/src",
+      "frontend/tests",
+      "frontend/plugins",
+      "frontend/scripts",
+      "frontend/public",
+      "hoga",
+      "tests/fixtures",
+      "frontend/package.json",
+      "frontend/package-lock.json",
+      "frontend/vite.config.ts",
+      "frontend/playwright.config.ts",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.test.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/tsconfig.node.json",
+      "frontend/eslint.config.js",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ]
+  },
+  "environment": {
+    "os": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "browser": "Google Chrome 156.0.8078.73",
+    "versions": {
+      "typescript": "6.0.3",
+      "vitest": "4.1.7",
+      "vite": "8.0.16",
+      "@playwright/test": "1.60.0",
+      "react": "18.3.1",
+      "lightweight-charts": "5.2.0"
+    },
+    "e2e": {
+      "workers": 1,
+      "slot": 12,
+      "backend_port": 20012,
+      "frontend_port": 21012,
+      "data_dir": "/tmp/hoga-e2e-data-12",
+      "dist_dir": "/tmp/hoga-e2e-dist-12",
+      "vendor_credentials": "empty per committed playwright.config.ts; original configuration preserved"
+    }
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed; app, unit-test and E2E TypeScript projects",
+      "cwd": "/home/dev/.codex/worktrees/8b0d/hoga-ops/frontend",
+      "exit_code": 0
+    },
+    {
+      "command": "npx vitest run src/live/CandleMovingAverageDetails.test.tsx src/live/CandleTooltip.test.tsx src/live/candleTooltipModel.test.ts src/live/legendRows.test.ts src/live/indicators/MovingAverageOverlay.test.tsx src/live/indicators/DailyMovingAverageOverlay.test.tsx src/live/workspace/MajorIndicesWindow.test.tsx src/live/workspace/BookPanel.test.tsx src/live/workspace/OrderWindow.test.tsx",
+      "result": "9 files, 432 tests passed; includes the book/order/index modules changed by integrated main",
+      "cwd": "/home/dev/.codex/worktrees/8b0d/hoga-ops/frontend",
+      "exit_code": 0
+    },
+    {
+      "command": "npx playwright test tests/e2e/candle-moving-average-tooltip.spec.ts --reporter=line",
+      "result": "2 passed (14.1s); 320px trading-desk and 800px toss-light; exact plotted values, stationary live update, bounds, pointer exit, no page errors; vite production build passed in webServer startup",
+      "cwd": "/home/dev/.codex/worktrees/8b0d/hoga-ops/frontend",
+      "exit_code": 0
+    },
+    {
+      "command": "npx eslint src/live/CandleMovingAverageDetails.tsx src/live/CandleMovingAverageDetails.test.tsx tests/e2e/candle-moving-average-tooltip.spec.ts tests/e2e/helpers/candleMovingAverageHarness.tsx",
+      "result": "passed; no warnings",
+      "cwd": "/home/dev/.codex/worktrees/8b0d/hoga-ops/frontend",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "cwd": "/home/dev/.codex/worktrees/8b0d/hoga-ops",
+      "result": "passed",
+      "exit_code": 0
+    }
+  ],
+  "notes": [
+    "Existing CandleTooltip ref-in-render lint warnings remain outside this addition; new files lint clean.",
+    "Browser tests mount the actual candle-tooltip and MovingAverageOverlay with real lightweight-charts APIs; daily projection and repeated/window-specific registries are covered by unit tests.",
+    "No backend source, wire contract, or user development server was changed.",
+    "Integrated main changed book/order/index-window UI and related tests, but no candle-tooltip/MA source, dependencies, wire contracts, or verification configuration; typecheck, selected unit coverage, browser checks and production build were rerun after integration."
+  ],
+  "previous_validation": {
+    "verified_at": "2026-10-30T10:23:53.227496+09:00",
+    "base_sha": "9c8ce7441fae24da1b8fceb9a28c1df55633b767",
+    "input_digest": "e254bf82cd012090c2f74999e62e0b02ec7100c30e422d990a83ef703bbc0f76",
+    "result": "typecheck, 129 tests, 2 browser tests and build passed before main integration"
+  },
+  "validated_source_commit": "f02396d7ccae0dbf708ceff351e14a96e794ef9a"
+}
