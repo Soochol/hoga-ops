@@ -1,0 +1,45 @@
+{
+  "recorded_at_kst": "2026-10-30T08:59:18.146762+09:00",
+  "base_sha": "605644c7ebbd0cc2faf5daa12b87f1a3ac2d6ab5",
+  "state": "uncommitted working tree on base_sha",
+  "frontend_diff_sha256": "0c67da67997c701eaf3e2c9dce7e95610fe46797c14800f354a1d6ce1da98d41",
+  "inputs": {
+    "scopes": [
+      "frontend/src",
+      "frontend/tests",
+      "frontend/package.json",
+      "frontend/package-lock.json",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.test.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/vite.config.ts",
+      "frontend/vitest.config.ts"
+    ],
+    "files": 1972,
+    "algorithm": "sha256(path + NUL + sha256(contents), sorted tracked paths)",
+    "sha256": "bb9cdfb5bb7b3b8695857b23f26a2bb31a55588e083f9970c269111c8843c04f"
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0"
+  },
+  "checks": [
+    {
+      "command": "cd frontend && npx vitest run src/rightrail/QuoteRow.test.tsx src/watchlist/WatchlistDrawer.memo.test.tsx src/watchlist/WatchlistDrawer.test.tsx",
+      "result": "89 passed in 3 files"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; application, unit and E2E projects"
+    },
+    {
+      "command": "cd frontend && npx vite build",
+      "result": "passed in 4.45s; existing chunk-size warning"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ]
+}
