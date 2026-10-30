@@ -45,6 +45,7 @@ _KIS_TRADE_PAYLOAD_KEYS = {"trades"}
 _KIWOOM_TRADE_EXTRA_KEYS = {
     "prev_close", "day_open", "day_high", "day_low",
     "fill_strength_pct", "vs_prev_volume_pct", "cum_volume", "vwap", "cum_value",
+    "vs_prev_same_time_volume_pct",
 }
 
 # 실측 0D(주식호가잔량, 000020) — 10호가 전 단계 채움, KRX 장중.
@@ -512,11 +513,29 @@ def test_trade_summary_metrics_cross_check_against_golden_frames():
         assert t.payload["cum_value"] == int(v["14"]) * 1_000_000
 
 
+def test_same_time_volume_ratio_from_recorded_frames():
+    expected = {"000660": 138.78, "005930": 116.90, "373220": 93.95}
+    for row in _t2_frames("0B"):
+        tick = parse_real_row(row, date="20260720", now_ms=T2_NOW_MS)
+        assert tick is not None
+        assert tick.payload["vs_prev_same_time_volume_pct"] == expected[row["item"]]
+        assert tick.payload["vs_prev_same_time_volume_pct"] != tick.payload["vs_prev_volume_pct"]
+
+
+@pytest.mark.parametrize("raw", ["", "0", "-0", "NaN", "Infinity", "-Infinity", "x", "138.78"])
+def test_same_time_volume_bad_or_absent_does_not_drop_trade(raw):
+    row = {**REAL_0B, "values": {**REAL_0B["values"], "851": raw}}
+    tick = parse_real_row(row, date=DATE, now_ms=NOW_MS)
+    assert tick is not None
+    assert "vs_prev_same_time_volume_pct" not in tick.payload
+    assert tick.payload["trades"][0]["price"] == 686000
+
+
 def test_trade_summary_metrics_absent_when_not_received():
     """미수신 FID 는 키를 싣지 않는다 — day_ohlc 와 같은 규약."""
     t = parse_real_row(REAL_0B, date=DATE, now_ms=NOW_MS)
     assert t is not None
-    for key in ("fill_strength_pct", "vs_prev_volume_pct", "vwap", "cum_value"):
+    for key in ("fill_strength_pct", "vs_prev_volume_pct", "vs_prev_same_time_volume_pct", "vwap", "cum_value"):
         assert key not in t.payload
     # REAL_0B 에는 13(누적거래량)이 있으므로 이건 실린다.
     assert t.payload["cum_volume"] == 98232

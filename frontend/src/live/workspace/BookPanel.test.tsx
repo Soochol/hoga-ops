@@ -830,6 +830,49 @@ describe('BookPanel', () => {
   });
 });
 
+describe('거래량 전일 전체·동시간비 전환', () => {
+  it('라벨과 값을 함께 바꾸며 페이지·다른 표시 선택을 유지한다', () => {
+    renderPanel({ summary: { ...SUMMARY, vsPrevVolumePct: 61.7, vsPrevSameTimeVolumePct: 176.29 } });
+    const summary = screen.getByTestId('book-summary');
+    const row = screen.getByRole('button', { name: '어제보다 거래량 비교 기준 전환' });
+    expect(row).toHaveTextContent('어제보다61.70%');
+    fireEvent.click(within(row).getByText('61.70%'));
+    expect(screen.getByRole('button', { name: '동시간비 거래량 비교 기준 전환' })).toHaveTextContent('동시간비176.29%');
+    expect(summary).toHaveAttribute('data-page', '1');
+    fireEvent.click(screen.getByRole('button', { name: '시작 가격·등락률 전환' }));
+    fireEvent.click(screen.getByText('예상 체결가'));
+    expect(screen.getByText('동시간비')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    expect(screen.getByRole('button', { name: '동시간비 거래량 비교 기준 전환' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByText('동시간비'));
+    expect(screen.getByRole('button', { name: '어제보다 거래량 비교 기준 전환' })).toHaveTextContent('61.70%');
+  });
+
+  it.each([null, 0, -1, NaN, Infinity])('동시간비 %s는 대시로 표시하고 전일 전체 비율로 대체하지 않는다', value => {
+    renderPanel({ summary: { ...SUMMARY, vsPrevSameTimeVolumePct: value } });
+    fireEvent.click(screen.getByText('어제보다'));
+    expect(screen.getByRole('button', { name: '동시간비 거래량 비교 기준 전환' })).toHaveTextContent('동시간비−');
+    fireEvent.click(screen.getByText('동시간비'));
+    expect(screen.getByText('104.42%')).toBeInTheDocument();
+  });
+
+  it('시세 갱신과 정보 팝오버 재개방에도 비교 기준을 공유한다', () => {
+    const props = { snapshot: snap(), baselinePrice: PREV_CLOSE,
+      summary: { ...SUMMARY, vsPrevSameTimeVolumePct: 176.29 }, trades: [], maskRatio: false, lastPrice: null };
+    const view = render(<BookPanel {...props} />);
+    fireEvent.click(screen.getByText('어제보다'));
+    view.rerender(<BookPanel {...props} summary={{ ...props.summary, vsPrevSameTimeVolumePct: 100 }} />);
+    expect(screen.getByText('100.00%')).toHaveClass('text-fg');
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    const dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    expect(within(dialog).getByRole('button', { name: '동시간비 거래량 비교 기준 전환' })).toHaveTextContent('100.00%');
+    fireEvent.click(within(dialog).getByText('동시간비'));
+    fireEvent.click(within(dialog).getByRole('button', { name: '상세 정보 닫기' }));
+    expect(screen.getByRole('button', { name: '어제보다 거래량 비교 기준 전환' })).toHaveTextContent('104.42%');
+  });
+});
+
 describe('예상 체결·VI 가격 자리 전환', () => {
   it.each(['예상 체결가', '예상 체결량'])('%s를 누르면 같은 두 행에 VI 가격을 표시하고 다시 돌아온다', label => {
     renderPanel({ expectedFill: { price: 251_500, qty: 30 } });

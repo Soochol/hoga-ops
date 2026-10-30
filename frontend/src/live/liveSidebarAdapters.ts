@@ -187,6 +187,7 @@ export function latestAfterHoursTotals(
 export type LiveTradeSummary = {
   fillStrengthPct: number | null; // FID 228
   vsPrevVolumePct: number | null; // FID 30 — 오늘 누적 ÷ 전일 전량 × 100
+  vsPrevSameTimeVolumePct: number | null; // FID 851 — 같은 시장·전일 동시간 누적 대비 %, 서버가 정규화
   cumVolume: number | null;       // FID 13
   cumValue: number | null;        // FID 14 — 파서가 원 단위로 정규화
   dayOpen: number | null;         // FID 16
@@ -196,7 +197,7 @@ export type LiveTradeSummary = {
 };
 
 export const EMPTY_TRADE_SUMMARY: LiveTradeSummary = {
-  fillStrengthPct: null, vsPrevVolumePct: null, cumVolume: null, cumValue: null,
+  fillStrengthPct: null, vsPrevVolumePct: null, vsPrevSameTimeVolumePct: null, cumVolume: null, cumValue: null,
   dayOpen: null, dayHigh: null, dayLow: null, prevClose: null,
 };
 
@@ -220,6 +221,7 @@ export function latestTradeSummary(trade: readonly RawSnapshot[]): LiveTradeSumm
   const fields: [keyof LiveTradeSummary, string][] = [
     ['fillStrengthPct', 'fill_strength_pct'],
     ['vsPrevVolumePct', 'vs_prev_volume_pct'],
+    ['vsPrevSameTimeVolumePct', 'vs_prev_same_time_volume_pct'],
     ['cumVolume', 'cum_volume'],
     ['cumValue', 'cum_value'],
     ['dayOpen', 'day_open'],
@@ -287,6 +289,7 @@ const QUOTE_SUMMARY_FALLBACK: readonly (readonly [
  *
  * **새 조회를 만들지 않는다.** `/api/live/quotes`(키움 `ka10095`)는 이 창이 등락률
  * 분모로 이미 폴링하고 있고, 같은 응답에 일곱 칸이 전부 실려 온다.
+ * 동시간비(FID 851)는 REST 응답에 없으므로 이 폴백에 넣지 않는다.
  *
  * 왜 **필드별** 폴백인가: `latestTradeSummary` 자체가 키별로 독립해 "가장 최근에
  * 관측된 값" 을 잡는 규약이다. 그 규약을 이어받으면 **시각 판정이 필요 없다** —

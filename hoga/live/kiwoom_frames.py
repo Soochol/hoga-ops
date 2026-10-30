@@ -359,6 +359,16 @@ def _parse_trade(
         r = _ratio(values, fid)
         if r is not None:
             payload[key] = r
+    # 851은 30과 달리 소수점을 생략한 0.01% 단위 정수다.
+    # 정규장 실채록: 13878 / 11690 / 9395 → 138.78% / 116.90% / 93.95%.
+    # 공급자가 제공한 같은 시장·동시간 비율을 보존하고 일일 비율로 대체하지 않는다.
+    same_time_raw = values.get(K.CNT_VS_PREV_SAME_TIME_VOL_PCT, "").strip()
+    try:
+        same_time_pct = abs(int(same_time_raw)) / 100
+    except (ValueError, OverflowError):
+        same_time_pct = 0
+    if same_time_pct > 0:
+        payload["vs_prev_same_time_volume_pct"] = same_time_pct
     for key, fid in (("cum_volume", K.CNT_CUM_VOLUME), ("vwap", K.CNT_VWAP)):
         v = _qty(values, fid)
         if v > 0:

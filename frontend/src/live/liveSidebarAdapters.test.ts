@@ -302,9 +302,22 @@ describe('orderbookSnapshotAtCursor (ADR-0044 amendment — SSE buffer fallback)
 
 
 describe('latestTradeSummary', () => {
+  it('동시간비는 정규화된 전용 필드를 읽고 전일 전체 비율과 독립적으로 유지한다', () => {
+    const summary = latestTradeSummary([
+      { t_ms: 1, vs_prev_same_time_volume_pct: 176.29, vs_prev_volume_pct: 61.7 },
+      { t_ms: 2, cum_volume: 1_234_000, vs_prev_volume_pct: 62 },
+    ]);
+    expect(summary.vsPrevSameTimeVolumePct).toBe(176.29);
+    expect(summary.vsPrevVolumePct).toBe(62);
+    expect(latestTradeSummary([{ t_ms: 1, vs_prev_volume_pct: 61.7 }]).vsPrevSameTimeVolumePct).toBeNull();
+  });
+
+  it.each([0, -1, NaN, Infinity, '176.29'])('동시간비 %s는 미수신으로 처리한다', value => {
+    expect(latestTradeSummary([{ t_ms: 1, vs_prev_same_time_volume_pct: value }]).vsPrevSameTimeVolumePct).toBeNull();
+  });
   it('빈 버퍼면 전 필드가 null 이다', () => {
     expect(latestTradeSummary([])).toEqual({
-      fillStrengthPct: null, vsPrevVolumePct: null, cumVolume: null, cumValue: null,
+      fillStrengthPct: null, vsPrevVolumePct: null, vsPrevSameTimeVolumePct: null, cumVolume: null, cumValue: null,
       dayOpen: null, dayHigh: null, dayLow: null, prevClose: null,
     });
   });
@@ -346,6 +359,12 @@ describe('fillTradeSummaryFromQuote', () => {
     vs_prev_volume_pct: 162.95,    // 오늘/어제 **비율** (증감률이면 62.95)
     fill_strength_pct: 123.72,
   };
+
+  it('REST의 전일 전체 비율을 동시간비로 대체하지 않고 수신한 실시간 동시간비를 보존한다', () => {
+    expect(fillTradeSummaryFromQuote(empty, QUOTE).vsPrevSameTimeVolumePct).toBeNull();
+    const ws = { ...empty, vsPrevSameTimeVolumePct: 176.29 };
+    expect(fillTradeSummaryFromQuote(ws, QUOTE).vsPrevSameTimeVolumePct).toBe(176.29);
+  });
 
   it('0B 가 비면 일곱 칸을 전부 시세 오버레이로 메운다', () => {
     const s = fillTradeSummaryFromQuote(empty, QUOTE);
