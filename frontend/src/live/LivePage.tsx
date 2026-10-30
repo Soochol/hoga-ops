@@ -1,4 +1,3 @@
-import { floatingParams } from './workspace/floatingProtocol';
 import { targetChartWindow } from '../state/workspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -47,7 +46,6 @@ import './LiveWorkspace.css';
  * (`ChartWindowInner`)에서 돈다.
  */
 export function LivePage() {
-  const floating = floatingParams();
   const [params] = useSearchParams();
   const queryCode = params.get('code');
   const queryIndex = params.get('index');
@@ -203,12 +201,12 @@ export function LivePage() {
     <div
       // nav 와 툴바 사이 여백은 `WORKSPACE_PAGE_PAD` 의 상단 패딩 한 곳이 소유한다.
       // 여백은 그리드 컨테이너에 두므로 트랙(minmax)·캔버스 clamp 는 그대로다.
-      className={`live-workspace h-full grid ${floating ? 'live-floating-workspace' : WORKSPACE_PAGE_PAD}`}
+      className={`live-workspace h-full grid ${WORKSPACE_PAGE_PAD}`}
       style={{
         // minmax(0, 1fr) on the canvas row prevents chart canvases' intrinsic
         // size from pushing the row past viewport height. 빈 상태 배너 행을 두지 않아
         // nav 와 툴바 사이에 추가 그리드 간격이 생기지 않는다.
-        gridTemplateRows: floating ? 'minmax(0, 1fr)' : 'auto minmax(0, 1fr)',
+        gridTemplateRows: 'auto minmax(0, 1fr)',
         // 열 축도 명시해야 한다. 비워두면 grid-auto-columns:auto 가 되고, 그 트랙은
         // 가장 넓은 자식의 min-content 폭에서 바닥을 친다. WorkspaceLiveToolbar 와
         // WorkspaceCanvas 는 각자 overflow 로 빠져나가므로 트랙을 minmax(0,1fr) 로
@@ -216,9 +214,9 @@ export function LivePage() {
         gridTemplateColumns: 'minmax(0, 1fr)',
       }}
     >
-      {!floating && <WorkspaceLiveToolbar
+      <WorkspaceLiveToolbar
         captureHealth={liveStatus.captureHealth}
-      />}
+      />
       <WorkspaceCanvas />
       {/* 전체 화면 모달은 main-stack의 isolation 밖에서 우측 패널까지 덮는다. */}
       {indicatorTargetId != null && createPortal(

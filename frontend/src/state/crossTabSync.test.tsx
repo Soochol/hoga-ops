@@ -144,7 +144,7 @@ describe('useCrossTabSync', () => {
   });
 });
 
-it('분리 창에서 바꾼 매매 계좌 참조를 본창에도 반영한다', () => {
+it('다른 작업 창에서 바꾼 매매 계좌 참조를 현재 창에도 반영한다', () => {
   renderHook(() => useCrossTabSync(), { wrapper: wrapper(new QueryClient()) });
   const ref = 'acc_' + 'a'.repeat(32);
   otherTabWrites('hoga.chart.trade.accounts.v1', JSON.stringify({ byWindow: { chart: ref, invalid: 'raw-account' } }));

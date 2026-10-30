@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, screen, session, shell } from 'electron';
-import type { IpcMainInvokeEvent, Rectangle } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { appNavigation, externalLink, floatingTarget, networkAllowed } from './navigation';
+import { appNavigation, externalLink, networkAllowed } from './navigation';
 import { emptySettings, fitBounds, readSettings, saveSettings, sessionKey, validateProfile } from './profiles';
 import type { Profile, Settings } from './profiles';
 import { probeServer } from './connection';
@@ -28,8 +28,6 @@ let connectionId = 0;
 let quitting = false;
 const contentWindows = new Set<BrowserWindow>();
 const windowProfileKeys = new Map<BrowserWindow, string>();
-const floatingWindows = new Map<BrowserWindow, { owner: BrowserWindow; token: string; ready: boolean; restoreBounds?: Rectangle }>();
-const hiddenFloatingOwners = new Set<BrowserWindow>();
 const configuredSessions = new Set<string>();
 const build = JSON.parse(readFileSync(join(__dirname, 'build.json'), 'utf8')) as { sourceVersion: string; commit: string };
 
@@ -119,62 +117,18 @@ function configureSession(profile: Profile): Electron.Session {
   return ses;
 }
 
-function trustedFloating(event: IpcMainInvokeEvent): BrowserWindow {
-  const win = trustedContent(event);
-  if (!floatingWindows.has(win)) throw new Error('독립 창에서만 사용할 수 있습니다.');
-  return win;
-}
-
-/** Tool windows follow only their owning workspace; restoring never steals focus. */
-function setFloatingOwnerVisible(owner: BrowserWindow, visible: boolean): void {
-  if (visible) hiddenFloatingOwners.delete(owner); else hiddenFloatingOwners.add(owner);
-  const canShow = visible && !owner.isDestroyed() && owner.isVisible() && !owner.isMinimized();
-  for (const [tool, info] of floatingWindows) {
-    if (info.owner !== owner || tool.isDestroyed()) continue;
-    if (!canShow) tool.hide();
-    else if (info.ready && !tool.isVisible()) tool.showInactive();
-  }
-}
-
-function canShowFloating(owner: BrowserWindow): boolean {
-  return !owner.isDestroyed() && owner.isVisible() && !owner.isMinimized() && !hiddenFloatingOwners.has(owner);
-}
-
-function openContent(profile: Profile, url: string, primary = false,
-  floating?: { owner: BrowserWindow; token: string; width: number; height: number }): BrowserWindow {
+function openContent(profile: Profile, url: string, primary = false): BrowserWindow {
   const key = sessionKey(profile);
-  const ownerBounds = floating?.owner.getBounds();
-  const bounds = fitBounds(floating && ownerBounds ? { x: ownerBounds.x + 32, y: ownerBounds.y + 32,
-    width: floating.width, height: floating.height } : settings.bounds[key], screen.getAllDisplays().map(d => d.workArea));
-  const win = new BrowserWindow({ ...bounds, minWidth: floating ? 160 : 480, minHeight: floating ? 120 : 360, show: false,
-    ...(floating ? { parent: floating.owner, modal: false, frame: false, skipTaskbar: true,
-      minimizable: false, ...(process.platform === 'linux' ? { type: 'utility' } : {}) } : {}),
+  const bounds = fitBounds(settings.bounds[key], screen.getAllDisplays().map(d => d.workArea));
+  const win = new BrowserWindow({ ...bounds, minWidth: 480, minHeight: 360, show: false,
     icon: join(__dirname, '../assets/icon.png'),
     title: `Ticklane · ${profile.name}`,
     webPreferences: { session: configureSession(profile), preload: join(__dirname, 'preload/content.cjs'),
-      additionalArguments: [`--hoga-api-origin=${profile.apiOrigin ?? profile.origin}`, ...(floating ? ['--hoga-floating-tool-window'] : [])],
+      additionalArguments: [`--hoga-api-origin=${profile.apiOrigin ?? profile.origin}`],
       nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, zoomFactor: settings.zoomFactors[key] ?? 1 },
   });
   win.setMenuBarVisibility(false);
   contentWindows.add(win);
-  if (floating) floatingWindows.set(win, { owner: floating.owner, token: floating.token, ready: false });
-  else {
-    let visibilityRevision = 0;
-    const visibility = (visible: boolean) => {
-      const revision = ++visibilityRevision;
-      setFloatingOwnerVisible(win, visible);
-      // Some compositors emit restore/show just before their state flags settle.
-      // Recheck on the next turn, but never resurrect after a subsequent hide.
-      if (visible) setImmediate(() => {
-        if (!win.isDestroyed() && visibilityRevision === revision && !hiddenFloatingOwners.has(win))
-          setFloatingOwnerVisible(win, true);
-      });
-    };
-    win.on('minimize', () => visibility(false));
-    win.on('hide', () => visibility(false));
-    win.on('restore', () => visibility(true));
-    win.on('show', () => visibility(true));
-  }
   windowProfileKeys.set(win, key);
   win.webContents.on('before-input-event', (event, input) => {
     const command = zoomCommand(input);
@@ -209,18 +163,11 @@ function openContent(profile: Profile, url: string, primary = false,
   win.webContents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) showLauncher('화면을 불러오지 못했습니다. 서버 주소·프론트 빌드·연결을 확인한 뒤 다시 연결하세요.');
   });
-  win.webContents.on('render-process-gone', () => {
-    for (const [child, info] of floatingWindows) if (info.owner === win && !child.isDestroyed()) child.close();
-    if (floatingWindows.has(win)) win.close(); else showLauncher('화면 프로세스가 종료됐습니다. 다시 연결하세요.');
-  });
+  win.webContents.on('render-process-gone', () => showLauncher('화면 프로세스가 종료됐습니다. 다시 연결하세요.'));
   win.once('ready-to-show', () => {
     if (win.isDestroyed()) return;
     if (primary && settings.bounds[key]?.maximized) win.maximize();
-    if (floating) {
-      const info = floatingWindows.get(win);
-      if (info) info.ready = true;
-      if (canShowFloating(floating.owner)) win.show();
-    } else win.show();
+    win.show();
     if (launcher && !launcher.isDestroyed()) launcher.hide();
   });
   win.on('close', () => {
@@ -230,12 +177,6 @@ function openContent(profile: Profile, url: string, primary = false,
     }
   });
   win.on('closed', () => {
-    hiddenFloatingOwners.delete(win);
-    const info = floatingWindows.get(win);
-    floatingWindows.delete(win);
-    if (!quitting && info && !info.owner.isDestroyed() && !info.owner.webContents.isDestroyed())
-      info.owner.webContents.send('desktop:floating-closed', info.token);
-    for (const [child, childInfo] of floatingWindows) if (childInfo.owner === win && !child.isDestroyed()) child.close();
     contentWindows.delete(win);
     windowProfileKeys.delete(win);
     if (!quitting && contentWindows.size === 0) {
@@ -319,68 +260,6 @@ else {
     });
     ipcMain.handle('desktop:select-server', event => { trustedContent(event); showLauncher(); });
     ipcMain.handle('desktop:new-window', event => { trustedContent(event); openContent(active!, `${active!.origin}/live`); });
-    // Linux/Wayland can report compositor minimization only through page visibility.
-    ipcMain.handle('desktop:content-visibility', event => {
-      const owner = trustedContent(event);
-      // Read the current frame rather than a queued pre-navigation/pre-restore
-      // payload. macOS occlusion must not be treated as owner minimization.
-      if (process.platform === 'linux' && !floatingWindows.has(owner))
-        setFloatingOwnerVisible(owner, event.sender.mainFrame.visibilityState === 'visible');
-    });
-    ipcMain.handle('desktop:open-floating', (event, rawUrl: unknown, width: unknown, height: unknown) => {
-      const owner = trustedContent(event);
-      if (floatingWindows.has(owner)) throw new Error('독립 창을 중복 분리할 수 없습니다.');
-      const target = floatingTarget(rawUrl, active!);
-      if (typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height))
-        throw new Error('잘못된 창 크기입니다.');
-      openContent(active!, target.url, false, { owner, token: target.token,
-        width: Math.max(160, Math.min(7680, Math.round(width))), height: Math.max(120, Math.min(4320, Math.round(height))) });
-    });
-    ipcMain.handle('desktop:close-floating', (event, token: unknown) => {
-      const owner = trustedContent(event);
-      if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) throw new Error('잘못된 독립 창입니다.');
-      for (const [child, info] of floatingWindows) if (info.owner === owner && info.token === token) child.close();
-    });
-    ipcMain.handle('desktop:floating-state', event => {
-      const win = trustedFloating(event);
-      return { maximized: !!floatingWindows.get(win)?.restoreBounds || win.isMaximized(), alwaysOnTop: win.isAlwaysOnTop() };
-    });
-    ipcMain.handle('desktop:floating-maximize', event => {
-      const win = trustedFloating(event);
-      const info = floatingWindows.get(win)!;
-      // Linux compositors often disallow maximize for transient utility/dialog
-      // windows. Fill the monitor work area and retain an explicit restore rect.
-      if (process.platform === 'linux') {
-        if (info.restoreBounds) {
-          const restore = info.restoreBounds;
-          info.restoreBounds = undefined;
-          win.setBounds(restore);
-          return false;
-        }
-        if (win.isMaximized()) { win.unmaximize(); return false; }
-        info.restoreBounds = win.getBounds();
-        win.setBounds(screen.getDisplayMatching(info.restoreBounds).workArea);
-        return true;
-      }
-      if (win.isMaximized()) win.unmaximize(); else win.maximize();
-      return win.isMaximized();
-    });
-    ipcMain.handle('desktop:floating-on-top', (event, enabled: unknown) => {
-      const win = trustedFloating(event);
-      if (typeof enabled !== 'boolean') throw new Error('잘못된 항상 위 설정입니다.');
-      win.setAlwaysOnTop(enabled);
-    });
-    ipcMain.handle('desktop:floating-focus', event => {
-      const win = trustedFloating(event);
-      const owner = floatingWindows.get(win)!.owner;
-      if (!owner.isDestroyed() && !canShowFloating(owner)) {
-        if (owner.isMinimized()) owner.restore();
-        owner.show();
-        setFloatingOwnerVisible(owner, true);
-      }
-      if (win.isMinimized()) win.restore();
-      win.show(); win.focus();
-    });
     ipcMain.handle('desktop:zoom', (event, command: unknown) => {
       const win = trustedContent(event);
       if (command !== 'in' && command !== 'out' && command !== 'reset') throw new Error('잘못된 배율 명령입니다.');

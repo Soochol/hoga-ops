@@ -6,8 +6,6 @@
  * 링크 그룹 팔레트 상태, 관심종목/스크리너 행 드래그의 정밀 드롭(entryDrag),
  * 창 콘텐츠(ChartWindow/DataWindow) 렌더.
  */
-import { dockFloatingWindow, useFloatingWindows } from './floatingWindows';
-import { floatingParams } from './floatingProtocol';
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Rect, ResizeMode } from '../../workspace/snapEngine';
 import {
@@ -48,15 +46,13 @@ interface LiveItemCtx {
 }
 
 export function WorkspaceCanvas() {
-  const detached = useFloatingWindows(state => state.entries);
-  const floating = floatingParams();
   const savedWindows = useWorkspaceStore((s) => s.windows);
   const maximizedId = useWorkspaceStore((s) => s.maximizedId);
   const toggleMaximize = useWorkspaceStore((s) => s.toggleMaximize);
   const setCanvasSize = useWorkspaceStore((s) => s.setCanvasSize);
   // 표시만 확장한다. 저장 rect·프리셋·원래 차트 인스턴스는 유지한다.
-  const windows = useMemo(() => savedWindows.filter(win => detached[win.id] !== 'floating').map((win) => win.id === maximizedId
-    ? { ...win, rect: { x: 0, y: 0, w: 1, h: 1 } } : win), [savedWindows, maximizedId, detached]);
+  const windows = useMemo(() => savedWindows.map((win) => win.id === maximizedId
+    ? { ...win, rect: { x: 0, y: 0, w: 1, h: 1 } } : win), [savedWindows, maximizedId]);
   useEffect(() => {
     if (!maximizedId) return;
     const escape = (e: KeyboardEvent) => {
@@ -146,8 +142,8 @@ export function WorkspaceCanvas() {
   const emptyState = (
     <div className="flex h-full w-full items-center justify-center">
       <div className="rounded-lg bg-bg-card px-6 py-5 text-center text-sm text-fg-dim shadow-panel">
-        <p className="mb-2 font-medium text-fg">{savedWindows.length ? '모든 창이 분리되어 있습니다' : '창이 없습니다'}</p>
-        <p className="mb-3">{savedWindows.length ? '창 목록에서 분리된 창으로 이동할 수 있습니다' : '상단 툴바의 +차트 로 차트 창을 추가하세요'}</p>
+        <p className="mb-2 font-medium text-fg">창이 없습니다</p>
+        <p className="mb-3">상단 툴바의 +차트 로 차트 창을 추가하세요</p>
         <button
           type="button"
           data-testid="workspace-empty-add-chart"
@@ -174,8 +170,6 @@ export function WorkspaceCanvas() {
     }),
     [groupSymbols, resolveNxtEnabled, palette, maximizedId, toggleMaximize, closeWindow, onTogglePalette, onPickGroup, onTogglePin],
   );
-
-  if (floating) return <FloatingCanvas id={floating.id} />;
 
   return (
     <StockDescriptionTooltipProvider>
@@ -237,10 +231,8 @@ function LiveWindowItem({
  */
 const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   win, symbol, nxtEnabled, rect, zIndex, focused, lifting, paletteOpen, maximized, onToggleMaximize,
-  onHandleDown, onFocus, onClose, onTogglePalette, onPickGroup, onTogglePin, floating = false, alwaysOnTopDisabled = false,
+  onHandleDown, onFocus, onClose, onTogglePalette, onPickGroup, onTogglePin,
 }: {
-  floating?: boolean;
-  alwaysOnTopDisabled?: boolean;
   win: WorkspaceWindow;
   symbol: GroupSymbol | null;
   nxtEnabled: boolean | null | undefined;
@@ -267,8 +259,8 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
     id: win.id, kind: win.kind, group: win.group, rect, zIndex, focused, lifting,
     symbolLabel: symbol?.name ?? null, symbolCode: symbol?.code ?? null,
     nxtEnabled,
-    isIndex: symbol?.kind === 'index' || symbol?.kind === 'us_stock', paletteOpen, alwaysOnTop: !alwaysOnTopDisabled && win.alwaysOnTop,
-    onToggleAlwaysOnTop: toggleAlwaysOnTop, maximized, onToggleMaximize, floating, alwaysOnTopDisabled,
+    isIndex: symbol?.kind === 'index' || symbol?.kind === 'us_stock', paletteOpen, alwaysOnTop: win.alwaysOnTop,
+    onToggleAlwaysOnTop: toggleAlwaysOnTop, maximized, onToggleMaximize,
     pinned: win.pinned != null, canPin, onHandleDown, onFocus, onClose,
     onTogglePalette, onPickGroup, onTogglePin,
     tradeMinAmountManwon: win.tradeMinAmountManwon,
@@ -297,50 +289,3 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
     </WindowFrame>
   );
 });
-
-const ignoreHandle = () => {};
-
-/** Native resizing changes only the detached viewport, never the owner's saved rect. */
-function FloatingCanvas({ id }: { id: string }) {
-  const win = useWorkspaceStore(state => state.windows.find(item => item.id === id));
-  const groupSymbols = useWorkspaceStore(state => state.groupSymbols);
-  const focusWindow = useWorkspaceStore(state => state.focusWindow);
-  const setWindowGroup = useWorkspaceStore(state => state.setWindowGroup);
-  const togglePin = useWorkspaceStore(state => state.toggleWindowPin);
-  const resolveNxtEnabled = useNxtEnabledResolver();
-  const [palette, setPalette] = useState(false);
-  const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
-  const [maximized, setMaximized] = useState(false);
-  const desktop = window.hogaDesktop?.controls;
-  useEffect(() => {
-    const resize = () => {
-      setSize({ w: window.innerWidth, h: window.innerHeight });
-      if (desktop?.floatingState) void desktop.floatingState().then(state => setMaximized(state.maximized));
-      else setMaximized(!!document.fullscreenElement);
-    };
-    resize();
-    window.addEventListener('resize', resize);
-    document.addEventListener('fullscreenchange', resize);
-    return () => { window.removeEventListener('resize', resize); document.removeEventListener('fullscreenchange', resize); };
-  }, [desktop]);
-  useEffect(() => {
-    if (desktop?.setFloatingAlwaysOnTop) void desktop.setFloatingAlwaysOnTop(win?.alwaysOnTop === true)
-      .catch(() => useFloatingWindows.setState({ error: '항상 위 설정을 적용하지 못했습니다.' }));
-  }, [desktop, win?.alwaysOnTop]);
-  const toggleMaximize = () => {
-    if (desktop?.toggleFloatingMaximize) void desktop.toggleFloatingMaximize().then(setMaximized);
-    else if (document.fullscreenElement) void document.exitFullscreen();
-    else void document.documentElement.requestFullscreen().catch(() => useFloatingWindows.setState({ error: '전체 화면으로 전환할 수 없습니다.' }));
-  };
-  if (!win) return null;
-  const symbol = windowSymbolOf({ groupSymbols }, win);
-  return <StockDescriptionTooltipProvider><div data-testid="floating-workspace" className="relative h-full min-h-0 min-w-0">
-    <WorkspaceWindowItem win={win} symbol={symbol} nxtEnabled={symbol ? resolveNxtEnabled(symbol.code) : undefined}
-      rect={{ x: 0, y: 0, ...size }} zIndex={1} focused lifting={false} floating
-      alwaysOnTopDisabled={!desktop?.setFloatingAlwaysOnTop}
-      paletteOpen={palette} maximized={maximized} onToggleMaximize={toggleMaximize}
-      onHandleDown={ignoreHandle} onFocus={focusWindow} onClose={dockFloatingWindow}
-      onTogglePalette={() => setPalette(value => !value)} onPickGroup={(windowId, group) => { setWindowGroup(windowId, group); setPalette(false); }}
-      onTogglePin={togglePin} />
-  </div></StockDescriptionTooltipProvider>;
-}

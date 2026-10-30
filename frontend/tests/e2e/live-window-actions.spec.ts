@@ -52,6 +52,7 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
     await page.goto('/live');
     const frame = page.locator('[data-win="actions-test"]');
     await expect(frame).toBeVisible();
+    await expect(frame.getByRole('button', { name: '창 분리', exact: true })).toHaveCount(0);
     await expect(frame.locator('.live-window-titlebar [title]')).toHaveCount(0);
     await expect(frame.locator('[data-handle="move"]')).not.toContainText('⠿');
     if (kind !== 'account-fills') await expect(frame.getByRole('button', { name: '링크 그룹 1 변경' })).toHaveText('1');

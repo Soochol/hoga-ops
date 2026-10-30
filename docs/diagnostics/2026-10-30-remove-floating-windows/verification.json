@@ -1,0 +1,89 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "6edace3090fdb9914675b38bd83f8482c506a070",
+  "origin_main_sha": "6edace3090fdb9914675b38bd83f8482c506a070",
+  "branch": "codex/remove-floating-windows",
+  "working_tree": "Uncommitted implementation; fingerprints cover saved source/test/config files.",
+  "scope": [
+    "Remove LivePage detach/dock icon, popup-only App/LivePage/Canvas paths, private workspace patch protocol, chart-link transport and transient floating state.",
+    "Remove Electron floating URL validator, IPC, preload methods and native tool lifecycle/maximize/top controls.",
+    "Keep in-workspace drag/resize/maximize/top/pin/settings/list, maximize immediately right of X, ordinary new workspaces and generic cross-tab settings/account synchronization.",
+    "Retain destroyed-launcher lifecycle guards and regression through normal workspace creation; preserve stored layouts and prior diagnostic history."
+  ],
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E projects"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/App.test.tsx src/live/workspace src/workspace src/state/workspace.test.ts src/state/crossTabSync.test.tsx src/live/LivePage.test.tsx",
+      "result": "80 files, 1061 passed (25.15s)"
+    },
+    {
+      "cwd": "frontend",
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-remove-floating npx playwright test tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts --reporter=line",
+      "result": "20 passed (58.0s); all 14 window kinds have no detach icon, keep maximize right of X, fit at 160px, drag/resize/top/pin/settings/close, maximize/Escape restore"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed; existing large-chunk advisory"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run typecheck && npm run lint && npm test",
+      "result": "passed; 19 unit tests. Final E2E-only edits were followed by another successful npm run lint; runtime/core unit inputs unchanged."
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/desktop.spec.cjs tests/e2e/full-app.spec.cjs --grep 'page zoom keys|production React' --reporter=line",
+      "result": "2 passed (16.5s); native zoom/menu/restart and real production React/FastAPI workspace settings, second workspace, no detach icon, internal maximize/restore without extra app windows"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/desktop.spec.cjs --grep-invert 'page zoom keys' --reporter=line",
+      "result": "4 passed (4.6s); sandbox, session isolation, request guard, recovery, default profile and destroyed-launcher new-workspace regression"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "initial_native_failures": {
+    "result": "4 passed, 2 failed; not counted as a passing suite. All six scopes passed on final test inputs in the two subsequent commands above.",
+    "zoom": "The window listener was installed before awaiting firstWindow, so it could capture the launcher itself. Await launcher first, then listen for the new workspace.",
+    "real_app": "The new test expected app.windows() to include a launcher already closed through Playwright. Assert the two ordinary server workspace pages instead."
+  },
+  "fingerprint_method": "Sorted tracked/nonignored regular paths; digest UTF-8 path + NUL + raw SHA256(file bytes). Include root pyproject.toml, uv.lock, .python-version, VERSION and ruff.toml. Exclude documentation and ignored build output.",
+  "frontend_inputs": {
+    "file_count": 2015,
+    "sha256": "3646f93bf605ed8289cf1cbb05c4bc4b747e2fc831daa798a6d31a08ad85f2ad"
+  },
+  "combined_inputs": {
+    "file_count": 2931,
+    "sha256": "3f771c659ed67e1fe5fce20374f04f6b00f01c9a6ef885bd53a7e647eec313f5"
+  },
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3 frontend / 6.0.2 desktop",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0 frontend / 1.64.1 desktop",
+    "electron": "44.8.0",
+    "python": "3.14.7",
+    "workers": 1,
+    "browser_backend_port": 20439,
+    "browser_frontend_port": 21439,
+    "credentials": "Empty per E2E configuration; native FastAPI fixture blanks all six Kiwoom accounts and mock account.",
+    "user_environment": "No user servers restarted; no permanent launcher/install paths changed."
+  },
+  "limits": [
+    "Linux X11 native checks; Windows/macOS and Wayland not rerun for this removal.",
+    "Backend API/models unchanged; no backend-wide suite or live broker calls.",
+    "No installation/deployment or main-checkout edits for this task."
+  ]
+}

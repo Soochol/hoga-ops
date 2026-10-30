@@ -82,51 +82,15 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     await page.getByTestId('watchlist-row-098460').click();
     await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
     await page.screenshot({ path: join(desktop, 'test-results/real-chart.png') });
-    await installLiveMocks(page.context());
     const frame = page.locator('[data-win]').filter({ has: page.getByTestId('live-chart-root') }).first();
     const bounds = await frame.boundingBox();
-    const detachedEvent = app.waitForEvent('window');
-    await frame.getByRole('button', { name: '창 분리', exact: true }).click();
-    const detached = await detachedEvent;
-    await expect(detached.getByTestId('floating-workspace')).toBeVisible();
-    await expect(frame).toHaveCount(0);
-    await expect(detached.getByRole('navigation')).toHaveCount(0);
-    await expect(detached.getByTestId('app-content-grid')).toHaveAttribute('data-floating-tool', '');
-    const header = detached.locator('.live-window-titlebar');
-    expect(await header.evaluate(el => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
-    expect(await header.getByRole('button', { name: '항상 위', exact: true }).evaluate(el => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
-    const toolId = await app.evaluate(({ BrowserWindow }, url) => BrowserWindow.getAllWindows().find(win => win.webContents.getURL() === url).id, detached.url());
-    const parentId = await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).getParentWindow().id, toolId);
-    await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isVisible(), toolId)).toBe(true);
-    for (let cycle = 0; cycle < 3; cycle++) {
-      await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).minimize(), parentId);
-      // OS minimize/restore requests are asynchronous. Await the owner's actual
-      // hidden state before restoring, rather than cancelling an in-flight minimize.
-      if (process.env.HOGA_DESKTOP_TEST_PLATFORM === 'x11')
-        await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isMinimized(), parentId)).toBe(true);
-      await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isVisible(), toolId)).toBe(false);
-      await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).restore(), parentId);
-      if (process.env.HOGA_DESKTOP_TEST_PLATFORM === 'x11')
-        await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isMinimized(), parentId)).toBe(false);
-      await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).isVisible(), toolId)).toBe(true);
-    }
-    await detached.getByRole('button', { name: '항상 위', exact: true }).click();
-    await expect.poll(() => detached.evaluate(() => window.hogaDesktop.controls.floatingState())).toMatchObject({ alwaysOnTop: true });
-    const floatingSize = await detached.evaluate(() => ({ w: innerWidth, h: innerHeight }));
-    await detached.getByRole('button', { name: '창 최대화', exact: true }).click();
-    await expect.poll(() => detached.evaluate(() => innerWidth)).toBeGreaterThan(floatingSize.w);
-    await expect(detached.getByRole('button', { name: '원래 크기로 복원', exact: true })).toBeVisible();
-    await detached.getByRole('button', { name: '원래 크기로 복원', exact: true }).click();
-    await expect.poll(() => detached.evaluate(() => ({ w: innerWidth, h: innerHeight }))).toEqual(floatingSize);
-    await expect.poll(() => detached.locator('[data-win]').evaluate(element => {
-      const box = element.getBoundingClientRect();
-      return Math.max(Math.abs(box.width - innerWidth), Math.abs(box.height - innerHeight));
-    })).toBeLessThan(1);
-    await detached.screenshot({ path: join(desktop, 'test-results/real-floating-chart.png') });
-    await detached.getByRole('button', { name: '원래 화면에 합치기', exact: true }).click();
-    await expect(frame).toBeVisible();
+    await expect(frame.getByRole('button', { name: '창 분리', exact: true })).toHaveCount(0);
+    await frame.getByRole('button', { name: '창 최대화', exact: true }).click();
+    await expect(frame.getByRole('button', { name: '원래 크기로 복원', exact: true })).toBeVisible();
+    await frame.getByRole('button', { name: '원래 크기로 복원', exact: true }).click();
     const restored = await frame.boundingBox();
     for (const key of ['x', 'y', 'width', 'height']) expect(restored[key]).toBeCloseTo(bounds[key], 0);
+    expect(app.windows().filter(window => window.url().startsWith(origin))).toHaveLength(2);
     expect(errors).toEqual([]);
     await app.close(); app = undefined;
     expect((await fetch(origin + '/health')).ok).toBe(true);
