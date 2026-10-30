@@ -4,10 +4,10 @@ import type { TradeSnapshot } from '../bucketHogaSeries';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { buildTradeTickView, combineTradeHistory, mergeTradeTicks, type TradeTick } from '../tradeTicks';
 
-const LIMIT = 9;
+const LIMIT = 200;
 
 /** Share the tape's initial history query, but never page or poll for a book.
- * Both the live tail and retained ticks stay bounded to the nine visible rows. */
+ * Both the live tail and retained ticks stay bounded to the scrollable recent window. */
 export function useRecentBookTrades({ code, date, venue, frames, enabled }: {
   code: string; date: string; venue: string; frames: readonly TradeSnapshot[]; enabled: boolean;
 }) {

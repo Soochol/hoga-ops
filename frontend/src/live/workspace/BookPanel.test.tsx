@@ -49,6 +49,41 @@ function renderPanel(over: Partial<Parameters<typeof BookPanel>[0]> = {}) {
   );
 }
 
+function fixedColumnHeight(column: Element) {
+  return Array.from(column.children).reduce((height, row) => {
+    const { style } = row as HTMLElement;
+    return height + Number.parseFloat(style.height || style.minHeight || '0');
+  }, Number.parseFloat((column as HTMLElement).style.paddingTop || '0'));
+}
+
+describe('체결 영역에서 체결창 열기', () => {
+  it('가격·수량·빈 공간의 더블클릭과 키보드만 열고 체결강도와 한 번 클릭은 유지한다', () => {
+    const open = vi.fn();
+    const { container } = renderPanel({ onOpenTrades: open });
+    const trigger = screen.getByRole('button', { name: '체결창 열기' });
+    fireEvent.click(trigger);
+    fireEvent.doubleClick(container.querySelector('.book-strength-row')!);
+    expect(open).not.toHaveBeenCalled();
+    fireEvent.doubleClick(container.querySelector('.book-trade-row span')!);
+    fireEvent.doubleClick(container.querySelector('.book-trade-row span:last-child')!);
+    fireEvent.doubleClick(trigger);
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    fireEvent.keyDown(trigger, { key: ' ' });
+    expect(open).toHaveBeenCalledTimes(5);
+    expect(trigger).not.toHaveAttribute('title');
+    expect(trigger).not.toHaveAttribute('data-tooltip');
+  });
+
+  it('체결이 아직 없는 9행 높이의 빈 공간에서도 연다', () => {
+    const open = vi.fn();
+    renderPanel({ trades: [], onOpenTrades: open });
+    const trigger = screen.getByRole('button', { name: '체결창 열기' });
+    expect(trigger).toHaveStyle({ minHeight: '198px' });
+    fireEvent.doubleClick(trigger);
+    expect(open).toHaveBeenCalledOnce();
+  });
+});
+
 describe('호가 잔량 금액 툴팁', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -251,7 +286,8 @@ describe('BookPanel', () => {
       '241,000-5.49%', '240,500-5.69%', '240,000-5.88%',
     ]);
     expect(left.querySelectorAll('.book-trade-row')).toHaveLength(9);
-    expect(left.children).toHaveLength(14); // 매도4 + 체결강도1 + 체결9
+    expect(left.querySelectorAll('.book-trade-row')).toHaveLength(9);
+    expect(fixedColumnHeight(left)).toBe(440); // 매도 10행 공간 + 체결강도 1행 + 체결 9행
     expect(center.children).toHaveLength(7); // 매도4 + 매수3
     expect(right.children).toHaveLength(4); // 요약 슬롯1 + 매수3
     expect((right.children[0] as HTMLElement).style.height).toBe('220px');
@@ -421,7 +457,8 @@ describe('BookPanel', () => {
     const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
     const { container } = renderPanel({ trades });
     const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
-    expect(left.children).toHaveLength(20); // 매도10 + 체결강도1 + 체결9
+    expect(left.querySelectorAll('.book-trade-row')).toHaveLength(9);
+    expect(fixedColumnHeight(left)).toBe(440);
     expect(center.children).toHaveLength(20); // 매도10 + 매수10
     // 우측은 요약 10행이 래퍼 하나에 들어 있어 자식 수 = 1 + 매수바10 = 11.
     expect(right.children).toHaveLength(11);
@@ -592,13 +629,14 @@ describe('BookPanel', () => {
     });
   });
 
-  it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 20행 = 중앙 20행)', () => {
+  it('9행 높이 안에서 추가 체결을 스크롤할 수 있다', () => {
     const trades = Array.from({ length: 12 }, (_, i) => ({
       price: 251_500, qty: 1_000 + i, side: 1 as const,
     }));
     renderPanel({ trades });
     expect(screen.getByText('1,008')).toBeInTheDocument(); // 9번째(index 8)
-    expect(screen.queryByText('1,009')).toBeNull(); // 10번째부터 렌더 금지
+    expect(screen.getByText('1,009')).toBeInTheDocument();
+    expect(screen.getByTestId('book-trade-list')).toHaveStyle({ height: '198px' });
   });
 
   it('요약이 전부 비면 대시만 남고 사다리는 그대로 그린다', () => {
@@ -1022,12 +1060,12 @@ describe('BookPanel stale 딤', () => {
     expect(dimOf(strength)).not.toContain('opacity-50');
   });
 
-  it('딤은 20행 정렬 계약을 건드리지 않는다 — 자식 수가 그대로다', () => {
-    // 잔량 바를 래퍼로 묶으면 자식 수가 바뀐다. 딤은 **셀에 직접** 얹어야 한다.
+  it('딤은 20행 높이와 잔량·체결 정렬을 유지한다', () => {
     const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
     const { container } = renderPanel({ trades, stale: true });
     const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
-    expect(left.children).toHaveLength(20);
+    expect(left.querySelectorAll('.book-trade-row')).toHaveLength(9);
+    expect(fixedColumnHeight(left)).toBe(440);
     expect(center.children).toHaveLength(20);
     expect(right.children).toHaveLength(11);
   });
