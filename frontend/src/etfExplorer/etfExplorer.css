@@ -1,0 +1,82 @@
+.etf-explorer { padding: var(--space-xl); color: var(--fg); }
+.etf-content { max-width: 90rem; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-xl); padding-bottom: var(--space-3xl); }
+.etf-content h1 { font-size: var(--text-2xl); font-weight: 500; letter-spacing: -.035em; }
+.etf-content h2 { font-size: var(--text-xl); font-weight: 500; letter-spacing: -.025em; }
+.etf-content h3 { font-size: var(--text-lg); font-weight: 500; }
+.etf-content b { font-weight: 500; }
+.etf-content small, .etf-secondary { font-size: var(--text-sm); color: var(--fg-dim); }
+.etf-content p { line-height: 1.75; }
+.etf-between { display: flex; justify-content: space-between; align-items: center; gap: var(--space-md); flex-wrap: wrap; }
+.etf-page-header p { color: var(--fg-dim); margin-top: var(--space-xs); }
+.etf-stamp { display: flex; flex-direction: column; gap: var(--space-xs); align-items: flex-end; font-size: var(--text-sm); color: var(--fg-dim); }
+.etf-stamp b { color: var(--fg); }
+.etf-workspace { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: var(--space-xl); align-items: start; }
+.etf-library { display: flex; flex-direction: column; gap: var(--space-lg); padding: var(--space-lg); }
+.etf-library .ui-segmented { display: flex; }
+.etf-library .ui-segmented button { flex: 1; white-space: nowrap; padding-inline: var(--space-xs); }
+.etf-field { display: flex; flex-direction: column; gap: var(--space-xs); color: var(--fg-dim); font-size: var(--text-sm); min-width: 0; }
+.etf-field input, .etf-field select { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-input); color: var(--fg); font-size: var(--text-base); padding: var(--space-sm) var(--space-md); }
+.etf-field input::placeholder { color: var(--fg-dim); }
+.etf-fund-list { display: flex; flex-direction: column; gap: var(--space-xs); }
+.etf-fund { text-align: left; width: 100%; padding: var(--space-md) var(--space-sm); border-bottom: 1px solid var(--border); border-radius: var(--radius-md); overflow-wrap: anywhere; }
+.etf-fund:hover { background: var(--bg-input-hover); }
+.etf-fund[aria-pressed=true] { background: var(--tint-selection); }
+.etf-fund > b { display: block; }
+.etf-fund > span { display: flex; justify-content: space-between; gap: var(--space-xs); flex-wrap: wrap; margin-top: var(--space-xs); }
+.etf-style { display: inline-flex; align-items: center; gap: var(--space-xs); }
+.etf-style.active:before { content: ''; flex-shrink: 0; width: var(--space-xs); height: var(--space-xs); border-radius: var(--radius-full); background: var(--accent); }
+.etf-detail { display: flex; flex-direction: column; gap: var(--space-xl); min-width: 0; }
+.etf-panel { padding: var(--space-xl); display: flex; flex-direction: column; gap: var(--space-lg); }
+.etf-meta { display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-lg); color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-lg); border-top: 1px solid var(--border); padding-top: var(--space-lg); }
+.etf-stats > div { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 0; }
+.etf-stats > div > span { color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-stats b { font-size: var(--text-2xl); font-family: var(--font-data); font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.etf-stats em { font-size: var(--text-base); font-style: normal; color: var(--fg-dim); }
+.etf-stats b.etf-pending { font-size: var(--text-base); letter-spacing: 0; padding-block: var(--space-sm); }
+.etf-bars { display: flex; flex-direction: column; gap: var(--space-md); }
+.etf-bar { display: grid; grid-template-columns: minmax(5rem, 8.25rem) minmax(1rem, 1fr) 4rem; align-items: center; gap: var(--space-md); font-size: var(--text-sm); }
+.etf-bar > button { text-align: left; overflow-wrap: anywhere; }
+.etf-bar > button:hover { text-decoration: underline; }
+.etf-track { height: var(--space-sm); background: var(--bg-subtle); overflow: hidden; border-radius: var(--radius-sm); }
+.etf-track > span { display: block; height: 100%; background: var(--accent); border-radius: var(--radius-sm); }
+.etf-bar-scale { margin-left: 9rem; margin-right: 4.75rem; display: flex; justify-content: space-between; color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-number { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.etf-note { color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-tools { display: flex; align-items: end; justify-content: space-between; gap: var(--space-md); flex-wrap: wrap; }
+.etf-tools .etf-field { flex: 1; min-width: 8rem; max-width: 17rem; }
+.etf-table-wrap { overflow-x: auto; min-width: 0; }
+.etf-content table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.etf-content caption { text-align: left; font-size: var(--text-sm); color: var(--fg-dim); padding-bottom: var(--space-md); }
+.etf-content th, .etf-content td { padding: var(--space-md) var(--space-sm); border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.etf-content th { font-weight: 500; }
+.etf-content thead th { font-weight: 400; color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-content th:first-child { text-align: left; white-space: normal; min-width: 6rem; }
+.etf-content th small { display: block; font-weight: 400; margin-top: var(--space-xs); }
+.etf-content th button { text-align: left; }
+.etf-content table button:hover { text-decoration: underline; }
+.etf-ma { color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-ma.above { color: var(--price-up); }
+.etf-ma.below { color: var(--price-down); }
+.etf-selected-row { background: var(--tint-selection); }
+.etf-pagination { display: flex; justify-content: space-between; align-items: center; gap: var(--space-sm); color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-empty { text-align: center; padding: var(--space-xl) 0; color: var(--fg-dim); }
+.etf-reverse { padding: var(--space-lg); background: var(--bg-subtle); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: var(--space-md); scroll-margin: var(--space-md); }
+.etf-reverse-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); width: 100%; text-align: left; padding: var(--space-md) 0; border-bottom: 1px solid var(--border); }
+.etf-reverse-row > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.etf-reverse-row:hover b { text-decoration: underline; }
+.etf-chips { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.etf-chips > span { display: inline-flex; gap: var(--space-sm); align-items: center; border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-xs) var(--space-sm); font-size: var(--text-sm); }
+.etf-chips button { padding: var(--space-xs); font-size: var(--text-lg); color: var(--fg-dim); }
+.etf-pairs { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--space-md); }
+.etf-pairs > button { display: flex; flex-direction: column; gap: var(--space-xs); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-lg); text-align: left; }
+.etf-pairs > button[aria-pressed=true] { background: var(--tint-selection); }
+.etf-pairs > button > span { color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-pairs b { font-size: var(--text-xl); font-variant-numeric: tabular-nums; }
+.etf-pair-label { font-size: var(--text-sm); }
+.etf-method { color: var(--fg-dim); font-size: var(--text-sm); }
+.etf-method summary { color: var(--fg); cursor: pointer; }
+.etf-method p { margin-top: var(--space-md); }
+@media(max-width: 1100px) { .etf-workspace { grid-template-columns: 13rem minmax(0, 1fr); gap: var(--space-lg); } .etf-panel { padding: var(--space-lg); } .etf-stats { gap: var(--space-sm); } .etf-stats b { font-size: var(--text-xl); } }
+@media(max-width: 800px) { .etf-workspace { grid-template-columns: minmax(0, 1fr); } .etf-fund-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xs) var(--space-lg); } .etf-stamp { align-items: flex-start; } }
+@media(max-width: 450px) { .etf-explorer { padding: var(--space-md); } .etf-fund-list { grid-template-columns: minmax(0, 1fr); } .etf-stats { grid-template-columns: minmax(0, 1fr); } .etf-stats > div { flex-direction: row; justify-content: space-between; align-items: baseline; flex-wrap: wrap; } .etf-stats small { width: 100%; } .etf-pairs { grid-template-columns: minmax(0, 1fr); } }

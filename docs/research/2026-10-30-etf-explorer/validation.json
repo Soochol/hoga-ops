@@ -1,0 +1,13 @@
+{
+  "funds": 119,
+  "active": 81,
+  "stocks": 896,
+  "memberships": 4937,
+  "sources": {
+    "docs/research/2026-10-30-etf-active-extension/comparison-etfs.json": "d156b1fb2968c2f09c6bec4bcaec931665ab89102064d4b6c14f7a45dec57125",
+    "docs/research/2026-10-30-etf-active-extension/memberships.json": "2d5b2d82a61e8bb66ba6c0561e4c4a88f10bee165901e3f918c37f23eba479b2",
+    "docs/research/2026-10-30-etf-breadth/stock-signals.json": "787ba5690d5f3b05e537847efadc35cc2a52a589326699295be64ce84d894ba4"
+  },
+  "output": "frontend/public/etf-explorer/snapshot.json",
+  "outputSha256": "4dff0b5b4775f4f611a1134005bd60ee56c37570f05fa8e72cbe1527070130f1"
+}
