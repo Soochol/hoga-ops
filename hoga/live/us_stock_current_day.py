@@ -37,7 +37,8 @@ class UsStockCurrentDay:
     async def refresh(self, key, client, scheduler):
         try:
             exchange, symbol, day = key
-            result = await fetch_stock_daily(client, scheduler, exchange, symbol, day, day, max_pages=1)
+            result = await fetch_stock_daily(client, scheduler, exchange, symbol, day, day,
+                                             max_pages=1, adjusted_as_of=day)
             bar = next((b for b in result.bars if b.trading_date == day), None)
             # Failed reads keep this day's last baseline, never yesterday's day.
             if result.messages:

@@ -62,10 +62,11 @@ const segmentCache = new WeakMap<RangeBundle, RangeBundle['segments']>();
 
 /** Keep immutable history references and segment layout; only project observed tail rows. */
 export function overlayUsBundle(base: RangeBundle | null, live: UsStockCandleEvent | undefined,
-  timeframe: string, restStartedMs: number, requestedTo: string): RangeBundle | null {
+  timeframe: string, restStartedMs: number, requestedTo: string, adjustedAsOf?: string | null): RangeBundle | null {
   if (!base || !live?.daily || live.instrument_key !== base.code || live.daily.trading_date > requestedTo
     || live.daily.trading_date < base.from_date || (!timeframe.endsWith('m') && timeframe !== 'D')) return base;
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).replaceAll('-', '');
+  if (adjustedAsOf && adjustedAsOf !== today) return base;
   if (live.daily.trading_date !== today) return base;
   const patches = new Map<number, UsObservedMinute>();
   const bucket = Number(timeframe.slice(0, -1)) * 60_000;

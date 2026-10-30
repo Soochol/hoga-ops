@@ -191,7 +191,7 @@ async def test_kiwoom_follows_continuation_headers_through_governor(monkeypatch)
     result = await fetch_stock_daily(SimpleNamespace(call=call), object(), "NASDAQ", "NVDA", "20240601", "20240610")
     assert [(c[2], c[3]) for c in calls] == [(False, ""), (True, "next")]
     assert len(submissions) == 2
-    assert calls[0][1]["upd_stkpc_tp"] == "0" and calls[0][1]["exrt_appl_tp"] == "0"
+    assert calls[0][1]["upd_stkpc_tp"] == "1" and calls[0][1]["exrt_appl_tp"] == "0"
     assert result.bars[0].high == 121.6917
     assert not result.truncated
 

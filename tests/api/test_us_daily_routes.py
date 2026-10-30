@@ -103,7 +103,7 @@ def test_unconfigured_us_stock_is_typed_and_never_calls_domestic_api(tmp_path, m
             assert case.status_code == 200 and case.json()["symbol"] == ticker
         assert body["daily_metadata"]["refresh_status"] == "unconfigured"
         assert body["daily_metadata"]["missing"] == [{"start": "20240601", "end": "20240610"}]
-        assert body["daily_metadata"]["price_basis"] == "raw"
+        assert body["daily_metadata"]["price_basis"] == "adjusted"
         assert (
             client.get(
                 "/api/live/us-stock-daily-candles?exchange=NASDAQ&symbol=AAPL&from=20240601&to=99991231"
@@ -242,7 +242,7 @@ def test_us_stock_week_month_http_and_invalid_intraday(tmp_path, monkeypatch, ti
 
     calls = []
 
-    async def fetch(client, scheduler, exchange, symbol, start, end):
+    async def fetch(client, scheduler, exchange, symbol, start, end, **kwargs):
         calls.append((exchange, symbol, start, end))
         return UsFetchResult(
             bars=[
@@ -272,7 +272,7 @@ def test_us_stock_week_month_http_and_invalid_intraday(tmp_path, monkeypatch, ti
         assert body["timeframe"] == timeframe and body["from"] == aligned
         assert body["symbol"] == "BRKb" and len(body["candles"]) == count
         assert body["candles"][-1]["close"] == 121.3
-        assert body["daily_metadata"]["price_basis"] == "raw"
+        assert body["daily_metadata"]["price_basis"] == "adjusted"
         assert calls == [("NYSE", "BRKb", aligned, "20240616")]
         assert client.get(url.replace(f"timeframe={timeframe}", "timeframe=1m")).status_code == 422
 

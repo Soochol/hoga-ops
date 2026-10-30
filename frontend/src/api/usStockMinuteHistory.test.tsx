@@ -74,3 +74,35 @@ it('isolates pending pages when the instrument switches', async () => {
   expect(result.current.data?.instrument_key).toBe('us-stock:NASDAQ:AAPL');
   expect(result.current.data?.candles.map(c => c.t_ms)).toEqual([900]);
 });
+
+it('replaces retained history and cursor when the adjustment anchor or basis changes', () => {
+  const old = payload([100, 200, 300], 'old-cursor');
+  old.minute_metadata = { ...old.minute_metadata, price_basis: 'adjusted', adjusted_as_of: '20261016' };
+  const next = payload([300, 400], 'new-cursor');
+  next.minute_metadata = { ...next.minute_metadata, price_basis: 'adjusted', adjusted_as_of: '20261019' };
+  next.candles.forEach(c => { c.close = 1; });
+  expect(retainUsMinuteWindow(old, next)).toBe(next);
+  expect(retainUsMinuteWindow({ ...old, minute_metadata: { ...old.minute_metadata, adjusted_as_of: '20261019', price_basis: 'raw' } }, next)).toBe(next);
+});
+
+it('isolates an in-flight old history page when a newer adjustment anchor arrives', async () => {
+  let finish!: (p: UsStockMinuteResponse) => void;
+  const previous = payload([300, 400], 'old-cursor');
+  previous.minute_metadata = { ...previous.minute_metadata, price_basis: 'adjusted', adjusted_as_of: '20261016' };
+  mock.call.mockImplementation((url: string) => url.includes('cursor=')
+    ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(previous));
+  const { result } = renderHook(() => useUsStockMinutes(stock, '1m'), { wrapper });
+  await flush(); act(() => result.current.loadOlder()); await flush();
+  const next = payload([400, 500], 'new-cursor');
+  next.minute_metadata = { ...next.minute_metadata, price_basis: 'adjusted', adjusted_as_of: '20261019' };
+  next.candles.forEach(c => { c.close = 1; });
+  mock.call.mockImplementation(() => Promise.resolve(next));
+  await flush(60_000);
+  const oldPage = payload([100, 200], null);
+  oldPage.minute_metadata = { ...oldPage.minute_metadata, price_basis: 'adjusted', adjusted_as_of: '20261016' };
+  await act(async () => finish(oldPage)); await flush();
+  expect(result.current.data?.candles.map(c => c.t_ms)).toEqual([400, 500]);
+  expect(result.current.data?.candles.every(c => c.close === 1)).toBe(true);
+  act(() => result.current.loadOlder()); await flush();
+  expect(mock.call.mock.calls.at(-1)?.[0]).toContain('cursor=new-cursor');
+});

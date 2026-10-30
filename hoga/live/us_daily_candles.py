@@ -46,6 +46,7 @@ class UsDailyMetadata(BaseModel):
     market_timezone: str = "America/New_York"
     source: str
     price_basis: str
+    adjusted_as_of: str | None = None
     currency: str
     session_scope: str
     # Unknown until a broad older negative interval and first positive day are verified together.
