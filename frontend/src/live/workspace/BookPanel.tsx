@@ -172,7 +172,9 @@ export default function BookPanel({
     deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [], trades.slice(0, 9), summary.fillStrengthPct);
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoPage, setInfoPage] = useState<0 | 1>(0);
+  const [infoChangePct, setInfoChangePct] = useState(false);
   const nextInfoPage = () => setInfoPage(page => page === 0 ? 1 : 0);
+  const toggleInfoChangePct = () => setInfoChangePct(show => !show);
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const infoId = useId();
   const closeInfo = useCallback(() => {
@@ -217,7 +219,8 @@ export default function BookPanel({
               {emptyState ?? <PanelState>{inAfterHoursMode ? '시간외 호가 없음' : '호가 데이터 없음'}</PanelState>}
               {showEmptySummary && <BookSummary summary={summary} baselinePrice={baselinePrice}
                 limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={ROW_H * SUMMARY_ROWS}
-                page={infoPage} onNextPage={nextInfoPage} expectedFill={null} />}
+                page={infoPage} onNextPage={nextInfoPage}
+                showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct} expectedFill={null} />}
             </div>
           </div>
           <SessionOnlyStrip
@@ -376,6 +379,7 @@ export default function BookPanel({
                 <BookSummary summary={summary} baselinePrice={baselinePrice}
                   limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={summaryHeight}
                   page={infoPage} onNextPage={nextInfoPage}
+                  showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct}
                   expectedFill={summaryExpectedFill}
                   expectedDimClass={staleDim} />
               </div>
@@ -406,6 +410,7 @@ export default function BookPanel({
         <BookSummary summary={summary} baselinePrice={baselinePrice}
           limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={264}
           page={infoPage} onNextPage={nextInfoPage}
+          showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct}
           expectedFill={summaryExpectedFill}
           expectedDimClass={staleDim} />
       </div>, document.body)}
@@ -431,6 +436,7 @@ export function BookSummary({
   summary, baselinePrice, limits = null, krxClose = null, krxPreviousClose = null, vi = null,
   height = ROW_H * SUMMARY_ROWS,
   page, onNextPage, expectedFill = null, expectedDimClass = '', headingLabel = '',
+  showChangePct, onToggleChangePct,
   expectedFillPosition = 'bottom',
   separateVi = true,
 }: {
@@ -443,6 +449,8 @@ export function BookSummary({
   height?: number;
   page: 0 | 1;
   onNextPage: () => void;
+  showChangePct: boolean;
+  onToggleChangePct: () => void;
   expectedFill?: { price: number; qty: number | null } | null;
   expectedDimClass?: string;
   headingLabel?: string;
@@ -453,14 +461,14 @@ export function BookSummary({
     baselinePrice={baselinePrice} dimClass={expectedDimClass} divider={expectedFillPosition === 'bottom'} />;
   return (
     <div className="book-summary flex flex-col" data-testid="book-summary" data-page={page + 1}
-      onClick={onNextPage}
       style={{ height, '--book-summary-row-height': `${height / SUMMARY_ROWS}px` } as React.CSSProperties}>
-      <button type="button" className="book-summary-heading" aria-label={`정보 ${page + 1}페이지, 다음 정보 페이지로 전환`}>
+      <div className="book-summary-heading">
         <span>{headingLabel}</span>
-        <span className="book-summary-pages" aria-hidden="true">
-          {[0, 1].map(index => <span key={index} className={`book-summary-dot${page === index ? ' is-active' : ''}`} />)}
-        </span>
-      </button>
+        <button type="button" className="book-summary-pages" onClick={onNextPage}
+          aria-label={`정보 ${page + 1}페이지, 다음 정보 페이지로 전환`}>
+          {[0, 1].map(index => <span key={index} aria-hidden="true" className={`book-summary-dot${page === index ? ' is-active' : ''}`} />)}
+        </button>
+      </div>
       {page === 0 ? <div className={`book-summary-page${expectedFillPosition === 'bottom' ? ' flex flex-col' : ''}`}>
         {expectedFillPosition === 'top' ? expectedRows : null}
         <SummaryRow
@@ -468,12 +476,14 @@ export function BookSummary({
           value={fmtOr(summary.dayOpen)}
           tooltipPrice={summary.dayOpen}
           tooltipBaseline={krxPreviousClose}
+          showChangePct={showChangePct} onToggleChangePct={onToggleChangePct}
         />
         <SummaryRow
           label="최고"
           value={fmtOr(summary.dayHigh)}
           tooltipPrice={summary.dayHigh}
           tooltipBaseline={krxPreviousClose}
+          showChangePct={showChangePct} onToggleChangePct={onToggleChangePct}
           color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
         />
         <SummaryRow
@@ -481,9 +491,10 @@ export function BookSummary({
           value={fmtOr(summary.dayLow)}
           tooltipPrice={summary.dayLow}
           tooltipBaseline={krxPreviousClose}
+          showChangePct={showChangePct} onToggleChangePct={onToggleChangePct}
           color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
         />
-        <SummaryRow label="KRX종가" value={fmtOr(krxClose)} />
+        <SummaryRow label="KRX종가" value={fmtOr(krxClose)} divider />
         {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
             620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
         {/* 순서 = 거래량 → 어제보다(그 거래량의 전일 대비) → 거래대금
@@ -777,6 +788,8 @@ function SummaryRow({
   highlight,
   tooltipPrice = null,
   tooltipBaseline = null,
+  showChangePct = false,
+  onToggleChangePct,
 }: {
   label: string;
   value: string;
@@ -785,18 +798,34 @@ function SummaryRow({
   highlight?: boolean;
   tooltipPrice?: number | null;
   tooltipBaseline?: number | null;
+  showChangePct?: boolean;
+  onToggleChangePct?: () => void;
 }) {
-  const empty = value === '−';
   const pct = tooltipPrice != null && Number.isFinite(tooltipPrice) && tooltipPrice > 0
     && tooltipBaseline != null && Number.isFinite(tooltipBaseline) && tooltipBaseline > 0
     ? (tooltipPrice / tooltipBaseline - 1) * 100 : null;
   // Normalize rounded zero so a tiny negative change cannot display "-0.00%".
   const roundedPct = pct == null ? null : Number(pct.toFixed(2));
-  const tooltipText = roundedPct == null ? '' : `전일 KRX 종가 대비 ${roundedPct > 0 ? '+' : ''}${roundedPct.toFixed(2)}%`;
+  const pctText = roundedPct == null ? '−' : `${roundedPct > 0 ? '+' : ''}${roundedPct.toFixed(2)}%`;
+  const displayValue = showChangePct ? pctText : value;
+  const empty = displayValue === '−';
+  const displayColor = showChangePct ? (roundedPct == null ? 'text-fg-dimmer' : priceDirClass(roundedPct)) : color;
+  const tooltipText = roundedPct == null ? '' : `${showChangePct ? `${label} 가격 ${fmtOr(tooltipPrice)}원 · ` : ''}전일 KRX 종가 대비 ${pctText}`;
   const tip = useTextTooltip(tooltipText, 500, `book-price-tooltip ${priceDirClass(pct ?? 0)}`);
+  const Row = onToggleChangePct ? 'button' : 'div';
   return (
-    <div
-      className={`book-summary-row flex items-center justify-between gap-3 px-2 ${
+    <Row
+      type={onToggleChangePct ? 'button' : undefined}
+      onClick={onToggleChangePct ? () => { tip.hide(); onToggleChangePct(); } : undefined}
+      aria-label={onToggleChangePct ? `${label} 가격·등락률 전환` : undefined}
+      aria-pressed={onToggleChangePct ? showChangePct : undefined}
+      aria-describedby={onToggleChangePct ? tip.id : undefined}
+      onMouseEnter={onToggleChangePct ? e => tip.show(e.currentTarget) : undefined}
+      onMouseLeave={onToggleChangePct ? tip.hide : undefined}
+      onFocus={onToggleChangePct ? e => tip.showOnFocus(e.target as HTMLElement) : undefined}
+      onBlur={onToggleChangePct ? tip.hide : undefined}
+      onKeyDown={onToggleChangePct ? e => { if (e.key === 'Escape') { e.stopPropagation(); tip.hide(); } } : undefined}
+      className={`book-summary-row ${onToggleChangePct ? 'book-summary-toggle ' : ''}flex items-center justify-between gap-3 px-2 ${
         divider ? 'border-t border-border' : ''
       } ${highlight ? 'bg-bg-subtle' : ''}`}
       style={{ height: 'var(--book-summary-row-height, 22px)' }}
@@ -805,20 +834,20 @@ function SummaryRow({
           개행으로 계약을 뚫는 대신 그리드의 가로 스크롤로 전가한다(min-w 철학). */}
       <span className="whitespace-nowrap text-xs text-fg-dim">{label}</span>
       <span
-        aria-label={tooltipText ? `${label} 가격 ${value}원` : undefined}
+        aria-label={tooltipText ? (showChangePct ? `${label} 등락률 ${displayValue}` : `${label} 가격 ${value}원`) : undefined}
         aria-describedby={tip.id}
-        tabIndex={tooltipText ? 0 : undefined}
-        onMouseEnter={e => tip.show(e.currentTarget)} onMouseLeave={tip.hide}
-        onFocus={e => tip.showOnFocus(e.currentTarget)} onBlur={tip.hide}
+        tabIndex={tooltipText && !onToggleChangePct ? 0 : undefined}
+        onMouseEnter={!onToggleChangePct ? e => tip.show(e.currentTarget) : undefined} onMouseLeave={!onToggleChangePct ? tip.hide : undefined}
+        onFocus={!onToggleChangePct ? e => tip.showOnFocus(e.currentTarget) : undefined} onBlur={!onToggleChangePct ? tip.hide : undefined}
         onKeyDown={e => { if (e.key === 'Escape' && tooltipText) { e.stopPropagation(); tip.hide(); } }}
         className={`flex items-center whitespace-nowrap font-data text-sm tabular-nums ${
-          color ?? (empty ? 'text-fg-dimmer' : 'text-fg')
+          displayColor ?? (empty ? 'text-fg-dimmer' : 'text-fg')
         }`}
       >
-        {value}
+        {displayValue}
       </span>
       {tip.tooltip}
-    </div>
+    </Row>
   );
 }
 
