@@ -1,0 +1,137 @@
+{
+  "date_kst": "2026-10-30",
+  "head": "8c4a58bfa5dbbed681f3daf1dfeaf5da1309be5b",
+  "base": "8c4a58bfa5dbbed681f3daf1dfeaf5da1309be5b",
+  "working_tree": "Uncommitted implementation; no production app or server deployment.",
+  "input_fingerprint": {
+    "algorithm": "SHA-256 of sorted path + NUL + file SHA-256 (or None for a deletion) + newline",
+    "roots": [
+      "frontend (tracked files plus new source/tests)",
+      "hoga",
+      "tests/fixtures",
+      "pyproject.toml",
+      "uv.lock",
+      "VERSION"
+    ],
+    "file_count": 2384,
+    "tree_sha256": "fa7505a49c783bc1b2dc8a3cb900996dc5ae37dc00dc712653a6ac698ab4dd72",
+    "changed_frontend_files": {
+      "frontend/src/live/bookAvailabilitySources.test.ts": "49ce939622e670391ceb989ab82b30078d976c4f9c04195f1fc998b776f37ba0",
+      "frontend/src/live/bookAvailabilitySources.ts": "ff6c4f91ad378ae7e7f4b9d9fdeae48b2eb7b3d64f1a80a449e99ed90e07dc78",
+      "frontend/src/live/orderbookAvailability.test.ts": "f2e160cf7054d085c12a4b754a244b4a3a3f35bfa131bccb89e54b2bc1ab5d94",
+      "frontend/src/live/orderbookAvailability.ts": "d3c68a343171c177d44fa0f3ed219642d0513f1a2fb12f32ca0d13549b16cc51",
+      "frontend/src/live/useOrderbookAvailability.test.tsx": "3a78bb84985dd1fac015c891a215deefbbd3741023d3bdbf154ccf25300f136c",
+      "frontend/src/live/useOrderbookAvailability.ts": "5fde4ddab10a2b55bf63aa6da0d6a8fb1ef89c4c6ebd43903a0e3ced41c47e5e",
+      "frontend/src/live/workspace/BookAvailabilityState.css": "57c3eb98e9a03b48991523af860ad0214e37b63739b6d1fd5151795e1368590a",
+      "frontend/src/live/workspace/BookAvailabilityState.test.tsx": "d105f8e73ee7d66010eee6f00ed3e13eb58b328850c55de1ea3fe919107d59b8",
+      "frontend/src/live/workspace/BookAvailabilityState.tsx": "ba109f94b3bedd28680b64dba7cb1b1bae236cf10a1d50056fdee3ee42649cd5",
+      "frontend/src/live/workspace/DataWindow.tsx": "c8534d2060601d8ca6b3acf9ffa4e07725ba72b87055f3d83c6051f058a16210",
+      "frontend/src/live/workspace/OrderWindow.test.tsx": "6dc7b5bd7f8851117eda1ac0a0439926a959f582bda582c7a240e0793b0b3049",
+      "frontend/src/live/workspace/OrderWindow.tsx": "d5aadab3263e5952f11827d39ae4d625577477e23a81b29b1a82fefb9fe71ed3",
+      "frontend/src/live/workspace/RestOrderbookState.tsx": null,
+      "frontend/src/live/workspace/useBookSessionDisplay.ts": "15ff9a806b8dd75726db0d33c4004abdb7e41c564da24922a6c837885ee5bcdb",
+      "frontend/tests/e2e/book-availability.spec.ts": "7c1b96ee292723504d9633a5aadf84c3d59de8663ec74edf96cdd13f37d2d28c",
+      "frontend/tests/e2e/live-orders.spec.ts": "d01ec81b95d9fa714b4ef99ae72aa20604993c6ef29e2f9b003f8ddf19763573"
+    }
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "packages": {
+      "vite": "8.0.16",
+      "vitest": "4.1.7",
+      "typescript": "6.0.3",
+      "@playwright/test": "1.60.0",
+      "react": "18.3.1"
+    },
+    "browser": "System Google Chrome 156.0.8078.73",
+    "api_port": 20491,
+    "frontend_port": 21491,
+    "workers": 1,
+    "credentials": "Existing Playwright webServer.env blank vendor credentials; isolated worktree data/dist."
+  },
+  "final_checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; app, unit and E2E TypeScript projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/live/orderbookAvailability.test.ts src/live/bookAvailabilitySources.test.ts src/live/useOrderbookAvailability.test.tsx src/live/bookRecovery.test.ts src/live/workspace/BookAvailabilityState.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/DataWindow.test.tsx src/live/workspace/useBookSessionDisplay.test.tsx src/live/aftermarketExclusionState.test.tsx src/api/sharedLiveSeries.test.tsx src/api/ws.test.ts src/api/liveRestOrderbook.test.tsx",
+      "result": "408 passed / 12 files"
+    },
+    {
+      "command": "cd frontend && npx playwright test tests/e2e/book-availability.spec.ts tests/e2e/live-orders.spec.ts --grep 'book|호가 (empty|failed)|10호가 (ready|empty|failed)|전체 호가|REST 복합|VI처럼' --reporter=line",
+      "result": "25 passed; includes fixed coordinates, scroll, footer, compound failures, source-specific retry and full-price empty book",
+      "scope_note": "Final change in this test file only reverted an accidental edit in the unselected weekend test; selected test bodies and app inputs remained unchanged. The weekend test was then verified separately below."
+    },
+    {
+      "command": "cd frontend && npx playwright test tests/e2e/live-orders.spec.ts --grep '주말 REST 마지막 호가' --reporter=line",
+      "result": "1 passed"
+    },
+    {
+      "command": "cd frontend && npx vite build",
+      "execution": "Playwright webServer command before the final browser runs",
+      "result": "passed"
+    },
+    {
+      "command": "cd frontend && npx eslint src/live/orderbookAvailability.ts src/live/bookAvailabilitySources.ts src/live/useOrderbookAvailability.ts src/live/workspace/BookAvailabilityState.tsx src/live/workspace/useBookSessionDisplay.ts",
+      "result": "passed; zero errors/warnings"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "broader_development_runs": [
+    {
+      "command": "cd frontend && npx vitest run",
+      "result": "9511 passed / 3 failed, 745 files; before final full-price empty-book regression case was added",
+      "status": "not a green full-suite result"
+    },
+    {
+      "command": "cd frontend && npx playwright test tests/e2e/book-availability.spec.ts tests/e2e/live-orders.spec.ts --reporter=line",
+      "result": "151 passed / 1 failed, before final source and regression-test refinements",
+      "status": "exploratory; not reused as final passing verification"
+    }
+  ],
+  "baseline_confirmation": {
+    "source": "git archive HEAD into an isolated temporary directory; separate npm ci and Python environment; no working source replacement",
+    "commit": "8c4a58bfa5dbbed681f3daf1dfeaf5da1309be5b",
+    "unit_command": "cd frontend && npx vitest run src/screener/ConditionRow.test.tsx src/state/persistencePolicy.test.ts",
+    "unit_result": "Same 3 failures, 53 passed: trade_value_rank/change_pct_rank edit assertions still expect lookback; persistence storage-listener count expects 9 but observes 10.",
+    "e2e_command": "cd frontend && npx playwright test tests/e2e/live-orders.spec.ts --grep 'VI처럼' --reporter=line",
+    "e2e_result": "Same missing .order-info in row 19 on original code. Updated the assertion to the existing trade list anchored in row 11; final browser verification passed.",
+    "clock_command": "cd frontend && npx playwright test tests/e2e/book-availability.spec.ts --grep 'both books keep only the last timestamp' --reporter=line",
+    "clock_result": "Passed on original code; original code also emits the ResizeObserver loop notification seen in clock-driven browser fixtures.",
+    "api_port": 20043,
+    "frontend_port": 21043
+  },
+  "scope_preserved": [
+    "Fixed bottom order status bar",
+    "Order freshness and read-only REST books",
+    "Bounded shared automatic recovery",
+    "Existing transport and query sharing",
+    "Historical cursor data contract"
+  ],
+  "log_sha256": {
+    "hoga-book-final-unit.log": "ed3ac21ec79aaf101eca09f302ea8c0d918218eb88849ae9f66ce038db264a4c",
+    "hoga-book-types.log": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+    "hoga-book-final-e2e.log": "1bf4aa4ca2f5ed175c81295b66a8ad5356308f443b1821c83fc4de709cd9d27e",
+    "hoga-book-weekend-e2e.log": "56148ee5629d390efbdb7a53fcf1347ba6f8f463faa6b23d5f0597d7938e6835",
+    "hoga-book-eslint.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "hoga-book-final-all-unit.log": "b12c44371051d9358a7aa884b29b0442125009bc4c783600c0e8bce899abbe78",
+    "hoga-book-baseline-tests.log": "aa2c56024b5391ab9c9e2b2344eedaac3e2b1a7d5209ba5e06f8bd3c199965e7",
+    "hoga-book-baseline-e2e.log": "8c809d16cd4b745b413089d775646f4c8566a923b03ef83b70e11b5b3ce23595",
+    "hoga-book-baseline-clock-e2e.log": "fde9b4aa1957bfe35a74caf4f764844a2425b9bfd724ec3845feb0b5f11dfc33"
+  },
+  "pr_preflight": {
+    "base": "8c4a58bfa5dbbed681f3daf1dfeaf5da1309be5b",
+    "input_tree_sha256": "fa7505a49c783bc1b2dc8a3cb900996dc5ae37dc00dc712653a6ac698ab4dd72",
+    "result": "unchanged; reuse the recorded 408 unit tests, 26 selected browser tests, typecheck, build and scoped lint passes",
+    "scope": "Frontend-only change; backend source, wire contracts, fixtures, lockfiles and verification configuration unchanged.",
+    "head_association": "The PR description records the committed head SHA. This record changes documentation only; it is outside the verification input roots.",
+    "overlapping_open_prs": [],
+    "known_baseline_failures": "The three unrelated full-unit-suite failures remain explicitly recorded and were reproduced on the base commit; the full suite is not reported as passing."
+  }
+}

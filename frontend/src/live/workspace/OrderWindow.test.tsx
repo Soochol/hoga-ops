@@ -309,6 +309,19 @@ describe('호가 주문', () => {
     expect(restBookQuery.refetch).toHaveBeenCalledOnce();
   });
 
+  it('수신 호가 없이 전체 가격 사다리를 켜도 조회 실패 안내를 오버레이로 유지한다', () => {
+    mock.now = Date.parse('2026-10-24T10:15:00+09:00'); mock.snapshotAt = mock.now;
+    mock.askCount = mock.bidCount = 0;
+    restBookQuery.isError = true;
+    const { container } = show();
+    expect(screen.getByTestId('order-empty-book')).toHaveTextContent('마지막 호가 조회 실패');
+    fireEvent.click(screen.getByRole('button', { name: '전체 호가' }));
+    expect(screen.getByRole('button', { name: '전체 호가' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByTestId('book-availability')).toHaveLength(1);
+    expect(container.querySelector('.book-status-overlay')).toHaveTextContent('마지막 호가 조회 실패');
+    expect(screen.getByTestId('order-status-bar')).toBeInTheDocument();
+  });
+
   it('다른 종목 또는 시장의 REST 응답을 호가로 사용하지 않는다', () => {
     mock.askCount = mock.bidCount = 0;
     restBookQuery.data = { ...restoredBook(), venue: 'NXT' };
