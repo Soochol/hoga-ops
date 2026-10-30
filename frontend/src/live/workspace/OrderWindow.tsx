@@ -166,7 +166,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     [live.latestOb, live.ob]);
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
-  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
+  const { snapshot, ladderSource, bookFresh, monitorBook, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
     allowRestBook, morningReset, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
     code, venue, nowMs: now, todayKst, isSpot: false, regularSnapshot: latestSnapshot,
     latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
@@ -182,12 +182,12 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     ? rest.data.book : null;
   const { availability: bookAvailability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
     live, bookMs: snapshot?.ts_ms, nowMs: now, exclusion: aftermarketExclusion,
-    enabled: (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
+    enabled: monitorBook && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [dragInProgress, setDragInProgress] = useState(false);
   const book = restBook ?? snapshot;
-  const deltaBadges = useOrderbookDeltaBadges(live.ob, !storedLadder && !restBook);
+  const deltaBadges = useOrderbookDeltaBadges(live.ob, bookFresh && !restBook);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
   const closeSettings = useCallback(() => {
     setSettingsDraft(null);
@@ -304,7 +304,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     : contextMenu.price == null ? sideOrders[contextMenu.side] : groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
     : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
-  const fresh = !restBook && !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
+  const fresh = !restBook && bookFresh;
   const ready = !!account && !!activeAccount && !!state.data && !state.isError && !exclusiveBusy && activeAccount.order_enabled !== false;
   const availability = {
     accountsLoading: accounts.isLoading, configured: accounts.data?.configured === true, account,
@@ -312,7 +312,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
     stateReady: !!state.data && !state.isError, stateError: state.error,
     unresolved: !!state.data?.unresolved_commands.length || cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent), settingsOpen: !!settingsDraft,
-    locked: dragInProgress, stored: !!restBook || (storedLadder && snapshot != null), singlePrice: activeSinglePrice !== null,
+    locked: dragInProgress, stored: !!restBook || ladderSource === 'saved' || ladderSource === 'retained', singlePrice: activeSinglePrice !== null,
     hasBook: !!book, fresh, quantity,
     bookIssue: bookAvailability ? { title: '주문 대기', message: bookAvailability.message, tone: 'warn' as const } : undefined,
     brokerBlocked: account && !activeAccount ? '선택 계좌의 연결을 확인하세요.'
@@ -721,10 +721,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     showChangePct={infoChangePct} onToggleChangePct={() => setInfoChangePct(show => !show)}
     showVi={infoVi} onToggleVi={() => setInfoVi(show => !show)}
     showSameTimeVolume={infoSameTimeVolume} onToggleVolume={() => setInfoSameTimeVolume(show => !show)}
-    expectedFill={{
-      price: restBook ? 0 : storedLadder || activeSinglePrice !== null ? snapshot?.exp_price ?? 0 : quote?.expected_price ?? 0,
-      qty: restBook ? null : storedLadder || activeSinglePrice !== null ? snapshot?.exp_qty ?? 0 : quote?.expected_qty ?? null,
-    }} />;
+    expectedFill={restBook || ladderSource === 'saved' ? null : activeSinglePrice !== null
+      ? { price: snapshot?.exp_price ?? 0, qty: snapshot?.exp_qty ?? null }
+      : { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null }} />;
   function saveSettingsEdits(next: OrderWindowSettings) {
     if (busy) return;
     setSettingsDraft(next);

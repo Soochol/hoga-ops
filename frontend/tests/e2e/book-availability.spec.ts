@@ -8,10 +8,11 @@ const CODE = '005930';
 const NOW = Date.UTC(2026, 9, 22, 1);
 
 async function setup(page: Page, options: { initialFailure?: boolean; nowMs?: number; bookMs?: number; code?: string;
-  exclusionReasons?: AftermarketExclusionReason[] } = {}) {
+  exclusionReasons?: AftermarketExclusionReason[]; pauseAtMs?: number } = {}) {
   const nowMs = options.nowMs ?? NOW;
   const code = options.code ?? CODE;
   await page.clock.install({ time: nowMs });
+  if (options.pauseAtMs !== undefined) await page.clock.pauseAt(options.pauseAtMs);
   await page.setViewportSize({ width: 1600, height: 1100 });
   await page.addInitScript(() => localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'KRX' })));
   await installLiveMocks(page);
@@ -244,6 +245,60 @@ test('both books retain the 15:30:02 closing residual without a false live delay
   await expect(page.getByTestId('book-last-update')).toHaveCount(2);
   await expect(states).toHaveCount(0);
   await expect(buy).toHaveAttribute('aria-disabled', 'true');
+});
+
+test('both books keep the received auction across 15:30, empty resets and silence, then resume on a new book', async ({ page }, testInfo) => {
+  const at = (clock: string) => Date.parse(`2026-10-22T${clock}+09:00`);
+  const fixture = await setup(page, { code: '079650', nowMs: at('15:29:00'), pauseAtMs: at('15:29:58') });
+  fixture.setPhase('registered');
+  let savedReads = 0;
+  await page.route(apiPrefix('orderbook'), route => {
+    savedReads++;
+    return route.fulfill({ json: { snapshot: { ts_ms: at('15:19:59'), seq: 0,
+      ask: [{ price: 66100, qty: 1 }], bid: [{ price: 66000, qty: 2 }], tot_ask: 1, tot_bid: 2 } } });
+  });
+  const frame = (clock: string, price = 67200, total = 2222) => ({ kind: 'ob', venue: 'KRX', t_ms: at(clock),
+    asks: [{ price: price + 100, qty: 100 }], bids: [{ price, qty: 200 }],
+    total_ask_qty: 1111, total_bid_qty: total });
+  fixture.ws.pushLive('079650', frame('15:19:59', 66000, 2));
+  fixture.ws.pushLive('079650', frame('15:29:59'));
+  await page.clock.runFor(1000);
+  const totals = page.getByLabel('매수총잔량 2,222', { exact: true });
+  const order = page.getByTestId('order-window');
+  const buy = order.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await expect(totals).toHaveCount(2);
+  await expect(buy).toHaveAttribute('aria-disabled', 'false');
+  await page.clock.runFor(1000); // 15:30:00; no new exchange message.
+  await expect(totals).toHaveCount(2);
+  await expect(buy).toHaveAttribute('aria-disabled', 'false');
+  await expect(page.getByText(/정규장 마지막/)).toHaveCount(0);
+  fixture.ws.pushLive('079650', frame('15:30:02', 67400, 3333));
+  await page.clock.runFor(2200);
+  const delayedTotals = page.getByLabel('매수총잔량 3,333', { exact: true });
+  const delayedBuy = order.getByRole('button', { name: /매수 67,400원 주문 추가/ });
+  await expect(delayedTotals).toHaveCount(2);
+  fixture.ws.pushLive('079650', { ...frame('15:30:03'), asks: [], bids: [] });
+  await page.clock.runFor(1000);
+  await expect(delayedTotals).toHaveCount(2);
+  await expect(delayedBuy).toHaveAttribute('aria-disabled', 'true');
+  await page.clock.runFor(31_000);
+  await expect(delayedTotals).toHaveCount(2);
+  await expect(page.getByText('마지막 수신 · 15:30:02', { exact: true })).toHaveCount(2);
+  await page.screenshot({ path: testInfo.outputPath('auction-kept-after-close.png') });
+  const connections = fixture.ws.connectionCount();
+  await page.clock.fastForward(30 * 60_000);
+  // The mock sends no heartbeats. Advance the reconnect backoff before
+  // admitting the evening frame into the renewed subscription.
+  await page.clock.runFor(1000);
+  await expect.poll(fixture.ws.connectionCount).toBeGreaterThan(connections);
+  await fixture.ws.waitForSubscribe('079650');
+  const evening = await page.evaluate(() => Date.now());
+  fixture.ws.pushLive('079650', { ...frame('16:00:00', 67500, 4444), t_ms: evening });
+  await page.clock.runFor(1000);
+  await expect(page.getByLabel('매수총잔량 4,444', { exact: true })).toHaveCount(2);
+  await expect(order.getByRole('button', { name: /매수 67,500원 주문 추가/ })).toHaveAttribute('aria-disabled', 'false');
+  expect(savedReads).toBe(0);
+  expect(fixture.ws.connectionCount()).toBe(connections + 1);
 });
 
 for (const [code, reason, label] of [
