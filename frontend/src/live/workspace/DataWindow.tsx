@@ -23,6 +23,7 @@ import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import BookPanel from './BookPanel';
+import { openTradeWindow } from './tradeWindowNavigation';
 import { resolveBookBaseline } from './bookDisplay';
 import { useRecentBookTrades } from './useRecentBookTrades';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
@@ -159,6 +160,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
         selectedAccountId={win.orderAccount}
         onResolvedAccount={account => useWorkspaceStore.getState().setOrderAccount(win.id, account)}
         onOpenExecutions={account => useWorkspaceStore.getState().openExecutionHistory(win.id, account)}
+        onOpenTrades={() => openTradeWindow(win.id)}
         settings={win.order} onSelectSymbol={(nextCode, name) => { if (nextCode !== code) useWorkspaceStore.getState().setWindowSymbol(win.id, { code: nextCode, name }); }} onSettingsChange={settings => useWorkspaceStore.getState().setOrderWindowSettings(win.id, settings)} /></Suspense>;
     case 'news':
       return <NewsWindow key={code} code={code} name={symbol?.name ?? code} linkedOnly={win.newsLinkedOnly ?? true}
@@ -442,7 +444,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     () => (isSpot ? EMPTY_TRADE_SUMMARY : fillTradeSummaryFromQuote(latestTradeSummary(venueTrade), quote)),
     [isSpot, venueTrade, quote],
   );
-  // Seed the nine recent executions from the tape's shared REST cache, then
+  // Seed recent executions from the tape's shared REST cache, then
   // merge the live tail. Current-day history must never leak into a past cursor.
   const recentTrades = useRecentBookTrades({ code, date: todayKst, venue: effectiveVenue,
     frames: venueTrade, enabled: !isSpot && activeSinglePrice === null });
@@ -551,6 +553,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           krxPreviousClose={!isSpot && krxPreviousClose.data?.as_of === quoteDate ? krxPreviousClose.data.price : null}
           summary={summary}
           trades={bookTrades}
+          tradeScopeKey={`${todayKst}:${effectiveVenue}:${scope.kind}:${scope.cursorMs ?? ''}:${activeSinglePrice !== null}`}
+          onOpenTrades={() => openTradeWindow(win.id)}
           maskRatio={maskRatio}
           lastPrice={lastPrice}
           deltaBadges={isSpot ? null : deltaBadges}

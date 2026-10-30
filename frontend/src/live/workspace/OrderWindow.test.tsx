@@ -92,6 +92,25 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('체결 빈 행도 더블클릭으로 열고 체결강도·주문 입력은 실행하지 않는다', () => {
+    const opened = vi.fn();
+    mock.bidCount = 3;
+    const { container } = render(<QueryClientProvider client={new QueryClient()}>
+      <OrderWindow code="005930" name="삼성전자" onOpenTrades={opened} />
+    </QueryClientProvider>);
+    const rows = screen.getAllByRole('button', { name: '체결창 열기' });
+    expect(rows).toHaveLength(1);
+    fireEvent.click(rows[0]);
+    fireEvent.doubleClick(container.querySelector('.order-strength')!);
+    expect(opened).not.toHaveBeenCalled();
+    fireEvent.doubleClick(rows[0]);
+    fireEvent.keyDown(rows[0], { key: 'Enter' });
+    expect(opened).toHaveBeenCalledTimes(2);
+    expect(mock.command).not.toHaveBeenCalled();
+    expect(rows[0]).not.toHaveAttribute('title');
+    expect(rows[0]).not.toHaveAttribute('data-tooltip');
+  });
+
   it('복원한 계좌가 없어도 다른 단일 계좌로 자동 전환하지 않고 명시적으로 선택할 수 있다', () => {
     const opened = vi.fn();
     render(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자"

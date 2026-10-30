@@ -69,12 +69,12 @@ for (const failed of [false, true]) {
     if (failed) {
       await expect(page.getByRole('button', { name: '이전 내역 조회 실패 · 재시도' })).toBeVisible();
       await expect(bookRows).toHaveCount(0);
-      await expect(orderRows).toHaveText(Array(9).fill(''));
+      await expect(orderRows).toHaveCount(0);
     } else {
       for (const rows of [bookRows, orderRows]) {
-        await expect(rows).toHaveCount(9);
+        await expect(rows).toHaveCount(12);
         await expect(rows.first().locator('span').last()).toHaveText('12');
-        await expect(rows.last().locator('span').last()).toHaveText('4');
+        await expect(rows.last().locator('span').last()).toHaveText('1');
       }
       expect(batches).toBe(1);
     }
@@ -89,10 +89,104 @@ for (const failed of [false, true]) {
       await expect(rows.nth(1).locator('span').last()).toHaveText('12');
     }
     if (!failed) {
-      await expect(bookRows).toHaveCount(9);
-      await expect(orderRows.last().locator('span').last()).toHaveText('5');
+      await expect(bookRows).toHaveCount(13);
+      await expect(orderRows.last().locator('span').last()).toHaveText('1');
       expect(batches).toBe(1);
     }
+  });
+}
+
+for (const kind of ['book', 'order'] as const) {
+  test(`${kind}: 체결 가격·수량·빈 공간 더블클릭은 체결창 하나만 열고 기존 창을 앞으로 가져온다`, async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-21T01:00:00Z') });
+    await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: false, accounts: [] } }));
+    let commands = 0;
+    await page.route('**/api/trading/**/commands', route => { commands++; return route.abort(); });
+    await page.route(URL_PATTERN, route => route.fulfill({ json: {
+      code: CODE, date: '20261021', venue: 'UN', rows: [makeRow(12, Date.parse('2026-10-21T00:59:00Z'))],
+      next_key: null, latest_at_ms: null, latest_volume: null, prev_close: 125000,
+    } }));
+    await setup(page, 'provided', 0, true);
+    const source = page.locator(`[data-win="${kind}-inline"]`);
+    const original = page.locator('[data-win="trade-only"]');
+    await original.getByRole('button', { name: /창 닫기$/ }).click();
+    const tapes = page.getByTestId('trade-window');
+    await expect(tapes).toHaveCount(0);
+    const triggers = source.getByRole('button', { name: '체결창 열기', exact: true });
+    const first = triggers.locator(kind === 'book' ? '.book-trade-row' : '.order-trade').first();
+    await expect(first.locator('span').last()).toHaveText('12');
+    await first.locator('span').first().click();
+    await source.locator(kind === 'book' ? '.book-strength-row' : '.order-strength').dblclick();
+    await expect(tapes).toHaveCount(0);
+    await first.locator('span').first().dblclick();
+    await expect(tapes).toHaveCount(1);
+    await expect(tapes).toHaveAttribute('data-mode', 'latest');
+    const tapeFrame = page.locator('.live-window-trade');
+    const id = await tapeFrame.getAttribute('data-win');
+    await expect(tapeFrame.locator('[data-handle="move"]')).toHaveAttribute('data-focused', '');
+    await expect(tapeFrame).toContainText('심텍');
+    await source.locator('[data-handle="move"]').click({ position: { x: 180, y: 12 } });
+    await first.locator('span').last().dblclick();
+    await expect(tapes).toHaveCount(1);
+    await expect(tapeFrame).toHaveAttribute('data-win', id!);
+    await expect(tapeFrame.locator('[data-handle="move"]')).toHaveAttribute('data-focused', '');
+    await source.locator('[data-handle="move"]').click({ position: { x: 180, y: 12 } });
+    await triggers.dblclick({ position: { x: 6, y: kind === 'book' ? 180 : 200 } });
+    await expect(tapes).toHaveCount(1);
+    await expect(tapeFrame.locator('[data-handle="move"]')).toHaveAttribute('data-focused', '');
+    expect(await triggers.first().getAttribute('title')).toBeNull();
+    expect(await triggers.first().getAttribute('data-tooltip')).toBeNull();
+    expect(commands).toBe(0);
+  });
+}
+
+for (const kind of ['book', 'order'] as const) {
+  test(`${kind}: 체결 세로 스크롤은 사다리를 고정하고 읽던 목록을 유지한 뒤 맨 위에서 최신으로 복귀한다`, async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-21T01:00:00Z') });
+    await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: false, accounts: [] } }));
+    let requests = 0;
+    const base = Date.parse('2026-10-21T00:59:00Z');
+    await page.route(URL_PATTERN, route => {
+      requests++;
+      return route.fulfill({ json: { code: CODE, date: '20261021', venue: 'UN',
+        rows: Array.from({ length: 40 }, (_, i) => makeRow(40 - i, base)),
+        next_key: 'older', latest_at_ms: base + 40000, latest_volume: 400, prev_close: 125000 } });
+    });
+    // A separate tape must not automatically fetch older pages during this book test.
+    await page.addInitScript(() => Object.defineProperty(globalThis, 'IntersectionObserver', { value: undefined }));
+    const { ws } = await setup(page, 'provided', 0, true);
+    const source = page.locator(`[data-win="${kind}-inline"]`);
+    const scroll = source.getByTestId('book-trade-list');
+    const selector = kind === 'book' ? '.book-trade-row' : '.order-trade';
+    await expect(scroll.locator(selector)).toHaveCount(40);
+    await source.locator('[data-handle="move"]').click({ position: { x: 180, y: 12 } });
+    const price = source.locator('.book-price-value').first();
+    const before = await price.boundingBox();
+    expect(before).not.toBeNull();
+    expect(await scroll.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+    await scroll.hover();
+    await page.mouse.wheel(0, 240);
+    await expect(scroll).toHaveAttribute('data-reading', 'true');
+    const position = await scroll.evaluate(el => el.scrollTop);
+    expect(position).toBeGreaterThan(0);
+    const previousText = await scroll.textContent();
+    ws.pushBatch(CODE, [{ kind: 'trade', venue: 'UN', t_ms: base + 41000, cum_volume: 1399,
+      trades: [{ price: 125700, qty: 999, side: 1 }] }], []);
+    const other = page.locator(`[data-win="${kind === 'book' ? 'order' : 'book'}-inline"]`).getByTestId('book-trade-list');
+    await expect(other).toContainText('999'); // prove the new execution reached the app
+    await expect(scroll).toHaveText(previousText!);
+    expect(await scroll.evaluate(el => el.scrollTop)).toBe(position);
+    expect((await price.boundingBox())?.y).toBe(before!.y);
+    // The end of the inner list must not scroll the surrounding price ladder.
+    await scroll.evaluate(el => { el.scrollTop = el.scrollHeight; });
+    await page.mouse.wheel(0, 300);
+    expect((await price.boundingBox())?.y).toBe(before!.y);
+    await scroll.evaluate(el => { el.scrollTop = 0; });
+    await expect(scroll).toHaveAttribute('data-reading', 'false');
+    await expect(scroll.locator(selector).first()).toContainText('999');
+    expect(requests).toBe(1);
+    await scroll.dblclick();
+    await expect(page.getByTestId('trade-window')).toHaveCount(1);
   });
 }
 

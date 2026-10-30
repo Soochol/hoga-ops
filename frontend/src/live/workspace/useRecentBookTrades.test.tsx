@@ -27,19 +27,19 @@ function setup() {
 beforeEach(() => { vi.mocked(apiCall).mockReset(); });
 afterEach(cleanup);
 
-it('seeds both books from one shared tape query and uses only the newest nine without pagination', async () => {
+it('seeds both books from one shared tape query and keeps the initial page for scrolling without pagination', async () => {
   vi.mocked(apiCall).mockResolvedValue(response());
   const { wrapper } = setup();
   const { result } = renderHook(() => ({ book: useRecentBookTrades(options), order: useRecentBookTrades(options),
     tape: useTradeHistory(source.code, source.date, source.venue) }), { wrapper });
-  await waitFor(() => expect(result.current.book).toHaveLength(9));
+  await waitFor(() => expect(result.current.book).toHaveLength(12));
   expect(result.current.order).toEqual(result.current.book);
-  expect(result.current.book.map(tick => tick.qty)).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4]);
+  expect(result.current.book.map(tick => tick.qty)).toEqual(Array.from({ length: 12 }, (_, i) => 12 - i));
   expect(result.current.tape.data?.pages).toHaveLength(1);
   expect(apiCall).toHaveBeenCalledTimes(1);
 });
 
-it('keeps arriving WS ticks while REST is pending, removes overlap, and retains nine after buffer eviction', async () => {
+it('keeps arriving WS ticks while REST is pending, removes overlap, and retains the recent window after buffer eviction', async () => {
   let resolve!: (value: TradeHistoryResponse) => void;
   vi.mocked(apiCall).mockImplementation(() => new Promise(done => { resolve = done; }));
   const { wrapper } = setup();
@@ -48,9 +48,9 @@ it('keeps arriving WS ticks while REST is pending, removes overlap, and retains 
   });
   expect(result.current.map(tick => tick.qty)).toEqual([13, 12]);
   await act(async () => resolve(response()));
-  await waitFor(() => expect(result.current.map(tick => tick.qty)).toEqual([13, 12, 11, 10, 9, 8, 7, 6, 5]));
+  await waitFor(() => expect(result.current.map(tick => tick.qty)).toEqual(Array.from({ length: 13 }, (_, i) => 13 - i)));
   rerender({ ...options, frames: [] });
-  expect(result.current.map(tick => tick.qty)).toEqual([13, 12, 11, 10, 9, 8, 7, 6, 5]);
+  expect(result.current.map(tick => tick.qty)).toEqual(Array.from({ length: 13 }, (_, i) => 13 - i));
   expect(apiCall).toHaveBeenCalledTimes(1);
 });
 
@@ -72,7 +72,7 @@ it('does not fetch or expose cached current data when disabled for a spot cursor
   expect(result.current).toEqual([]);
   expect(apiCall).not.toHaveBeenCalled();
   rerender({ ...options, frames: [frame(13)], enabled: true });
-  expect(result.current.map(tick => tick.qty)).toEqual([13, 12, 11, 10, 9, 8, 7, 6, 5]);
+  expect(result.current.map(tick => tick.qty)).toEqual(Array.from({ length: 13 }, (_, i) => 13 - i));
   expect(apiCall).not.toHaveBeenCalled();
 });
 
@@ -81,7 +81,7 @@ it.each([{ code: '000660' }, { venue: 'NXT' }, { date: '20261022' }])('clears th
   const { wrapper } = setup();
   const { result, rerender } = renderHook(props => useRecentBookTrades(props), { wrapper,
     initialProps: { ...options, frames: [frame(13)] } });
-  await waitFor(() => expect(result.current).toHaveLength(9));
+  await waitFor(() => expect(result.current).toHaveLength(13));
   vi.mocked(apiCall).mockImplementationOnce(() => new Promise(() => {}));
   rerender({ ...options, ...change });
   expect(result.current).toEqual([]);
@@ -94,4 +94,18 @@ it('ignores mismatched response metadata rather than showing another symbol or v
   const { result } = renderHook(() => useRecentBookTrades({ ...options, frames: [frame(13)] }), { wrapper });
   await waitFor(() => expect(client.getQueryState(['live', 'trade-history', source.code, source.date, source.venue])?.status).toBe('success'));
   expect(result.current.map(tick => tick.qty)).toEqual([13]);
+});
+
+it('caps a large shared initial page at 200 without requesting another page', async () => {
+  const page = response();
+  page.rows = Array.from({ length: 250 }, (_, index) => ({ ...page.rows[0], event_id: `row-${index}`,
+    t_ms: T - index * 1000, qty: index + 1, cum_volume: null }));
+  page.latest_volume = null;
+  page.latest_at_ms = T;
+  vi.mocked(apiCall).mockResolvedValue(page);
+  const { wrapper } = setup();
+  const { result } = renderHook(() => useRecentBookTrades(options), { wrapper });
+  await waitFor(() => expect(result.current).toHaveLength(200));
+  expect(result.current.at(-1)?.qty).toBe(200);
+  expect(apiCall).toHaveBeenCalledTimes(1);
 });
