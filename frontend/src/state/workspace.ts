@@ -77,7 +77,7 @@ export const WORKSPACE_SCHEMA_VERSION = 2;
 function detectDeepLinkTab(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.get('market') === 'US' || params.has('code') || params.has('index') || params.has('view') || params.has('floating');
+    return params.get('market') === 'US' || params.has('code') || params.has('index') || params.has('view');
   } catch {
     return false;
   }
@@ -1524,22 +1524,4 @@ export function normalizeWorkspaceSnapshot(raw: unknown): WorkspaceSnapshot {
     return { windows: fallback, zOrder: fallback.map((w) => w.id) };
   }
   return { windows, zOrder: normalizeZOrder(obj.zOrder, windows) };
-}
-
-/** Floating views keep the owner's stable IDs and rects; they are never layout presets. */
-export function commitFloatingWorkspace(snapshot: import('../live/workspace/floatingProtocol').FloatingWorkspace, persist = false): void {
-  const state = useWorkspaceStore.getState();
-  const retain = <T,>(before: T | undefined, after: T): T => before !== undefined && JSON.stringify(before) === JSON.stringify(after) ? before : after;
-  const entries = Object.values(snapshot.windows).slice(0, 512)
-    .map(raw => readWindow(raw, false)).filter((win): win is WorkspaceWindow => win !== null);
-  const byId = new Map(entries.map(win => [win.id, win]));
-  const ids = [...state.windows.map(win => win.id).filter(id => byId.has(id)),
-    ...entries.map(win => win.id).filter(id => !state.windows.some(win => win.id === id))];
-  const windows = retain(state.windows, ids.map(id => retain(state.windows.find(win => win.id === id), byId.get(id)!)));
-  const zOrder = retain(state.zOrder, normalizeZOrder(snapshot.zOrder, windows));
-  const groupSymbols = retain(state.groupSymbols, readGroupSymbols(snapshot.groupSymbols));
-  const chartRuntime = retain(state.chartRuntime, snapshot.chartRuntime);
-  const next = { windows, zOrder, groupSymbols, chartRuntime, pendingNormalize: false };
-  if (persist) persistFromState({ ...state, ...next });
-  useWorkspaceStore.setState(next);
 }

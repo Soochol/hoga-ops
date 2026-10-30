@@ -108,12 +108,3 @@ test('AppArmor permission attaches to one exact executable, without wildcard exp
   assert.throws(() => sandboxProfile('/tmp/path\nprofile injected'));
   assert.throws(() => sandboxProfile('relative/electron'));
 });
-
-test('floating targets are restricted to a single-view URL on the active server', () => {
-  const { floatingTarget } = require('../dist/navigation');
-  const token = '12345678-1234-1234-1234-123456789012';
-  assert.equal(floatingTarget(`${remote.origin}/live?floating=${token}&window=w1`, remote).token, token);
-  for (const url of [`${remote.origin}/live?floating=bad&window=w1`, `${remote.origin}/api/trading?floating=${token}&window=w1`,
-    `https://other.example/live?floating=${token}&window=w1`, `${remote.origin}/live?floating=${token}&window=w1&code=005930`])
-    assert.throws(() => floatingTarget(url, remote));
-});
