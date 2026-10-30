@@ -31,11 +31,13 @@ const ah = (time = at(15, 41), ask = 999, bid = 888, venue = 'KRX') =>
   ({ t_ms: time, total_ask_qty: ask, total_bid_qty: bid, venue });
 
 function setup(venue: 'KRX' | 'NXT' | 'UN' = 'KRX', isSpot = false,
-  afterHours: Record<string, unknown>[] = []) {
+  afterHours: Record<string, unknown>[] = [], initial: Partial<{
+    nowMs: number; latest: OrderbookSnapshot; retained: OrderbookSnapshot | null; preAuction: OrderbookSnapshot | null;
+  }> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   const props = { nowMs: at(15, 40), latest: empty, retained: null as OrderbookSnapshot | null,
-    preAuction: null as OrderbookSnapshot | null, afterHours };
+    preAuction: null as OrderbookSnapshot | null, afterHours, ...initial };
   const hook = renderHook(({ nowMs, latest, retained, preAuction, afterHours }) => useBookSessionDisplay({
     code: '036930', venue, nowMs, todayKst: '20261014', isSpot,
     latestSnapshot: latest, regularSnapshot: latest, lastValidSnapshot: retained, preAuctionSnapshot: preAuction,
@@ -46,6 +48,59 @@ function setup(venue: 'KRX' | 'NXT' | 'UN' = 'KRX', isSpot = false,
 
 beforeEach(() => { restriction.current = undefined; vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: null }); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+it('never rewinds the closing book at 15:30, through delayed auction frames, resets and silence', () => {
+  const auction = { ...book(at(15, 29, 59), 33500), exp_price: 33500, exp_qty: 100 };
+  const { result, rerender, props } = setup('UN', false, [], {
+    nowMs: at(15, 29, 59), latest: auction, retained: auction, preAuction: saved,
+  });
+  const initial = { ...props, latest: auction, retained: auction, preAuction: saved };
+  rerender({ ...initial, nowMs: at(15, 29, 59) });
+  expect(result.current.snapshot).toEqual(auction);
+  rerender({ ...initial, nowMs: at(15, 30) });
+  expect(result.current.snapshot).toEqual(auction);
+  expect(result.current.ladderSource).toBe('live');
+  expect(result.current.bookFresh).toBe(true);
+  const delayed = book(at(15, 30, 2), 33600);
+  rerender({ ...initial, nowMs: at(15, 30, 2), latest: delayed, retained: delayed });
+  expect(result.current.snapshot).toEqual(delayed);
+  rerender({ ...initial, nowMs: at(15, 30, 3), latest: empty, retained: delayed });
+  expect(result.current.snapshot).toEqual(delayed);
+  expect(result.current.ladderSource).toBe('retained');
+  expect(result.current.bookFresh).toBe(false);
+  rerender({ ...initial, nowMs: at(16), latest: empty, retained: delayed });
+  expect(result.current.snapshot).toEqual(delayed);
+  const evening = book(at(16, 0, 1), 33700);
+  rerender({ ...initial, nowMs: at(16, 0, 1), latest: evening, retained: evening });
+  expect(result.current.snapshot).toEqual(evening);
+  expect(result.current.ladderSource).toBe('live');
+  expect(result.current.bookFresh).toBe(true);
+  expect(client.apiCall).not.toHaveBeenCalled();
+});
+
+it('does not let a delayed disk response replace a received auction, including after an empty reset', async () => {
+  let complete!: (value: unknown) => void;
+  vi.mocked(client.apiCall).mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+  const { result, rerender, props, queryClient } = setup();
+  const auction = book(at(15, 29, 59), 33500);
+  rerender({ ...props, latest: auction, retained: auction });
+  complete({ snapshot: saved });
+  await waitFor(() => expect(queryClient.getQueryData(['live', 'pre-auction-book', '036930', '20261014', 'KRX'])).toEqual(saved));
+  expect(result.current.snapshot).toEqual(auction);
+  expect(result.current.ladderSource).toBe('live');
+  expect(result.current.bookFresh).toBe(false);
+  rerender({ ...props, retained: auction });
+  expect(result.current.snapshot).toEqual(auction);
+  expect(result.current.ladderSource).toBe('retained');
+});
+
+it('uses a saved pre-auction book only without a received ladder, and never makes it fresh', () => {
+  const { result } = setup('KRX', false, [], { nowMs: at(15, 30), preAuction: saved });
+  expect(result.current.snapshot).toEqual(saved);
+  expect(result.current.ladderSource).toBe('saved');
+  expect(result.current.bookFresh).toBe(false);
+  expect(result.current.monitorBook).toBe(false);
+});
 
 it('clears KRX at 08:30 using the effective venue and never restores an undated REST ladder during the day', () => {
   const previous = book(at(20) - 86_400_000);
@@ -80,7 +135,7 @@ it.each([at(8, 49, 59), at(8, 50), at(9)])('switches from morning totals to the 
   const live = book(time);
   rerender({ ...props, nowMs: time, latest: live, retained: live, afterHours });
   expect(result.current.snapshot).toEqual(live);
-  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.monitorBook).toBe(true);
   expect(result.current.afterHoursTotals).toBeNull();
   expect(result.current.sessionControl).toEqual({ kind: 'label', label: `정규장 · ${new Date(time + 9 * 3600_000).toISOString().slice(11, 19)}` });
 });
@@ -97,7 +152,7 @@ it('recovers pre-auction data after an empty reset and replaces it at 15:59:50 w
   const api = vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: saved });
   const { result, rerender, props } = setup('UN');
   await waitFor(() => expect(result.current.snapshot).toEqual(saved));
-  expect(result.current.storedLadder).toBe(true);
+  expect(result.current.monitorBook).toBe(false);
   expect(result.current.afterHoursTotals).toBeNull();
   expect(result.current.sessionControl).toEqual({ kind: 'label', label: '정규장 마지막 · 15:19:50' });
   const url = new URL(api.mock.calls[0][0], 'http://test');
@@ -106,7 +161,7 @@ it('recovers pre-auction data after an empty reset and replaces it at 15:59:50 w
   const early = book(at(15, 59, 50), 33400);
   rerender({ ...props, nowMs: at(15, 59, 50), latest: early, retained: early });
   expect(result.current.snapshot).toEqual(early);
-  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.monitorBook).toBe(true);
   expect(result.current.sessionControl).toEqual({ kind: 'label', label: '실시간 호가 · 15:59:50' });
   rerender({ ...props, nowMs: at(16), latest: early, retained: early });
   expect(result.current.snapshot).toEqual(early);
@@ -123,7 +178,7 @@ it('keeps the saved ladder past 16:00 until data arrives, and resumes updates pa
   const live = book(at(16, 0, 3), 33450);
   rerender({ ...props, nowMs: at(16, 0, 3), latest: live, retained: live });
   expect(result.current.snapshot).toEqual(live);
-  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.monitorBook).toBe(true);
   rerender({ ...props, nowMs: at(20, 0, 2), latest: live, retained: live });
   expect(result.current.snapshot).toEqual(live);
   const late = book(at(20, 0, 2), 33500);
@@ -150,7 +205,8 @@ it('keeps same-day usable data across empty frames outside KRX, including before
   expect(result.current.snapshot).toEqual(retained);
   rerender({ ...props, nowMs: at(8), latest: empty, retained });
   expect(result.current.snapshot).toEqual(retained);
-  expect(result.current.storedLadder).toBe(true);
+  expect(result.current.ladderSource).toBe('retained');
+  expect(result.current.bookFresh).toBe(false);
   expect(api).not.toHaveBeenCalled();
 });
 
@@ -159,40 +215,41 @@ it('retains a stale KRX closing residual as a saved ladder and resumes on an eve
   const { result, rerender, props } = setup('UN');
   rerender({ ...props, nowMs: at(19, 30), latest: residual, retained: residual });
   expect(result.current.snapshot).toEqual(residual);
-  expect(result.current.storedLadder).toBe(true);
+  expect(result.current.monitorBook).toBe(false);
   expect(result.current.sessionControl).toEqual({ kind: 'label', label: '마지막 수신 · 15:30:02' });
 
   const evening = book(at(19, 30), 33400);
   rerender({ ...props, nowMs: at(19, 30), latest: evening, retained: evening });
   expect(result.current.snapshot).toEqual(evening);
-  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.monitorBook).toBe(true);
   // Missing updates during the continuous market must still report a delay.
   rerender({ ...props, nowMs: at(19, 31), latest: evening, retained: evening });
-  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.monitorBook).toBe(true);
 });
 
 it('keeps an arriving pre-reopening KRX ladder live until it becomes stale', () => {
   const early = book(at(15, 59, 50));
   const { result, rerender, props } = setup();
   rerender({ ...props, nowMs: at(16, 0, 19), latest: early, retained: early });
-  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.monitorBook).toBe(true);
   rerender({ ...props, nowMs: at(16, 0, 20), latest: early, retained: early });
   expect(result.current.snapshot).toEqual(early);
-  expect(result.current.storedLadder).toBe(true);
+  expect(result.current.monitorBook).toBe(false);
 });
 
 it('does not apply the KRX break to an NXT book', () => {
   const residual = book(at(15, 30, 2));
   const { result, rerender, props } = setup('NXT');
   rerender({ ...props, nowMs: at(19, 30), latest: residual, retained: residual });
-  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.monitorBook).toBe(true);
 });
 
 it('does not substitute live or saved fallback data into a historical cursor', () => {
   const api = vi.spyOn(client, 'apiCall');
   const { result } = setup('KRX', true, [ah()]);
   expect(result.current.snapshot).toEqual(empty);
-  expect(result.current.storedLadder).toBe(false);
+  expect(result.current.ladderSource).toBe('cursor');
+  expect(result.current.monitorBook).toBe(false);
   expect(result.current.afterHoursTotals).toBeNull();
   expect(result.current.sessionControl).toEqual({ kind: 'none' });
   expect(api).not.toHaveBeenCalled();
@@ -212,7 +269,7 @@ it('keeps the received ladder while after-hours quantities and their timestamp u
   const retained = { ...book(at(15, 30, 13)), tot_ask: 21663, tot_bid: 32039 };
   rerender({ ...props, nowMs: at(15, 46, 38), retained, afterHours: [ah(at(15, 46, 38), 0, 1640)] });
   expect(result.current.snapshot).toEqual(retained);
-  expect(result.current.storedLadder).toBe(true);
+  expect(result.current.monitorBook).toBe(false);
   expect(result.current.afterHoursTotals).toEqual({ ask: 0, bid: 1640 });
   expect(result.current.sessionControl).toEqual({ kind: 'label', label: '시간외종가 · 15:46:38' });
   rerender({ ...props, nowMs: at(15, 46, 38), retained, afterHours: [ah(at(15, 46, 39), 12, 1600)] });
@@ -270,22 +327,23 @@ it('does not replace a newer received pre-auction frame with an older disk snaps
   expect(result.current.snapshot).toEqual(saved);
 });
 
-it('uses the separately retained WS book when the last usable frame is an auction and disk data is absent', async () => {
+it('prefers the retained auction over the older pre-auction WS book when disk data is absent', async () => {
   vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: null });
   const { result, rerender, props, queryClient } = setup();
   const exact = book(at(15, 19, 59));
-  rerender({ ...props, retained: book(at(15, 25)), preAuction: exact });
-  expect(result.current.snapshot).toEqual(exact);
+  const auction = book(at(15, 25));
+  rerender({ ...props, retained: auction, preAuction: exact });
+  expect(result.current.snapshot).toEqual(auction);
   await waitFor(() => expect(queryClient.getQueryData(['live', 'pre-auction-book', '036930', '20261014', 'KRX'])).toBeNull());
-  expect(result.current.snapshot).toEqual(exact);
-  expect(result.current.storedLadder).toBe(true);
+  expect(result.current.snapshot).toEqual(auction);
+  expect(result.current.ladderSource).toBe('retained');
+  expect(result.current.bookFresh).toBe(false);
 });
 
-it('retries a missing promoted book without losing a pre-auction frame already received', async () => {
+it('retries recovery only while no usable received book exists', async () => {
   const api = vi.spyOn(client, 'apiCall').mockResolvedValueOnce({ snapshot: null }).mockResolvedValue({ snapshot: saved });
   const { result, rerender, props, queryClient } = setup();
-  rerender({ ...props, retained: saved });
-  expect(result.current.snapshot).toEqual(saved);
+  rerender({ ...props });
   await waitFor(() => expect(api).toHaveBeenCalledOnce());
   await act(() => queryClient.invalidateQueries({ queryKey: ['live', 'pre-auction-book'] }));
   await waitFor(() => expect(api).toHaveBeenCalledTimes(2));

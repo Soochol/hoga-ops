@@ -282,7 +282,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const todayKst = link?.todayKst ?? realMsToYyyymmdd(nowMs);
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
-  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
+  const { snapshot, ladderSource, bookFresh, monitorBook, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
     allowRestBook, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
     code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
@@ -294,7 +294,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const restBook = needsRestBook && rest.data?.code === code && rest.data.venue === effectiveVenue
     ? rest.data.book : null;
   const displayedBook = restBook ?? (needsRestBook ? null : snapshot);
-  const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot && !storedLadder && !restBook);
+  const deltaBadges = useOrderbookDeltaBadges(venueOb, bookFresh && !restBook);
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
   //
@@ -478,7 +478,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const bookStale = !useSinglePrice && spotOrderbookStale;
   const { availability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
     live, bookMs: snapshot?.ts_ms, nowMs, exclusion: aftermarketExclusion,
-    enabled: !isSpot && (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
+    enabled: monitorBook && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const bookAvailability = <BookAvailabilityState state={availability} onRetry={retryBook} />;
   // 조회 중에는 안내 행을 추가하지 않아 호가 사다리의 위치를 유지한다.
@@ -541,8 +541,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
             : availability ? bookAvailability : undefined}
           snapshot={displayedBook}
           showEmptySummary={!restBook && !hasBookPrices(snapshot)}
-          expectedFill={restBook ? null : !isSpot && !storedLadder && activeSinglePrice === null
-            ? { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null } : undefined}
+          expectedFill={restBook || ladderSource === 'saved' ? null : isSpot || activeSinglePrice !== null ? undefined
+            : { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null }}
           afterHoursTotals={restBook ? null : afterHoursTotals}
           afterHoursLabel={afterHoursLabel}
           sessionControl={restBook ? { kind: 'label', label: '마지막 조회 호가' } : sessionControl}

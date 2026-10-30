@@ -12,6 +12,9 @@ import { isKstWeekend, previousDayObExpired, realMsToYyyymmdd, regularSessionClo
 import { isKrxAftermarketWindow, krxAftermarketIntroduced } from '../../util/stockSessions';
 import { unixMsToKSTClock, unixMsToKSTHhmm } from '../../util/time';
 import { useAftermarketExclusion } from '../../api/aftermarketExclusion';
+import { recentBookEvidence } from '../orderbookAvailability';
+
+export type BookLadderSource = 'live' | 'retained' | 'saved' | 'cursor' | 'singlePrice' | 'none';
 
 /** Shared session sources for the 10-level book and live order ladder. */
 export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, regularSnapshot,
@@ -39,16 +42,14 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
   const regular = !isSpot && regularSnapshot && expired(regularSnapshot) ? null : regularSnapshot;
   const retained = lastValidSnapshot && !expired(lastValidSnapshot)
     ? lastValidSnapshot : null;
-  const latestUsable = hasBookPrices(regular) ? regular : retained;
+  const latestUsable = hasBookPrices(regular) && (!retained || regular.ts_ms >= retained.ts_ms)
+    ? regular : retained;
   const morningReset = previousDayObExpired(nowMs - 86_400_000, nowMs, effectiveVenue);
   const regularClose = regularSessionCloseMs(date);
-  // The clock only selects a saved fallback. It never blocks an arriving book:
-  // a usable 15:59:50 frame is immediately preferred to the pre-auction book.
+  // A clock boundary never replaces a received ladder, including an auction
+  // still publishing after 15:30. Disk recovery only fills a missing ladder.
   const useRegularFallback = !isSpot && effectiveVenue === 'KRX' && krxAftermarketIntroduced(date)
-    && !isKstWeekend(date) && nowMs >= regularClose && (!latestUsable || (
-      realMsToYyyymmdd(latestUsable.ts_ms) === date
-      && latestUsable.ts_ms <= regularClose
-    ));
+    && !isKstWeekend(date) && nowMs >= regularClose && !latestUsable;
   const preAuctionBook = useLivePreAuctionBook(code, date, useRegularFallback);
   const [sessionOverride, setSessionOverride] = useState<BookSessionOverride>(null);
   const sessionMode = resolveBookSessionMode(sessionOverride, nowMs);
@@ -66,27 +67,30 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
     !isSpot && activeSinglePrice === null);
   const knownExcluded = aftermarketExcluded || (aftermarketExclusion?.reasons.length ?? 0) > 0;
   const singlePriceFills = useMemo(() => afterHoursFillRows(afterHoursBook.data), [afterHoursBook.data]);
-  const selectedSnapshot = modeGated
-    ? (sessionMode === 'afterHours' ? singlePriceSnapshot : regular)
-    : (singlePriceSnapshot ?? regular);
   const preAuction = hasBookPrices(preAuctionSnapshot) ? preAuctionSnapshot : latestUsable;
   const savedRegular = hasBookPrices(preAuction) && preAuction.ts_ms < preAuctionCutoff(date)
     && realMsToYyyymmdd(preAuction.ts_ms) === date ? preAuction : null;
   const recoveredRegular = preAuctionBook.data;
   const frozenRegular = savedRegular && (!recoveredRegular || savedRegular.ts_ms > recoveredRegular.ts_ms)
     ? savedRegular : recoveredRegular ?? null;
-  const snapshot = isSpot || modeGated || activeSinglePrice !== null ? selectedSnapshot
-    : useRegularFallback ? frozenRegular : latestUsable;
-  const earlyLive = !isSpot && activeSinglePrice === null && krxAftermarketIntroduced(date)
+  const snapshot = isSpot ? regular
+    : modeGated && sessionMode === 'afterHours' ? singlePriceSnapshot
+    : activeSinglePrice ?? latestUsable ?? (useRegularFallback ? frozenRegular : null);
+  const ladderSource: BookLadderSource = snapshot == null ? 'none'
+    : isSpot ? 'cursor' : activeSinglePrice !== null ? 'singlePrice'
+    : snapshot === latestUsable ? (snapshot === regular ? 'live' : 'retained') : 'saved';
+  // Receipt/REST activity never makes a retained or saved ladder orderable.
+  const bookFresh = ladderSource === 'live' && recentBookEvidence(snapshot?.ts_ms, nowMs);
+  const closingLadder = !isSpot && activeSinglePrice === null && krxAftermarketIntroduced(date)
     && effectiveVenue === 'KRX' && snapshot != null
     && realMsToYyyymmdd(snapshot.ts_ms) === date
-    && snapshot.ts_ms > regularClose && snapshot.ts_ms < regularClose + 30 * 60_000;
-  // Closing residuals can arrive seconds after 15:30 and remain the last book.
-  // Keep that ladder as a timestamped fallback once stale, while admitting a
-  // fresh pre-reopening frame (e.g. 15:59:50) immediately as before.
-  const storedLadder = !isSpot && !modeGated && activeSinglePrice === null
-    && (useRegularFallback || (!hasBookPrices(regularSnapshot) && snapshot != null)
-      || (earlyLive && nowMs - snapshot.ts_ms >= 30_000));
+    && nowMs >= regularClose && snapshot.ts_ms >= preAuctionCutoff(date)
+    && snapshot.ts_ms < regularClose + 30 * 60_000;
+  const lastReceived = ladderSource === 'retained' || (closingLadder && !bookFresh);
+  // Quiet closing books have their footer timestamp. Active-market stale books
+  // still use the existing connection/recovery diagnostics.
+  const monitorBook = !isSpot && activeSinglePrice === null && ladderSource !== 'saved'
+    && !(closingLadder && !bookFresh);
   const afterHoursSample = useMemo(() => {
     if (isSpot || activeSinglePrice !== null) return null;
     if (!currentAfterHours || typeof afterHoursAtMs !== 'number') return null;
@@ -104,12 +108,12 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
   const sessionControl = afterHoursSample !== null && !modeGated
     ? { kind: 'label' as const,
       label: `${afterHoursSample.receivedAtMs >= regularClose ? '시간외종가' : '시간외'} · ${unixMsToKSTClock(afterHoursSample.receivedAtMs)}` }
-    : storedLadder && (snapshot != null || afterHoursTotals === null)
+    : (ladderSource === 'saved' || lastReceived || useRegularFallback) && (snapshot != null || afterHoursTotals === null)
     ? { kind: 'label' as const, label: snapshot
       ? `${useRegularFallback ? '정규장 마지막' : '마지막 수신'} · ${unixMsToKSTClock(snapshot.ts_ms)}${useRegularFallback && isKrxAftermarketWindow(nowMs) && !knownExcluded ? ' · 수신 대기' : ''}`
       : '정규장 마지막 호가 없음' }
-    : earlyLive ? { kind: 'label' as const,
-      label: `${nowMs - snapshot.ts_ms < 30_000 ? '실시간 호가' : '마지막 수신'} · ${unixMsToKSTClock(snapshot.ts_ms)}` }
+    : closingLadder ? { kind: 'label' as const,
+      label: `실시간 호가 · ${unixMsToKSTClock(snapshot.ts_ms)}` }
     : bookSessionControl({
     nowMs, ladderAtMs: snapshot?.ts_ms, aftermarketExcluded: knownExcluded, nxtEnabled, venue: effectiveVenue, isSpot,
     afterHoursStoredAtMs: afterHoursBook.data?.source === 'stored' ? afterHoursBook.data.fetched_at_ms : null,
@@ -121,7 +125,7 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
   // that a cached/just-fetched ladder belongs to today. Wait for dated data.
   const allowRestBook = afterHoursTotals === null && (effectiveVenue !== 'KRX'
     || !morningReset || unixMsToKSTHhmm(nowMs) >= 2000);
-  return { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
+  return { snapshot, ladderSource, bookFresh, monitorBook, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
     allowRestBook, morningReset, afterHoursTotals, afterHoursLabel: activeSinglePrice !== null ? '시간외 단일가' : '시간외',
     sessionControl: timedSessionControl, sessionMode, selectSessionMode };
 }

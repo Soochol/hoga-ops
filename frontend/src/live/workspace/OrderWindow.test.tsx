@@ -867,6 +867,45 @@ describe('호가 주문', () => {
       vi.mocked(useLiveSeries).mockImplementation(originalSeries);
     }
   });
+  it.each(['live', 'retained'] as const)('마감 후 %s 호가를 유지해도 만료된 예상체결을 재표시하거나 신규 주문을 허용하지 않는다', source => {
+    const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    const previousNow = mock.now;
+    mock.now = Date.parse('2026-10-14T15:31:00+09:00');
+    mock.snapshotAt = Date.parse('2026-10-14T15:29:59+09:00');
+    vi.mocked(useLiveSeries).mockImplementation((...args) => {
+      const live = originalSeries(...args);
+      const auction = { ...live.latestOb!, expected_price: 241000, expected_qty: 6140 };
+      return { ...live, latestOb: source === 'live' ? auction : { ...auction, asks: [], bids: [] }, lastValidOb: auction };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const win: WorkspaceWindow = { id: 'book', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 560, h: 640 } };
+    const content = () => <QueryClientProvider client={client}>
+      <DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} />
+      <OrderWindow code="005930" name="삼성전자" />
+    </QueryClientProvider>;
+    try {
+      mock.expectedPrice = 121100; mock.expectedQty = null;
+      const view = render(content());
+      fireEvent.click(within(screen.getByTestId('order-window')).getByRole('button', { name: '종목 상세 정보' }));
+      expect(screen.getAllByTestId('book-expected-fill')).toHaveLength(2);
+      screen.getAllByTestId('book-expected-fill').forEach(banner => {
+        expect(banner).toHaveTextContent(/^예상 체결가121,100원예상 체결량$/);
+      });
+      mock.expectedPrice = 0; mock.expectedQty = 0;
+      view.rerender(content());
+      screen.getAllByTestId('book-expected-fill').forEach(banner => {
+        expect(banner).toHaveTextContent(/^예상 체결가예상 체결량$/);
+      });
+      const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+      expect(buy).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.doubleClick(buy);
+      expect(mock.command).not.toHaveBeenCalled();
+      expect(screen.getAllByText('마지막 수신 · 15:29:59')).toHaveLength(2);
+    } finally {
+      mock.now = previousNow;
+      vi.mocked(useLiveSeries).mockImplementation(originalSeries);
+    }
+  });
   it('부분 호가는 빈 공간을 유지하고 실제 가격에만 주문을 허용한다', () => {
     mock.askCount = 4; mock.bidCount = 3;
     const { container } = show();
@@ -2052,7 +2091,7 @@ describe('호가 주문', () => {
     expect(strip).not.toHaveTextContent('매도 잔량'); expect(strip).not.toHaveTextContent('매수 잔량');
   });
 
-  it.each([true, false])('정규장 사다리 존재=%s여도 두 창은 저장 사다리를 유지하며 시간외 잔량·시각을 갱신한다', async hasBook => {
+  it.each([true, false])('수신 사다리 존재=%s이면 수신본을 우선하고 시간외 잔량·시각을 갱신한다', async hasBook => {
     const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
     const api = vi.spyOn(await import('../../api/client'), 'apiCall');
     const previousNow = mock.now;
@@ -2076,19 +2115,21 @@ describe('호가 주문', () => {
         <div data-testid="close-order"><OrderWindow code="005930" name="삼성전자" /></div>
       </QueryClientProvider>;
       const view = render(content());
-      const frozenBuy = await screen.findByRole('button', { name: /매수 67,200원 주문 추가/ });
+      const buyName = hasBook ? /매수 241,000원 주문 추가/ : /매수 67,200원 주문 추가/;
+      const frozenBuy = await screen.findByRole('button', { name: buyName });
       expect(screen.getAllByText('시간외종가 · 15:47:00')).toHaveLength(2);
       for (const id of ['close-book', 'close-order']) {
         const strip = within(screen.getByTestId(id)).getByTestId('book-total-strip');
         expect(strip).toHaveTextContent('879시간외종가 · 15:47:00538');
         expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '879fr 538fr' });
       }
-      expect(api).toHaveBeenCalledTimes(1);
-      expect(new URL(api.mock.calls[0][0], 'http://test').searchParams.get('t')).toBe(String(Date.UTC(2026, 9, 14, 6, 20) - 1));
+      expect(api).toHaveBeenCalledTimes(hasBook ? 0 : 1);
+      if (!hasBook) expect(new URL(api.mock.calls[0][0], 'http://test').searchParams.get('t')).toBe(String(Date.UTC(2026, 9, 14, 6, 20) - 1));
       expect(frozenBuy).toHaveAttribute('aria-disabled', 'true');
       expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
       fireEvent.doubleClick(frozenBuy);
-      expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('저장된 호가는 조회만 가능합니다');
+      expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent(hasBook
+        ? '최신 호가를 기다리고 있습니다' : '저장된 호가는 조회만 가능합니다');
       expect(mock.command).not.toHaveBeenCalled();
       afterHours = [{ t_ms: mock.now + 1000, total_ask_qty: 0, total_bid_qty: 1640 }];
       view.rerender(content());
@@ -2099,7 +2140,7 @@ describe('호가 주문', () => {
         expect(strip).toHaveTextContent('시간외종가 · 15:47:01');
         expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '0fr 1640fr' });
       }
-      expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBe(frozenBuy);
+      expect(screen.getByRole('button', { name: buyName })).toBe(frozenBuy);
       expect(frozenBuy).toHaveAttribute('aria-disabled', 'true');
       mock.now = Date.UTC(2026, 9, 14, 6, 59, 50);
       vi.mocked(useLiveSeries).mockImplementation(() => originalSeries('005930', 'KRX'));
