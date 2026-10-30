@@ -2,7 +2,8 @@
  *  Stateless — owner passes the current checked value and a click handler.
  *  Shared (both via `IndicatorPrefRows`) by `SettingsSections` (⚙️ Settings
  *  modal) and the 「지표」 modal's hoga Configs, so one row style serves both. */
-import { SettingsRow, ToggleSwitch } from './SettingsRow';
+import { CompactSettingsContext, SettingsRow, ToggleSwitch } from './SettingsRow';
+import { useContext, useId, type ReactNode } from 'react';
 import { highlightLabel } from './SettingsRowHelpers';
 
 export default function ToggleRow({
@@ -13,6 +14,8 @@ export default function ToggleRow({
   testId,
   disabled = false,
   highlight,
+  actions,
+  className,
 }: {
   label: string;
   description: string;
@@ -28,10 +31,16 @@ export default function ToggleRow({
   /** 설정 필터의 검색어 — 라벨의 일치 구간을 표시한다. 시각 라벨에만 적용하고
    *  스위치의 `aria-label` 은 원본 문자열을 유지한다(마크업이 섞이면 안 된다). */
   highlight?: string;
+  actions?: ReactNode;
+  className?: string;
 }) {
+  const controlId = useId();
+  const compact = useContext(CompactSettingsContext);
   return (
-    <SettingsRow label={highlightLabel(label, highlight)} description={description} testId={testId} disabled={disabled}>
-      <ToggleSwitch label={label} checked={checked} onClick={onToggle} disabled={disabled} />
+    <SettingsRow label={highlightLabel(label, highlight)} description={description} testId={testId} disabled={disabled}
+      controlId={compact ? controlId : undefined} className={className}>
+      <ToggleSwitch id={controlId} label={label} checked={checked} onClick={onToggle} disabled={disabled} aria-description={description} />
+      {actions}
     </SettingsRow>
   );
 }

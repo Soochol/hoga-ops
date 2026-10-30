@@ -1,7 +1,8 @@
 import { createContext, useContext, type ButtonHTMLAttributes, type ReactNode } from 'react';
 
-/** The chart popover uses the app's delegated tooltip; other editors keep prose. */
+/** Compact window editors use delegated tooltips; other editors keep prose. */
 export const SettingsDescriptionTooltipContext = createContext(false);
+export const CompactSettingsContext = createContext(false);
 
 export function SettingsRow({
   label,
@@ -10,6 +11,7 @@ export function SettingsRow({
   className = '',
   children,
   testId,
+  controlId,
 }: {
   label: ReactNode;
   description?: ReactNode;
@@ -17,6 +19,7 @@ export function SettingsRow({
   className?: string;
   children: ReactNode;
   testId?: string;
+  controlId?: string;
 }) {
   const useTooltip = useContext(SettingsDescriptionTooltipContext);
   const tooltip = useTooltip && typeof description === 'string' ? description : undefined;
@@ -26,7 +29,8 @@ export function SettingsRow({
       className={`settings-row flex items-start justify-between gap-4 border-b border-border py-2 last:border-b-0 ${disabled ? 'opacity-50' : ''} ${className}`.trim()}
     >
       <div className="min-w-0 flex-1">
-        <div className="text-fg text-sm" data-tooltip={tooltip} tabIndex={tooltip ? 0 : undefined}>{label}</div>
+        {controlId ? <label htmlFor={controlId} className="settings-row-label text-fg text-sm" data-tooltip={tooltip}>{label}</label>
+          : <div className="text-fg text-sm" data-tooltip={tooltip} tabIndex={tooltip ? 0 : undefined}>{label}</div>}
         {!tooltip && description !== undefined && (
           typeof description === 'string' && description.length > 110
             ? <details className="mt-0.5 text-xs text-fg-dim"><summary className="cursor-pointer leading-relaxed">{description.slice(0, 76)}…</summary><p className="mt-1 leading-relaxed">{description}</p></details>
@@ -53,7 +57,7 @@ const SWITCH_SIZE = {
 export function ToggleSwitch({
   label,
   checked,
-  size = 'md',
+  size,
   className = '',
   ...props
 }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'aria-checked'> & {
@@ -61,7 +65,8 @@ export function ToggleSwitch({
   checked: boolean;
   size?: keyof typeof SWITCH_SIZE;
 }) {
-  const dim = SWITCH_SIZE[size];
+  const compact = useContext(CompactSettingsContext) && size === undefined;
+  const dim = SWITCH_SIZE[size ?? 'md'];
   return (
     <button
       type="button"
@@ -69,13 +74,13 @@ export function ToggleSwitch({
       aria-checked={checked}
       aria-label={label}
       {...props}
-      className={`relative inline-flex ${dim.track} shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${
+      className={`relative inline-flex ${compact ? 'window-settings-switch' : dim.track} shrink-0 items-center rounded-full border transition-colors disabled:opacity-50 ${
         checked ? 'border-accent bg-accent' : 'border-border bg-bg-input-hover'
       } ${className}`.trim()}
     >
       <span
-        className={`inline-block ${dim.knob} transform rounded-full transition-transform ${
-          checked ? `bg-accent-fg ${dim.on}` : `bg-fg-dim ${dim.off}`
+        className={`inline-block ${compact ? 'window-settings-switch-knob' : dim.knob} transform rounded-full transition-transform ${
+          checked ? `bg-accent-fg ${compact ? '' : dim.on}` : `bg-fg-dim ${compact ? '' : dim.off}`
         }`}
       />
     </button>

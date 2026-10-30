@@ -1,13 +1,14 @@
 .order-settings-body { margin:0; container-type:inline-size; }
 .order-settings-editor .order-settings-presets-row { flex-wrap:nowrap; gap:var(--space-sm); }
-.order-settings-presets-row > div:first-child { flex:0 0 72px; }
+.order-settings-presets-row > div:first-child { flex:0 0 4.5rem; }
 .order-settings-presets-row > .settings-row-control { flex:1; width:auto; min-width:0; max-width:none; }
 .order-settings-editor .order-settings-presets-wide { flex-wrap:wrap; gap:var(--space-xs); }
 .order-settings-presets-wide > div:first-child { flex:1 0 100%; }
 .order-settings-presets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-xs); }
 .order-settings-presets input { width:100%; padding-inline:var(--space-xs); text-align:right; appearance:textfield; }
 .order-settings-presets input::-webkit-inner-spin-button,.order-settings-presets input::-webkit-outer-spin-button { appearance:none; margin:0; }
-.order-settings-toggle-controls { display:flex; align-items:center; gap:var(--space-sm); }
+.order-settings-toggle-controls { display:flex; align-items:center; gap:var(--space-xs); }
+.order-settings-toggle-controls .ui-icon-button { width:1.5rem; height:1.5rem; min-height:0; padding:0; }
 .order-settings-action-row > .settings-row-control { max-width:none; }
 .order-settings-average-dot { width:0.5rem; height:0.5rem; flex-shrink:0; border-radius:50%; background:var(--price-up); }
 @container(max-width:200px) {
@@ -18,5 +19,5 @@
   .order-settings-action-row > .settings-row-control { margin-left:auto; }
 }
 @media(pointer:coarse) {
-  .order-settings-editor .settings-row,.order-settings-toggle-controls .ui-choice { min-height:44px; }
+  .order-settings-editor .settings-row,.order-settings-toggle-controls .ui-choice,.order-settings-toggle-controls .ui-icon-button { min-height:44px; }
 }

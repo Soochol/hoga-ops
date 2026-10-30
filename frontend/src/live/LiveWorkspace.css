@@ -147,17 +147,6 @@
 
 .live-window-header-actions-slot { display: contents; }
 .live-window-settings:disabled { opacity: .45; cursor: not-allowed; }
-.window-settings-popover { display: flex; flex-direction: column; max-height: calc(100dvh - 8px); overflow: hidden; }
-.window-settings-heading { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-lg); border-bottom: 1px solid var(--border); }
-.window-settings-heading h2 { margin: 0; font-size: var(--text-base); font-weight: 500; }
-.window-settings-heading > span { margin-left: auto; color: var(--fg-dim); font-size: var(--text-xs); }
-.window-settings-heading > button { margin-left: auto; }
-.window-settings-heading > span + button { margin-left: 0; }
-.window-settings-content { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
-.window-settings-editor.settings-editor { height: auto; min-height: 0; border-radius: 0; flex-shrink: 1; }
-.window-settings-editor .settings-editor-content { padding: 0 var(--space-lg); }
-.window-settings-editor .settings-editor-footer { padding-inline: var(--space-lg); }
-.window-settings-editor .settings-editor-group { padding-block: var(--space-md); }
 
 .live-top-nav [aria-label^="현재 시각"] { font-weight: 400; color: var(--fg-dim); }
 .live-data-controls { column-gap: var(--space-xs); }
