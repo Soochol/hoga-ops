@@ -1,7 +1,7 @@
 /**
  * WindowFrame(코어) — 워크스페이스 창 하나의 페이지 중립 크롬 (ADR-0119/0123).
  *
- * 이동 핸들(⠿)·8방향 리사이즈 핸들·z-order·포커스 틴트·닫기 버튼만 소유하고,
+ * 헤더 이동 영역·8방향 리사이즈 핸들·z-order·포커스 틴트·닫기 버튼만 소유하고,
  * 헤더 내용(제목·뱃지·팔레트 등 페이지 도메인)은 `header` 노드로 주입받는다.
  * 포인터 로직은 `WorkspaceCanvas`(코어)가 소유하고, 이 컴포넌트는
  * `onHandleDown(mode)` 로 위임하는 프레젠테이션 껍데기다. /live 크롬(링크 그룹
@@ -55,7 +55,7 @@ export interface WindowFrameCoreProps {
    *  헤더는 구분선 없는 톤 밴드(비포커스 --bg-subtle / 포커스 --tint-selection) —
    *  2026-07-22 구분선 최소화 C안: 창 내부 위계는 선이 아니라 명도가 담당한다. */
   focused: boolean;
-  /** 헤더 내용(⠿ 오른쪽, × 왼쪽) — 제목·뱃지 등 페이지가 구성한다. */
+  /** 헤더 내용(× 왼쪽) — 제목·뱃지 등 페이지가 구성한다. */
   header: React.ReactNode;
   /** × 버튼 표시 여부(기본 true) — 닫을 수 없는 창(예: /study 단일 차트)은 숨긴다. */
   closable?: boolean;
@@ -119,7 +119,6 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           } ${headerClassName}`}
           onPointerDown={(e) => onHandleDown(e, id, 'move')}
         >
-          <span className="select-none text-xs leading-none text-fg-dimmer">⠿</span>
           {header}
           {closable && (
             <button
