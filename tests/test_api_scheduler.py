@@ -756,7 +756,7 @@ async def test_daily_loop_runs_once_per_day_across_many_ticks(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_daily_loop_skips_run_before_trigger_hour(tmp_path: Path):
-    """22:00 전에는 폴링만 하고 실행하지 않는다."""
+    """22:00 전에는 전체 일일 작업을 실행하지 않는다."""
     import asyncio as _asyncio
 
     from hoga.api import scheduler
@@ -775,6 +775,72 @@ async def test_daily_loop_skips_run_before_trigger_hour(tmp_path: Path):
 
     assert run_spy.await_count == 0
     assert scheduler.read_last_daily_run_date(tmp_path) is None
+
+
+@pytest.mark.parametrize("times, expected", [
+    ([_at(9), _at(9, 1), _at(9, 2)], [_at(9)]),
+    ([_at(21, 59), _at(22), _at(22, 1)], [_at(21, 59), _at(22), _at(22, 1)]),
+    ([_at(23, 59), _at(0, day=27), _at(0, 1, day=27)], [_at(23, 59), _at(0, day=27)]),
+])
+async def test_screener_checks_on_boot_and_date_rollover_without_repeating_daytime_planning(
+    tmp_path, monkeypatch, times, expected,
+):
+    import asyncio
+
+    from hoga.api import scheduler, screener
+
+    clock = iter(times)
+    current = times[0]
+    calls = []
+
+    def now():
+        nonlocal current
+        current = next(clock)
+        return current
+
+    async def check(_):
+        calls.append(current)
+        return 0
+
+    ticks = 0
+
+    async def sleep(_):
+        nonlocal ticks
+        ticks += 1
+        if ticks == len(times):
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(scheduler, "now_kst", now)
+    monkeypatch.setattr(scheduler, "_daily_run", AsyncMock(return_value=True))
+    monkeypatch.setattr(scheduler, "retry_pending_enqueues", AsyncMock())
+    monkeypatch.setattr(scheduler.asyncio, "sleep", sleep)
+    monkeypatch.setattr(screener, "trigger_update", check)
+    with pytest.raises(asyncio.CancelledError):
+        await scheduler._daily_loop(tmp_path)
+    assert calls == expected
+
+
+async def test_screener_boot_check_failure_does_not_disable_the_next_tick(tmp_path, monkeypatch):
+    import asyncio
+
+    from hoga.api import scheduler, screener
+
+    check = AsyncMock(side_effect=[RuntimeError("temporary failure"), 0])
+    ticks = 0
+
+    async def sleep(_):
+        nonlocal ticks
+        ticks += 1
+        if ticks == 3:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(scheduler, "now_kst", lambda: _at(9))
+    monkeypatch.setattr(scheduler, "retry_pending_enqueues", AsyncMock())
+    monkeypatch.setattr(scheduler.asyncio, "sleep", sleep)
+    monkeypatch.setattr(screener, "trigger_update", check)
+    with pytest.raises(asyncio.CancelledError):
+        await scheduler._daily_loop(tmp_path)
+    assert check.await_count == 2
 
 
 @pytest.mark.asyncio

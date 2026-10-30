@@ -107,3 +107,31 @@ ETN의 종목코드가 없는 공시는 코드·상품명이 함께 있는 KRX �
 옛 복구 결과를 최신 일반 갱신의 실패로 다시 표시하지 않는다. 저장 조건·검색 정책·기존 데이터는
 이 진입점 분리로 변경하지 않는다. 비교와 중복 실행 검증은
 [버튼 통합 검증 보고서](../diagnostics/2026-10-24-screener-update-unification/README.md)에 기록한다.
+
+## 서버 시작과 날짜 변경 시 재확인 (2026-10-30)
+
+서버 시작 직후와 KST 날짜가 바뀐 첫 스케줄러 틱에도 일반 갱신을 점검한다.
+전날 22시 이후의 잠정 관측을 다음 날 기동 시 독립 확인할 수 있으며, 계속 켜 둔 서버도
+날짜 변경 후 최대 한 폴링 주기(60초) 안에 점검한다. 완료한 낮 점검은 같은 루프에서
+반복하지 않는다. 서버 재시작에도 기존 원장의 당일 시도·낮 한 번/밤 예산·공유 작업
+제한을 유지한다. 확인 실패는 기존 오류 기록과 예산에 따르며, 시작 자체가 실패하면
+다음 틱에서 다시 점검한다. 밤 22시 정기 갱신과 재시도는 유지한다.
+
+검색의 확정·충돌 기준은 변경하지 않는다. 갱신은 백그라운드 작업으로 진행하므로
+완료 전에는 평가 보류가 남을 수 있고, 완료 이벤트로 기존 결과의 재조회 필요를 알린다.
+관심종목 캡처의 시작 시 catch-up 옵션과 다른 일일 유지보수는 기존 실행 조건을 유지한다.
+
+로컬 검증(2026-10-30): base/HEAD `5feb03bfea8f065af7a6e8565b14a72b03f39bfb`에 위 변경 적용.
+`git fetch origin main` 후 base와 origin/main 일치를 확인했다. Python 3.14.7,
+pytest 9.0.3, Ruff 0.15.13, 워크트리 전용 uv 환경·빈 `.env`·공급자 페이크를 사용했다.
+
+- `uv run --extra dev pytest -q tests/test_api_scheduler.py tests/api/test_screener_daily_ingest.py tests/api/test_screener_update.py tests/api/test_app_startup_scheduler.py tests/test_collector_ownership.py -m 'not wallclock'`: 144 passed.
+- 이후 아침 기동→확정 저장→같은 날 재시작 통합 테스트만 추가하고
+  `uv run --extra dev pytest -q tests/api/test_screener_daily_ingest.py -k morning_boot`: 1 passed.
+  앞선 144개의 테스트 본문·픽스처·소스·환경은 동일하므로 해당 결과를 재사용했다.
+- `uv run --extra dev ruff check .`와 `git diff --check`: 통과.
+- 검증 입력 지문: `58a35294dc12db90ac7cb6f37982b7ba0fe351a9852ab4bfa33889b382842f79`.
+  `git ls-files hoga tests pyproject.toml uv.lock ruff.toml .python-version`의 경로를 정렬해
+  각 `경로 + NUL + 작업 파일 내용 + NUL`을 이어 SHA-256으로 계산했다.
+
+기존 `join_asof` 정렬 확인 경고 외 실패는 없었다. 사용자 서버의 재시작·운영 반영은 수행하지 않았다.

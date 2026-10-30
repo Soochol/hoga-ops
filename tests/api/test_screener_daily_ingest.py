@@ -573,6 +573,51 @@ async def test_weekend_scheduler_confirms_without_changing_trading_day_gate(corp
     assert calls == ["reconcile"]
 
 
+async def test_morning_boot_confirms_yesterday_and_same_day_restart_does_not_fetch_again(corpus, monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from hoga.api import scheduler, screener
+    from hoga.api.screener_daily_quality import current_guard, reason
+
+    await perform(corpus, D1, [row(D0), row(D1, 200)])
+    assert reason(current_guard(corpus), CODE, D1) == "daily_observation_unconfirmed"
+    calls = []
+    morning = dt.datetime.combine(D2, dt.time(9), KST)
+
+    async def fetch(code, first, last, index):
+        calls.append((code, first, last, index))
+        return sample(D2, [row(D0), row(D1, 200)], hour=9)
+
+    async def stop(_):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(scheduler, "now_kst", lambda: morning)
+    monkeypatch.setattr(scheduler, "retry_pending_enqueues", AsyncMock())
+    monkeypatch.setattr(scheduler.asyncio, "sleep", stop)
+    monkeypatch.setattr(screener, "now_kst", lambda: morning)
+    monkeypatch.setattr(screener, "trading_days_in_range", lambda *_: ["20261023"])
+    monkeypatch.setattr("hoga.api.trading_days.trading_days", lambda _: ["20261022", "20261023"])
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_rest_client", lambda *_: object())
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_scheduler", lambda *_: object())
+    monkeypatch.setattr("hoga.api.screener_daily_ingest_provider.collector", lambda *a, **kw: fetch)
+    screener.reset_update_job_for_tests()
+    try:
+        for _ in range(2):  # Another loop models a same-day server restart.
+            with pytest.raises(asyncio.CancelledError):
+                await scheduler._daily_loop(corpus)
+        assert len(calls) == 1
+        assert calls[0][2] == D1  # Saturday boot requests only known trading days.
+        assert reason(current_guard(corpus), CODE, D1) is None
+        assert ingest.load(corpus)["entries"][f"{CODE}:{D1}"]["status"] == "confirmed"
+        assert ingest.load(corpus)["summary"]["attempts_today"] == 1
+        frame = pl.read_parquet(corpus / "screener/daily_unadjusted.parquet")
+        assert frame.filter(pl.col("date") == D1)["volume"].item() == 200
+        assert scheduler.read_last_daily_run_date(corpus) is None
+    finally:
+        screener.reset_update_job_for_tests()
+
+
 async def test_invalid_vendor_day_without_a_parsed_bar_is_quarantined(corpus):
     async def fetch(code, first, last, index):
         return sample(D2, [], violations=[{"date_yyyymmdd": "20261022", "reason": "ohlc_inconsistent"}])
