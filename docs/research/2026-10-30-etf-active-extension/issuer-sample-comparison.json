@@ -1,0 +1,95 @@
+[
+  {
+    "code": "445290",
+    "issuer": "KODEX",
+    "matched": true,
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFH5.do",
+    "declared_rows": 33,
+    "returned_rows": 30,
+    "xls_url": "https://m.samsungfund.com/excel_pdf.do?fId=2ETFH5&gijunYMD=20261030",
+    "full_rows": 33,
+    "status": "matched"
+  },
+  {
+    "code": "494890",
+    "issuer": "KODEX",
+    "matched": true,
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFO7.do",
+    "declared_rows": 191,
+    "returned_rows": 30,
+    "xls_url": "https://m.samsungfund.com/excel_pdf.do?fId=2ETFO7&gijunYMD=20261030",
+    "full_rows": 191,
+    "status": "matched"
+  },
+  {
+    "code": "385510",
+    "issuer": "KODEX",
+    "matched": true,
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFE5.do",
+    "declared_rows": 83,
+    "returned_rows": 30,
+    "xls_url": "https://m.samsungfund.com/excel_pdf.do?fId=2ETFE5&gijunYMD=20261030",
+    "full_rows": 83,
+    "status": "matched"
+  },
+  {
+    "code": "401470",
+    "issuer": "KODEX",
+    "matched": true,
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFF4.do",
+    "declared_rows": 31,
+    "returned_rows": 30,
+    "xls_url": "https://m.samsungfund.com/excel_pdf.do?fId=2ETFF4&gijunYMD=20261030",
+    "full_rows": 31,
+    "status": "matched"
+  },
+  {
+    "code": "445150",
+    "issuer": "KODEX",
+    "matched": true,
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFH6.do",
+    "declared_rows": 24,
+    "returned_rows": 24,
+    "status": "matched"
+  },
+  {
+    "code": "385520",
+    "issuer": "KODEX",
+    "matched": true,
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFE6.do",
+    "declared_rows": 39,
+    "returned_rows": 30,
+    "xls_url": "https://m.samsungfund.com/excel_pdf.do?fId=2ETFE6&gijunYMD=20261030",
+    "full_rows": 39,
+    "status": "matched"
+  },
+  {
+    "code": "364690",
+    "issuer": "KODEX",
+    "matched": true,
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFC8.do",
+    "declared_rows": 189,
+    "returned_rows": 30,
+    "xls_url": "https://m.samsungfund.com/excel_pdf.do?fId=2ETFC8&gijunYMD=20261030",
+    "full_rows": 189,
+    "status": "matched"
+  },
+  {
+    "code": "373490",
+    "issuer": "KODEX",
+    "matched": true,
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFD9.do",
+    "declared_rows": 77,
+    "returned_rows": 30,
+    "xls_url": "https://m.samsungfund.com/excel_pdf.do?fId=2ETFD9&gijunYMD=20261030",
+    "full_rows": 77,
+    "status": "matched"
+  },
+  {
+    "code": "444200",
+    "issuer": "SOL",
+    "url": "https://www.soletf.com/api/fund/pdfList?fund_cd=210940&work_dt=20261030",
+    "matched": true,
+    "status": "matched"
+  }
+]

@@ -1,0 +1,1642 @@
+{
+  "raw/etf-list.json": {
+    "url": "https://finance.naver.com/api/sise/etfItemList.nhn",
+    "retrieved_at": "2026-10-30T07:00:20.888074+00:00",
+    "http_status": 200,
+    "encoding": "euc-kr",
+    "bytes": 264852,
+    "sha256": "cd24b918628d4e14e1553d3f8e2b63e62bf3c8dd14a3689370ede005ff99a73f"
+  },
+  "raw/metadata/472150.json": {
+    "url": "https://m.stock.naver.com/api/stock/472150/integration",
+    "retrieved_at": "2026-10-30T07:00:21.299637+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9849,
+    "sha256": "5b727db932de9441d92f0957412f861213c9420bd54c01c1761874992679f24a"
+  },
+  "raw/components/472150.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/472150/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:21.848362+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 35166,
+    "sha256": "14d03a4d63265e64b02e300dc9e42f46cab087a5fffb337cbf7a48b7fc117cec"
+  },
+  "raw/metadata/0219E0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0219E0/integration",
+    "retrieved_at": "2026-10-30T07:00:22.298741+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9346,
+    "sha256": "932081fbf2feb60f912fd42d2387c1fb34a72136c9c93016165db7b30bd610f7"
+  },
+  "raw/components/0219E0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0219E0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:22.853296+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 43451,
+    "sha256": "d164d2f00076617c346c068c3d0ef4c46bacb618d54ac890ef9e7beb9f1a0d2f"
+  },
+  "raw/metadata/445290.json": {
+    "url": "https://m.stock.naver.com/api/stock/445290/integration",
+    "retrieved_at": "2026-10-30T07:00:23.331276+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9476,
+    "sha256": "fa2293a84c02ed481ccdeab273359a53c5c329b20c88cad6cf96e3728a59b032"
+  },
+  "raw/components/445290.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/445290/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:23.834945+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 12421,
+    "sha256": "5ad9ce1c57785e0a803044382e02aeccf014e48b85fbb46ed5f6abf45b520430"
+  },
+  "raw/metadata/494890.json": {
+    "url": "https://m.stock.naver.com/api/stock/494890/integration",
+    "retrieved_at": "2026-10-30T07:00:24.319737+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9447,
+    "sha256": "e9179ddf749bd9315102bdb72cf736931aa13d9d5364c0001479c905270626a0"
+  },
+  "raw/components/494890.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/494890/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:24.860299+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 71700,
+    "sha256": "7fabbbc3d76785fdf9b5bc3097140f34a5750681f99a2577d54f33b918fecdff"
+  },
+  "raw/metadata/0177R0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0177R0/integration",
+    "retrieved_at": "2026-10-30T07:00:25.323435+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9827,
+    "sha256": "41f747dc73b034d33ae1c5875fda02a4d38fb6dac66682e7a05306ff7f6941e9"
+  },
+  "raw/components/0177R0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0177R0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:25.837740+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7259,
+    "sha256": "074b73e2fc2e81a94c7a70f296f83d232641788952c24de807f78aed3505cf6f"
+  },
+  "raw/metadata/441800.json": {
+    "url": "https://m.stock.naver.com/api/stock/441800/integration",
+    "retrieved_at": "2026-10-30T07:00:26.320439+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10351,
+    "sha256": "f80924fbb97f6cde562a0d78e1832f1066212b2f6d30ea2dea495ee84e20e2fd"
+  },
+  "raw/components/441800.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/441800/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:26.846652+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 13850,
+    "sha256": "7a3b9b2bff814916866f2284763b4cfcaf44af8b0ea75bc44276ab113a95d49e"
+  },
+  "raw/metadata/0163Y0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0163Y0/integration",
+    "retrieved_at": "2026-10-30T07:00:27.332780+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9254,
+    "sha256": "275d213ba24826f4d57e8e6827acfa31a793ec7f45b6bb25275c7933f5774011"
+  },
+  "raw/components/0163Y0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0163Y0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:27.845508+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 28364,
+    "sha256": "80543726c4701fbf238f142bf5f955ce552805a8cf77c25ba3329b9ba79f9e01"
+  },
+  "raw/metadata/444200.json": {
+    "url": "https://m.stock.naver.com/api/stock/444200/integration",
+    "retrieved_at": "2026-10-30T07:00:28.335307+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10796,
+    "sha256": "e7d13790bef3158a59908651678ab444680185873605542ac65d07a032de1991"
+  },
+  "raw/components/444200.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/444200/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:28.837540+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 12499,
+    "sha256": "e60165500d30166dfcdc27ec8bbac265999648612f2d4d3d51465bc3418707ae"
+  },
+  "raw/metadata/0060H0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0060H0/integration",
+    "retrieved_at": "2026-10-30T07:00:29.319052+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9893,
+    "sha256": "a35760d9b1e4137083eeb50b951f1de66290e7f32d365f34e8ae4cb5b23ffaf6"
+  },
+  "raw/components/0060H0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0060H0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:29.906554+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 586344,
+    "sha256": "7d6d04e995979332f9266f3d5d39b4fa0796b2e4f1498300ad3db04daf0d7310"
+  },
+  "raw/metadata/451060.json": {
+    "url": "https://m.stock.naver.com/api/stock/451060/integration",
+    "retrieved_at": "2026-10-30T07:00:30.322792+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9439,
+    "sha256": "4695d1285e815867a05219d15247f3cca1e3e4bf9b974b67be751caf2bc05e2d"
+  },
+  "raw/components/451060.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/451060/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:30.848372+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 75525,
+    "sha256": "275770d2ce95450cadde979b70d7f9288cfbc7ca21003a134debaf0b84220f82"
+  },
+  "raw/metadata/385720.json": {
+    "url": "https://m.stock.naver.com/api/stock/385720/integration",
+    "retrieved_at": "2026-10-30T07:00:31.331330+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9904,
+    "sha256": "fa2e27aa611595801581658ba33f55349985f0f6832b82d5a95d866b94d8ec78"
+  },
+  "raw/components/385720.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/385720/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:31.849776+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 16578,
+    "sha256": "3f8f09dd8d6d1247e318f6531e79c0b6ff28fa4fb5463a2e81fa11df516bb445"
+  },
+  "raw/metadata/474590.json": {
+    "url": "https://m.stock.naver.com/api/stock/474590/integration",
+    "retrieved_at": "2026-10-30T07:00:32.325293+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9895,
+    "sha256": "74de00ad8b61473fd285ccd6ef5da3acb3b35a9e8edeb0f1e62c5946ea0c9669"
+  },
+  "raw/components/474590.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/474590/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:32.843665+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7179,
+    "sha256": "991388b189a9c78c7cb2333ba38eed8da5daff4b993693714b4dbb0a82f4780d"
+  },
+  "raw/metadata/462900.json": {
+    "url": "https://m.stock.naver.com/api/stock/462900/integration",
+    "retrieved_at": "2026-10-30T07:00:33.324296+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9367,
+    "sha256": "abfc0ccce2c49e386b581a26937fedf517e4c11ee2454823c59665a0a75d9b92"
+  },
+  "raw/components/462900.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/462900/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:33.861389+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10240,
+    "sha256": "276d32e2070ab0aaf1ddf566701c7cfc648f76ffcf5964cded062e3dfe0a18df"
+  },
+  "raw/metadata/385510.json": {
+    "url": "https://m.stock.naver.com/api/stock/385510/integration",
+    "retrieved_at": "2026-10-30T07:00:34.321788+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9555,
+    "sha256": "ccb998d029774f573eadb4da63f957e88a1db15454aef7d54e3632c20fd62084"
+  },
+  "raw/components/385510.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/385510/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:34.852937+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 31246,
+    "sha256": "37e6f533f9399b6b05f6cbcf28be8aa955d0a1d5ab13de66d6f3b944a5d66bfd"
+  },
+  "raw/metadata/471780.json": {
+    "url": "https://m.stock.naver.com/api/stock/471780/integration",
+    "retrieved_at": "2026-10-30T07:00:35.337175+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9707,
+    "sha256": "4a78f00a05e2c5ddadc47895f40091914c3132b0178a992f6bb3bb64668336e3"
+  },
+  "raw/components/471780.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/471780/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:35.830313+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7496,
+    "sha256": "cb340777a38ac2051be7b844442e37dfed61b858e2a7cb77454d9a37ed51fd48"
+  },
+  "raw/metadata/463050.json": {
+    "url": "https://m.stock.naver.com/api/stock/463050/integration",
+    "retrieved_at": "2026-10-30T07:00:36.327154+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9869,
+    "sha256": "05838048a475bceb85428e94a7493dcd4cadf80214c21ad49a72413767efcbce"
+  },
+  "raw/components/463050.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/463050/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:36.827181+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8697,
+    "sha256": "576db3a3de023c901bda8534f4853a56ce8c9e84cbac531af8c6e3528212d28d"
+  },
+  "raw/metadata/0162Y0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0162Y0/integration",
+    "retrieved_at": "2026-10-30T07:00:37.314764+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9730,
+    "sha256": "2233471b399557e359aed273f137bf9e862fb2e1094c5ec22ad38d7d55d77dfa"
+  },
+  "raw/components/0162Y0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0162Y0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:37.859535+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 21823,
+    "sha256": "2a0dd89a5f97689f2d14b972e020bb73691a2c9f7d0ce0082764ffd8a0b117eb"
+  },
+  "raw/metadata/422420.json": {
+    "url": "https://m.stock.naver.com/api/stock/422420/integration",
+    "retrieved_at": "2026-10-30T07:00:38.331987+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9751,
+    "sha256": "0077831899a55b4c2f3983c088c65e10e322bb404695db2abdefbbaeae63daeb"
+  },
+  "raw/components/422420.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/422420/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:38.830351+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 6406,
+    "sha256": "05fb9b39952dcbeecb8fdd8d9dcf7399cc963425bfbc5c547bfe435a520558a9"
+  },
+  "raw/metadata/388420.json": {
+    "url": "https://m.stock.naver.com/api/stock/388420/integration",
+    "retrieved_at": "2026-10-30T07:00:39.315785+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9775,
+    "sha256": "392340087eb2be09f9c70165bd07d8233e42b38d9125b11a12aeea0c42b3183c"
+  },
+  "raw/components/388420.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/388420/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:39.833011+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7135,
+    "sha256": "bdaf6a0e10845c74cc7984c9039d12bea845d9bb7ef4eba36ca8c621f9ab1305"
+  },
+  "raw/metadata/495230.json": {
+    "url": "https://m.stock.naver.com/api/stock/495230/integration",
+    "retrieved_at": "2026-10-30T07:00:40.346130+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9512,
+    "sha256": "e047c96c4b24d10510a4b1c24571019d7cd357a03d3f6df7be105aa3977c053b"
+  },
+  "raw/components/495230.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/495230/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:40.855613+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 20750,
+    "sha256": "8fd0f84a2a83492134aa323e17955b1e1f6dcbd394c75665d09598e91bfdb724"
+  },
+  "raw/metadata/494330.json": {
+    "url": "https://m.stock.naver.com/api/stock/494330/integration",
+    "retrieved_at": "2026-10-30T07:00:41.347301+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9819,
+    "sha256": "7682381a2830b0b62d777d2c484eafc310d903d1a32d673cc5f0b12a2b550185"
+  },
+  "raw/components/494330.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/494330/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:41.846569+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10232,
+    "sha256": "dbb20ffcae3212805f056b0e286c98d88b57a3d1a3d49611048156fc729d9928"
+  },
+  "raw/metadata/495060.json": {
+    "url": "https://m.stock.naver.com/api/stock/495060/integration",
+    "retrieved_at": "2026-10-30T07:00:42.336169+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9884,
+    "sha256": "bf74c2023adbf1ee94314771066c654f57d4bc3f249ea6dd90e5ec4dad277eac"
+  },
+  "raw/components/495060.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/495060/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:42.843318+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 20355,
+    "sha256": "b77488fc8fd09f03ef57986937900ef4e2693c8ddf03e61b691db23e995b95a6"
+  },
+  "raw/metadata/403790.json": {
+    "url": "https://m.stock.naver.com/api/stock/403790/integration",
+    "retrieved_at": "2026-10-30T07:00:43.334331+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9269,
+    "sha256": "24bd009bfc338e33011d1ab9354a149b337c36132d2ba74a031f1468d8c7db15"
+  },
+  "raw/components/403790.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/403790/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:43.859667+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 127998,
+    "sha256": "6baf28f759d6cfd1a6b19f4bcbb12c93ef7fb249423f0198533bb83a9a0cf2c5"
+  },
+  "raw/metadata/494220.json": {
+    "url": "https://m.stock.naver.com/api/stock/494220/integration",
+    "retrieved_at": "2026-10-30T07:00:44.326630+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9966,
+    "sha256": "07afff1d4c8b881484fd6899714c2b34a7bb3e054e4fd46ceea1eb9bbc929f53"
+  },
+  "raw/components/494220.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/494220/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:44.840381+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7895,
+    "sha256": "71bfff23c80b6ab84217e689d3cf4a37e085a5530645fcd507e6b1aa81b8b7b2"
+  },
+  "raw/metadata/0193G0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0193G0/integration",
+    "retrieved_at": "2026-10-30T07:00:45.326030+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9297,
+    "sha256": "751db412734021aca3414e60df4a6af1350fc7cb98643fa05e6b9829666f93f0"
+  },
+  "raw/components/0193G0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0193G0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:45.845532+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19568,
+    "sha256": "163374fe71b8d4a6e889eb81d675e0e22c647254ed463fc39b5cb3afc17fa02d"
+  },
+  "raw/metadata/0199C0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0199C0/integration",
+    "retrieved_at": "2026-10-30T07:00:46.341381+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9382,
+    "sha256": "a8875b411e16932fead2047057c49e4af14ecc1352f9112da4427aaf4347c84d"
+  },
+  "raw/components/0199C0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0199C0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:46.822040+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9593,
+    "sha256": "31861f0c7a4ac24ed8dfc45cf88b33cf673205d49a9ae08f3b4effa91bba09a2"
+  },
+  "raw/metadata/0151P0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0151P0/integration",
+    "retrieved_at": "2026-10-30T07:00:47.326608+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9546,
+    "sha256": "f56626a08acdf197e4c69f2b6bd7b4b15f0ff8ec15cc35c0941b42fa29cdf6a4"
+  },
+  "raw/components/0151P0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0151P0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:47.827418+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 6050,
+    "sha256": "1136ef535e2c9c9980c9058186a91405d7c0284412f79237de1b7d7401a00601"
+  },
+  "raw/metadata/0198A0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0198A0/integration",
+    "retrieved_at": "2026-10-30T07:00:48.336082+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9948,
+    "sha256": "4c581aeb253eab34445606d564443135c7a73734bac6685022e7dcebec4aaa8c"
+  },
+  "raw/components/0198A0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0198A0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:48.864152+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 57726,
+    "sha256": "3ebdb5aed79232fdc1e53327bca5ec25f0fb43356bbab0c7148a6278790d1c72"
+  },
+  "raw/metadata/0168K0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0168K0/integration",
+    "retrieved_at": "2026-10-30T07:00:49.324320+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9728,
+    "sha256": "93d5a46e8cc9a69d8155531d931039977566513eeb50d39f5fbb9a56a009e12c"
+  },
+  "raw/components/0168K0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0168K0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:49.846994+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 12483,
+    "sha256": "7d351e4d8f5543de5ce25cadf57343c95bebd2f9b3c77144f8d27f3bb23c4d52"
+  },
+  "raw/metadata/0074K0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0074K0/integration",
+    "retrieved_at": "2026-10-30T07:00:50.321913+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9556,
+    "sha256": "bfb4c16df764879eca774914d8a1d786f856e6d2493b7a2d543f60f1b728f93b"
+  },
+  "raw/components/0074K0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0074K0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:50.843554+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 15553,
+    "sha256": "03f4a38b9e25771949c9d9944a8db2f4a94db246bf16fe9a680cc6daa0baeaf0"
+  },
+  "raw/metadata/476850.json": {
+    "url": "https://m.stock.naver.com/api/stock/476850/integration",
+    "retrieved_at": "2026-10-30T07:00:51.328226+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9203,
+    "sha256": "81585e1b72bd9e6d1270708867c42b0cd8838efab1b1c114f1aa758308633142"
+  },
+  "raw/components/476850.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/476850/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:51.852511+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 24487,
+    "sha256": "224aa99a65dde012c8bd0a09bf7d49bb59e29d14ee6750fcd742b1926c67e03a"
+  },
+  "raw/metadata/0220B0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0220B0/integration",
+    "retrieved_at": "2026-10-30T07:00:52.341602+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9603,
+    "sha256": "d7ee20603104c825e0639f6bfc0f474146e5618ddc0cbc41360feb813deb9b4a"
+  },
+  "raw/components/0220B0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0220B0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:52.846189+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 17733,
+    "sha256": "6b2cbe278921b0ebb8b343907d481991ea88b669590b8e0da7834efdc0ef3ce4"
+  },
+  "raw/metadata/486240.json": {
+    "url": "https://m.stock.naver.com/api/stock/486240/integration",
+    "retrieved_at": "2026-10-30T07:00:53.322562+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9492,
+    "sha256": "022c21ede6e227129607f3e95384e5b062abbf18cb71d2daad0ee407ed89c891"
+  },
+  "raw/components/486240.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/486240/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:53.832549+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10959,
+    "sha256": "b27919d97a7df92f114d54151d48978a8092a2d5bc1b0cab59aa0baf62bbae0d"
+  },
+  "raw/metadata/0210E0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0210E0/integration",
+    "retrieved_at": "2026-10-30T07:00:54.339877+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9070,
+    "sha256": "aad7877c23aeba777fa028e3db10d4cf652be0424371a5f0d1725c8bca52fd33"
+  },
+  "raw/components/0210E0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0210E0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:54.859556+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 72598,
+    "sha256": "bc857ad1ade9d41d6850e7ff3e928e7c7db347333761d9841fd072204d88aaf1"
+  },
+  "raw/metadata/0222D0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0222D0/integration",
+    "retrieved_at": "2026-10-30T07:00:55.326506+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9342,
+    "sha256": "63b1d8298b3d8a3c75aa2187c0faf5a06b8e1d088d4292a8cd703237274d6e7a"
+  },
+  "raw/components/0222D0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0222D0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:55.840605+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 18159,
+    "sha256": "d7e2d98bba967efd1adcd18c14f8f9196c0418b444d76d69f1cd429b2385bdee"
+  },
+  "raw/metadata/365040.json": {
+    "url": "https://m.stock.naver.com/api/stock/365040/integration",
+    "retrieved_at": "2026-10-30T07:00:56.324874+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9286,
+    "sha256": "2d7fa4795aa5796132da7c15089e8515a9611b0a70bd9fadd9df97939b51588f"
+  },
+  "raw/components/365040.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/365040/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:56.854936+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 47462,
+    "sha256": "95f881e876d4261c649e22d38ab3f34539b6d19dafb9972120b93b2b9ac2ddca"
+  },
+  "raw/metadata/0123S0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0123S0/integration",
+    "retrieved_at": "2026-10-30T07:00:57.328425+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9168,
+    "sha256": "acd7156969314b7810d3eeaf9525075b15756106be836d5c5d4349806eac6a12"
+  },
+  "raw/components/0123S0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0123S0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:57.826178+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 2762,
+    "sha256": "a84330d18a80d53f4dffffc56c630f4c5b3e4bcd5c4a78c3b18b20406718f0b4"
+  },
+  "raw/metadata/0239Z0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0239Z0/integration",
+    "retrieved_at": "2026-10-30T07:00:58.332338+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8930,
+    "sha256": "348201b7e8c225e40844d76a90e75e857b20a7c7d7e5c452fa3cf395ceabdf10"
+  },
+  "raw/components/0239Z0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0239Z0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:58.853973+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8695,
+    "sha256": "4798f686c915bd173f21f48d940b0d48f67d56181cd1c11bc1cc8fb47332dc57"
+  },
+  "raw/metadata/401470.json": {
+    "url": "https://m.stock.naver.com/api/stock/401470/integration",
+    "retrieved_at": "2026-10-30T07:00:59.321792+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9450,
+    "sha256": "1297d80dc1dc3afa167f74ecc8957ceacffe5d99477955a1cdf107df38e9f676"
+  },
+  "raw/components/401470.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/401470/ETFComponent",
+    "retrieved_at": "2026-10-30T07:00:59.819165+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 11589,
+    "sha256": "68b82d9705156b61718c0233b35e1995bae1996aa1e5da66154662761649784f"
+  },
+  "raw/metadata/385590.json": {
+    "url": "https://m.stock.naver.com/api/stock/385590/integration",
+    "retrieved_at": "2026-10-30T07:01:00.338416+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9306,
+    "sha256": "9d87dee5459b018013f94b97f71b9b23347887cfb07b41053de0997771835613"
+  },
+  "raw/components/385590.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/385590/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:00.828823+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9811,
+    "sha256": "9d67713a081a01cf805cd4eedd9dec6d98d9762014169526970ade9a61c6e94c"
+  },
+  "raw/metadata/447430.json": {
+    "url": "https://m.stock.naver.com/api/stock/447430/integration",
+    "retrieved_at": "2026-10-30T07:01:01.331460+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9551,
+    "sha256": "a29da4ab65eb08a1e45465d2c66b80c987ac2330d4d320f60f78733491c7734b"
+  },
+  "raw/components/447430.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/447430/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:01.838401+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 12844,
+    "sha256": "9b121ed3617b9acb58f83287dcf40003f1cfc1e4999c3468fded3dc826988cdc"
+  },
+  "raw/metadata/0166S0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0166S0/integration",
+    "retrieved_at": "2026-10-30T07:01:02.347727+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9042,
+    "sha256": "3cdd635077bef7880434f74a840fd461da778e9fbe3063fdd15d97b5d71fce94"
+  },
+  "raw/components/0166S0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0166S0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:02.853407+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 15498,
+    "sha256": "fcc95fe67ecfcc0b700488c4df0d7a5f2a1a726726700a32033e155f14b74fe1"
+  },
+  "raw/metadata/0086B0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0086B0/integration",
+    "retrieved_at": "2026-10-30T07:01:03.349152+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9551,
+    "sha256": "b28d45fe2f2119c3c54e3c29c5046ba59ce85ec7fcda7443c8c2212b60682950"
+  },
+  "raw/components/0086B0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0086B0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:03.829654+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 3814,
+    "sha256": "c14f1982c58f93f122b182c954280e61b46dea804c8b81f99837e366184aeae3"
+  },
+  "raw/metadata/0000Z0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0000Z0/integration",
+    "retrieved_at": "2026-10-30T07:01:04.338447+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9421,
+    "sha256": "24b49bdba101ca1d8c1dc43f7509b7580ec109394c3fb01c40114e39ba64c2d5"
+  },
+  "raw/components/0000Z0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0000Z0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:04.840338+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8319,
+    "sha256": "e86798dc8dc0e7cc6f097dfdb1831f305f49e5ddb0cccbf598a84cbdc53ba537"
+  },
+  "raw/metadata/445150.json": {
+    "url": "https://m.stock.naver.com/api/stock/445150/integration",
+    "retrieved_at": "2026-10-30T07:01:05.338302+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9458,
+    "sha256": "af6f36ed2dc247a3af1d5f7a827897b19128e5a9b3a0d3ff2c5aeb4383878873"
+  },
+  "raw/components/445150.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/445150/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:05.847845+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9079,
+    "sha256": "5c3ee12cee2b907e93a2938e03d8b1f998def609fbdb2096fb826d05ec09b59b"
+  },
+  "raw/metadata/442260.json": {
+    "url": "https://m.stock.naver.com/api/stock/442260/integration",
+    "retrieved_at": "2026-10-30T07:01:06.330434+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9422,
+    "sha256": "21a49b37b1ba0736fe2e96fe90fecb2dfc95318f5154438eb0cdd709d62e0d47"
+  },
+  "raw/components/442260.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/442260/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:06.854812+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 26646,
+    "sha256": "585a186d96c46280545d0dbaa40fa4ebcc30dd867e815622745567aaada31e51"
+  },
+  "raw/metadata/442090.json": {
+    "url": "https://m.stock.naver.com/api/stock/442090/integration",
+    "retrieved_at": "2026-10-30T07:01:07.339745+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9621,
+    "sha256": "a6fa291f1088ae603d940d77bc2717e7e3ce18a5ecd3434b9ae3e40d482d6d91"
+  },
+  "raw/components/442090.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/442090/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:07.833230+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 12153,
+    "sha256": "5a6877cf8c535ca67334e5b3b3ac06d0057c1aaea5310df3aecac9c140d2b4d5"
+  },
+  "raw/metadata/487130.json": {
+    "url": "https://m.stock.naver.com/api/stock/487130/integration",
+    "retrieved_at": "2026-10-30T07:01:08.340044+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9238,
+    "sha256": "68f949986579940e68bf682457235e043110634c3a9629fd3650882b145b8997"
+  },
+  "raw/components/487130.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/487130/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:08.837428+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 12146,
+    "sha256": "34131c5616ff02928013144a1025270ccd55249b020b98ea2f84e0f097c146fd"
+  },
+  "raw/metadata/448570.json": {
+    "url": "https://m.stock.naver.com/api/stock/448570/integration",
+    "retrieved_at": "2026-10-30T07:01:09.324364+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9585,
+    "sha256": "acf12f8011047cba16abbe000dd0f9edb9cebc0f71c19cdf01eca1c8ef381db7"
+  },
+  "raw/components/448570.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/448570/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:09.840301+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 6805,
+    "sha256": "3f9fc49cac531a2142fb8a041bb59bea9a4f0c169cc859162334f96acdbac2b9"
+  },
+  "raw/metadata/0223A0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0223A0/integration",
+    "retrieved_at": "2026-10-30T07:01:10.337575+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9646,
+    "sha256": "de71e7a09761ac2b9cf4b6e85bb0782ed3c311620763ddecfd35d54b836ca082"
+  },
+  "raw/components/0223A0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0223A0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:10.833957+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9858,
+    "sha256": "19349043cc0b30138c11772565a1143ce997912ac76ecdf36779ef8d8108a27a"
+  },
+  "raw/metadata/385520.json": {
+    "url": "https://m.stock.naver.com/api/stock/385520/integration",
+    "retrieved_at": "2026-10-30T07:01:11.341703+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9599,
+    "sha256": "1fcdf1348c420f3f5e5e57cc3d7df182b4c5bdd7fb49143c13f59abc0d357d11"
+  },
+  "raw/components/385520.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/385520/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:11.828673+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 14719,
+    "sha256": "aca0c0dcf0b33ac7a4993cb6f9a57c7b463a7fff363b528693adbc74dc678627"
+  },
+  "raw/metadata/0204S0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0204S0/integration",
+    "retrieved_at": "2026-10-30T07:01:12.332297+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9339,
+    "sha256": "42c2bd495ba4a66c615719ec56ee1078b2260c28c277e8c8438321f9bb48651d"
+  },
+  "raw/components/0204S0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0204S0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:12.842931+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 31506,
+    "sha256": "4dd02b9ceb5959b91b8675a55976f8573a76482000f776beb5763960efc1df3f"
+  },
+  "raw/metadata/0150K0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0150K0/integration",
+    "retrieved_at": "2026-10-30T07:01:13.344016+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9301,
+    "sha256": "35505b0770ff00851215549b522d6d457b88aeaa9b06ab20ecc8141ff6347287"
+  },
+  "raw/components/0150K0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0150K0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:13.854731+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 21592,
+    "sha256": "56203a5e59da8204031d78c638476523e598d99d064c04f0720c16481b210acb"
+  },
+  "raw/metadata/0166N0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0166N0/integration",
+    "retrieved_at": "2026-10-30T07:01:14.323735+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9044,
+    "sha256": "1eda027f74b6d3727212c8972ab28ea25dcc2a6eaf4bcd62480d490a2024bd90"
+  },
+  "raw/components/0166N0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0166N0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:14.857782+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 28673,
+    "sha256": "c9d47fc5f460ba77193ee9a2870573738fa19980dbb2863ca1fa06f72b945d33"
+  },
+  "raw/metadata/0152E0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0152E0/integration",
+    "retrieved_at": "2026-10-30T07:01:15.380895+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10127,
+    "sha256": "af284b3fac03b62a80da551502fa46cb1368b5710d3da7acf818e5a9886951b5"
+  },
+  "raw/components/0152E0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0152E0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:15.911595+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7974,
+    "sha256": "6c011255157ebaa76ac30b83eddf49c3df2bc4b6ea5eee49949e77d6feac5322"
+  },
+  "raw/metadata/364690.json": {
+    "url": "https://m.stock.naver.com/api/stock/364690/integration",
+    "retrieved_at": "2026-10-30T07:01:16.339722+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9467,
+    "sha256": "c64bac75a4318805f15255f4435043d0c2ed2eee88542dee70d5af1aea5cd6dc"
+  },
+  "raw/components/364690.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/364690/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:16.876674+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 70889,
+    "sha256": "b912210bf6f8155896c0baa5c24ec7d64097a48b4c1c6941d2767972a51e42cf"
+  },
+  "raw/metadata/404120.json": {
+    "url": "https://m.stock.naver.com/api/stock/404120/integration",
+    "retrieved_at": "2026-10-30T07:01:17.335992+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9915,
+    "sha256": "cec077efa8325fe7b6f631abfd486c050b6c0b811099282ad7b7858e0248d390"
+  },
+  "raw/components/404120.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/404120/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:17.839956+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10187,
+    "sha256": "bb9ed0f51ef15f009634164b6b000d3c17761c30ad676b340dbb98d549ef0ae2"
+  },
+  "raw/metadata/0254H0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0254H0/integration",
+    "retrieved_at": "2026-10-30T07:01:18.335792+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9126,
+    "sha256": "af7cbb13494ae2e8fc7621589bfff8f61f3366553c598ec8cd84f1e36a6c59a2"
+  },
+  "raw/components/0254H0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0254H0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:18.848927+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7939,
+    "sha256": "20cc3755bb2d8ff40be6b260f5ae2f9f18ae121fb1ba03ee8260e846e9e30e38"
+  },
+  "raw/metadata/445690.json": {
+    "url": "https://m.stock.naver.com/api/stock/445690/integration",
+    "retrieved_at": "2026-10-30T07:01:19.331749+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9501,
+    "sha256": "ae50aab29fa44dfdad98c69d1c4083803323bc0c788156197a3f1edb0f953fdd"
+  },
+  "raw/components/445690.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/445690/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:19.849592+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19293,
+    "sha256": "70ea473529924c56e6817b5ce1eb7b2cd66b1fea4088854a5ad57c53cc10fc3e"
+  },
+  "raw/metadata/385600.json": {
+    "url": "https://m.stock.naver.com/api/stock/385600/integration",
+    "retrieved_at": "2026-10-30T07:01:20.343226+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9476,
+    "sha256": "291258a313b1c640c759d937c565eb018fcf5a33392f98c940bc23aafe7a07e2"
+  },
+  "raw/components/385600.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/385600/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:20.845381+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19210,
+    "sha256": "d3dadbe0dfdb044cec1b717fd90f655f89e06f9004c7edaf150ec4c6454db9ca"
+  },
+  "raw/metadata/0243M0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0243M0/integration",
+    "retrieved_at": "2026-10-30T07:01:21.329754+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10100,
+    "sha256": "ab0f07bb83b2f74e4743e029a662d18747ed7cf7589f454a1c3bd2951ef31159"
+  },
+  "raw/components/0243M0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0243M0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:21.849949+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 12841,
+    "sha256": "f65d2655ab9e96c9518d08ccac3d641b5a875bded18a7cfc7dd96d6042738c04"
+  },
+  "raw/metadata/391670.json": {
+    "url": "https://m.stock.naver.com/api/stock/391670/integration",
+    "retrieved_at": "2026-10-30T07:01:22.344255+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9207,
+    "sha256": "2687a8d35553a74bd51c2455129c05d3381efbe7b116ae47342dd3436b191059"
+  },
+  "raw/components/391670.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/391670/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:22.839721+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 4556,
+    "sha256": "6b2de85e5b37eff3cf42f40d03593d5f31a389964e659aeb4d087636c61f0d82"
+  },
+  "raw/metadata/491510.json": {
+    "url": "https://m.stock.naver.com/api/stock/491510/integration",
+    "retrieved_at": "2026-10-30T07:01:23.340635+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9368,
+    "sha256": "fecdf1e3702ee582967fc767abdd82ea6e6d54a2a425a53a620ad51c7ad3849e"
+  },
+  "raw/components/491510.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/491510/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:23.850506+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 25172,
+    "sha256": "126b0cde9bccaac109d0aead668b350e0f80406dbcaf6afd8265f54e0e4d9f5f"
+  },
+  "raw/metadata/387280.json": {
+    "url": "https://m.stock.naver.com/api/stock/387280/integration",
+    "retrieved_at": "2026-10-30T07:01:24.344354+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9533,
+    "sha256": "ec79653396ae0a23030fd0a8fd931b9e13c239390ce0ca1cbec5be77ef557316"
+  },
+  "raw/components/387280.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/387280/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:24.833480+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 17255,
+    "sha256": "4c518ac303ec96b4c03b552672500843899ccdf62f18f015e1eedc93e8f9339b"
+  },
+  "raw/metadata/413930.json": {
+    "url": "https://m.stock.naver.com/api/stock/413930/integration",
+    "retrieved_at": "2026-10-30T07:01:25.319412+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10731,
+    "sha256": "d25571e96855370306a7004175f7cbd67beca4abbba8aeac1857dcc153c9d330"
+  },
+  "raw/components/413930.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/413930/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:25.844780+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 21808,
+    "sha256": "e2905f9fd5b8ae742b103292367c339d072c0880ad495ace947d13826af267e8"
+  },
+  "raw/metadata/0153P0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0153P0/integration",
+    "retrieved_at": "2026-10-30T07:01:26.340089+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9350,
+    "sha256": "f6c64344aacd9a18fca2eb2c329f39fe9292a83675ecd4a4c02b1c0716f7d47d"
+  },
+  "raw/components/0153P0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0153P0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:26.826472+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 5399,
+    "sha256": "6ca13671dc77cd46d978a06ecf9eeef6bb139b1eb03d01154dd73f6266c9773a"
+  },
+  "raw/metadata/373490.json": {
+    "url": "https://m.stock.naver.com/api/stock/373490/integration",
+    "retrieved_at": "2026-10-30T07:01:27.331463+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9472,
+    "sha256": "e223273f1edcb4ab40780f0be3a859e54d6cda2b71ae6b50a37bf9557b2bf344"
+  },
+  "raw/components/373490.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/373490/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:27.864267+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 29079,
+    "sha256": "dc35ce44ecf9df99b1c26ab51f707a37a69b4462c6d44ee150e053175887be39"
+  },
+  "raw/metadata/496130.json": {
+    "url": "https://m.stock.naver.com/api/stock/496130/integration",
+    "retrieved_at": "2026-10-30T07:01:28.348995+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9342,
+    "sha256": "53cee8d328fb99e193ebf4390f774635ff30c845d3f99002f2f26a24f3d477fa"
+  },
+  "raw/components/496130.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/496130/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:28.838173+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 14930,
+    "sha256": "6a9c623fe3e706574311267ac42558ad65efd85c58c010bd5240fb9452385e48"
+  },
+  "raw/metadata/472720.json": {
+    "url": "https://m.stock.naver.com/api/stock/472720/integration",
+    "retrieved_at": "2026-10-30T07:01:29.340889+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9361,
+    "sha256": "b1fa8bfbb2a98172ae218da291a83c0e12e499d23ea952844c1c12f9a7fbd5df"
+  },
+  "raw/components/472720.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/472720/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:29.841752+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 16068,
+    "sha256": "4998c8a9dce6b0e5fdff5ffd748098e888fb9a5c1a8ea7a188f2b3dc9a11ebca"
+  },
+  "raw/metadata/0208N0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0208N0/integration",
+    "retrieved_at": "2026-10-30T07:01:30.344954+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8840,
+    "sha256": "78d0f3771f102fe7f794f469132d2f2373b9cfedd2baf6a9f1b027c41541a099"
+  },
+  "raw/components/0208N0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0208N0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:30.862774+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 20688,
+    "sha256": "fb65cfb10b80130cd57472bebab8eeaef76d4e43bb9293b19d08871de4044264"
+  },
+  "raw/metadata/407820.json": {
+    "url": "https://m.stock.naver.com/api/stock/407820/integration",
+    "retrieved_at": "2026-10-30T07:01:31.344070+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9783,
+    "sha256": "c69e127718322cc094f06385a36632feb25ff1936f36dd7bcf43df05f3af60ef"
+  },
+  "raw/components/407820.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/407820/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:31.837909+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9402,
+    "sha256": "0ad8e491e3f8e36e633c985af9d4c433417017cd4977eb9910643902ce2cfc22"
+  },
+  "raw/metadata/410870.json": {
+    "url": "https://m.stock.naver.com/api/stock/410870/integration",
+    "retrieved_at": "2026-10-30T07:01:32.323869+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9868,
+    "sha256": "7be5605c8ab860dfc17a0e45331c98e023f68cda571044c391a01b72783f7651"
+  },
+  "raw/components/410870.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/410870/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:32.823328+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9733,
+    "sha256": "be8fdb7cb1d8f409862d7109db0ee83513e943e8467894a0d976cba04b30e1c6"
+  },
+  "raw/metadata/395760.json": {
+    "url": "https://m.stock.naver.com/api/stock/395760/integration",
+    "retrieved_at": "2026-10-30T07:01:33.332045+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10673,
+    "sha256": "1268a4f62b5bec835e4857fe5bc9d99c81b52ff1304aaced11d25c6ce732cc9e"
+  },
+  "raw/components/395760.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/395760/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:33.849469+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 60722,
+    "sha256": "1e6aed3508cbb92a75f91e54eb199db6d3f17b6582e716667cd722d7ad206e25"
+  },
+  "raw/metadata/385710.json": {
+    "url": "https://m.stock.naver.com/api/stock/385710/integration",
+    "retrieved_at": "2026-10-30T07:01:34.320254+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9788,
+    "sha256": "f78752a8df9a12793c15e4dfaf9df70dc9d4d926a564fc46e4c29d69c60beafd"
+  },
+  "raw/components/385710.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/385710/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:34.839867+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 5258,
+    "sha256": "afea6873215d72f2304b6456e93d2a6a762265c54ae377b75b5157a40170d23c"
+  },
+  "raw/metadata/0219B0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0219B0/integration",
+    "retrieved_at": "2026-10-30T07:01:35.340859+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9236,
+    "sha256": "deae21fba814249051b8ec2978b9b66b07a1b1be5753c0e6f6d928881f76b016"
+  },
+  "raw/components/0219B0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0219B0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:35.845518+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 12189,
+    "sha256": "21fcb6e7551f7acea871ba92eafe27a828686ecef37e5cc93738f39625bf9f10"
+  },
+  "raw/metadata/0001P0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0001P0/integration",
+    "retrieved_at": "2026-10-30T07:01:36.337358+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9869,
+    "sha256": "0abfae96931b6d8e324bdf49541459b98a466917d2947254ad269074499405db"
+  },
+  "raw/components/0001P0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0001P0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:36.834300+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8720,
+    "sha256": "bf4aea516be476e4ad75f2530338e03d2f2be25e7734f737b67b716df10f3659"
+  },
+  "raw/metadata/438740.json": {
+    "url": "https://m.stock.naver.com/api/stock/438740/integration",
+    "retrieved_at": "2026-10-30T07:01:37.337924+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9260,
+    "sha256": "8436ef2b325386d7f3cee17c830f25981df260197080ead63d06dee403919909"
+  },
+  "raw/components/438740.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/438740/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:37.881332+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 66283,
+    "sha256": "0eca26562a8655379596b87def720729d5a5d7e3acde49c97ae88d000e0a343f"
+  },
+  "raw/metadata/482030.json": {
+    "url": "https://m.stock.naver.com/api/stock/482030/integration",
+    "retrieved_at": "2026-10-30T07:01:38.332785+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9401,
+    "sha256": "868f3dbc121fad25361396475dc37397e5a633f41c2caeb4723d29f789e468bb"
+  },
+  "raw/components/482030.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/482030/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:38.832376+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 14757,
+    "sha256": "0284039b80adf6882775b25055c972f2d4bb87261317b616924a10c35288e57b"
+  },
+  "raw/metadata/498050.json": {
+    "url": "https://m.stock.naver.com/api/stock/498050/integration",
+    "retrieved_at": "2026-10-30T07:01:39.335298+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9644,
+    "sha256": "02ca058f4370d62b5ebac4e08e9ef5550812713c1fbcc357a5722190c133f960"
+  },
+  "raw/components/498050.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/498050/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:39.835754+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10151,
+    "sha256": "c5076844ae28e6c5301eb93fd5c8e36035f923f65dd799757276380899921f2e"
+  },
+  "raw/metadata/0214M0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0214M0/integration",
+    "retrieved_at": "2026-10-30T07:01:40.329520+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8953,
+    "sha256": "f496fc6ef6a1825b0958fba1f5c43629bdb6c68db873ad859abc8431edef4ccd"
+  },
+  "raw/components/0214M0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0214M0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:40.836433+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8765,
+    "sha256": "5c70bd0ea51513c7a7f7294425a3f8697605ad0e7554902caf2e08495dc7aca8"
+  },
+  "raw/metadata/457930.json": {
+    "url": "https://m.stock.naver.com/api/stock/457930/integration",
+    "retrieved_at": "2026-10-30T07:01:41.348482+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9702,
+    "sha256": "f42678c77b98a6c4791ed9e22ce36309b6bcf63561706f644b144d89dba42b28"
+  },
+  "raw/components/457930.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/457930/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:41.844138+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 16227,
+    "sha256": "f72c1ff6e372d27d7f50ec91c3f235a6bac87b9cadc5a63432f9e7c474fc8bbe"
+  },
+  "raw/metadata/0221Z0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0221Z0/integration",
+    "retrieved_at": "2026-10-30T07:01:42.359251+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9098,
+    "sha256": "2657d6af674ac93cd83631501715db5ad88716417a8a4d85028ec15690b0862d"
+  },
+  "raw/components/0221Z0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0221Z0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:42.832468+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7222,
+    "sha256": "2863577ca5adc7200472e114e9877a7a1e94da171ec140ee665b1196b411e6be"
+  },
+  "raw/metadata/395750.json": {
+    "url": "https://m.stock.naver.com/api/stock/395750/integration",
+    "retrieved_at": "2026-10-30T07:01:43.334559+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10649,
+    "sha256": "cd48233c675cc69d6e64bdc01798d1af2958ebc035632b558ee098f47f6cb210"
+  },
+  "raw/components/395750.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/395750/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:43.853470+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 71513,
+    "sha256": "b82b2544d43e017a490c8dc9b99f95b08aac91a537398bd1d4fdee86a057ce92"
+  },
+  "raw/metadata/0226G0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0226G0/integration",
+    "retrieved_at": "2026-10-30T07:01:44.341131+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9195,
+    "sha256": "9a180d1cd089c241fdb3fcef2eac2b7880471db53f684ec5b6b29139465d8df4"
+  },
+  "raw/components/0226G0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0226G0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:44.845268+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8680,
+    "sha256": "42d0536846805232f4720ffd7e084411ac7aac98f4d872a723b25354be427e08"
+  },
+  "raw/metadata/0172Y0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0172Y0/integration",
+    "retrieved_at": "2026-10-30T07:01:45.336069+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9141,
+    "sha256": "6b61def3c5e3a9aa58bbc2465c619fff0c73b1cda3a9f65ea6f88840b4b0814b"
+  },
+  "raw/components/0172Y0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0172Y0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:45.845652+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8361,
+    "sha256": "b627019b9045ae95879cb982c437501ad131465a52a83e9388c92f6c40cd4e6a"
+  },
+  "raw/metadata/0191B0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0191B0/integration",
+    "retrieved_at": "2026-10-30T07:01:46.343946+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 8935,
+    "sha256": "dd57efed7ed9014acbf9cd963b288c78cca2e9b0fdf230b19967d05f1b766c85"
+  },
+  "raw/components/0191B0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0191B0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:46.853750+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 21656,
+    "sha256": "588be96bb5e2638bfe84096cf9f9203a0dcd2482e654a4e001c52d3541dde28b"
+  },
+  "raw/metadata/470310.json": {
+    "url": "https://m.stock.naver.com/api/stock/470310/integration",
+    "retrieved_at": "2026-10-30T07:01:47.357993+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9679,
+    "sha256": "a9a243ffdcada59185ac2599d4ef94a2a28b27c3802c27856ce58761b1815646"
+  },
+  "raw/components/470310.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/470310/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:47.837433+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7158,
+    "sha256": "5b10e76e6271f2733447e296d879285e6424ec81ed80ec19a7d1a48fcfc22683"
+  },
+  "raw/metadata/433250.json": {
+    "url": "https://m.stock.naver.com/api/stock/433250/integration",
+    "retrieved_at": "2026-10-30T07:01:48.367482+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9366,
+    "sha256": "4a4ec7643003c75146d4f005e2c3b2de75c3b675e114b1f95278b1dd76b55914"
+  },
+  "raw/components/433250.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/433250/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:48.849006+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 14264,
+    "sha256": "ffa136fd2cc5f918cac6dae4f2d4e2807fe5294b01b05c4e765c786e1afd572f"
+  },
+  "raw/metadata/0229F0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0229F0/integration",
+    "retrieved_at": "2026-10-30T07:01:49.336670+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9185,
+    "sha256": "8d967620ab893df255bd042cbd67802f5b8389b0e1ddc1db899c2fcec1604819"
+  },
+  "raw/components/0229F0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0229F0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:49.855723+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 6877,
+    "sha256": "191f61f8d1308422e8eb165a406dd3397edfae6a81a874ca317366953b8ca23d"
+  },
+  "raw/metadata/0053M0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0053M0/integration",
+    "retrieved_at": "2026-10-30T07:01:50.345679+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9559,
+    "sha256": "438c43f0dd5586b840b6042cd8325a25f2d015eb2d3da6329db906dbcba5b4be"
+  },
+  "raw/components/0053M0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0053M0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:50.842515+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 7883,
+    "sha256": "670a66d0788bf76fb48d285c7cc86931076535227a922ba6e9c21bb1b6f185da"
+  },
+  "raw/metadata/0184V0.json": {
+    "url": "https://m.stock.naver.com/api/stock/0184V0/integration",
+    "retrieved_at": "2026-10-30T07:01:51.339300+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 10565,
+    "sha256": "59b41f817e4738b54414f2db7e8d83c6a521c94d13095d15954a3405885d88d3"
+  },
+  "raw/components/0184V0.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/0184V0/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:51.846261+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 6879,
+    "sha256": "9b01abf18853104a1dc52bb9e1e577d9eb54b52153beb5a417ebc7f4781cd7ab"
+  },
+  "raw/metadata/476000.json": {
+    "url": "https://m.stock.naver.com/api/stock/476000/integration",
+    "retrieved_at": "2026-10-30T07:01:52.346741+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 9644,
+    "sha256": "9ce152f08dc969fed653c7a578b057fd50f8528062ff3f34fdf7992800261ed3"
+  },
+  "raw/components/476000.json": {
+    "url": "https://stock.naver.com/api/domestic/detail/476000/ETFComponent",
+    "retrieved_at": "2026-10-30T07:01:52.849830+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 6464,
+    "sha256": "3dcfb6c83b2bc7b0047e8a160137e7666ecbb9503c1f83d82f58a765021c27c1"
+  },
+  "raw/issuer/444200.json": {
+    "url": "https://www.soletf.com/api/fund/pdfList?fund_cd=210940&work_dt=20261030",
+    "retrieved_at": "2026-10-30T07:15:51.307601+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 5718,
+    "sha256": "2c47172be5a5c71ed8502dc0032398ae2ca1c3c12e857d19261ca6058c2d3791"
+  },
+  "raw/issuer-list/kodex-1.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=1",
+    "retrieved_at": "2026-10-30T07:16:21.611832+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19098,
+    "sha256": "e2b3bbbdc192f03dcec5c2fee0d49cfdcb50d06e3db9dc7111686684db708e63"
+  },
+  "raw/issuer-list/kodex-2.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=2",
+    "retrieved_at": "2026-10-30T07:18:32.779921+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19010,
+    "sha256": "0af881e39f802a0d8d69a63a35fd7c2cb4a42f679bd98c158694783337feea77"
+  },
+  "raw/issuer-list/kodex-3.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=3",
+    "retrieved_at": "2026-10-30T07:18:33.331239+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19175,
+    "sha256": "936576136126358602f1b001e156dc43a9cc83f487cced92cc58df431234b04a"
+  },
+  "raw/issuer-list/kodex-4.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=4",
+    "retrieved_at": "2026-10-30T07:18:33.840666+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19140,
+    "sha256": "5716455707e2cb177cc3c6b3f91a78924c34b9f7bb6270638fa0c43ff01b4f37"
+  },
+  "raw/issuer-list/kodex-5.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=5",
+    "retrieved_at": "2026-10-30T07:18:34.342693+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19171,
+    "sha256": "e55f4c71d0bf6f5c77db0ee89edb8b3c783f5a51f93dac4b1f83e141744cfa32"
+  },
+  "raw/issuer-list/kodex-6.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=6",
+    "retrieved_at": "2026-10-30T07:18:34.843630+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19271,
+    "sha256": "7019f82f28d93712e9765980c9a9ed5a222b8ae5cb899a676931de8d36ec4bcc"
+  },
+  "raw/issuer-list/kodex-7.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=7",
+    "retrieved_at": "2026-10-30T07:18:35.361754+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19121,
+    "sha256": "b13f3f747fdceb2acf9f324d7e83deb3874eceff34ffc607db68fadccb003515"
+  },
+  "raw/issuer-list/kodex-8.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=8",
+    "retrieved_at": "2026-10-30T07:18:35.877370+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19083,
+    "sha256": "89f0028a97d5f690424f38efdd785d4d11b634d94392b4d6b07adaf217aa60aa"
+  },
+  "raw/issuer-list/kodex-9.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=9",
+    "retrieved_at": "2026-10-30T07:18:36.407466+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19146,
+    "sha256": "1e889a617fad57513d40bf17631de8fddfa3cfbe23acca0f545c7a3bffc5857a"
+  },
+  "raw/issuer-list/kodex-10.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=10",
+    "retrieved_at": "2026-10-30T07:18:36.908650+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19087,
+    "sha256": "fc0082dc2bc61e8b1b50ee2480404795e2508f7b74a337163aef9d0a05cf2911"
+  },
+  "raw/issuer-list/kodex-11.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo=11",
+    "retrieved_at": "2026-10-30T07:18:37.402519+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 19028,
+    "sha256": "97da1fb7ff0589a1d0c6f724ef9d0b950248c639a4a4e1e9c84fa84f4ac552b0"
+  },
+  "raw/issuer/445290.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFH5.do",
+    "retrieved_at": "2026-10-30T07:18:37.901005+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 192274,
+    "sha256": "7671570f0c2fe66827d78e2082bb75994449994acdb0b0b8a79143fcafdd07bb"
+  },
+  "raw/issuer/494890.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFO7.do",
+    "retrieved_at": "2026-10-30T07:18:38.380867+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 110853,
+    "sha256": "067ea07e865c79ab929c3183f8a9e52c4881b8cd3434015569f1a644c6b72abd"
+  },
+  "raw/issuer/385510.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFE5.do",
+    "retrieved_at": "2026-10-30T07:18:38.906237+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 115445,
+    "sha256": "946dd7171d0d1ff6b042292c5258c043d1e8042fdfde5ba01316da9102d146ac"
+  },
+  "raw/issuer/401470.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFF4.do",
+    "retrieved_at": "2026-10-30T07:18:39.405564+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 114493,
+    "sha256": "e69f031fab79d484beddcd5d6b3701365e2e2010f237aaadad2a5bad1be86e6a"
+  },
+  "raw/issuer/445150.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFH6.do",
+    "retrieved_at": "2026-10-30T07:18:39.962391+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 112330,
+    "sha256": "565188aceb7ee1f28685c6719781b2827a692896ef49820e3ef59a9a7f324f48"
+  },
+  "raw/issuer/385520.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFE6.do",
+    "retrieved_at": "2026-10-30T07:18:40.492811+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 115340,
+    "sha256": "0eff8ce2fd85c25a8a7bf587dae63e7506f498d9963594942b57abd8c75d1c1a"
+  },
+  "raw/issuer/364690.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFC8.do",
+    "retrieved_at": "2026-10-30T07:18:40.990056+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 115805,
+    "sha256": "bd3b370794a068d940e24913dc70a213bda22976f61d2f0e4a565fa864e2c750"
+  },
+  "raw/issuer/373490.json": {
+    "url": "https://m.samsungfund.com/api/v1/kodex/product/2ETFD9.do",
+    "retrieved_at": "2026-10-30T07:18:41.555102+00:00",
+    "http_status": 200,
+    "encoding": "utf-8",
+    "bytes": 112888,
+    "sha256": "43b6e3d1d347b327523edc761308b74d117961be58e4ec200c7beaf8b8314c87"
+  }
+}

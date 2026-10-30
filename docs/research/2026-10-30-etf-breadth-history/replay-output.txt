@@ -1,0 +1,53 @@
+{
+  "cohort_size": 350,
+  "panels": {
+    "original_477": {
+      "current": 15.6533892382949,
+      "position": {
+        "n": 23,
+        "lower_count": 3,
+        "equal_count": 0,
+        "lower_pct": 13.043478260869565,
+        "midrank_pct": 13.043478260869565,
+        "inclusive_pct": 13.043478260869565
+      },
+      "regime": "unavailable"
+    },
+    "fixed_complete_cohort": {
+      "current": 15.142857142857142,
+      "position": {
+        "n": 1673,
+        "lower_count": 52,
+        "equal_count": 0,
+        "lower_pct": 3.1081888822474597,
+        "midrank_pct": 3.1081888822474597,
+        "inclusive_pct": 3.1081888822474597
+      },
+      "regime": "low"
+    },
+    "eligible_min_80pct": {
+      "current": 15.6533892382949,
+      "position": {
+        "n": 1460,
+        "lower_count": 42,
+        "equal_count": 0,
+        "lower_pct": 2.8767123287671232,
+        "midrank_pct": 2.8767123287671232,
+        "inclusive_pct": 2.8767123287671232
+      },
+      "regime": "low"
+    },
+    "eligible_min_90pct": {
+      "current": 15.6533892382949,
+      "position": {
+        "n": 711,
+        "lower_count": 20,
+        "equal_count": 0,
+        "lower_pct": 2.8129395218002813,
+        "midrank_pct": 2.8129395218002813,
+        "inclusive_pct": 2.8129395218002813
+      },
+      "regime": "low"
+    }
+  }
+}

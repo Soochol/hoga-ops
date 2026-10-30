@@ -1,0 +1,27 @@
+{
+  "source_plans": [
+    "4e41371a4a7ebfad35a33b292b86883c22d1d1a2975bd338fb963d87738d4cdb",
+    "7072fcd97abc4f7edda1f2cf771f2b958045feaddb17c4dcae5bb610a0862129",
+    "92068f024a4850aa11d7836a550079e19859396fabacaa890e8ddbf1655e67b7"
+  ],
+  "source_runtime_revisions": {
+    "92068f024a4850aa11d7836a550079e19859396fabacaa890e8ddbf1655e67b7": "5b9a68f1ab2eb68f8a90205fb7250f655292ca3831ccf7a900bc6ccf631c3c93",
+    "7072fcd97abc4f7edda1f2cf771f2b958045feaddb17c4dcae5bb610a0862129": "5b9a68f1ab2eb68f8a90205fb7250f655292ca3831ccf7a900bc6ccf631c3c93",
+    "4e41371a4a7ebfad35a33b292b86883c22d1d1a2975bd338fb963d87738d4cdb": "f34a3d0d7e2c7c576735882936bf9a47f1996af43f9e4f886b13676c6dfb70c1"
+  },
+  "snapshot_id": "300236397f6302d295ee094ca825d12dc63e2fa4dfdb88900f154ba7f30015f9",
+  "codes": 479,
+  "rows": 902538,
+  "first": "2018-01-02",
+  "last": "2026-10-29",
+  "adjusted_as_of": "2026-10-30",
+  "recent125_changed_rows": 0,
+  "unrelated_observation_ids_preserved": 20,
+  "protected_files_preserved_since_latest_plan": true,
+  "external_protected_changes_since_original": {
+    "saves.json": {
+      "before": "bf45beb91ecd4101c2fbd77b758af6ca78b7a405f76cb16b4dbf3287c34b90c6",
+      "after": "9aecc9bf8c2efd27161c5d36d5ba45c97f15cd2db4cdc22460985c174a13a59e"
+    }
+  }
+}

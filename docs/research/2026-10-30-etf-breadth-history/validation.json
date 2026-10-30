@@ -1,0 +1,53 @@
+{
+  "independent_numpy_checks_passed": true,
+  "panels": {
+    "original_477": {
+      "daily_rows": 2164,
+      "prior_threshold_dates": 0
+    },
+    "fixed_complete_cohort": {
+      "daily_rows": 2164,
+      "prior_threshold_dates": 1793
+    },
+    "eligible_min_80pct": {
+      "daily_rows": 2164,
+      "prior_threshold_dates": 1209
+    },
+    "eligible_min_90pct": {
+      "daily_rows": 2164,
+      "prior_threshold_dates": 460
+    }
+  },
+  "benchmark_metric_dates": 4328,
+  "recent125_price_changes": 0,
+  "replay_hashes_identical": true,
+  "output_sha256": {
+    "summary.json": "9273fb2cbe47219f41cb0c576b699b4df482c88da70a5ac2084f21f87ae10c66",
+    "daily-panels.parquet": "84bdc9114a8c2823c0e967fafa638d0a3318b248d7ff9ffb6c32c4d261bcbebb",
+    "benchmark-metrics.parquet": "4a68db6c95f493ac1ad70fc5de5da03a66d52bc89d88b821dd0b54b1595dda39",
+    "coverage.json": "65d346646ec4bbc16ce49bec862bdf208011e35f756ea5521f8e6e417be1b91a",
+    "plot-data.json": "c1accfd1b38f6da5258b9825dea2242a3145f1ed748131da7a7b47356f444893",
+    "historical-examples.json": "3dd7bcac692d5402d092d7171f9497bafcb4b651f4d5866d240fa1cf0586658a"
+  },
+  "input_sha256": {
+    "analysis-spec.json": "d3f4a5fd10c3990d45660f3ff59218c789f51acb0ca330522b937d6dacf5a8a9",
+    "analyze_history.py": "f6327bcb63ad420661188b90eb5153c50049feef6b40390ff9aeab59e8e9d11b",
+    "validate_history.py": "6bf578015626d9a910e0f6714f1548e80c2e4b757ab049af01f0a50196395682",
+    "confirmed-history.parquet": "6b6adf3b631bbadb527b64e82a8680f72029b165aa046a48df752322f1c0d63b",
+    "calendar.json": "cc373df1452730b3a9f27c1a0ab42b9a5a6e6dff4f9f97a7bf5ab14266519c66",
+    "source-observations.json": "599010d53195f63613e131742891cea07fdbc9a374e795bea8e77ff70aa2fecd"
+  },
+  "python": "3.14.7 (main, Sep 29 2026, 15:01:40) [Clang 22.1.3 ]",
+  "numpy": "2.5.2",
+  "polars": "1.41.0",
+  "tolerance": 1e-09,
+  "git_head": "5feb03bfea8f065af7a6e8565b14a72b03f39bfb",
+  "repo_input_sha256": {
+    "hoga/market_breadth.py": "f5fb9d74dbe74f37d399dfc61fab00dd4294fcb4ddef487fb653329fa1a3b772",
+    "hoga/market_breadth_history.py": "fbea0e99bd31caff4fb97e84edc0d4692aa1eed535bfd584188465f412afedf3",
+    "tests/unit/test_market_breadth.py": "ff97e5f2747e356f9a6d9e3e02be1737d11ccbb99c355912b22c05214690b6ca",
+    "tests/unit/test_market_breadth_history.py": "7ea3663c1a0da22fe54b781ecbbf5fbc12eac099492ad1ac57f4de7c2a8f8f09",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  }
+}

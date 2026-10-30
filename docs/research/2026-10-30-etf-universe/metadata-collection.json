@@ -1,0 +1,938 @@
+[
+  {
+    "code": "396500",
+    "status": "reused"
+  },
+  {
+    "code": "091160",
+    "status": "reused"
+  },
+  {
+    "code": "0167A0",
+    "status": "reused"
+  },
+  {
+    "code": "395160",
+    "status": "reused"
+  },
+  {
+    "code": "102780",
+    "status": "reused"
+  },
+  {
+    "code": "395270",
+    "status": "reused"
+  },
+  {
+    "code": "487240",
+    "status": "reused"
+  },
+  {
+    "code": "161510",
+    "status": "reused"
+  },
+  {
+    "code": "139260",
+    "status": "reused"
+  },
+  {
+    "code": "305720",
+    "status": "reused"
+  },
+  {
+    "code": "292150",
+    "status": "reused"
+  },
+  {
+    "code": "091230",
+    "status": "reused"
+  },
+  {
+    "code": "455850",
+    "status": "reused"
+  },
+  {
+    "code": "469150",
+    "status": "reused"
+  },
+  {
+    "code": "466920",
+    "status": "reused"
+  },
+  {
+    "code": "466940",
+    "status": "reused"
+  },
+  {
+    "code": "305540",
+    "status": "reused"
+  },
+  {
+    "code": "315930",
+    "status": "reused"
+  },
+  {
+    "code": "0117V0",
+    "status": "reused"
+  },
+  {
+    "code": "364980",
+    "status": "reused"
+  },
+  {
+    "code": "449450",
+    "status": "reused"
+  },
+  {
+    "code": "290130",
+    "status": "reused"
+  },
+  {
+    "code": "0091P0",
+    "status": "reused"
+  },
+  {
+    "code": "0148J0",
+    "status": "reused"
+  },
+  {
+    "code": "102970",
+    "status": "reused"
+  },
+  {
+    "code": "367760",
+    "status": "reused"
+  },
+  {
+    "code": "0105E0",
+    "status": "reused"
+  },
+  {
+    "code": "471990",
+    "status": "reused"
+  },
+  {
+    "code": "138540",
+    "status": "reused"
+  },
+  {
+    "code": "0101N0",
+    "status": "reused"
+  },
+  {
+    "code": "462010",
+    "status": "reused"
+  },
+  {
+    "code": "434730",
+    "status": "reused"
+  },
+  {
+    "code": "315960",
+    "status": "reused"
+  },
+  {
+    "code": "279530",
+    "status": "reused"
+  },
+  {
+    "code": "0190C0",
+    "status": "reused"
+  },
+  {
+    "code": "0210A0",
+    "status": "reused"
+  },
+  {
+    "code": "494670",
+    "status": "reused"
+  },
+  {
+    "code": "463250",
+    "status": "reused"
+  },
+  {
+    "code": "0209D0",
+    "status": "reused"
+  },
+  {
+    "code": "091180",
+    "status": "reused"
+  },
+  {
+    "code": "0052D0",
+    "status": "reused"
+  },
+  {
+    "code": "475300",
+    "status": "reused"
+  },
+  {
+    "code": "469070",
+    "status": "reused"
+  },
+  {
+    "code": "484880",
+    "status": "reused"
+  },
+  {
+    "code": "0182R0",
+    "status": "reused"
+  },
+  {
+    "code": "0089D0",
+    "status": "reused"
+  },
+  {
+    "code": "0080G0",
+    "status": "reused"
+  },
+  {
+    "code": "091170",
+    "status": "reused"
+  },
+  {
+    "code": "364970",
+    "status": "reused"
+  },
+  {
+    "code": "213610",
+    "status": "reused"
+  },
+  {
+    "code": "0153K0",
+    "status": "reused"
+  },
+  {
+    "code": "0098F0",
+    "status": "reused"
+  },
+  {
+    "code": "307520",
+    "status": "reused"
+  },
+  {
+    "code": "0228G0",
+    "status": "reused"
+  },
+  {
+    "code": "471760",
+    "status": "reused"
+  },
+  {
+    "code": "363580",
+    "status": "reused"
+  },
+  {
+    "code": "228790",
+    "status": "reused"
+  },
+  {
+    "code": "244580",
+    "status": "reused"
+  },
+  {
+    "code": "117700",
+    "status": "reused"
+  },
+  {
+    "code": "0005D0",
+    "status": "reused"
+  },
+  {
+    "code": "266160",
+    "status": "reused"
+  },
+  {
+    "code": "0204D0",
+    "status": "reused"
+  },
+  {
+    "code": "457990",
+    "status": "reused"
+  },
+  {
+    "code": "139230",
+    "status": "reused"
+  },
+  {
+    "code": "157500",
+    "status": "reused"
+  },
+  {
+    "code": "433500",
+    "status": "reused"
+  },
+  {
+    "code": "475310",
+    "status": "reused"
+  },
+  {
+    "code": "461950",
+    "status": "reused"
+  },
+  {
+    "code": "0093A0",
+    "status": "reused"
+  },
+  {
+    "code": "466930",
+    "status": "reused"
+  },
+  {
+    "code": "0005G0",
+    "status": "reused"
+  },
+  {
+    "code": "337160",
+    "status": "reused"
+  },
+  {
+    "code": "0115D0",
+    "status": "reused"
+  },
+  {
+    "code": "143860",
+    "status": "reused"
+  },
+  {
+    "code": "138520",
+    "status": "reused"
+  },
+  {
+    "code": "421320",
+    "status": "reused"
+  },
+  {
+    "code": "139220",
+    "status": "reused"
+  },
+  {
+    "code": "325010",
+    "status": "reused"
+  },
+  {
+    "code": "491820",
+    "status": "reused"
+  },
+  {
+    "code": "469170",
+    "status": "reused"
+  },
+  {
+    "code": "475050",
+    "status": "reused"
+  },
+  {
+    "code": "455860",
+    "status": "reused"
+  },
+  {
+    "code": "0092B0",
+    "status": "reused"
+  },
+  {
+    "code": "326240",
+    "status": "reused"
+  },
+  {
+    "code": "266370",
+    "status": "reused"
+  },
+  {
+    "code": "0177X0",
+    "status": "reused"
+  },
+  {
+    "code": "367770",
+    "status": "reused"
+  },
+  {
+    "code": "377990",
+    "status": "reused"
+  },
+  {
+    "code": "0000J0",
+    "status": "reused"
+  },
+  {
+    "code": "211900",
+    "status": "reused"
+  },
+  {
+    "code": "325020",
+    "status": "reused"
+  },
+  {
+    "code": "0098N0",
+    "status": "reused"
+  },
+  {
+    "code": "108450",
+    "status": "reused"
+  },
+  {
+    "code": "228810",
+    "status": "reused"
+  },
+  {
+    "code": "210780",
+    "status": "reused"
+  },
+  {
+    "code": "0008T0",
+    "status": "reused"
+  },
+  {
+    "code": "364960",
+    "status": "reused"
+  },
+  {
+    "code": "157490",
+    "status": "reused"
+  },
+  {
+    "code": "465330",
+    "status": "reused"
+  },
+  {
+    "code": "454320",
+    "status": "reused"
+  },
+  {
+    "code": "211560",
+    "status": "reused"
+  },
+  {
+    "code": "138530",
+    "status": "reused"
+  },
+  {
+    "code": "266420",
+    "status": "reused"
+  },
+  {
+    "code": "228800",
+    "status": "reused"
+  },
+  {
+    "code": "337140",
+    "status": "reused"
+  },
+  {
+    "code": "441540",
+    "status": "reused"
+  },
+  {
+    "code": "277640",
+    "status": "reused"
+  },
+  {
+    "code": "476260",
+    "status": "reused"
+  },
+  {
+    "code": "0115E0",
+    "status": "reused"
+  },
+  {
+    "code": "140700",
+    "status": "reused"
+  },
+  {
+    "code": "490480",
+    "status": "reused"
+  },
+  {
+    "code": "150460",
+    "status": "reused"
+  },
+  {
+    "code": "261070",
+    "status": "reused"
+  },
+  {
+    "code": "0139P0",
+    "status": "reused"
+  },
+  {
+    "code": "0207G0",
+    "status": "reused"
+  },
+  {
+    "code": "0111J0",
+    "status": "reused"
+  },
+  {
+    "code": "275300",
+    "status": "reused"
+  },
+  {
+    "code": "0234N0",
+    "status": "reused"
+  },
+  {
+    "code": "0141S0",
+    "status": "reused"
+  },
+  {
+    "code": "322410",
+    "status": "reused"
+  },
+  {
+    "code": "139280",
+    "status": "reused"
+  },
+  {
+    "code": "375770",
+    "status": "reused"
+  },
+  {
+    "code": "401170",
+    "status": "reused"
+  },
+  {
+    "code": "104530",
+    "status": "reused"
+  },
+  {
+    "code": "266360",
+    "status": "reused"
+  },
+  {
+    "code": "400970",
+    "status": "reused"
+  },
+  {
+    "code": "275280",
+    "status": "reused"
+  },
+  {
+    "code": "365000",
+    "status": "reused"
+  },
+  {
+    "code": "395290",
+    "status": "reused"
+  },
+  {
+    "code": "498860",
+    "status": "reused"
+  },
+  {
+    "code": "227540",
+    "status": "reused"
+  },
+  {
+    "code": "0154F0",
+    "status": "reused"
+  },
+  {
+    "code": "117460",
+    "status": "reused"
+  },
+  {
+    "code": "380340",
+    "status": "reused"
+  },
+  {
+    "code": "322400",
+    "status": "reused"
+  },
+  {
+    "code": "105780",
+    "status": "reused"
+  },
+  {
+    "code": "192720",
+    "status": "reused"
+  },
+  {
+    "code": "395170",
+    "status": "reused"
+  },
+  {
+    "code": "0192T0",
+    "status": "reused"
+  },
+  {
+    "code": "139270",
+    "status": "reused"
+  },
+  {
+    "code": "275290",
+    "status": "reused"
+  },
+  {
+    "code": "145850",
+    "status": "reused"
+  },
+  {
+    "code": "261140",
+    "status": "reused"
+  },
+  {
+    "code": "469790",
+    "status": "reused"
+  },
+  {
+    "code": "0155N0",
+    "status": "reused"
+  },
+  {
+    "code": "223190",
+    "status": "reused"
+  },
+  {
+    "code": "147970",
+    "status": "reused"
+  },
+  {
+    "code": "368190",
+    "status": "reused"
+  },
+  {
+    "code": "261060",
+    "status": "reused"
+  },
+  {
+    "code": "117680",
+    "status": "reused"
+  },
+  {
+    "code": "0240J0",
+    "status": "reused"
+  },
+  {
+    "code": "0103T0",
+    "status": "reused"
+  },
+  {
+    "code": "300950",
+    "status": "reused"
+  },
+  {
+    "code": "388280",
+    "status": "reused"
+  },
+  {
+    "code": "367740",
+    "status": "reused"
+  },
+  {
+    "code": "300640",
+    "status": "reused"
+  },
+  {
+    "code": "139250",
+    "status": "reused"
+  },
+  {
+    "code": "364990",
+    "status": "reused"
+  },
+  {
+    "code": "479850",
+    "status": "reused"
+  },
+  {
+    "code": "375760",
+    "status": "reused"
+  },
+  {
+    "code": "289250",
+    "status": "reused"
+  },
+  {
+    "code": "464600",
+    "status": "reused"
+  },
+  {
+    "code": "0209Z0",
+    "status": "reused"
+  },
+  {
+    "code": "337120",
+    "status": "reused"
+  },
+  {
+    "code": "284980",
+    "status": "reused"
+  },
+  {
+    "code": "0177A0",
+    "status": "reused"
+  },
+  {
+    "code": "289040",
+    "status": "reused"
+  },
+  {
+    "code": "445910",
+    "status": "reused"
+  },
+  {
+    "code": "091220",
+    "status": "reused"
+  },
+  {
+    "code": "417630",
+    "status": "reused"
+  },
+  {
+    "code": "376410",
+    "status": "reused"
+  },
+  {
+    "code": "404260",
+    "status": "reused"
+  },
+  {
+    "code": "131890",
+    "status": "reused"
+  },
+  {
+    "code": "381560",
+    "status": "reused"
+  },
+  {
+    "code": "0105D0",
+    "status": "reused"
+  },
+  {
+    "code": "289260",
+    "status": "reused"
+  },
+  {
+    "code": "174350",
+    "status": "reused"
+  },
+  {
+    "code": "438900",
+    "status": "reused"
+  },
+  {
+    "code": "0242S0",
+    "status": "reused"
+  },
+  {
+    "code": "104520",
+    "status": "reused"
+  },
+  {
+    "code": "140710",
+    "status": "reused"
+  },
+  {
+    "code": "337150",
+    "status": "reused"
+  },
+  {
+    "code": "234310",
+    "status": "reused"
+  },
+  {
+    "code": "0239Y0",
+    "status": "reused"
+  },
+  {
+    "code": "244620",
+    "status": "reused"
+  },
+  {
+    "code": "0222F0",
+    "status": "reused"
+  },
+  {
+    "code": "251590",
+    "status": "reused"
+  },
+  {
+    "code": "300610",
+    "status": "reused"
+  },
+  {
+    "code": "404650",
+    "status": "reused"
+  },
+  {
+    "code": "279540",
+    "status": "reused"
+  },
+  {
+    "code": "487750",
+    "status": "reused"
+  },
+  {
+    "code": "0090B0",
+    "status": "reused"
+  },
+  {
+    "code": "140580",
+    "status": "reused"
+  },
+  {
+    "code": "266410",
+    "status": "reused"
+  },
+  {
+    "code": "464610",
+    "status": "reused"
+  },
+  {
+    "code": "102960",
+    "status": "reused"
+  },
+  {
+    "code": "446700",
+    "status": "reused"
+  },
+  {
+    "code": "227570",
+    "status": "reused"
+  },
+  {
+    "code": "0189Z0",
+    "status": "reused"
+  },
+  {
+    "code": "395150",
+    "status": "reused"
+  },
+  {
+    "code": "280920",
+    "status": "reused"
+  },
+  {
+    "code": "281990",
+    "status": "reused"
+  },
+  {
+    "code": "266550",
+    "status": "reused"
+  },
+  {
+    "code": "140570",
+    "status": "reused"
+  },
+  {
+    "code": "0120J0",
+    "status": "reused"
+  },
+  {
+    "code": "270800",
+    "status": "reused"
+  },
+  {
+    "code": "466810",
+    "status": "reused"
+  },
+  {
+    "code": "404540",
+    "status": "reused"
+  },
+  {
+    "code": "266390",
+    "status": "reused"
+  },
+  {
+    "code": "277650",
+    "status": "reused"
+  },
+  {
+    "code": "395280",
+    "status": "reused"
+  },
+  {
+    "code": "0216Z0",
+    "status": "reused"
+  },
+  {
+    "code": "381570",
+    "status": "reused"
+  },
+  {
+    "code": "139240",
+    "status": "reused"
+  },
+  {
+    "code": "253280",
+    "status": "reused"
+  },
+  {
+    "code": "215620",
+    "status": "reused"
+  },
+  {
+    "code": "285690",
+    "status": "reused"
+  },
+  {
+    "code": "227550",
+    "status": "reused"
+  },
+  {
+    "code": "315270",
+    "status": "reused"
+  },
+  {
+    "code": "244670",
+    "status": "reused"
+  },
+  {
+    "code": "0218K0",
+    "status": "reused"
+  },
+  {
+    "code": "402460",
+    "status": "reused"
+  },
+  {
+    "code": "483020",
+    "status": "reused"
+  },
+  {
+    "code": "326230",
+    "status": "reused"
+  },
+  {
+    "code": "139290",
+    "status": "reused"
+  },
+  {
+    "code": "368680",
+    "status": "reused"
+  },
+  {
+    "code": "314700",
+    "status": "reused"
+  },
+  {
+    "code": "0138D0",
+    "status": "reused"
+  },
+  {
+    "code": "307510",
+    "status": "reused"
+  },
+  {
+    "code": "407300",
+    "status": "reused"
+  },
+  {
+    "code": "227560",
+    "status": "reused"
+  },
+  {
+    "code": "226380",
+    "status": "reused"
+  },
+  {
+    "code": "427120",
+    "status": "reused"
+  },
+  {
+    "code": "244660",
+    "status": "reused"
+  }
+]

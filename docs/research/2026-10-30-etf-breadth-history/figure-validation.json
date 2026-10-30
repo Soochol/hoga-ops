@@ -1,0 +1,12 @@
+{
+  "visual_qa_passed": true,
+  "checked": "Both final PNGs opened and inspected; Korean text, axes, legends, and curves readable",
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "matplotlib": "3.11.2",
+  "numpy": "2.5.4",
+  "font_sha256": "48a28e97b34fc8e5b157657633670cd1b7de126cfc414da65ce9c3d5bc8be733",
+  "output_sha256": {
+    "breadth-and-stress.png": "95e20fc0bfe06299e100c6f9fde0ed0bb27e6e9fa84aed72489cb589075447fe",
+    "score-distributions.png": "75097ad0b1970f57558ff112112e6d98fbc0e125e0557c956c76454351f3bd0a"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "plan_id": "a94fc5716887282e1a9489ef6660706567278604fdb2a8bcfe14f3b425a29ac3",
+  "requested_stocks": 477,
+  "compatibility_stocks": 18,
+  "total_targets": 495,
+  "code_revision": "5b9a68f1ab2eb68f8a90205fb7250f655292ca3831ccf7a900bc6ccf631c3c93",
+  "python": "3.14.7"
+}

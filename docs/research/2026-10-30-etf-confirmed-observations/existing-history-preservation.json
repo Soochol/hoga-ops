@@ -1,0 +1,252 @@
+[
+  {
+    "code": "000020",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 13,
+    "new_corrected_dates": 13,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "003240",
+    "in_requested_union": true,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 4,
+    "new_corrected_dates": 4,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "000520",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 17,
+    "new_corrected_dates": 17,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "013120",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 13,
+    "new_corrected_dates": 13,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "017650",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 3,
+    "new_corrected_dates": 3,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "900310",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 484,
+    "new_corrected_dates": 484,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "005930",
+    "in_requested_union": true,
+    "previous_price_dates": 1999,
+    "new_price_dates": 2003,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 0,
+    "new_corrected_dates": 0,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "001000",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 3,
+    "new_corrected_dates": 3,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "020180",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 328,
+    "new_corrected_dates": 328,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "038390",
+    "in_requested_union": true,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 229,
+    "new_corrected_dates": 229,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "044480",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 12,
+    "new_corrected_dates": 12,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "900300",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 381,
+    "new_corrected_dates": 381,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "004770",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 7,
+    "new_corrected_dates": 7,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "013030",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 4,
+    "new_corrected_dates": 4,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "020400",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 14,
+    "new_corrected_dates": 14,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "025980",
+    "in_requested_union": true,
+    "previous_price_dates": 1999,
+    "new_price_dates": 2003,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 5,
+    "new_corrected_dates": 5,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "027710",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 13,
+    "new_corrected_dates": 13,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "000650",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 6,
+    "new_corrected_dates": 6,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "001530",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 4,
+    "new_corrected_dates": 4,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "003060",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 15,
+    "new_corrected_dates": 15,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "003230",
+    "in_requested_union": true,
+    "previous_price_dates": 1999,
+    "new_price_dates": 2003,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 3,
+    "new_corrected_dates": 3,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "012450",
+    "in_requested_union": true,
+    "previous_price_dates": 1999,
+    "new_price_dates": 2003,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 13,
+    "new_corrected_dates": 13,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "900340",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 11,
+    "new_corrected_dates": 11,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "000120",
+    "in_requested_union": true,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 4,
+    "new_corrected_dates": 4,
+    "lost_corrected_dates": []
+  },
+  {
+    "code": "000430",
+    "in_requested_union": false,
+    "previous_price_dates": 1199,
+    "new_price_dates": 1203,
+    "lost_price_dates": [],
+    "previous_corrected_dates": 15,
+    "new_corrected_dates": 15,
+    "lost_corrected_dates": []
+  }
+]

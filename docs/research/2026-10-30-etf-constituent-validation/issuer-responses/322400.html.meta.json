@@ -1,0 +1,8 @@
+{
+  "url": "https://www.hanaroetf.com/api/v1/fund/5CD1DD359516432B/get-fund-holdings-list?baseDate=2026.10.30",
+  "captured_at": "2026-10-30T03:30:41.522922+00:00",
+  "sha256": "966a904476bd8d0c51fe044938c61a74a71b43d7938c52de1ec2c7905be52471",
+  "bytes": 3883,
+  "content_type": "text/html;charset=UTF-8",
+  "final_url": "https://www.hanaroetf.com/api/v1/fund/5CD1DD359516432B/get-fund-holdings-list?baseDate=2026.10.30"
+}

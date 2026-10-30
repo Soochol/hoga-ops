@@ -1,0 +1,35 @@
+{
+  "source_snapshot": "300236397f6302d295ee094ca825d12dc63e2fa4dfdb88900f154ba7f30015f9",
+  "adjusted_as_of": "2026-10-30",
+  "codes": [
+    "000020",
+    "000430",
+    "001530",
+    "013030"
+  ],
+  "rows": 4812,
+  "observations": [
+    {
+      "code": "000020",
+      "observation_id": "e192c3d53aa929c28b82552ec6befe605948084fba220961001e7920f691a152",
+      "confirmation_state": "confirmed"
+    },
+    {
+      "code": "000430",
+      "observation_id": "c3dced1e0d285847dba1a685eee8e5439a911e4ec680be6a58ed3daef75a188c",
+      "confirmation_state": "confirmed"
+    },
+    {
+      "code": "001530",
+      "observation_id": "d28d0d50a54c339f1b5077baf7c638bcc6ed4b57f14314ca7c101554718305e0",
+      "confirmation_state": "confirmed"
+    },
+    {
+      "code": "013030",
+      "observation_id": "0d66620e2e2d8ce55a972883344a2f57221adfb64a0ad30d2b55eb6c3e7f4f00",
+      "confirmation_state": "confirmed"
+    }
+  ],
+  "provider_requests": 0,
+  "production_writes": 0
+}

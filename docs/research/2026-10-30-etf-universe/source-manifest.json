@@ -1,0 +1,138 @@
+{
+  "source_url": "https://finance.naver.com/api/sise/etfItemList.nhn",
+  "retrieved_at": "2026-10-30T02:39:09.582829+00:00",
+  "requested_research_date": "2026-10-30",
+  "source_observation_date": null,
+  "response_date_header": null,
+  "raw_response_sha256": "7f12bbef38077bb3bf8431055dd096dc2255e1eafa6d3a35ada642f295beddf5",
+  "row_count": 1183,
+  "unique_codes": 1183,
+  "category_counts": {
+    "1": 99,
+    "4": 384,
+    "7": 125,
+    "2": 343,
+    "6": 172,
+    "3": 37,
+    "5": 23
+  },
+  "limitations": [
+    "Source response does not expose an observation date. Retrieval date is not a quote date.",
+    "KRX direct data access returned HTTP 403; complete official exchange reconciliation is unavailable.",
+    "marketSum is provider market capitalisation, not independently verified fund NAV assets.",
+    "amonut is provider snapshot trading amount, not multi-day median liquidity.",
+    "Two provider code sets match; this is not an exchange-certified listing-count audit.",
+    "Descriptions and benchmarks may retain old names. Specific material mismatches are recorded in README.",
+    "The original response hash fingerprints the remote payload; the saved JSON is reserialized and has its own SHA256."
+  ],
+  "sources": [
+    {
+      "source_url": "https://finance.naver.com/api/sise/etfItemList.nhn",
+      "artifact": "naver-etf-response.json",
+      "scope": "all ETF rows in provider response; field names preserved",
+      "sha256": "07b8130b0b3fb19c845a9d4047115b127fb230f5ac9a3bd8cd1bc969e1c3c639"
+    },
+    {
+      "source_url": "https://comp.wisereport.co.kr/ETF/lookup.aspx",
+      "artifact": "fnguide-lookup.json",
+      "scope": "all ETF and ETN lookup rows; ETF code-set reconciliation only",
+      "saved_at": "2026-10-30T02:40:18.382001+00:00",
+      "sha256": "d0c3e3a44890b325ec05b1a7c31bb4b4de77453d5b1df1f7d39399b6ac7ce1f0"
+    }
+  ],
+  "reconciliation": {
+    "naver_etf_count": 1183,
+    "fnguide_etf_count": 1183,
+    "fnguide_etn_count": 357,
+    "naver_only": [],
+    "fnguide_only": [],
+    "name_policy": "Naver full names retained; FnGuide lookup abbreviates some long names."
+  },
+  "selected_symbol_check": {
+    "count": 38,
+    "verified_type": "etf",
+    "tradable_count": 38,
+    "min_local_traded_at": "2026-10-30T10:53:37+09:00",
+    "max_local_traded_at": "2026-10-30T11:51:18+09:00",
+    "artifact": "selected-symbol-observations.json"
+  },
+  "issuer_checks": [
+    {
+      "codes": [
+        "091160",
+        "091180",
+        "091170",
+        "102970",
+        "140700",
+        "102960",
+        "117700",
+        "117680",
+        "117460",
+        "140710",
+        "266410",
+        "266390",
+        "266370",
+        "244580",
+        "305720"
+      ],
+      "url": "https://www.samsungfund.com/etf/product/pensionlist.do",
+      "purpose": "Kodex published product names and codes; fund index details in captured per-Code provider metadata"
+    },
+    {
+      "codes": [
+        "266360"
+      ],
+      "url": "https://m.samsungfund.com/sheet/20250805/2ETF81_20250731.pdf",
+      "purpose": "K-content name and sector; older IT-software description is stale"
+    },
+    {
+      "codes": [
+        "367760"
+      ],
+      "url": "https://www.riseetf.co.kr/prod/finderDetail/44A7",
+      "purpose": "Network infrastructure classification and explicit exclusion of telecom operators"
+    },
+    {
+      "codes": [
+        "491820"
+      ],
+      "url": "https://www.hanaroetf.com/fund/24A384532ECE491A",
+      "purpose": "Domestic equity power equipment index and product identity"
+    },
+    {
+      "codes": [
+        "466920",
+        "455850"
+      ],
+      "url": "https://www.soletf.com/ko/fund",
+      "purpose": "SOL product identities; methodology descriptions captured in provider metadata"
+    },
+    {
+      "codes": [
+        "449450"
+      ],
+      "url": "https://www.plusetf.co.kr/product/detail?n=006192",
+      "purpose": "Domestic defense index product identity"
+    },
+    {
+      "codes": [
+        "434730"
+      ],
+      "url": "https://www.nh-amundi.com/investment/pick/WDJ9sv2Nr37otyVi",
+      "purpose": "Domestic nuclear value-chain product identity"
+    },
+    {
+      "codes": [
+        "143860",
+        "315270",
+        "157490",
+        "307510",
+        "228790",
+        "228800",
+        "377990"
+      ],
+      "url": "https://develop.investments.miraeasset.com/tigeretf/ko/pension/sector-country/list.do",
+      "purpose": "TIGER product catalogue; captured metadata used for per-Code benchmark and domestic scope"
+    }
+  ]
+}

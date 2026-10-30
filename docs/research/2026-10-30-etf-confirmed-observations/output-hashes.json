@@ -1,0 +1,5 @@
+{
+  "confirmed-adjusted.parquet": "3606072263905a974f8e026058ddb95c1467ce96da3c038417c24a02117cce41",
+  "confirmed-raw-candidates.parquet": "5f3a06021ae0976fd5ba4265b7b4922d011d5218e341a2b4c3f7eb43df677a71",
+  "resolved-raw.parquet": "db9d6987474a4ad87b52af1e2e1223bc3166e951ff3e0eef9c826f68f3af3040"
+}

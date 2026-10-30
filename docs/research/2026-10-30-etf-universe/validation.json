@@ -1,0 +1,38 @@
+{
+  "verified_at": "2026-10-30T02:56:43.891733+00:00",
+  "head_sha": "5feb03bfea8f065af7a6e8565b14a72b03f39bfb",
+  "python": "Python 3.14.4",
+  "checks": {
+    "complete_provider_code_set_reconciliation": true,
+    "all_rows_decided": true,
+    "selected_codes_and_groups_unique": true,
+    "selected_identity_and_names_match": true,
+    "selected_all_tradable_in_provider_snapshot": true,
+    "metadata_identity_valid": true,
+    "summary_counts_balanced": true,
+    "input_hashes_match": true,
+    "offline_rebuild_byte_identical": true,
+    "report_contains_all_selected_codes": true,
+    "research_script_ruff": true
+  },
+  "output_sha256": {
+    "catalog.json": "1fd1b73f44871c1cf6b48556b3935b46abcd49ae067bc110b34a49ea665c1a13",
+    "selected.json": "8a6be0f192288fe14f324a3d01f685e1fce64e2c9e4213237cd4ea966ddd40d0",
+    "summary.json": "df82fbcee98ab44acc397c164336d4af6141842996c04f401676ec5ec3b361cf"
+  },
+  "application_changes": false,
+  "holdings_collected": false,
+  "base_sha": "d31eeb2396e7c669b2900c05f3f6330d4f953aa4",
+  "remote_main_sha_checked": "d31eeb2396e7c669b2900c05f3f6330d4f953aa4",
+  "commands": [
+    {
+      "command": "uv run --extra dev ruff check docs/research/2026-10-30-etf-universe/collect_metadata.py docs/research/2026-10-30-etf-universe/build_review.py",
+      "result": "passed",
+      "tool": "ruff 0.15.13"
+    },
+    {
+      "command": "python3 docs/research/2026-10-30-etf-universe/build_review.py",
+      "result": "passed; repeated offline build produced identical catalog, selected and summary bytes"
+    }
+  ]
+}

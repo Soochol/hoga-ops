@@ -1,0 +1,46 @@
+{
+  "verified_at": "2026-10-30T03:15:59.220307+00:00",
+  "head_sha": "5feb03bfea8f065af7a6e8565b14a72b03f39bfb",
+  "python": "Python 3.14.4",
+  "checks": {
+    "all_selected_codes_covered": true,
+    "raw_response_hashes_match": true,
+    "all_38_metrics_recomputed_offline": true,
+    "all_declared_counts_match": true,
+    "all_reference_dates_match": true,
+    "isin_code_shape_matches": true,
+    "three_issuer_stock_sets_and_cu_quantities_match": true,
+    "invalid_identity_date_weight_rejected": true,
+    "existing_evidence_overwrite_refused_before_network": true,
+    "report_lists_all_38": true,
+    "ruff_check_passed": true
+  },
+  "api_authentication_used": false,
+  "broker_live_calls": false,
+  "production_state_modified": false,
+  "weights_sum_min_pct": "99.70",
+  "weights_sum_max_pct": "99.96",
+  "negative_cash_preserved": [
+    {
+      "etf_code": "091170",
+      "weight_pct": "-0.20"
+    },
+    {
+      "etf_code": "143860",
+      "weight_pct": "-0.16"
+    },
+    {
+      "etf_code": "457990",
+      "weight_pct": "-0.06"
+    }
+  ],
+  "evidence_sha256": {
+    "probe-results.json": "5e72df39079d1a4aabac92142f09249a56da50f41211c1749ef83ce9ef3a9c5e",
+    "issuer-probes.json": "1ed05ba843da4ab2b11b3e20eecbdd19cb8fbc38d1c45c1ac1648b9702d3e396",
+    "broker-api-review.json": "323c12229e061938d1a97ad12f569264b5689d326aa765d4cc309509a2619ae4",
+    "probe_components.py": "12c7f0d46cc49b0c4692889c6d14d9d922988977ddc605f2fd939d40d2d4bcdf"
+  },
+  "remote_main_sha_checked": "d31eeb2396e7c669b2900c05f3f6330d4f953aa4",
+  "lint_command": "uv run --extra dev ruff check docs/research/2026-10-30-etf-components-api/probe_components.py",
+  "validation_scope": "Research script, frozen selected list, 38 raw responses, and three issuer samples; no application runtime changes."
+}

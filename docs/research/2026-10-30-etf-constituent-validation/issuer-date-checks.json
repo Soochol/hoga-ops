@@ -1,0 +1,24 @@
+[
+  {
+    "code": "491820",
+    "selected_file": "491820-dated.html",
+    "selected_sha256": "07c53ed9957f93f8dac46fddf647ac8ba714855e9fbe6f6412c2013d656bfbba",
+    "prior_date_file": "491820-compact.html",
+    "prior_date_sha256": "07c53ed9957f93f8dac46fddf647ac8ba714855e9fbe6f6412c2013d656bfbba",
+    "prior_differs": false,
+    "future_file": "491820-future.html",
+    "future_returns_selected": true,
+    "interpretation": "HTML emits no reference date; use compact YYYYMMDD. Dot-formatted prior-date query returned latest data."
+  },
+  {
+    "code": "143860",
+    "selected_file": "143860-pdf.html",
+    "selected_sha256": "aa2fa2acf14473f29b3d537080a664660335bf5e7afff2e11a0df7594c3c252f",
+    "prior_date_file": "143860-prior.html",
+    "prior_date_sha256": "f42c1acec3ebb6f10704e79bf3a6bd891804a5850844307610d00f1aee2ed950",
+    "prior_differs": true,
+    "future_file": "143860-future.html",
+    "future_returns_selected": true,
+    "interpretation": "HTML emits no reference date. Prior-date request changes basket; future-date request falls back to latest. Official form default is 2026.10.30."
+  }
+]

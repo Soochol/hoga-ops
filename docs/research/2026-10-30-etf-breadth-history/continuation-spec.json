@@ -1,0 +1,1916 @@
+{
+  "adjusted_as_of": "2026-10-30",
+  "clock": "2026-10-30T14:13:12.966897+09:00",
+  "targets": [
+    {
+      "code": "036890",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "036930",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "038390",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "038500",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "039030",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "039130",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "039200",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "039490",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "039560",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "039840",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "039860",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "041510",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "041830",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "041920",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "042000",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "042520",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "042660",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "042700",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "043150",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "044490",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "045100",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "047040",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "047810",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "048410",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "048870",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "050890",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "051500",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "051600",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "051900",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "051910",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "052400",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "052690",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "053800",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "054950",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "055550",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "056080",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "058470",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "058610",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "059090",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "060250",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "060280",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "060370",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "062040",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "064260",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "064350",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "064400",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "064760",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "064960",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "066570",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "066970",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "067160",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "067310",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "068270",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "068760",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "069080",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "069260",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "069500",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "confirmed broad-market ETF stress reference"
+    },
+    {
+      "code": "069620",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "069960",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "071050",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "071970",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "072710",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "073240",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "073490",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "075580",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "077500",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "077970",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "078340",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "078600",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "079160",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "079550",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "079940",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "080160",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "080220",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "081660",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "082740",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "083650",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "084370",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "085620",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "085660",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "086280",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "086390",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "086450",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "086520",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "086790",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "087010",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "088350",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "089030",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "089590",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "089860",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "089980",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "090360",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "090430",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "090460",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "091700",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "091810",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "093320",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "093370",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "094480",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "094820",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "095190",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "095340",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "095610",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "095660",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "096530",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "096770",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "097950",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "099190",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "099320",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "099430",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "100090",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "100120",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "100130",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "100590",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "103140",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "103590",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "105560",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "107640",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "108380",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "108490",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "108860",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "111770",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "112040",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "112610",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "114090",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "114840",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "115180",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "115440",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "119610",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "119850",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "120110",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "121600",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "122870",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "122990",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "123330",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "124500",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "126340",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "126880",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "127120",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "128940",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "130660",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "131290",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "131970",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "136490",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "137310",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "137400",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "138080",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "138610",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "138930",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "139130",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "139480",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "141080",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "144510",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "145020",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "145720",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "156100",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "160190",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "161390",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "161890",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "174900",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "175330",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "178320",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "178920",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "180640",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "181710",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "185750",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "189300",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "192080",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "192820",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "194480",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "195940",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "196170",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "201490",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "204320",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "204610",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "206640",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "207940",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "211050",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "211270",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "214150",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "214320",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "214370",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "214420",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "214450",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "216080",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "218410",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "222080",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "222800",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "225570",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "226320",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "226950",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "228760",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "229200",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "confirmed broad-market ETF stress reference"
+    },
+    {
+      "code": "229640",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "230240",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "237690",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "237880",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "240810",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "241560",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "241710",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "247540",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "249420",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "251270",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "251970",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "256840",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "257720",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "259960",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "263750",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "267250",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "267260",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "267270",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "271560",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "271940",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "272210",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "272450",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "274090",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "277810",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "278280",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "278470",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "279570",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "280360",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "281740",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "282330",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "285130",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "288620",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "290550",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "290650",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "293490",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "294870",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "295310",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "297090",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "298020",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "298040",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "298050",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "298380",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "298690",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "300720",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "302440",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "307950",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "310210",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "314930",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "316140",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "318060",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "319400",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "319660",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "322000",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "323410",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "326030",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "328130",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "329180",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "336260",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "336370",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "336570",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "338220",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "340570",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "347700",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "347850",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "348340",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "348370",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "352480",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "352820",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "353200",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "357780",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "358570",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "361390",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "361610",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "365340",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "368770",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "373220",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "375500",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "376270",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "376300",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "376900",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "377300",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "377740",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "380550",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "382900",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "383220",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "388050",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "388720",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "389260",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "389470",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "389650",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "393890",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "394420",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "394800",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "397030",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "403870",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "417200",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "437730",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "439090",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "439260",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "440110",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "443060",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "445680",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "450080",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "450950",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "451760",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "454910",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "455900",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "456040",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "456160",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "457190",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "458870",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "462350",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "462870",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "466100",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "468530",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "474170",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "475150",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "475830",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "475960",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "476060",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "476830",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "483650",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "484870",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "491000",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    },
+    {
+      "code": "499790",
+      "first": "2018-01-02",
+      "last": "2026-10-29",
+      "reason": "historical breadth validation"
+    }
+  ],
+  "comparisons": [],
+  "confirmation_policy": "historical_recheck_v1"
+}

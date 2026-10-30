@@ -1,0 +1,14 @@
+[
+  {
+    "script": "audit_daily.py",
+    "returncode": 1,
+    "result": "refused existing evidence before collection",
+    "stderr": "Evidence exists; refusing to overwrite. Use a fresh research directory."
+  },
+  {
+    "script": "fetch_issuers.py",
+    "returncode": 1,
+    "result": "refused existing evidence before collection",
+    "stderr": "Output already exists. Choose a fresh evidence directory."
+  }
+]

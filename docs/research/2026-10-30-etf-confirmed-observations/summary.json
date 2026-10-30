@@ -1,0 +1,26 @@
+{
+  "plan_id": "a94fc5716887282e1a9489ef6660706567278604fdb2a8bcfe14f3b425a29ac3",
+  "snapshot_id": "38a10e636b4740e5fc550a02c2d08b1a6dbfa20cb43e608fb2e1884d47d54740",
+  "previous_snapshot_id": "06340e57cfb97172e6c8437ace8e044839da9147ad2799a5aa323d4887e46803",
+  "requested_count": 477,
+  "compatibility_count": 18,
+  "target_start": "2026-04-24",
+  "target_end": "2026-10-29",
+  "adjusted_as_of": "2026-10-30",
+  "confirmation_states": {
+    "confirmed": 477
+  },
+  "ready_counts": {
+    "20": 477,
+    "60": 477,
+    "120": 477,
+    "125": 477
+  },
+  "raw_conflict_stocks": 474,
+  "raw_conflict_dates": 5180,
+  "missing_price_stocks": [],
+  "recovery_status": "partial",
+  "protected_legacy_inputs_preserved": true,
+  "minimum_recheck_interval_seconds": 2.00475,
+  "resolver_code_revision": "5b9a68f1ab2eb68f8a90205fb7250f655292ca3831ccf7a900bc6ccf631c3c93"
+}

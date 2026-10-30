@@ -44,7 +44,7 @@ describe('TopNav', () => {
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
     expect(labels).toEqual([
-      'TTicklane', '라이브', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처', '복기 노트 작성',
+      'TTicklane', '라이브', '히트맵', '시장 종합', '공탐지수', '스크리너', '옵션심리', '보관함', '캡처', '복기 노트 작성',
     ]);
     expect(screen.queryByRole('button', { name: '설정' })).not.toBeInTheDocument();
     expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();

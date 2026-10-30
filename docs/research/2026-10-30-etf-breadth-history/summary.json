@@ -1,0 +1,885 @@
+{
+  "source_snapshot": "300236397f6302d295ee094ca825d12dc63e2fa4dfdb88900f154ba7f30015f9",
+  "price_anchor": "2026-10-30",
+  "target": "2026-10-29",
+  "analysis_from": "2020-01-02",
+  "cohort_size": 350,
+  "cohort_codes": [
+    "000080",
+    "000100",
+    "000120",
+    "000150",
+    "000210",
+    "000240",
+    "000250",
+    "000270",
+    "000370",
+    "000400",
+    "000500",
+    "000660",
+    "000720",
+    "000810",
+    "000990",
+    "001040",
+    "001430",
+    "001440",
+    "001450",
+    "001500",
+    "001680",
+    "001720",
+    "001800",
+    "002380",
+    "002790",
+    "003030",
+    "003230",
+    "003240",
+    "003280",
+    "003380",
+    "003470",
+    "003490",
+    "003530",
+    "003540",
+    "003570",
+    "003620",
+    "003670",
+    "003690",
+    "004000",
+    "004020",
+    "004170",
+    "004370",
+    "004490",
+    "005070",
+    "005180",
+    "005290",
+    "005300",
+    "005380",
+    "005420",
+    "005490",
+    "005690",
+    "005810",
+    "005830",
+    "005850",
+    "005880",
+    "005930",
+    "005940",
+    "006040",
+    "006110",
+    "006120",
+    "006260",
+    "006280",
+    "006340",
+    "006360",
+    "006400",
+    "006650",
+    "006730",
+    "006800",
+    "007070",
+    "007310",
+    "007340",
+    "007390",
+    "007660",
+    "007810",
+    "008060",
+    "008770",
+    "008930",
+    "009150",
+    "009240",
+    "009420",
+    "009450",
+    "009520",
+    "009540",
+    "009830",
+    "009970",
+    "010060",
+    "010120",
+    "010130",
+    "010140",
+    "010170",
+    "010780",
+    "010950",
+    "011070",
+    "011170",
+    "011200",
+    "011210",
+    "011780",
+    "011790",
+    "012330",
+    "012450",
+    "012630",
+    "014620",
+    "014680",
+    "015750",
+    "015760",
+    "016360",
+    "016380",
+    "017670",
+    "017800",
+    "017810",
+    "017960",
+    "018260",
+    "018290",
+    "018670",
+    "018880",
+    "020150",
+    "020560",
+    "021240",
+    "022100",
+    "023160",
+    "023530",
+    "024110",
+    "025320",
+    "025980",
+    "026960",
+    "028050",
+    "028300",
+    "028670",
+    "030000",
+    "030200",
+    "030520",
+    "030610",
+    "031980",
+    "032350",
+    "032500",
+    "032640",
+    "032820",
+    "032830",
+    "033100",
+    "033500",
+    "033780",
+    "034020",
+    "034220",
+    "034230",
+    "035250",
+    "035420",
+    "035600",
+    "035720",
+    "035760",
+    "035810",
+    "035900",
+    "036530",
+    "036570",
+    "036830",
+    "036890",
+    "036930",
+    "038390",
+    "038500",
+    "039030",
+    "039130",
+    "039200",
+    "039490",
+    "039560",
+    "039840",
+    "039860",
+    "041510",
+    "041830",
+    "041920",
+    "042000",
+    "042520",
+    "042660",
+    "042700",
+    "043150",
+    "044490",
+    "045100",
+    "047040",
+    "047810",
+    "048410",
+    "048870",
+    "050890",
+    "051500",
+    "051600",
+    "051900",
+    "051910",
+    "052400",
+    "052690",
+    "053800",
+    "054950",
+    "055550",
+    "056080",
+    "058470",
+    "058610",
+    "059090",
+    "060250",
+    "060280",
+    "060370",
+    "064260",
+    "064350",
+    "064760",
+    "064960",
+    "066570",
+    "066970",
+    "067160",
+    "067310",
+    "068270",
+    "068760",
+    "069080",
+    "069260",
+    "069620",
+    "069960",
+    "071050",
+    "071970",
+    "072710",
+    "073240",
+    "073490",
+    "075580",
+    "077500",
+    "077970",
+    "078340",
+    "078600",
+    "079160",
+    "079550",
+    "079940",
+    "080160",
+    "080220",
+    "081660",
+    "082740",
+    "083650",
+    "084370",
+    "085620",
+    "085660",
+    "086280",
+    "086390",
+    "086450",
+    "086520",
+    "086790",
+    "087010",
+    "088350",
+    "089030",
+    "089590",
+    "089980",
+    "090360",
+    "090430",
+    "090460",
+    "091700",
+    "093320",
+    "093370",
+    "094480",
+    "094820",
+    "095190",
+    "095340",
+    "095610",
+    "095660",
+    "096530",
+    "096770",
+    "097950",
+    "099190",
+    "099320",
+    "100090",
+    "100120",
+    "100130",
+    "103140",
+    "103590",
+    "105560",
+    "107640",
+    "108380",
+    "108860",
+    "111770",
+    "112040",
+    "112610",
+    "114090",
+    "115180",
+    "115440",
+    "119610",
+    "119850",
+    "120110",
+    "121600",
+    "122870",
+    "122990",
+    "123330",
+    "124500",
+    "126340",
+    "126880",
+    "127120",
+    "128940",
+    "130660",
+    "131290",
+    "131970",
+    "136490",
+    "137400",
+    "138080",
+    "138610",
+    "138930",
+    "139130",
+    "139480",
+    "141080",
+    "144510",
+    "145020",
+    "145720",
+    "156100",
+    "161390",
+    "161890",
+    "174900",
+    "175330",
+    "178320",
+    "178920",
+    "180640",
+    "181710",
+    "185750",
+    "189300",
+    "192080",
+    "192820",
+    "194480",
+    "196170",
+    "201490",
+    "204320",
+    "206640",
+    "207940",
+    "211050",
+    "211270",
+    "214150",
+    "214320",
+    "214370",
+    "214420",
+    "214450",
+    "218410",
+    "222080",
+    "222800",
+    "225570",
+    "226320",
+    "228760",
+    "229640",
+    "230240",
+    "237690",
+    "237880",
+    "240810",
+    "241560",
+    "241710",
+    "249420",
+    "251270",
+    "256840",
+    "263750",
+    "267250",
+    "267260",
+    "267270",
+    "271560",
+    "272450",
+    "280360",
+    "281740",
+    "282330"
+  ],
+  "current_477_score": 15.65338924,
+  "panels": {
+    "original_477": {
+      "target_score": 15.6533892382949,
+      "reference_position": {
+        "n": 23,
+        "lower_count": 3,
+        "equal_count": 0,
+        "lower_pct": 13.043478260869565,
+        "midrank_pct": 13.043478260869565,
+        "inclusive_pct": 13.043478260869565
+      },
+      "reference_first": "2026-09-22",
+      "reference_last": "2026-10-28",
+      "reference_at_least_one_trading_year": false,
+      "target_eligible_count": 477,
+      "reference_eligible_count_range": [
+        477,
+        477
+      ],
+      "reference_score_range": [
+        13.906359189378056,
+        50.104821802935014
+      ],
+      "walk_forward_low_runs": {
+        "runs": 0,
+        "low_days": 0,
+        "longest_run_sessions": 0
+      },
+      "current_prior_q10": null,
+      "current_prior_q90": null,
+      "current_regime": "unavailable",
+      "benchmark_associations": {
+        "069500": {
+          "name": "KODEX 200",
+          "drawdown252": {
+            "n": 24,
+            "spearman": 0.8301804936413638
+          },
+          "realized_vol20": {
+            "n": 24,
+            "spearman": -0.8323548794287953
+          }
+        },
+        "229200": {
+          "name": "KODEX 코스닥150",
+          "drawdown252": {
+            "n": 24,
+            "spearman": 0.9586776859504132
+          },
+          "realized_vol20": {
+            "n": 24,
+            "spearman": -0.8345292652162268
+          }
+        }
+      },
+      "walk_forward_groups": {
+        "069500": [
+          {
+            "regime": "unavailable",
+            "days": 24,
+            "drawdown_valid_days": 24,
+            "volatility_valid_days": 24,
+            "median_drawdown252": -0.35532055921163874,
+            "median_realized_vol20": 0.37999946436967025,
+            "median_return20": -0.13202849154781243
+          }
+        ],
+        "229200": [
+          {
+            "regime": "unavailable",
+            "days": 24,
+            "drawdown_valid_days": 24,
+            "volatility_valid_days": 24,
+            "median_drawdown252": -0.3395017793594306,
+            "median_realized_vol20": 0.4118666329304934,
+            "median_return20": -0.020844173974845503
+          }
+        ]
+      }
+    },
+    "fixed_complete_cohort": {
+      "target_score": 15.142857142857142,
+      "reference_position": {
+        "n": 1673,
+        "lower_count": 52,
+        "equal_count": 0,
+        "lower_pct": 3.1081888822474597,
+        "midrank_pct": 3.1081888822474597,
+        "inclusive_pct": 3.1081888822474597
+      },
+      "reference_first": "2020-01-02",
+      "reference_last": "2026-10-28",
+      "reference_at_least_one_trading_year": true,
+      "target_eligible_count": 350,
+      "reference_eligible_count_range": [
+        350,
+        350
+      ],
+      "reference_score_range": [
+        1.8095238095238095,
+        88.0952380952381
+      ],
+      "walk_forward_low_runs": {
+        "runs": 49,
+        "low_days": 259,
+        "longest_run_sessions": 45
+      },
+      "current_prior_q10": 18.83809523809524,
+      "current_prior_q90": 77.19047619047619,
+      "current_regime": "low",
+      "benchmark_associations": {
+        "069500": {
+          "name": "KODEX 200",
+          "drawdown252": {
+            "n": 1674,
+            "spearman": 0.577389016502873
+          },
+          "realized_vol20": {
+            "n": 1674,
+            "spearman": -0.14696340270253025
+          }
+        },
+        "229200": {
+          "name": "KODEX 코스닥150",
+          "drawdown252": {
+            "n": 1674,
+            "spearman": 0.5430398914400681
+          },
+          "realized_vol20": {
+            "n": 1674,
+            "spearman": -0.3514939884192358
+          }
+        }
+      },
+      "walk_forward_groups": {
+        "069500": [
+          {
+            "regime": "high",
+            "days": 225,
+            "drawdown_valid_days": 225,
+            "volatility_valid_days": 225,
+            "median_drawdown252": -0.042518345479013786,
+            "median_realized_vol20": 0.18533951401626916,
+            "median_return20": 0.07658315811981042
+          },
+          {
+            "regime": "low",
+            "days": 259,
+            "drawdown_valid_days": 259,
+            "volatility_valid_days": 259,
+            "median_drawdown252": -0.12774987443495733,
+            "median_realized_vol20": 0.21635068338852909,
+            "median_return20": -0.05143721633888043
+          },
+          {
+            "regime": "middle",
+            "days": 1190,
+            "drawdown_valid_days": 1190,
+            "volatility_valid_days": 1190,
+            "median_drawdown252": -0.05557976804376891,
+            "median_realized_vol20": 0.18187149365718047,
+            "median_return20": 0.010543808074016559
+          }
+        ],
+        "229200": [
+          {
+            "regime": "high",
+            "days": 225,
+            "drawdown_valid_days": 225,
+            "volatility_valid_days": 225,
+            "median_drawdown252": -0.098538359325827,
+            "median_realized_vol20": 0.22233866116035422,
+            "median_return20": 0.0834185412406272
+          },
+          {
+            "regime": "low",
+            "days": 259,
+            "drawdown_valid_days": 259,
+            "volatility_valid_days": 259,
+            "median_drawdown252": -0.21378103325338693,
+            "median_realized_vol20": 0.32352566668001137,
+            "median_return20": -0.08587874849131927
+          },
+          {
+            "regime": "middle",
+            "days": 1190,
+            "drawdown_valid_days": 1190,
+            "volatility_valid_days": 1190,
+            "median_drawdown252": -0.10817075526366626,
+            "median_realized_vol20": 0.2640903386902589,
+            "median_return20": 0.009308557300517606
+          }
+        ]
+      }
+    },
+    "eligible_min_80pct": {
+      "target_score": 15.6533892382949,
+      "reference_position": {
+        "n": 1460,
+        "lower_count": 42,
+        "equal_count": 0,
+        "lower_pct": 2.8767123287671232,
+        "midrank_pct": 2.8767123287671232,
+        "inclusive_pct": 2.8767123287671232
+      },
+      "reference_first": "2020-11-11",
+      "reference_last": "2026-10-28",
+      "reference_at_least_one_trading_year": true,
+      "target_eligible_count": 477,
+      "reference_eligible_count_range": [
+        382,
+        477
+      ],
+      "reference_score_range": [
+        8.649789029535865,
+        85.36759457530336
+      ],
+      "walk_forward_low_runs": {
+        "runs": 29,
+        "low_days": 183,
+        "longest_run_sessions": 46
+      },
+      "current_prior_q10": 17.447257383966246,
+      "current_prior_q90": 75.24520255863538,
+      "current_regime": "low",
+      "benchmark_associations": {
+        "069500": {
+          "name": "KODEX 200",
+          "drawdown252": {
+            "n": 1461,
+            "spearman": 0.5909551848596675
+          },
+          "realized_vol20": {
+            "n": 1461,
+            "spearman": -0.16473359440611515
+          }
+        },
+        "229200": {
+          "name": "KODEX 코스닥150",
+          "drawdown252": {
+            "n": 1461,
+            "spearman": 0.5079042456270276
+          },
+          "realized_vol20": {
+            "n": 1461,
+            "spearman": -0.3448651246740995
+          }
+        }
+      },
+      "walk_forward_groups": {
+        "069500": [
+          {
+            "regime": "high",
+            "days": 152,
+            "drawdown_valid_days": 152,
+            "volatility_valid_days": 152,
+            "median_drawdown252": -0.060483425658006684,
+            "median_realized_vol20": 0.17860510198775034,
+            "median_return20": 0.07616118793465221
+          },
+          {
+            "regime": "low",
+            "days": 183,
+            "drawdown_valid_days": 183,
+            "volatility_valid_days": 183,
+            "median_drawdown252": -0.15981699550287243,
+            "median_realized_vol20": 0.22338071970744575,
+            "median_return20": -0.05755958939859651
+          },
+          {
+            "regime": "middle",
+            "days": 874,
+            "drawdown_valid_days": 874,
+            "volatility_valid_days": 874,
+            "median_drawdown252": -0.08280655617099586,
+            "median_realized_vol20": 0.18290477673563188,
+            "median_return20": 0.009284452138336619
+          },
+          {
+            "regime": "unavailable",
+            "days": 252,
+            "drawdown_valid_days": 252,
+            "volatility_valid_days": 252,
+            "median_drawdown252": -0.026294416243654806,
+            "median_realized_vol20": 0.15826568625840381,
+            "median_return20": 0.004140788135419404
+          }
+        ],
+        "229200": [
+          {
+            "regime": "high",
+            "days": 152,
+            "drawdown_valid_days": 152,
+            "volatility_valid_days": 152,
+            "median_drawdown252": -0.13118533264804183,
+            "median_realized_vol20": 0.22139151201796756,
+            "median_return20": 0.07408122614531298
+          },
+          {
+            "regime": "low",
+            "days": 183,
+            "drawdown_valid_days": 183,
+            "volatility_valid_days": 183,
+            "median_drawdown252": -0.24055227847280747,
+            "median_realized_vol20": 0.36934806181136165,
+            "median_return20": -0.10385536200776024
+          },
+          {
+            "regime": "middle",
+            "days": 874,
+            "drawdown_valid_days": 874,
+            "volatility_valid_days": 874,
+            "median_drawdown252": -0.14170988740266982,
+            "median_realized_vol20": 0.261643439606788,
+            "median_return20": 0.005528876619179002
+          },
+          {
+            "regime": "unavailable",
+            "days": 252,
+            "drawdown_valid_days": 252,
+            "volatility_valid_days": 252,
+            "median_drawdown252": -0.04983500005698144,
+            "median_realized_vol20": 0.2123482998427401,
+            "median_return20": 0.016222871964759356
+          }
+        ]
+      }
+    },
+    "eligible_min_90pct": {
+      "target_score": 15.6533892382949,
+      "reference_position": {
+        "n": 711,
+        "lower_count": 20,
+        "equal_count": 0,
+        "lower_pct": 2.8129395218002813,
+        "midrank_pct": 2.8129395218002813,
+        "inclusive_pct": 2.8129395218002813
+      },
+      "reference_first": "2023-11-23",
+      "reference_last": "2026-10-28",
+      "reference_at_least_one_trading_year": true,
+      "target_eligible_count": 477,
+      "reference_eligible_count_range": [
+        430,
+        477
+      ],
+      "reference_score_range": [
+        8.649789029535865,
+        85.36759457530336
+      ],
+      "walk_forward_low_runs": {
+        "runs": 14,
+        "low_days": 83,
+        "longest_run_sessions": 46
+      },
+      "current_prior_q10": 17.447257383966246,
+      "current_prior_q90": 75.24520255863538,
+      "current_regime": "low",
+      "benchmark_associations": {
+        "069500": {
+          "name": "KODEX 200",
+          "drawdown252": {
+            "n": 712,
+            "spearman": 0.5953177362449603
+          },
+          "realized_vol20": {
+            "n": 712,
+            "spearman": -0.27522812265547497
+          }
+        },
+        "229200": {
+          "name": "KODEX 코스닥150",
+          "drawdown252": {
+            "n": 712,
+            "spearman": 0.6363205415851919
+          },
+          "realized_vol20": {
+            "n": 712,
+            "spearman": -0.3631517818949894
+          }
+        }
+      },
+      "walk_forward_groups": {
+        "069500": [
+          {
+            "regime": "high",
+            "days": 84,
+            "drawdown_valid_days": 84,
+            "volatility_valid_days": 84,
+            "median_drawdown252": -0.009443790474699953,
+            "median_realized_vol20": 0.18100660679619876,
+            "median_return20": 0.10134501476847502
+          },
+          {
+            "regime": "low",
+            "days": 83,
+            "drawdown_valid_days": 83,
+            "volatility_valid_days": 83,
+            "median_drawdown252": -0.1520618556701031,
+            "median_realized_vol20": 0.6646247623518893,
+            "median_return20": -0.01964624702443729
+          },
+          {
+            "regime": "middle",
+            "days": 293,
+            "drawdown_valid_days": 293,
+            "volatility_valid_days": 293,
+            "median_drawdown252": -0.08182724534385477,
+            "median_realized_vol20": 0.24657555372230677,
+            "median_return20": 0.0362223521387508
+          },
+          {
+            "regime": "unavailable",
+            "days": 252,
+            "drawdown_valid_days": 252,
+            "volatility_valid_days": 252,
+            "median_drawdown252": -0.0388852245198405,
+            "median_realized_vol20": 0.17695965154675364,
+            "median_return20": 0.007910635889842754
+          }
+        ],
+        "229200": [
+          {
+            "regime": "high",
+            "days": 84,
+            "drawdown_valid_days": 84,
+            "volatility_valid_days": 84,
+            "median_drawdown252": -0.11654661165116442,
+            "median_realized_vol20": 0.2238125200778202,
+            "median_return20": 0.07437083005235523
+          },
+          {
+            "regime": "low",
+            "days": 83,
+            "drawdown_valid_days": 83,
+            "volatility_valid_days": 83,
+            "median_drawdown252": -0.25863745381474035,
+            "median_realized_vol20": 0.6529440508924859,
+            "median_return20": -0.10581423018957725
+          },
+          {
+            "regime": "middle",
+            "days": 293,
+            "drawdown_valid_days": 293,
+            "volatility_valid_days": 293,
+            "median_drawdown252": -0.06733096085409251,
+            "median_realized_vol20": 0.2769141796950511,
+            "median_return20": 0.020234137881196768
+          },
+          {
+            "regime": "unavailable",
+            "days": 252,
+            "drawdown_valid_days": 252,
+            "volatility_valid_days": 252,
+            "median_drawdown252": -0.1419419226064001,
+            "median_realized_vol20": 0.22821893735646442,
+            "median_return20": -0.010315256632346115
+          }
+        ]
+      }
+    }
+  },
+  "benchmarks": {
+    "069500": {
+      "name": "KODEX 200",
+      "current": {
+        "code": "069500",
+        "date": "2026-10-29",
+        "close": 94465.0,
+        "log_return": -0.011064377195283425,
+        "return1": -0.011003392101846865,
+        "return20": -0.13994500892239337,
+        "drawdown252": -0.36107973567983986,
+        "realized_vol20": 0.5714294952290202
+      },
+      "drawdown_percentile": {
+        "n": 1673,
+        "lower_count": 11,
+        "equal_count": 0,
+        "lower_pct": 0.657501494321578,
+        "midrank_pct": 0.657501494321578,
+        "inclusive_pct": 0.657501494321578
+      },
+      "realized_vol_percentile": {
+        "n": 1673,
+        "lower_count": 1561,
+        "equal_count": 0,
+        "lower_pct": 93.30543933054393,
+        "midrank_pct": 93.30543933054393,
+        "inclusive_pct": 93.30543933054393
+      }
+    },
+    "229200": {
+      "name": "KODEX 코스닥150",
+      "current": {
+        "code": "229200",
+        "date": "2026-10-29",
+        "close": 12425.0,
+        "log_return": -0.02934389762905976,
+        "return1": -0.028917545916373633,
+        "return20": -0.13111888111888115,
+        "drawdown252": -0.41043890865954924,
+        "realized_vol20": 0.6172339295399409
+      },
+      "drawdown_percentile": {
+        "n": 1673,
+        "lower_count": 7,
+        "equal_count": 0,
+        "lower_pct": 0.41841004184100417,
+        "midrank_pct": 0.41841004184100417,
+        "inclusive_pct": 0.41841004184100417
+      },
+      "realized_vol_percentile": {
+        "n": 1673,
+        "lower_count": 1549,
+        "equal_count": 0,
+        "lower_pct": 92.58816497310221,
+        "midrank_pct": 92.58816497310221,
+        "inclusive_pct": 92.58816497310221
+      }
+    }
+  },
+  "scope": "retrospective current-constituent diagnostics; survivorship and selection bias remain",
+  "daily_observations_are_not_independent": true,
+  "score_weights_unchanged": true
+}

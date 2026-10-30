@@ -1,0 +1,42 @@
+{
+  "checked_at": "2026-10-30T07:39:55.811070+00:00",
+  "head": "5feb03bfea8f065af7a6e8565b14a72b03f39bfb",
+  "fetched_main": "c12a64263ee9f10f7199879b9ec112575ac3f92c",
+  "runtime": {
+    "python": "3.14.7",
+    "numpy": "2.5.2",
+    "polars": "1.41.0",
+    "ruff": "0.15.13"
+  },
+  "input_sha256": {
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764",
+    "hoga/market_breadth_history.py": "fbea0e99bd31caff4fb97e84edc0d4692aa1eed535bfd584188465f412afedf3",
+    "hoga/market_breadth.py": "f5fb9d74dbe74f37d399dfc61fab00dd4294fcb4ddef487fb653329fa1a3b772",
+    "docs/research/2026-10-30-etf-active-extension/validate_comparison.py": "d711890433bc1fd705f15b94d34ad3e52af79089a99fdcbe4c7d96c01598d9a5",
+    "docs/research/2026-10-30-etf-active-extension/verify_issuer_samples.py": "dc4fb041f147b8a060ee12d986d07b40ab8b1ae811c88c778e810c39460918f4",
+    "docs/research/2026-10-30-etf-active-extension/collect_active.py": "c420327f856c131b5d9eab408767000c3eae6f702ae5a919adc4009a76ea4438",
+    "docs/research/2026-10-30-etf-active-extension/reuse_confirmed_prices.py": "d1e5183abdcdff0efaa7b1b9b132c916ee937381fa429d763c3b8eb2ccd8602a",
+    "docs/research/2026-10-30-etf-active-extension/build_comparison.py": "4f441caec95e4be693d2cb0c4f8a8357ee229157e92bdc7dd653e8ec151277f2"
+  },
+  "validation_sha256": "3205f1e360a11d55c3f3abd74a15a9e9f075289d5a6b0ad90cf9bdfdbef2aa9c",
+  "commands": {
+    "ruff check docs/research/2026-10-30-etf-active-extension": "passed",
+    "git diff --check": "passed",
+    "saved validator script and output fingerprints": "matched",
+    "inline preview vs registered funds and daily series": "119 funds, 42 lines, 245 dates matched"
+  },
+  "preview": {
+    "path": "/home/dev/.codex/visualizations/2026/10/30/01a18a9d-7494-7142-a286-be18e8de6af0/etf-comparison-preview.html",
+    "sha256": "14530ab96e71b675694d5ff5842c74d25762b51b2350980ebc6248f1fb424d93",
+    "browser_checks": [
+      "Default four ETF lines and original 477-stock baseline present",
+      "Add 445290: missing five stock prices, null score, no fabricated line",
+      "Remove ETF and switch 3/12-month period",
+      "Toggle semiconductor series removes corresponding path",
+      "Cross-series interpolated tooltip and missing baseline history explicit",
+      "320px viewport: no horizontal overflow",
+      "No console errors; temporary viewport reset"
+    ]
+  }
+}

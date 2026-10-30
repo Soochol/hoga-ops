@@ -1,0 +1,119 @@
+{
+  "date": "2026-10-30",
+  "checkout": "/home/dev/.codex/worktrees/bd18/hoga-ops",
+  "head": "5feb03bfea8f065af7a6e8565b14a72b03f39bfb",
+  "latestMainReviewed": "cb2bbfd5aadceab900f142dcec256d7387134b79",
+  "mainReview": "The route, nav, PageShell, persist, tokens, App, dependencies and test setup have no upstream difference. The controls.css delta adds icon/close-button selectors unused by this page; no main merge was necessary for this change. Other upstream feature changes were not imported.",
+  "tools": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "typescript": "6.0.3",
+    "@playwright/test": "1.60.0"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/test_market_breadth_insights.py tests/unit/test_market_breadth.py tests/unit/test_market_breadth_history.py",
+      "result": "31 passed"
+    },
+    {
+      "command": "uv run --extra dev ruff check hoga/market_breadth_insights.py tests/unit/test_market_breadth_insights.py docs/research/2026-10-30-etf-insights-page/build_page.py",
+      "result": "All checks passed"
+    },
+    {
+      "command": "npx vitest run src/breadth/report.test.ts src/nav/TopNav.test.tsx",
+      "cwd": "frontend",
+      "result": "16 passed in 2 files"
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed app, unit and E2E projects"
+    },
+    {
+      "command": "npx tsc -p tsconfig.e2e.json --noEmit",
+      "cwd": "frontend",
+      "result": "passed after the final E2E locator refinement"
+    },
+    {
+      "command": "npx playwright test breadth-page.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": "4 passed; includes native route, all42 selection/reload/clear, 5/20 stock spread and attribution, stock search, error/retry, dark/light themes, 1440/960px layout"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "cwd": "frontend",
+      "result": "passed; existing unrelated large-chunk warnings remain"
+    },
+    {
+      "command": "PYTHONPATH=. .venv/bin/python docs/research/2026-10-30-etf-insights-page/build_page.py",
+      "result": "replay passed, 477 current stock MA states matched, 42 ETF scores matched, exact rational contributions reconcile for both horizons"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "browserQA": {
+    "method": "CUA fallback: repository /browse skill and executable are absent",
+    "url": "http://127.0.0.1:20181/breadth",
+    "nativeBuiltRouteHttp": 200,
+    "reportHttp": 200,
+    "servedReportEqualsValidatedReport": true,
+    "visualArtifact": "native-page.png",
+    "browserTabKept": true
+  },
+  "reviewServer": {
+    "port": 20181,
+    "dataDir": "/tmp/hoga-breadth-review-181",
+    "distDir": "/tmp/hoga-e2e-dist-181",
+    "testEndpoints": false,
+    "brokerCredentials": "blank",
+    "processPid": 3857864,
+    "existingProductionPortsUntouched": [
+      8000,
+      5173
+    ]
+  },
+  "deployment": "Worktree implementation and isolated built project page only; production deployment and automated live report refresh are not performed.",
+  "inputSha256": {
+    "frontend/src/breadth/BreadthChart.tsx": "c91212ad0d7dc3ed60b81446b18125d81ea7da14e986f03f551a151ebeed6706",
+    "frontend/src/breadth/breadth.css": "d9cdc77d04119636f2630c2c160c068d0c2840523922686c8975571a88789540",
+    "frontend/src/breadth/report.ts": "a1b02984ceb677af6424e2b323a0e0fdbb6cb91d04c718d4aedfb5c2c1e032c9",
+    "frontend/src/breadth/BreadthPage.tsx": "b01a2408f273972d8510852127dfbb5505f065a0c555a83a7cbe9ef0f51745e5",
+    "frontend/src/breadth/report.test.ts": "e1f0ce058213094476902251c8216eef6e795a535c300c4774f56b80e630f688",
+    "frontend/src/main.tsx": "fd3434709a72b1ff682741456b4599a14699603a6709bd96aefd43e5bd8bf42b",
+    "frontend/src/mainRoutes.tsx": "a1bae12d5cfc68d6830c1cfb664bf9e2597211e0f3eb820a08dd9a50040ea294",
+    "frontend/src/nav/items.ts": "b7416c3daba1934bd4a18971130bb4e6108798a0ef59003f1ed48a011b90cd94",
+    "frontend/src/nav/TopNav.test.tsx": "92e315e32e463e6425dd641a4ce9e1b926df6d20d289f36473edb00bf5714b5a",
+    "frontend/src/ui/PageShell.tsx": "24929614f9534ffb176a5342b28255dd5e3a29ab18cef23675725d94c8937ecc",
+    "frontend/src/state/persist.ts": "ca16b686fcdc7d9656bb21b45f99a92a5a7d505f44a9e6e69d39e2ab50c07957",
+    "frontend/src/styles/global.css": "d6080682dabb4da2308fcaa1d6112f263847583270851be7f53c6aa6b1d72ae0",
+    "frontend/src/styles/tokens.css": "0b4e4257df694c105919784886de14913bbb8b11b37a800f9f2d8947a8caac1a",
+    "frontend/src/styles/controls.css": "5bc40701c8d31f360bd2de1edb02940bd9f502f794510236d300a6b732e5f1a4",
+    "frontend/src/App.tsx": "dcc10b3b696bb41a800eaf9b0778dde59167de4e2f20c1cd22e4fe8e5d4d5d3e",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tests/e2e/breadth-page.spec.ts": "b74393c674d50fdf83c22973c3f1b8dd3152d5f1d6974eea5e7436ad5cc323d5",
+    "frontend/tests/e2e/worktreeEnv.ts": "8e63a68d925dccb4358177556b03fd58c5e997b793eb236fb7188e75d343eaa2",
+    "frontend/tests/e2e/global-setup.ts": "3be1043ac5eb5fd7da5caa45e9ae1e684ed30feefc0d78d01fbc799fdee2473a",
+    "frontend/tests/e2e/helpers/liveMocks.ts": "8ffa69f8411218bb09f4072e08c7ac4e4f4bced418e9dd4e058a5c3b1bb89851",
+    "frontend/public/market-breadth/snapshot.json": "254d8b2d8916dbdc080ab40171c765d0e7d9490e1e0cbf3ddd9ffa24f1e8cb0f",
+    "hoga/market_breadth.py": "f5fb9d74dbe74f37d399dfc61fab00dd4294fcb4ddef487fb653329fa1a3b772",
+    "hoga/market_breadth_history.py": "fbea0e99bd31caff4fb97e84edc0d4692aa1eed535bfd584188465f412afedf3",
+    "hoga/market_breadth_insights.py": "3babfc79a784736f4ca9190226a1a920d1a9d680481154c05454db191673fe08",
+    "tests/unit/test_market_breadth.py": "ff97e5f2747e356f9a6d9e3e02be1737d11ccbb99c355912b22c05214690b6ca",
+    "tests/unit/test_market_breadth_history.py": "7ea3663c1a0da22fe54b781ecbbf5fbc12eac099492ad1ac57f4de7c2a8f8f09",
+    "tests/unit/test_market_breadth_insights.py": "98c0090bf9fd0e14e2f9a07694f0fe2f749f65f5a9e2cf4dbc99826fe801723d",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764",
+    "docs/research/2026-10-30-etf-insights-page/build_page.py": "869aa5969a2d66e657be94bdef90af67fdebfb63e0a195730464c25afdb1852c",
+    "docs/research/2026-10-30-etf-insights-page/validation.json": "94eb1f9092a185e676b5473c9a72af3e626974342f17343b415660f3c476dbc9"
+  }
+}

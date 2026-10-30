@@ -1,0 +1,93 @@
+{
+  "source_snapshot": "38a10e636b4740e5fc550a02c2d08b1a6dbfa20cb43e608fb2e1884d47d54740",
+  "fixed_members": 477,
+  "price_sessions": 125,
+  "full_120day_score_observations": 6,
+  "daily": [
+    {
+      "date": "2026-10-22",
+      "eligible_count": 477,
+      "above20": 69,
+      "above60": 95,
+      "above120": 75,
+      "population_count": 477,
+      "coverage_pct": 100.0,
+      "breadth20": 14.465408805031446,
+      "breadth60": 19.91614255765199,
+      "breadth120": 15.723270440251572,
+      "eligible_score": 16.701607267645002,
+      "full_score": 16.701607267645002
+    },
+    {
+      "date": "2026-10-23",
+      "eligible_count": 477,
+      "above20": 57,
+      "above60": 85,
+      "above120": 71,
+      "population_count": 477,
+      "coverage_pct": 100.0,
+      "breadth20": 11.949685534591195,
+      "breadth60": 17.81970649895178,
+      "breadth120": 14.884696016771489,
+      "eligible_score": 14.884696016771489,
+      "full_score": 14.884696016771489
+    },
+    {
+      "date": "2026-10-26",
+      "eligible_count": 477,
+      "above20": 54,
+      "above60": 82,
+      "above120": 63,
+      "population_count": 477,
+      "coverage_pct": 100.0,
+      "breadth20": 11.320754716981131,
+      "breadth60": 17.19077568134172,
+      "breadth120": 13.20754716981132,
+      "eligible_score": 13.906359189378056,
+      "full_score": 13.906359189378056
+    },
+    {
+      "date": "2026-10-27",
+      "eligible_count": 477,
+      "above20": 49,
+      "above60": 83,
+      "above120": 69,
+      "population_count": 477,
+      "coverage_pct": 100.0,
+      "breadth20": 10.272536687631026,
+      "breadth60": 17.40041928721174,
+      "breadth120": 14.465408805031446,
+      "eligible_score": 14.046121593291405,
+      "full_score": 14.046121593291405
+    },
+    {
+      "date": "2026-10-28",
+      "eligible_count": 477,
+      "above20": 74,
+      "above60": 90,
+      "above120": 75,
+      "population_count": 477,
+      "coverage_pct": 100.0,
+      "breadth20": 15.51362683438155,
+      "breadth60": 18.867924528301888,
+      "breadth120": 15.723270440251572,
+      "eligible_score": 16.701607267645002,
+      "full_score": 16.701607267645002
+    },
+    {
+      "date": "2026-10-29",
+      "eligible_count": 477,
+      "above20": 71,
+      "above60": 79,
+      "above120": 74,
+      "population_count": 477,
+      "coverage_pct": 100.0,
+      "breadth20": 14.884696016771489,
+      "breadth60": 16.561844863731658,
+      "breadth120": 15.51362683438155,
+      "eligible_score": 15.6533892382949,
+      "full_score": 15.6533892382949
+    }
+  ],
+  "conclusion": "Six observations cannot establish historical fear percentiles."
+}

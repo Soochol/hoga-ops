@@ -1,0 +1,762 @@
+[
+  {
+    "code": "091160",
+    "name": "KODEX 반도체",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 반도체의 산업 범위를 기본으로 선택. 같은 KRX 지수의 091230은 대체 후보, TOP2/TOP10은 집중형 대안으로 보존.",
+    "group_id": "semiconductor",
+    "benchmark": "KRX 반도체",
+    "source_market_cap_100m_krw": 45807,
+    "source_snapshot_turnover_million_krw": 110652,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/091160",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=091160"
+    ],
+    "metadata_captured": true,
+    "group_label": "반도체",
+    "tier": "base",
+    "selection_reason": "KRX 반도체의 산업 범위를 기본으로 선택. 같은 KRX 지수의 091230은 대체 후보, TOP2/TOP10은 집중형 대안으로 보존.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "091180",
+    "name": "KODEX 자동차",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 자동차 업종 대표. TOP3 중심 대안보다 업종 단위 관측을 우선.",
+    "group_id": "automobile",
+    "benchmark": "KRX 자동차",
+    "source_market_cap_100m_krw": 3119,
+    "source_snapshot_turnover_million_krw": 1301,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/091180",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=091180"
+    ],
+    "metadata_captured": true,
+    "group_label": "자동차",
+    "tier": "base",
+    "selection_reason": "KRX 자동차 업종 대표. TOP3 중심 대안보다 업종 단위 관측을 우선.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "091170",
+    "name": "KODEX 은행",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 은행 지수 대표. 같은 지수의 091220과 비교해 목록 시가총액이 큰 상품을 선택.",
+    "group_id": "bank",
+    "benchmark": "KRX 은행",
+    "source_market_cap_100m_krw": 2528,
+    "source_snapshot_turnover_million_krw": 4549,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/091170",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=091170"
+    ],
+    "metadata_captured": true,
+    "group_label": "은행",
+    "tier": "base",
+    "selection_reason": "KRX 은행 지수 대표. 같은 지수의 091220과 비교해 목록 시가총액이 큰 상품을 선택.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "102970",
+    "name": "KODEX 증권",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 증권을 기본 업종 지수로 선택. 배당·TOP3 전략을 기본 표본과 분리.",
+    "group_id": "securities",
+    "benchmark": "KRX 증권",
+    "source_market_cap_100m_krw": 5310,
+    "source_snapshot_turnover_million_krw": 2847,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/102970",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=102970"
+    ],
+    "metadata_captured": true,
+    "group_label": "증권",
+    "tier": "base",
+    "selection_reason": "KRX 증권을 기본 업종 지수로 선택. 배당·TOP3 전략을 기본 표본과 분리.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "140700",
+    "name": "KODEX 보험",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "보험 업종 전용 패시브 표본. 은행·증권과는 별도 분석하되 금융 합산 시 종목 중복 제거.",
+    "group_id": "insurance",
+    "benchmark": "KRX 보험",
+    "source_market_cap_100m_krw": 498,
+    "source_snapshot_turnover_million_krw": 98,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/140700",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=140700"
+    ],
+    "metadata_captured": true,
+    "group_label": "보험",
+    "tier": "base",
+    "selection_reason": "보험 업종 전용 패시브 표본. 은행·증권과는 별도 분석하되 금융 합산 시 종목 중복 제거.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "102960",
+    "name": "KODEX 기계장비",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "기계장비 업종 표본. ETF 거래대금이 작아도 편입 주식 목록을 얻는 목적에서는 자동 탈락시키지 않음.",
+    "group_id": "machinery",
+    "benchmark": "KRX 기계장비",
+    "source_market_cap_100m_krw": 96,
+    "source_snapshot_turnover_million_krw": 55,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/102960",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=102960"
+    ],
+    "metadata_captured": true,
+    "group_label": "기계장비",
+    "tier": "base",
+    "selection_reason": "기계장비 업종 표본. ETF 거래대금이 작아도 편입 주식 목록을 얻는 목적에서는 자동 탈락시키지 않음.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "117700",
+    "name": "KODEX 건설",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 건설 업종을 기본으로 선택. KOSPI200 건설은 대형주 중심 대체 후보.",
+    "group_id": "construction",
+    "benchmark": "KRX 건설",
+    "source_market_cap_100m_krw": 1873,
+    "source_snapshot_turnover_million_krw": 2868,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/117700",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=117700"
+    ],
+    "metadata_captured": true,
+    "group_label": "건설",
+    "tier": "base",
+    "selection_reason": "KRX 건설 업종을 기본으로 선택. KOSPI200 건설은 대형주 중심 대체 후보.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "117680",
+    "name": "KODEX 철강",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "철강 업종 전용 표본. 철강·소재 혼합 지수는 대체 후보로 구분.",
+    "group_id": "steel",
+    "benchmark": "KRX 철강",
+    "source_market_cap_100m_krw": 217,
+    "source_snapshot_turnover_million_krw": 22,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/117680",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=117680"
+    ],
+    "metadata_captured": true,
+    "group_label": "철강",
+    "tier": "base",
+    "selection_reason": "철강 업종 전용 표본. 철강·소재 혼합 지수는 대체 후보로 구분.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "117460",
+    "name": "KODEX 에너지화학",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 에너지화학 대표. 같은 산업의 KOSPI200 한정 대안과 구분.",
+    "group_id": "energy_chemicals",
+    "benchmark": "KRX 에너지화학",
+    "source_market_cap_100m_krw": 278,
+    "source_snapshot_turnover_million_krw": 309,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/117460",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=117460"
+    ],
+    "metadata_captured": true,
+    "group_label": "에너지화학",
+    "tier": "base",
+    "selection_reason": "KRX 에너지화학 대표. 같은 산업의 KOSPI200 한정 대안과 구분.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "140710",
+    "name": "KODEX 운송",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "운송 업종을 조선 제조와 구분해 관측.",
+    "group_id": "transport",
+    "benchmark": "KRX 운송",
+    "source_market_cap_100m_krw": 126,
+    "source_snapshot_turnover_million_krw": 39,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/140710",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=140710"
+    ],
+    "metadata_captured": true,
+    "group_label": "운송",
+    "tier": "base",
+    "selection_reason": "운송 업종을 조선 제조와 구분해 관측.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "266410",
+    "name": "KODEX 필수소비재",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 필수소비재를 기본 범위로 선택. 식품 세부 표본도 별도 보존.",
+    "group_id": "staples",
+    "benchmark": "KRX 필수소비재",
+    "source_market_cap_100m_krw": 103,
+    "source_snapshot_turnover_million_krw": 469,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/266410",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=266410"
+    ],
+    "metadata_captured": true,
+    "group_label": "필수소비재",
+    "tier": "base",
+    "selection_reason": "KRX 필수소비재를 기본 범위로 선택. 식품 세부 표본도 별도 보존.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "266390",
+    "name": "KODEX 경기소비재",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 경기소비재를 기본 범위로 선택. KOSPI200 한정 대안보다 범위 제약을 적게 둠.",
+    "group_id": "discretionary",
+    "benchmark": "KRX 경기소비재",
+    "source_market_cap_100m_krw": 76,
+    "source_snapshot_turnover_million_krw": 64,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/266390",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=266390"
+    ],
+    "metadata_captured": true,
+    "group_label": "경기소비재",
+    "tier": "base",
+    "selection_reason": "KRX 경기소비재를 기본 범위로 선택. KOSPI200 한정 대안보다 범위 제약을 적게 둠.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "143860",
+    "name": "TIGER 헬스케어",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "266420과 같은 KRX 헬스케어 지수. 목록 시가총액이 큰 143860을 대표로 선택. 실제 편입 목록의 동일성은 다음 단계 확인.",
+    "group_id": "healthcare",
+    "benchmark": "KRX 헬스케어",
+    "source_market_cap_100m_krw": 1304,
+    "source_snapshot_turnover_million_krw": 247,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/143860",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=143860"
+    ],
+    "metadata_captured": true,
+    "group_label": "헬스케어",
+    "tier": "base",
+    "selection_reason": "266420과 같은 KRX 헬스케어 지수. 목록 시가총액이 큰 143860을 대표로 선택. 실제 편입 목록의 동일성은 다음 단계 확인.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "266360",
+    "name": "KODEX K콘텐츠",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX K콘텐츠를 상위 콘텐츠 표본으로 선택. 제공 설명의 구 IT소프트웨어 문구는 운용사 현재 지수 자료로 보완.",
+    "group_id": "content",
+    "benchmark": "KRX K콘텐츠",
+    "source_market_cap_100m_krw": 324,
+    "source_snapshot_turnover_million_krw": 26,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/266360",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=266360"
+    ],
+    "metadata_captured": true,
+    "group_label": "콘텐츠",
+    "tier": "base",
+    "selection_reason": "KRX K콘텐츠를 상위 콘텐츠 표본으로 선택. 제공 설명의 구 IT소프트웨어 문구는 운용사 현재 지수 자료로 보완.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "157490",
+    "name": "TIGER 소프트웨어",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "소프트웨어 산업 지수를 기본으로 선택. 인터넷TOP10·AI소프트웨어는 하위 범위 대안.",
+    "group_id": "software",
+    "benchmark": "FnGuide 소프트웨어 지수",
+    "source_market_cap_100m_krw": 646,
+    "source_snapshot_turnover_million_krw": 283,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/157490",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=157490"
+    ],
+    "metadata_captured": true,
+    "group_label": "소프트웨어",
+    "tier": "base",
+    "selection_reason": "소프트웨어 산업 지수를 기본으로 선택. 인터넷TOP10·AI소프트웨어는 하위 범위 대안.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "266370",
+    "name": "KODEX IT",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "KRX 정보기술을 기본 범위로 선택. KOSPI200 IT·코스닥150 IT는 범위 제한 대안. 반도체와 종목 중복 가능.",
+    "group_id": "information_technology",
+    "benchmark": "KRX 정보기술",
+    "source_market_cap_100m_krw": 868,
+    "source_snapshot_turnover_million_krw": 1105,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/266370",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=266370"
+    ],
+    "metadata_captured": true,
+    "group_label": "정보기술 종합",
+    "tier": "base",
+    "selection_reason": "KRX 정보기술을 기본 범위로 선택. KOSPI200 IT·코스닥150 IT는 범위 제한 대안. 반도체와 종목 중복 가능.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "315270",
+    "name": "TIGER 200커뮤니케이션서비스",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "통신사업자를 제외하는 네트워크인프라와 구분하기 위한 상위 섹터 표본. KOSPI200 범위 제약과 플랫폼·콘텐츠 중첩을 명시.",
+    "group_id": "communication",
+    "benchmark": "코스피 200 커뮤니케이션서비스",
+    "source_market_cap_100m_krw": 63,
+    "source_snapshot_turnover_million_krw": 64,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/315270",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=315270"
+    ],
+    "metadata_captured": true,
+    "group_label": "커뮤니케이션서비스",
+    "tier": "base",
+    "selection_reason": "통신사업자를 제외하는 네트워크인프라와 구분하기 위한 상위 섹터 표본. KOSPI200 범위 제약과 플랫폼·콘텐츠 중첩을 명시.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "455850",
+    "name": "SOL AI반도체소부장",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "소재·부품·장비를 함께 다루는 지수. 전공정·후공정·핵심장비 단독 ETF는 세부 대안으로 보존.",
+    "group_id": "semiconductor_supplies",
+    "benchmark": "FnGuide AI 반도체 소부장 지수",
+    "source_market_cap_100m_krw": 10478,
+    "source_snapshot_turnover_million_krw": 42762,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/455850",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=455850"
+    ],
+    "metadata_captured": true,
+    "group_label": "반도체 소부장",
+    "tier": "theme",
+    "selection_reason": "소재·부품·장비를 함께 다루는 지수. 전공정·후공정·핵심장비 단독 ETF는 세부 대안으로 보존.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "305720",
+    "name": "KODEX 2차전지산업",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "원재료·장비·부품·제조를 포함하는 산업 밸류체인. TOP10 집중형보다 기본 산업 범위를 우선.",
+    "group_id": "battery",
+    "benchmark": "FnGuide 2차전지 산업 지수",
+    "source_market_cap_100m_krw": 17956,
+    "source_snapshot_turnover_million_krw": 29772,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/305720",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=305720"
+    ],
+    "metadata_captured": true,
+    "group_label": "2차전지 산업",
+    "tier": "theme",
+    "selection_reason": "원재료·장비·부품·제조를 포함하는 산업 밸류체인. TOP10 집중형보다 기본 산업 범위를 우선.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "462010",
+    "name": "TIGER 2차전지소재Fn",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "양극재·음극재·전해질·분리막 등 소재 범위의 지수. 산업 전체와 별도 그룹으로 관측.",
+    "group_id": "battery_materials",
+    "benchmark": "FnGuide 2차전지소재 (Price Return) 지수",
+    "source_market_cap_100m_krw": 4639,
+    "source_snapshot_turnover_million_krw": 10653,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/462010",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=462010"
+    ],
+    "metadata_captured": true,
+    "group_label": "2차전지 소재",
+    "tier": "theme",
+    "selection_reason": "양극재·음극재·전해질·분리막 등 소재 범위의 지수. 산업 전체와 별도 그룹으로 관측.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "466920",
+    "name": "SOL 조선TOP3플러스",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "설계상 조선 TOP3와 관련 밸류체인 10종목을 함께 고려. TOP3라는 이름만으로 편입 주식 범위가 좁다고 판단하지 않음.",
+    "group_id": "shipbuilding",
+    "benchmark": "FnGuide 조선TOP3플러스지수(PR)",
+    "source_market_cap_100m_krw": 9290,
+    "source_snapshot_turnover_million_krw": 11447,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/466920",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=466920"
+    ],
+    "metadata_captured": true,
+    "group_label": "조선",
+    "tier": "theme",
+    "selection_reason": "설계상 조선 TOP3와 관련 밸류체인 10종목을 함께 고려. TOP3라는 이름만으로 편입 주식 범위가 좁다고 판단하지 않음.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "449450",
+    "name": "PLUS K방산",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "방위산업 패시브 지수 대표. 우주항공 혼합형·방산 소부장은 별도 대안으로 보존.",
+    "group_id": "defense",
+    "benchmark": "FnGuide K-방위산업 지수",
+    "source_market_cap_100m_krw": 6566,
+    "source_snapshot_turnover_million_krw": 10042,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/449450",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=449450"
+    ],
+    "metadata_captured": true,
+    "group_label": "방산",
+    "tier": "theme",
+    "selection_reason": "방위산업 패시브 지수 대표. 우주항공 혼합형·방산 소부장은 별도 대안으로 보존.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "491820",
+    "name": "HANARO 전력설비투자",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "전력설비 산업 범위의 지수를 대표로 선택. AI전력핵심설비와 TOP3형은 비교 대안. 현재 종목 수 우월성을 확정한 선택은 아님.",
+    "group_id": "power_equipment",
+    "benchmark": "iSelect 전력설비투자 지수",
+    "source_market_cap_100m_krw": 1045,
+    "source_snapshot_turnover_million_krw": 734,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/491820",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=491820"
+    ],
+    "metadata_captured": true,
+    "group_label": "전력설비",
+    "tier": "theme",
+    "selection_reason": "전력설비 산업 범위의 지수를 대표로 선택. AI전력핵심설비와 TOP3형은 비교 대안. 현재 종목 수 우월성을 확정한 선택은 아님.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "434730",
+    "name": "HANARO 원자력iSelect",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "원전 설비·시공 등 밸류체인을 포괄하는 기존 패시브 표본. SMR·TOP10은 세부 대안.",
+    "group_id": "nuclear",
+    "benchmark": "iSelect 원자력지수 (시장가격)",
+    "source_market_cap_100m_krw": 4549,
+    "source_snapshot_turnover_million_krw": 2886,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/434730",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=434730"
+    ],
+    "metadata_captured": true,
+    "group_label": "원자력",
+    "tier": "theme",
+    "selection_reason": "원전 설비·시공 등 밸류체인을 포괄하는 기존 패시브 표본. SMR·TOP10은 세부 대안.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "0148J0",
+    "name": "TIGER 코리아휴머노이드로봇산업",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "한국 상장 휴머노이드 로봇 관련 패시브 지수. 로봇 전체를 대표한다고 표시하지 않음. 액티브 운용 선택 효과를 기본 표본에서 분리.",
+    "group_id": "humanoid_robot",
+    "benchmark": "KEDI 코리아 휴머노이드로봇산업 지수 (PR)",
+    "source_market_cap_100m_krw": 5411,
+    "source_snapshot_turnover_million_krw": 14249,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/0148J0",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=0148J0"
+    ],
+    "metadata_captured": true,
+    "group_label": "휴머노이드로봇",
+    "tier": "theme",
+    "selection_reason": "한국 상장 휴머노이드 로봇 관련 패시브 지수. 로봇 전체를 대표한다고 표시하지 않음. 액티브 운용 선택 효과를 기본 표본에서 분리.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "228790",
+    "name": "TIGER 화장품",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "화장품 산업 표본. TOP3 집중형·K뷰티 대안은 다음 단계 종목 범위 비교용으로 보존.",
+    "group_id": "cosmetics",
+    "benchmark": "WISE 화장품 지수",
+    "source_market_cap_100m_krw": 1895,
+    "source_snapshot_turnover_million_krw": 17565,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/228790",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=228790"
+    ],
+    "metadata_captured": true,
+    "group_label": "화장품",
+    "tier": "theme",
+    "selection_reason": "화장품 산업 표본. TOP3 집중형·K뷰티 대안은 다음 단계 종목 범위 비교용으로 보존.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "244580",
+    "name": "KODEX 바이오",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "국내 바이오 사업 기업을 선정하는 FnGuide 지수. TOP10 한정 대안과 구분.",
+    "group_id": "biotechnology",
+    "benchmark": "FnGuide 바이오 지수",
+    "source_market_cap_100m_krw": 1891,
+    "source_snapshot_turnover_million_krw": 1757,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/244580",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=244580"
+    ],
+    "metadata_captured": true,
+    "group_label": "바이오",
+    "tier": "theme",
+    "selection_reason": "국내 바이오 사업 기업을 선정하는 FnGuide 지수. TOP10 한정 대안과 구분.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "307510",
+    "name": "TIGER 의료기기",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "의료장비 및 서비스 분류에 속하는 기업의 지수. 미용·치과 중심 소부장이나 의료AI보다 산업 분류를 우선.",
+    "group_id": "medical_devices",
+    "benchmark": "FnGuide 의료기기 지수",
+    "source_market_cap_100m_krw": 49,
+    "source_snapshot_turnover_million_krw": 3,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/307510",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=307510"
+    ],
+    "metadata_captured": true,
+    "group_label": "의료기기",
+    "tier": "theme",
+    "selection_reason": "의료장비 및 서비스 분류에 속하는 기업의 지수. 미용·치과 중심 소부장이나 의료AI보다 산업 분류를 우선.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "438900",
+    "name": "HANARO Fn K-푸드",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "국내 K푸드 관련 산업을 관측하는 패시브 표본. 필수소비재와 중복 가능.",
+    "group_id": "food",
+    "benchmark": "FnGuide K-푸드 지수 (시장가격)",
+    "source_market_cap_100m_krw": 135,
+    "source_snapshot_turnover_million_krw": 67,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/438900",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=438900"
+    ],
+    "metadata_captured": true,
+    "group_label": "식품",
+    "tier": "theme",
+    "selection_reason": "국내 K푸드 관련 산업을 관측하는 패시브 표본. 필수소비재와 중복 가능.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "228800",
+    "name": "TIGER 여행레저",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "여행·레저를 함께 다루는 국내 산업 표본. 골프 단독·엔터 혼합형은 세부 대안.",
+    "group_id": "travel",
+    "benchmark": "WISE 여행레저 지수",
+    "source_market_cap_100m_krw": 604,
+    "source_snapshot_turnover_million_krw": 192,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/228800",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=228800"
+    ],
+    "metadata_captured": true,
+    "group_label": "여행레저",
+    "tier": "theme",
+    "selection_reason": "여행·레저를 함께 다루는 국내 산업 표본. 골프 단독·엔터 혼합형은 세부 대안.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "377990",
+    "name": "TIGER Fn신재생에너지",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "국내 상장 신재생에너지 관련 기업의 지수. 원자재 선물 가격을 추적하는 상품과 구분.",
+    "group_id": "renewable_energy",
+    "benchmark": "FnGuide 신재생에너지 지수",
+    "source_market_cap_100m_krw": 826,
+    "source_snapshot_turnover_million_krw": 683,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/377990",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=377990"
+    ],
+    "metadata_captured": true,
+    "group_label": "신재생에너지",
+    "tier": "theme",
+    "selection_reason": "국내 상장 신재생에너지 관련 기업의 지수. 원자재 선물 가격을 추적하는 상품과 구분.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "457990",
+    "name": "PLUS 태양광&ESS",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "태양광·ESS 관련 국내 주식 표본. 신재생에너지 내부 차이를 관측하는 세부 그룹.",
+    "group_id": "solar_ess",
+    "benchmark": "FnGuide 태양광&ESS 지수",
+    "source_market_cap_100m_krw": 1686,
+    "source_snapshot_turnover_million_krw": 6552,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/457990",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=457990"
+    ],
+    "metadata_captured": true,
+    "group_label": "태양광과 ESS",
+    "tier": "theme",
+    "selection_reason": "태양광·ESS 관련 국내 주식 표본. 신재생에너지 내부 차이를 관측하는 세부 그룹.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "367770",
+    "name": "RISE 수소경제테마",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "수소경제 국내 밸류체인 패시브 표본. 글로벌 수소 ETF와 구분.",
+    "group_id": "hydrogen",
+    "benchmark": "FnGuide 수소경제테마 지수",
+    "source_market_cap_100m_krw": 826,
+    "source_snapshot_turnover_million_krw": 592,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/367770",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=367770"
+    ],
+    "metadata_captured": true,
+    "group_label": "수소경제",
+    "tier": "theme",
+    "selection_reason": "수소경제 국내 밸류체인 패시브 표본. 글로벌 수소 ETF와 구분.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "421320",
+    "name": "PLUS 우주항공",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "국내 우주항공·UAM 산업 표본. 우주 밸류체인 TOP10은 세부 대안.",
+    "group_id": "aerospace",
+    "benchmark": "iSelect 우주항공UAM지수",
+    "source_market_cap_100m_krw": 1252,
+    "source_snapshot_turnover_million_krw": 635,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/421320",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=421320"
+    ],
+    "metadata_captured": true,
+    "group_label": "우주항공",
+    "tier": "theme",
+    "selection_reason": "국내 우주항공·UAM 산업 표본. 우주 밸류체인 TOP10은 세부 대안.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "322400",
+    "name": "HANARO e커머스",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "국내 온라인쇼핑·인터넷서비스 또는 전자상거래 연관 기업의 지수. 소프트웨어와 중복 가능.",
+    "group_id": "ecommerce",
+    "benchmark": "FnGuide E커머스 지수(시장가격)",
+    "source_market_cap_100m_krw": 275,
+    "source_snapshot_turnover_million_krw": 167,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/322400",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=322400"
+    ],
+    "metadata_captured": true,
+    "group_label": "전자상거래",
+    "tier": "theme",
+    "selection_reason": "국내 온라인쇼핑·인터넷서비스 또는 전자상거래 연관 기업의 지수. 소프트웨어와 중복 가능.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "367760",
+    "name": "RISE 네트워크인프라",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "네트워크 장비·관련 하드웨어 관측. 운용사 설명상 통신사업자는 제외하므로 통신업 전체로 부르지 않음.",
+    "group_id": "network_infrastructure",
+    "benchmark": "FnGuide 네트워크 인프라 지수",
+    "source_market_cap_100m_krw": 5211,
+    "source_snapshot_turnover_million_krw": 3657,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/367760",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=367760"
+    ],
+    "metadata_captured": true,
+    "group_label": "네트워크인프라",
+    "tier": "theme",
+    "selection_reason": "네트워크 장비·관련 하드웨어 관측. 운용사 설명상 통신사업자는 제외하므로 통신업 전체로 부르지 않음.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "314700",
+    "name": "HANARO 농업융복합산업",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "농업 관련 생산·장비·서비스 등 국내 산업 범위 보완. 작은 ETF 규모만으로 제외하지 않음.",
+    "group_id": "agriculture",
+    "benchmark": "FnGuide 농업융복합산업지수(시장가격)",
+    "source_market_cap_100m_krw": 54,
+    "source_snapshot_turnover_million_krw": 47,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/314700",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=314700"
+    ],
+    "metadata_captured": true,
+    "group_label": "농업융복합",
+    "tier": "theme",
+    "selection_reason": "농업 관련 생산·장비·서비스 등 국내 산업 범위 보완. 작은 ETF 규모만으로 제외하지 않음.",
+    "stage3_constituent_validation_required": true
+  },
+  {
+    "code": "300950",
+    "name": "KODEX 게임산업",
+    "source_category_code": 2,
+    "decision": "selected",
+    "reason": "국내 게임 산업 지수를 기본으로 선택. TOP10 한정 또는 다른 게임 지수는 대체 후보로 보존.",
+    "group_id": "gaming",
+    "benchmark": "FnGuide 게임 산업 지수",
+    "source_market_cap_100m_krw": 205,
+    "source_snapshot_turnover_million_krw": 329,
+    "source_links": [
+      "https://m.stock.naver.com/domestic/stock/300950",
+      "https://comp.wisereport.co.kr/ETF/etf_main.aspx?cmp_cd=300950"
+    ],
+    "metadata_captured": true,
+    "group_label": "게임",
+    "tier": "theme",
+    "selection_reason": "국내 게임 산업 지수를 기본으로 선택. TOP10 한정 또는 다른 게임 지수는 대체 후보로 보존.",
+    "stage3_constituent_validation_required": true
+  }
+]

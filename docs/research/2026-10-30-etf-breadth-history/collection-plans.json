@@ -1,0 +1,21 @@
+[
+  {
+    "plan_id": "7072fcd97abc4f7edda1f2cf771f2b958045feaddb17c4dcae5bb610a0862129",
+    "targets": 479,
+    "completed_before_interruption": 161,
+    "interrupted_by": "saves.json changed; no price files changed"
+  },
+  {
+    "plan_id": "92068f024a4850aa11d7836a550079e19859396fabacaa890e8ddbf1655e67b7",
+    "targets": 318,
+    "continuation": true,
+    "completed_before_interruption": 211,
+    "interrupted_by": "production server restart / owner_cancelled"
+  },
+  {
+    "plan_id": "4e41371a4a7ebfad35a33b292b86883c22d1d1a2975bd338fb963d87738d4cdb",
+    "targets": 107,
+    "continuation": true,
+    "code_revision": "f34a3d0d7e2c7c576735882936bf9a47f1996af43f9e4f886b13676c6dfb70c1"
+  }
+]

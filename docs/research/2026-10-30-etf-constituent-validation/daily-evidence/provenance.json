@@ -1,0 +1,36 @@
+{
+  "captured_at": "2026-10-30T03:33:23.726018+00:00",
+  "target": "2026-10-29",
+  "snapshot_id": "06340e57cfb97172e6c8437ace8e044839da9147ad2799a5aa323d4887e46803",
+  "files": {
+    "security_master": {
+      "path": "/home/dev/.local/share/hoga-ops/symbol-master.json",
+      "sha256": "4efe638adc364a3da9f99d382d75fd22a21cd9da41dddaa7f8a1255f716c40e8",
+      "unchanged_during_read": true
+    },
+    "legacy_raw": {
+      "path": "/home/dev/.local/share/hoga-ops/data/screener/daily_unadjusted.parquet",
+      "sha256": "3fec3f0d62818418dd350f9e775a0ab255ff5e3613258aa43b8e79e63496f0e4",
+      "unchanged_during_read": true
+    },
+    "legacy_adjusted": {
+      "path": "/home/dev/.local/share/hoga-ops/data/screener/daily_adjusted.parquet",
+      "sha256": "6d9b152d32d23b33bd4538d62aa06935ef1ca05120b42f06f01d37ce6fb90ff1",
+      "unchanged_during_read": true
+    },
+    "calendar_seed": {
+      "path": "/home/dev/.codex/worktrees/bd18/hoga-ops/hoga/api/trading_days_seed.txt",
+      "sha256": "0e4f2ca699301967922cacfc40933044da1e00a84a5033350147a8c0ea9a7ff4",
+      "unchanged_during_read": true
+    },
+    "calendar_overlay": {
+      "path": "/home/dev/.local/share/hoga-ops/data/calendar/trading_days.txt",
+      "sha256": "c27c48a0bd9e54cedff46b053e524187440877da17dcc92bb604e7b7faed5581",
+      "unchanged_during_read": true
+    }
+  },
+  "semantics": "screener_series_values.load_series; vendor-adjusted prices have independent confirmation",
+  "snapshot_pointer_after_read": {
+    "id": "06340e57cfb97172e6c8437ace8e044839da9147ad2799a5aa323d4887e46803"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "plan_id": "a94fc5716887282e1a9489ef6660706567278604fdb2a8bcfe14f3b425a29ac3",
+  "snapshot_id": "38a10e636b4740e5fc550a02c2d08b1a6dbfa20cb43e608fb2e1884d47d54740",
+  "updated_reviewed_items": 24,
+  "states": {
+    "quarantined": 490,
+    "observed": 5
+  }
+}

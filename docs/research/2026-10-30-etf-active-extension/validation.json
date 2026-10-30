@@ -1,0 +1,628 @@
+{
+  "source_hashes_verified": true,
+  "fresh_catalog_codes_match_original": true,
+  "independent_target_day_scores": [
+    {
+      "code": "091160",
+      "score": 11.111111111111112,
+      "ready120": 21
+    },
+    {
+      "code": "091180",
+      "score": 14.814814814814815,
+      "ready120": 18
+    },
+    {
+      "code": "091170",
+      "score": 0.0,
+      "ready120": 10
+    },
+    {
+      "code": "102970",
+      "score": 9.090909090909092,
+      "ready120": 11
+    },
+    {
+      "code": "140700",
+      "score": 45.45454545454546,
+      "ready120": 11
+    },
+    {
+      "code": "102960",
+      "score": 2.2222222222222223,
+      "ready120": 30
+    },
+    {
+      "code": "117700",
+      "score": 16.666666666666668,
+      "ready120": 16
+    },
+    {
+      "code": "117680",
+      "score": 12.121212121212123,
+      "ready120": 11
+    },
+    {
+      "code": "117460",
+      "score": 9.375,
+      "ready120": 32
+    },
+    {
+      "code": "140710",
+      "score": 24.24242424242424,
+      "ready120": 11
+    },
+    {
+      "code": "266410",
+      "score": 27.777777777777782,
+      "ready120": 24
+    },
+    {
+      "code": "266390",
+      "score": 11.666666666666666,
+      "ready120": 20
+    },
+    {
+      "code": "143860",
+      "score": 18.75,
+      "ready120": 48
+    },
+    {
+      "code": "266360",
+      "score": 19.298245614035086,
+      "ready120": 19
+    },
+    {
+      "code": "157490",
+      "score": 21.73913043478261,
+      "ready120": 23
+    },
+    {
+      "code": "266370",
+      "score": 15.0,
+      "ready120": 20
+    },
+    {
+      "code": "315270",
+      "score": 0.0,
+      "ready120": 10
+    },
+    {
+      "code": "455850",
+      "score": 11.666666666666666,
+      "ready120": 20
+    },
+    {
+      "code": "305720",
+      "score": 13.333333333333334,
+      "ready120": 25
+    },
+    {
+      "code": "462010",
+      "score": 7.017543859649123,
+      "ready120": 19
+    },
+    {
+      "code": "466920",
+      "score": 2.5641025641025643,
+      "ready120": 13
+    },
+    {
+      "code": "449450",
+      "score": 0.0,
+      "ready120": 10
+    },
+    {
+      "code": "491820",
+      "score": 5.128205128205129,
+      "ready120": 13
+    },
+    {
+      "code": "434730",
+      "score": 0.0,
+      "ready120": 15
+    },
+    {
+      "code": "0148J0",
+      "score": 13.333333333333334,
+      "ready120": 15
+    },
+    {
+      "code": "228790",
+      "score": 16.666666666666668,
+      "ready120": 18
+    },
+    {
+      "code": "244580",
+      "score": 18.666666666666668,
+      "ready120": 50
+    },
+    {
+      "code": "307510",
+      "score": 21.088435374149658,
+      "ready120": 49
+    },
+    {
+      "code": "438900",
+      "score": 15.555555555555557,
+      "ready120": 15
+    },
+    {
+      "code": "228800",
+      "score": 16.666666666666668,
+      "ready120": 16
+    },
+    {
+      "code": "377990",
+      "score": 6.349206349206349,
+      "ready120": 21
+    },
+    {
+      "code": "457990",
+      "score": 6.666666666666667,
+      "ready120": 10
+    },
+    {
+      "code": "367770",
+      "score": 10.416666666666666,
+      "ready120": 32
+    },
+    {
+      "code": "421320",
+      "score": 17.77777777777778,
+      "ready120": 15
+    },
+    {
+      "code": "322400",
+      "score": 8.333333333333334,
+      "ready120": 16
+    },
+    {
+      "code": "367760",
+      "score": 23.18840579710145,
+      "ready120": 23
+    },
+    {
+      "code": "314700",
+      "score": 16.666666666666668,
+      "ready120": 12
+    },
+    {
+      "code": "300950",
+      "score": 17.77777777777778,
+      "ready120": 15
+    },
+    {
+      "code": "445290",
+      "score": null,
+      "ready120": 27
+    },
+    {
+      "code": "494890",
+      "score": null,
+      "ready120": 175
+    },
+    {
+      "code": "441800",
+      "score": null,
+      "ready120": 29
+    },
+    {
+      "code": "0163Y0",
+      "score": null,
+      "ready120": 45
+    },
+    {
+      "code": "444200",
+      "score": 10.416666666666666,
+      "ready120": 32
+    },
+    {
+      "code": "451060",
+      "score": null,
+      "ready120": 179
+    },
+    {
+      "code": "385720",
+      "score": null,
+      "ready120": 38
+    },
+    {
+      "code": "474590",
+      "score": null,
+      "ready120": 9
+    },
+    {
+      "code": "462900",
+      "score": null,
+      "ready120": 23
+    },
+    {
+      "code": "385510",
+      "score": null,
+      "ready120": 63
+    },
+    {
+      "code": "471780",
+      "score": null,
+      "ready120": 13
+    },
+    {
+      "code": "463050",
+      "score": null,
+      "ready120": 21
+    },
+    {
+      "code": "0162Y0",
+      "score": null,
+      "ready120": 39
+    },
+    {
+      "code": "422420",
+      "score": 14.583333333333334,
+      "ready120": 16
+    },
+    {
+      "code": "388420",
+      "score": null,
+      "ready120": 14
+    },
+    {
+      "code": "495230",
+      "score": null,
+      "ready120": 46
+    },
+    {
+      "code": "494330",
+      "score": null,
+      "ready120": 21
+    },
+    {
+      "code": "495060",
+      "score": null,
+      "ready120": 49
+    },
+    {
+      "code": "403790",
+      "score": null,
+      "ready120": 174
+    },
+    {
+      "code": "494220",
+      "score": null,
+      "ready120": 15
+    },
+    {
+      "code": "0193G0",
+      "score": null,
+      "ready120": 45
+    },
+    {
+      "code": "0151P0",
+      "score": null,
+      "ready120": 14
+    },
+    {
+      "code": "0168K0",
+      "score": null,
+      "ready120": 26
+    },
+    {
+      "code": "0074K0",
+      "score": null,
+      "ready120": 35
+    },
+    {
+      "code": "476850",
+      "score": null,
+      "ready120": 50
+    },
+    {
+      "code": "0220B0",
+      "score": null,
+      "ready120": 17
+    },
+    {
+      "code": "486240",
+      "score": null,
+      "ready120": 19
+    },
+    {
+      "code": "0222D0",
+      "score": null,
+      "ready120": 30
+    },
+    {
+      "code": "365040",
+      "score": null,
+      "ready120": 69
+    },
+    {
+      "code": "0239Z0",
+      "score": null,
+      "ready120": 11
+    },
+    {
+      "code": "401470",
+      "score": null,
+      "ready120": 25
+    },
+    {
+      "code": "385590",
+      "score": null,
+      "ready120": 22
+    },
+    {
+      "code": "447430",
+      "score": null,
+      "ready120": 14
+    },
+    {
+      "code": "0166S0",
+      "score": null,
+      "ready120": 28
+    },
+    {
+      "code": "0000Z0",
+      "score": null,
+      "ready120": 20
+    },
+    {
+      "code": "445150",
+      "score": null,
+      "ready120": 21
+    },
+    {
+      "code": "442260",
+      "score": null,
+      "ready120": 63
+    },
+    {
+      "code": "442090",
+      "score": null,
+      "ready120": 22
+    },
+    {
+      "code": "487130",
+      "score": null,
+      "ready120": 20
+    },
+    {
+      "code": "448570",
+      "score": null,
+      "ready120": 15
+    },
+    {
+      "code": "385520",
+      "score": null,
+      "ready120": 32
+    },
+    {
+      "code": "0204S0",
+      "score": null,
+      "ready120": 41
+    },
+    {
+      "code": "0150K0",
+      "score": null,
+      "ready120": 37
+    },
+    {
+      "code": "0166N0",
+      "score": null,
+      "ready120": 40
+    },
+    {
+      "code": "0152E0",
+      "score": null,
+      "ready120": 17
+    },
+    {
+      "code": "364690",
+      "score": null,
+      "ready120": 152
+    },
+    {
+      "code": "404120",
+      "score": null,
+      "ready120": 24
+    },
+    {
+      "code": "0254H0",
+      "score": null,
+      "ready120": 15
+    },
+    {
+      "code": "445690",
+      "score": null,
+      "ready120": 39
+    },
+    {
+      "code": "385600",
+      "score": null,
+      "ready120": 35
+    },
+    {
+      "code": "0243M0",
+      "score": null,
+      "ready120": 20
+    },
+    {
+      "code": "391670",
+      "score": null,
+      "ready120": 9
+    },
+    {
+      "code": "491510",
+      "score": null,
+      "ready120": 47
+    },
+    {
+      "code": "387280",
+      "score": null,
+      "ready120": 37
+    },
+    {
+      "code": "413930",
+      "score": null,
+      "ready120": 51
+    },
+    {
+      "code": "373490",
+      "score": null,
+      "ready120": 59
+    },
+    {
+      "code": "496130",
+      "score": null,
+      "ready120": 31
+    },
+    {
+      "code": "472720",
+      "score": null,
+      "ready120": 28
+    },
+    {
+      "code": "0208N0",
+      "score": null,
+      "ready120": 44
+    },
+    {
+      "code": "407820",
+      "score": null,
+      "ready120": 20
+    },
+    {
+      "code": "410870",
+      "score": null,
+      "ready120": 23
+    },
+    {
+      "code": "395760",
+      "score": null,
+      "ready120": 136
+    },
+    {
+      "code": "385710",
+      "score": 15.384615384615385,
+      "ready120": 13
+    },
+    {
+      "code": "0219B0",
+      "score": null,
+      "ready120": 23
+    },
+    {
+      "code": "0001P0",
+      "score": null,
+      "ready120": 13
+    },
+    {
+      "code": "438740",
+      "score": null,
+      "ready120": 113
+    },
+    {
+      "code": "482030",
+      "score": null,
+      "ready120": 22
+    },
+    {
+      "code": "498050",
+      "score": null,
+      "ready120": 25
+    },
+    {
+      "code": "0214M0",
+      "score": null,
+      "ready120": 20
+    },
+    {
+      "code": "457930",
+      "score": null,
+      "ready120": 41
+    },
+    {
+      "code": "0221Z0",
+      "score": 18.51851851851852,
+      "ready120": 18
+    },
+    {
+      "code": "395750",
+      "score": null,
+      "ready120": 161
+    },
+    {
+      "code": "0226G0",
+      "score": null,
+      "ready120": 21
+    },
+    {
+      "code": "0172Y0",
+      "score": null,
+      "ready120": 20
+    },
+    {
+      "code": "0191B0",
+      "score": null,
+      "ready120": 35
+    },
+    {
+      "code": "470310",
+      "score": null,
+      "ready120": 14
+    },
+    {
+      "code": "433250",
+      "score": null,
+      "ready120": 34
+    },
+    {
+      "code": "0229F0",
+      "score": null,
+      "ready120": 15
+    },
+    {
+      "code": "0053M0",
+      "score": null,
+      "ready120": 15
+    },
+    {
+      "code": "0184V0",
+      "score": null,
+      "ready120": 15
+    },
+    {
+      "code": "476000",
+      "score": null,
+      "ready120": 6
+    }
+  ],
+  "daily_mask_rows_verified": 257516,
+  "selected_style_counts": {
+    "passive": 38,
+    "active": 81
+  },
+  "output_replay_hashes_identical": true,
+  "output_sha256": {
+    "active-decisions.json": "07486a50e33eec8262f25729438229cb14be458b4913bdfded109f8559786c82",
+    "memberships.json": "2d5b2d82a61e8bb66ba6c0561e4c4a88f10bee165901e3f918c37f23eba479b2",
+    "excluded-active-assets.json": "78247692c33de11345409a09f805207bd0d8210b4b30f9f7217cd5d1cfc28813",
+    "comparison-etfs.json": "d156b1fb2968c2f09c6bec4bcaec931665ab89102064d4b6c14f7a45dec57125",
+    "expanded-stock-universe.json": "f9b63311fba968843194ebc4cd999d2a7700d0717a6fe8dde7f29b2add6d96b8",
+    "price-worklist.json": "db98ff718633019bebf9841ab1d43a2ce87d7ddff96e78de7a776bc3a05ba9d1",
+    "etf-comparison-series.parquet": "ef349aec432e787a839ff05cccc444a9ecf3fdc9a7b17d0481d077509f98cd19",
+    "summary.json": "54cf1d08520eadbb43b343fb8fdef207a97bd8fff49a8012453f568abcf12948"
+  },
+  "runtime": {
+    "python": "3.14.7 (main, Sep 29 2026, 15:01:40) [Clang 22.1.3 ]",
+    "polars": "1.41.0"
+  },
+  "source_script_sha256": {
+    "validate_comparison.py": "d711890433bc1fd705f15b94d34ad3e52af79089a99fdcbe4c7d96c01598d9a5",
+    "verify_issuer_samples.py": "dc4fb041f147b8a060ee12d986d07b40ab8b1ae811c88c778e810c39460918f4",
+    "collect_active.py": "c420327f856c131b5d9eab408767000c3eae6f702ae5a919adc4009a76ea4438",
+    "reuse_confirmed_prices.py": "d1e5183abdcdff0efaa7b1b9b132c916ee937381fa429d763c3b8eb2ccd8602a",
+    "build_comparison.py": "4f441caec95e4be693d2cb0c4f8a8357ee229157e92bdc7dd653e8ec151277f2"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "url": "https://www.soletf.com/api/fund/pdfList?fund_cd=211028&work_dt=20261030",
+  "captured_at": "2026-10-30T03:27:49.238170+00:00",
+  "sha256": "88764fd21c37c428135d82d88af7a2ac7e00d5373f004ce673b3375f815f997c",
+  "bytes": 2434,
+  "content_type": "application/json;charset=UTF-8",
+  "final_url": "https://www.soletf.com/api/fund/pdfList?fund_cd=211028&work_dt=20261030"
+}

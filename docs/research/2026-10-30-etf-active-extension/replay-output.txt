@@ -1,0 +1,68 @@
+{
+  "universe_id": "etf_comparison_domestic_equity_v2",
+  "passive_etfs": 38,
+  "active_etfs": 81,
+  "total_etfs": 119,
+  "stock_codes": 896,
+  "new_stock_codes_vs_original_477": 419,
+  "missing_price_codes": 415,
+  "current_status_counts": {
+    "ready": 42,
+    "price_capture_required": 61,
+    "insufficient_listing_history": 16
+  },
+  "active_status_counts": {
+    "price_capture_required": 61,
+    "insufficient_listing_history": 16,
+    "ready": 4
+  },
+  "active_constituent_rows": 4180,
+  "original_38_scores_unchanged": true,
+  "original_477_aggregate_unchanged": true,
+  "original_477_score_recomputed": 15.6533892382949,
+  "issuer_original_active_matches": 9,
+  "histories": 257516,
+  "holdings_reference_date": "2026-10-30",
+  "price_as_of": "2026-10-29",
+  "reused_prices": {
+    "source_snapshot": "300236397f6302d295ee094ca825d12dc63e2fa4dfdb88900f154ba7f30015f9",
+    "adjusted_as_of": "2026-10-30",
+    "codes": [
+      "000020",
+      "000430",
+      "001530",
+      "013030"
+    ],
+    "rows": 4812,
+    "observations": [
+      {
+        "code": "000020",
+        "observation_id": "e192c3d53aa929c28b82552ec6befe605948084fba220961001e7920f691a152",
+        "confirmation_state": "confirmed"
+      },
+      {
+        "code": "000430",
+        "observation_id": "c3dced1e0d285847dba1a685eee8e5439a911e4ec680be6a58ed3daef75a188c",
+        "confirmation_state": "confirmed"
+      },
+      {
+        "code": "001530",
+        "observation_id": "d28d0d50a54c339f1b5077baf7c638bcc6ed4b57f14314ca7c101554718305e0",
+        "confirmation_state": "confirmed"
+      },
+      {
+        "code": "013030",
+        "observation_id": "0d66620e2e2d8ce55a972883344a2f57221adfb64a0ad30d2b55eb6c3e7f4f00",
+        "confirmation_state": "confirmed"
+      }
+    ],
+    "provider_requests": 0,
+    "production_writes": 0
+  },
+  "input_sha256": {
+    "policy.json": "e2b27d213b52c419836dfb2a85d8a01273122fa30a0c8657bbcec2833b151060",
+    "security-master.json": "190f04f8ad31095414d1219d5ff3cb453405fea3e85bb6b25dacff105133616a",
+    "public-captures.json": "693a87924df9037561bf26dc174e97c8528e2660fc85329cfee84087a114ee26",
+    "active-discovery.json": "4197471379d1f8648eec63fe11b9e1ba95aeec56654c4e9ad392ac6e1a4c2955"
+  }
+}

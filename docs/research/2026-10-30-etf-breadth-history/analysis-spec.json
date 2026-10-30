@@ -1,0 +1,35 @@
+{
+  "method_id": "etf_ma_breadth_history_diagnostic_v1",
+  "recorded_at": "2026-10-30T04:54:46.611280+00:00",
+  "capture_from": "2018-01-02",
+  "analysis_from": "2020-01-02",
+  "target": "2026-10-29",
+  "price_anchor": "2026-10-30",
+  "indicator": "unchanged etf_ma_breadth_v1: strict close>SMA20/60/120, equal period and stock weights",
+  "reference_etfs": {
+    "069500": "KODEX 200",
+    "229200": "KODEX 코스닥150"
+  },
+  "panels": {
+    "original_477": "constant 477, score null until all have 120 valid calendar sessions",
+    "fixed_complete_cohort": "subset of current 477 with valid prices on EVERY captured trading session; same constant subset on all dates",
+    "eligible_current_pool": "subset of current 477 with all 120 required calendar closes available on each date; record changing count; report 80% and 90% coverage sensitivities"
+  },
+  "reference_distribution": "2020-01-02 through day before target; never include target in its own reference",
+  "percentile": "midrank = 100*(strictly_lower+0.5*equal)/N; report strict/inclusive bounds for ties",
+  "walk_forward": {
+    "prior_sessions": 252,
+    "low_quantile": 0.1,
+    "high_quantile": 0.9,
+    "fit": "trailing prior 252 sessions, shift one day before threshold; no future observations"
+  },
+  "stress_proxies": {
+    "drawdown": "benchmark adjusted close / prior-or-current 252-session peak - 1",
+    "volatility": "sample std of 20 daily log returns * sqrt(252), realized not implied",
+    "returns": "same-day and trailing 20-session price change; no trading rule optimization"
+  },
+  "comparisons": "Spearman rank association; median stress in low/normal/high walk-forward groups; counts of separate low-score runs; descriptive, no significance claim treating daily observations independent",
+  "selection_limit": "current constituents and hindsight completeness selection; not historical ETF membership; survival bias remains",
+  "no_score_remapping": true,
+  "no_fear_label_until_joint_evidence": true
+}

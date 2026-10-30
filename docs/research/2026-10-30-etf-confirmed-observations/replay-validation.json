@@ -1,0 +1,21 @@
+{
+  "snapshot_id": "38a10e636b4740e5fc550a02c2d08b1a6dbfa20cb43e608fb2e1884d47d54740",
+  "same_fixed_snapshot_reaudit": true,
+  "all_output_hashes_equal": true,
+  "files": {
+    "confirmed-adjusted.parquet": "3606072263905a974f8e026058ddb95c1467ce96da3c038417c24a02117cce41",
+    "confirmed-raw-candidates.parquet": "5f3a06021ae0976fd5ba4265b7b4922d011d5218e341a2b4c3f7eb43df677a71",
+    "resolved-raw.parquet": "db9d6987474a4ad87b52af1e2e1223bc3166e951ff3e0eef9c826f68f3af3040",
+    "stocks.json": "a610fd09efdd91d5d91bf8bfdfe0383e2ffe7b0a19c22c80b7877d74357a1ba7",
+    "summary.json": "48dd6925f4d42d978c31148ba500660e26e42da6a1ccad0843b02169efb2e38c",
+    "ma-verification.json": "76a0b87ed54a6dd2acba9119a551dcf9dec9deb8d330c5f5d2e4bf6a40a641e2",
+    "existing-history-preservation.json": "6337d6f5caf58eee429c86e5cfbf8b9159575b57ecb2b526a8112926e3aca678"
+  },
+  "python": "3.14.7",
+  "command": [
+    "/home/dev/code/hoga-ops/.venv/bin/python3",
+    "/home/dev/.codex/worktrees/bd18/hoga-ops/docs/research/2026-10-30-etf-confirmed-observations/verify_observations.py",
+    "--snapshot-id",
+    "38a10e636b4740e5fc550a02c2d08b1a6dbfa20cb43e608fb2e1884d47d54740"
+  ]
+}

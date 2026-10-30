@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "universe_id": "etf_comparison_domestic_equity_v2",
+  "selection_date": "2026-10-30",
+  "comparison_unit": "individual ETF, never synthetic sector averages",
+  "active_extension": "User-authorized addition of domestic-equity active ETFs including broad-market and style portfolios; keep management style visible",
+  "discovery": "Fresh full ETF list; product names containing 액티브; review domestic-category candidates using descriptions and constituents",
+  "eligible_stock": "KOSPI/KOSDAQ security_type=stock in the captured Kiwoom master; positive CU quantity; includes listed DRs when the master identifies them as stock",
+  "exclude_funds": ["foreign or mixed-country equity portfolios", "bond/mixed-asset funds", "leverage/inverse", "covered call or long-short strategies", "REIT/infrastructure-specialist funds"],
+  "exclude_assets": ["cash", "other ETFs without look-through", "derivatives", "REITs/infrastructure funds"],
+  "score": "strict close>SMA20/60/120; equal stock and period weights; keep every eligible stock in the divisor; unavailable inputs produce null, never zero or a reduced-divisor score",
+  "baseline_reference": "Preserve original 38 ETF / 477 stock aggregate and historical research as v1; active ETFs are added to the comparison registry, not silently merged into the old aggregate",
+  "holdings_semantics": "Latest published Portfolio Deposit File basket; not certified complete actual investment portfolio",
+  "history_semantics": "Reconstruct with current constituents; no claim of historical active-manager holdings or performance",
+  "nonstock_overrides": {
+    "088980": {"name": "맥쿼리인프라", "kind": "listed_infrastructure_fund", "source": "https://www.mkif.com/ko/investor-centre/faqs.html"},
+    "415640": {"name": "KB발해인프라", "kind": "listed_infrastructure_fund", "source": "https://www.kbif.co.kr/ko/finance/stock/index.do"},
+    "330590": {"name": "롯데리츠", "kind": "listed_reit", "source": "https://kind.krx.co.kr/external/2026/03/03/001104/20260303003018/00591.htm"}
+  },
+  "fund_overrides": {
+    "0060H0": {"decision": "excluded_foreign", "reason": "TIGER 토탈월드스탁액티브: description and actual US/non-Korean positions establish a global portfolio despite provider category 1"}
+  }
+}

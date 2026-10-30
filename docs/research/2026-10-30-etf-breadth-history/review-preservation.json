@@ -1,0 +1,18 @@
+{
+  "applied": true,
+  "starting_snapshot": "094f345962a60f71c7e83d555e1a8372c3936fa6885a60b91df56cd6ce445e62",
+  "final_snapshot": "300236397f6302d295ee094ca825d12dc63e2fa4dfdb88900f154ba7f30015f9",
+  "review_codes": 6,
+  "unchanged_approved_records": 258,
+  "new_correction_dates": 0,
+  "changed_selected_records": 0,
+  "unrelated_review_ids_preserved": 18,
+  "checked_at": "2026-10-30T05:52:55.255959+00:00",
+  "code_revision": "f34a3d0d7e2c7c576735882936bf9a47f1996af43f9e4f886b13676c6dfb70c1",
+  "source_plans": [
+    "4e41371a4a7ebfad35a33b292b86883c22d1d1a2975bd338fb963d87738d4cdb",
+    "7072fcd97abc4f7edda1f2cf771f2b958045feaddb17c4dcae5bb610a0862129",
+    "92068f024a4850aa11d7836a550079e19859396fabacaa890e8ddbf1655e67b7"
+  ],
+  "original_collection_failed_job_preserved_as_evidence": true
+}

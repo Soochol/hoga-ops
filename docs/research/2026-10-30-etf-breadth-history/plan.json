@@ -1,0 +1,11 @@
+{
+  "plan_id": "7072fcd97abc4f7edda1f2cf771f2b958045feaddb17c4dcae5bb610a0862129",
+  "requested_stocks": 477,
+  "reference_etfs": [
+    "069500",
+    "229200"
+  ],
+  "total_targets": 479,
+  "code_revision": "5b9a68f1ab2eb68f8a90205fb7250f655292ca3831ccf7a900bc6ccf631c3c93",
+  "python": "3.14.7"
+}

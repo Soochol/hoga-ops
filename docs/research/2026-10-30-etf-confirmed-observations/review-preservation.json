@@ -1,0 +1,11 @@
+{
+  "applied": true,
+  "starting_snapshot": "741a8b4e895b99cc919ca5a2219f549dde2466716dfa90b2f6d3c389a11cbcba",
+  "final_snapshot": "38a10e636b4740e5fc550a02c2d08b1a6dbfa20cb43e608fb2e1884d47d54740",
+  "review_codes": 24,
+  "unchanged_approved_records": 1601,
+  "new_correction_dates": 0,
+  "changed_selected_records": 0,
+  "checked_at": "2026-10-30T04:22:08.841853+00:00",
+  "code_revision": "5b9a68f1ab2eb68f8a90205fb7250f655292ca3831ccf7a900bc6ccf631c3c93"
+}
