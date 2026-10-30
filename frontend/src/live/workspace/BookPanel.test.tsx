@@ -320,14 +320,18 @@ describe('BookPanel', () => {
     expect(summary.querySelector('.book-summary-pages')).toHaveTextContent('');
     expect(summary.querySelectorAll('.book-summary-dot')).toHaveLength(2);
     expect(summary.querySelectorAll('.book-summary-dot')[0]).toHaveClass('is-active');
-    fireEvent.click(within(summary).getByText('시작'));
+    fireEvent.click(within(summary).getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     expect(summary).toHaveAttribute('data-page', '2');
     expect(summary).toHaveStyle({ height: '220px' });
     expect(summary.querySelectorAll('.book-summary-dot')[1]).toHaveClass('is-active');
     expect(within(summary).getByText('상한가')).toBeInTheDocument();
     expect(within(summary).getByText('상한가').parentElement).not.toHaveClass('border-t');
     expect(within(summary).queryByText('250일')).not.toBeInTheDocument();
-    fireEvent.click(summary); // Blank space also turns the page.
+    fireEvent.click(summary);
+    fireEvent.click(within(summary).getByText('상한가'));
+    fireEvent.click(summary.querySelector('.book-summary-heading')!);
+    expect(summary).toHaveAttribute('data-page', '2');
+    fireEvent.click(within(summary).getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     expect(summary).toHaveAttribute('data-page', '1');
     expect(within(summary).getByText('시작')).toBeInTheDocument();
   });
@@ -460,14 +464,14 @@ describe('BookPanel', () => {
     expect(screen.getByText('104.42%')).toBeInTheDocument();  // 어제보다
     expect(screen.getByText('4,668만')).toBeInTheDocument();  // 거래량(만 단위 절사)
     expect(screen.getByText('824억')).toBeInTheDocument();    // 거래대금(억 절사)
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     // limits 미로드 시 상한가·하한가 2행은 대시(VI 행은 시가 기반 계산값).
     expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(2);
   });
 
   it('VI 예상 발동가를 시가 기준으로 계산해 표시한다', () => {
     renderPanel(); // dayOpen 245,500 → ±10% 틱 반올림(절사/올림)
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     expect(screen.getByText('270,000')).toBeInTheDocument(); // 270,050 → tick 500 절사
     expect(screen.getByText('221,000')).toBeInTheDocument(); // 220,950 → tick 500 올림
   });
@@ -477,7 +481,7 @@ describe('BookPanel', () => {
       summary: EMPTY_TRADE_SUMMARY,
       limits: { base_price: 245_500, upper_limit: null, lower_limit: null, high_250: null, low_250: null },
     });
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     expect(screen.getByText('270,000')).toBeInTheDocument();
     expect(screen.getByText('221,000')).toBeInTheDocument();
   });
@@ -490,7 +494,7 @@ describe('BookPanel', () => {
 
   it('VI 발동 중이면 해당 방향 행을 발동가로 강조한다', () => {
     renderPanel({ vi: VI_UP_ACTIVE });
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     const active = screen.getByText('251,900 발동');
     expect(active.className).toContain('text-price-up');
     // 반대 방향(하강)은 예상가 유지 — 기준가는 발동가 근사(251,900×0.9=226,710→227,000 (tick 500 올림)).
@@ -499,7 +503,7 @@ describe('BookPanel', () => {
 
   it('VI 해제 후엔 발동가를 기준가 근사로 써서 예상가를 갱신한다', () => {
     renderPanel({ vi: { ...VI_UP_ACTIVE, released_at: '101750', active: false } });
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     expect(screen.queryByText(/발동/)).toBeNull();
     // 251,900×1.1=277,090 → tick 500 절사 = 277,000.
     expect(screen.getByText('277,000')).toBeInTheDocument();
@@ -512,7 +516,7 @@ describe('BookPanel', () => {
     renderPanel({
       limits: { base_price: 255_000, upper_limit: 331_500, lower_limit: 178_500, high_250: 388_500, low_250: 143_700 },
     });
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     const upper = screen.getByText('331,500');
     const lower = screen.getByText('178,500');
     expect(upper.className).toContain('text-price-up');
@@ -532,7 +536,7 @@ describe('BookPanel', () => {
     renderPanel({
       limits: { base_price: 255_000, upper_limit: 331_500, lower_limit: 178_500, high_250: 304_000, low_250: 181_100 },
     });
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     const value = screen.getByText('331,500');
     expect(value.className).toContain('whitespace-nowrap');
     const label = screen.getByText('상한가');
@@ -601,7 +605,7 @@ describe('BookPanel', () => {
     renderPanel({ summary: EMPTY_TRADE_SUMMARY });
     expect(screen.getByText('256,000')).toBeInTheDocument();
     expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(7);
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(4);
   });
 
@@ -793,7 +797,7 @@ describe('BookPanel', () => {
     expect(cell).toHaveTextContent('예상 체결량');
     expect(cell).toHaveTextContent('12,345');
     expect(screen.getByTestId('book-summary').querySelectorAll('.book-summary-row')).toHaveLength(9);
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     expect(screen.queryByTestId('book-expected-fill')).toBeNull();
     expect(screen.getByText('상한가')).toBeInTheDocument();
   });
@@ -823,6 +827,68 @@ describe('BookPanel', () => {
     expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가121,100원');
     expect(screen.getByTestId('book-expected-fill')).toHaveTextContent(/^예상 체결가121,100원예상 체결량$/);
     expect(screen.queryByText('12,345')).not.toBeInTheDocument();
+  });
+});
+
+describe('정보 시고저 가격·등락률 함께 전환', () => {
+  it.each(['시작', '최고', '최저'])('%s 행을 누르면 전일 KRX 종가 기준으로 함께 전환하고 다시 가격을 표시한다', label => {
+    renderPanel({ baselinePrice: 230_000, krxClose: 230_000, krxPreviousClose: 220_000,
+      summary: { ...SUMMARY, dayOpen: 222_500, dayHigh: 226_500, dayLow: 215_500 } });
+    const summary = screen.getByTestId('book-summary');
+    const toggle = within(summary).getByRole('button', { name: `${label} 가격·등락률 전환` });
+    fireEvent.click(toggle);
+    expect(summary).toHaveAttribute('data-page', '1');
+    for (const [name, value, color] of [
+      ['시작', '+1.14%', 'text-price-up'], ['최고', '+2.95%', 'text-price-up'], ['최저', '-2.05%', 'text-price-down'],
+    ]) {
+      const row = within(summary).getByRole('button', { name: `${name} 가격·등락률 전환` });
+      expect(row).toHaveAttribute('aria-pressed', 'true');
+      expect(within(row).getByText(value)).toHaveClass(color);
+    }
+    expect(within(summary).getByText('230,000')).toBeInTheDocument();
+    expect(within(summary).getByText('KRX종가').parentElement).toHaveClass('border-t', 'border-border');
+    fireEvent.click(within(summary).getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    fireEvent.click(within(summary).getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    expect(within(summary).getByText('+1.14%')).toBeInTheDocument();
+    fireEvent.click(within(summary).getByText('+1.14%'));
+    expect(within(summary).getByText('222,500')).toBeInTheDocument();
+    expect(within(summary).getByText('226,500')).toBeInTheDocument();
+    expect(within(summary).getByText('215,500')).toBeInTheDocument();
+  });
+
+  it.each([null, 0, -1, NaN, Infinity])('기준가 %s는 등락률을 만들지 않고 원래 가격으로 돌아갈 수 있다', krxPreviousClose => {
+    renderPanel({ krxPreviousClose });
+    fireEvent.click(screen.getByRole('button', { name: '시작 가격·등락률 전환' }));
+    for (const label of ['시작', '최고', '최저']) {
+      expect(screen.getByRole('button', { name: `${label} 가격·등락률 전환` })).toHaveTextContent(`${label}−`);
+    }
+    fireEvent.click(screen.getByRole('button', { name: '최저 가격·등락률 전환' }));
+    expect(screen.getByText('245,500')).toBeInTheDocument();
+  });
+
+  it('미수신 가격은 대시, 반올림된 보합은 부호 없는 0.00%이며 새 시세도 같은 모드로 갱신한다', () => {
+    const props = { snapshot: snap(), baselinePrice: PREV_CLOSE, krxPreviousClose: 220_000,
+      summary: { ...SUMMARY, dayOpen: 219_999, dayHigh: null, dayLow: null }, trades: [], maskRatio: false, lastPrice: null };
+    const view = render(<BookPanel {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: '시작 가격·등락률 전환' }));
+    expect(screen.getByLabelText('시작 등락률 0.00%')).toHaveClass('text-fg-dim');
+    expect(screen.getByRole('button', { name: '최고 가격·등락률 전환' })).toHaveTextContent('최고−');
+    view.rerender(<BookPanel {...props} summary={{ ...props.summary, dayOpen: 222_200 }} />);
+    expect(screen.getByLabelText('시작 등락률 +1.00%')).toBeInTheDocument();
+  });
+
+  it('인라인 정보와 팝오버가 표시 방식을 공유하고 다시 열어도 유지한다', () => {
+    renderPanel({ krxPreviousClose: 220_000 });
+    fireEvent.click(screen.getByRole('button', { name: '시작 가격·등락률 전환' }));
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    let dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    expect(within(dialog).getByLabelText('시작 등락률 +11.59%')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '최고 가격·등락률 전환' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '상세 정보 닫기' }));
+    expect(screen.getByLabelText('시작 가격 245,500원')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    expect(within(dialog).getByLabelText('시작 가격 245,500원')).toBeInTheDocument();
   });
 });
 

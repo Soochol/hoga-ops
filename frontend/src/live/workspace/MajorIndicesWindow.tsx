@@ -16,7 +16,7 @@ const timeLabel = (ms: number) => {
 
 export function MajorIndicesWindow({ frameProps }: { frameProps: Omit<WindowFrameProps, 'children' | 'headerContent'> }) {
   const model = useMajorIndices();
-  return <WindowFrame {...frameProps} headerContent={<></>}>
+  return <WindowFrame {...frameProps}>
     <MajorIndicesChart key={model.date} model={model} />
   </WindowFrame>;
 }

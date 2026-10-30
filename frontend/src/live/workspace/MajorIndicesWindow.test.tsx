@@ -24,6 +24,7 @@ describe('major indices window', () => {
     expect(screen.queryByTestId('window-pin-toggle')).toBeNull();
     expect(screen.queryByText('삼성전자')).toBeNull();
     expect(container.querySelector('[data-handle="move"]')).toHaveTextContent('×');
+    expect(container.querySelector('[data-handle="move"]')).toHaveTextContent('주요 지수');
     expect(container.querySelector('[data-handle="move"]')!.textContent).not.toMatch(/코스피|코스닥|K200|장중|%|⠿/);
     expect(container.querySelector('footer')).toBeNull();
   });
