@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { OrderbookSnapshot } from '../../api/types';
-import { afterHoursBookToSnapshot, afterHoursFillRows, useAfterHoursBook } from '../../api/liveAfterHoursBook';
+import { afterHoursBookToSnapshot, afterHoursFillRows, isAfterHoursSinglePriceWindow, useAfterHoursBook } from '../../api/liveAfterHoursBook';
+import type { BookQueryObservation } from '../bookAvailabilitySources';
 import { hasBookPrices, preAuctionCutoff, useLivePreAuctionBook } from '../../api/livePreAuctionBook';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { useEffectiveVenue, useKrxAftermarketExcluded, useNxtEnabledResolver } from '../useEffectiveVenue';
@@ -125,7 +126,14 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
   // that a cached/just-fetched ladder belongs to today. Wait for dated data.
   const allowRestBook = afterHoursTotals === null && (effectiveVenue !== 'KRX'
     || !morningReset || unixMsToKSTHhmm(nowMs) >= 2000);
+  const selectedSinglePrice = !isSpot && !krxAftermarketIntroduced(date)
+    && (isAfterHoursSinglePriceWindow(nowMs) || (modeGated && sessionMode === 'afterHours')) && showAfterHours;
+  const bookQuery: BookQueryObservation | undefined = selectedSinglePrice
+    ? { target: 'single_price', loading: afterHoursBook.isLoading, error: afterHoursBook.isError,
+      retry: () => afterHoursBook.refetch({ cancelRefetch: false }) }
+    : useRegularFallback ? { target: 'saved_regular', loading: preAuctionBook.isLoading, error: preAuctionBook.isError,
+      retry: () => preAuctionBook.refetch({ cancelRefetch: false }) } : undefined;
   return { snapshot, ladderSource, bookFresh, monitorBook, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
-    allowRestBook, morningReset, afterHoursTotals, afterHoursLabel: activeSinglePrice !== null ? '시간외 단일가' : '시간외',
+    allowRestBook, morningReset, afterHoursTotals, bookQuery, afterHoursLabel: activeSinglePrice !== null ? '시간외 단일가' : '시간외',
     sessionControl: timedSessionControl, sessionMode, selectSessionMode };
 }

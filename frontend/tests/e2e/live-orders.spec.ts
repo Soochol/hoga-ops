@@ -51,7 +51,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   }
   await page.route(/^https?:\/\/[^/]+\/api\/live\/stock-limits\?/, route => route.fulfill({ json: {
     code: subject.code, base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 1_578_000, low_250: 1_425_000,
-    high_250_date: null, low_250_date: null, fetched_at_ms: Date.now(), source: 'kiwoom',
+    high_250_date: null, low_250_date: null, fetched_at_ms: market.time ?? Date.now(), source: 'kiwoom',
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/accounts$/, route => route.fulfill({ json: { configured: true, accounts: Array.from({ length: accountCount }, (_, i) => ({ account_seq: i + 1, label: i === 0 ? '토스증권 · ****1234' : '토스증권 · ****5678' })) } }));
   let orders = Array.isArray(withOrder) ? withOrder : withOrder ? [mkOrder('old')] : [];
@@ -2855,7 +2855,7 @@ test('VI처럼 호가가 줄어도 중앙 경계·체결 위치를 유지하고 
     await expect(window.locator('.order-row')).toHaveCount(20);
     await expect(window.locator('.order-empty button, .order-empty [data-order-price]')).toHaveCount(0);
     await expect(window.locator('.order-row').nth(10)).toContainText('체결강도');
-    await expect(window.locator('.order-row').nth(19).locator('.order-info')).toContainText('901');
+    await expect(window.locator('.order-row').nth(11).locator('.order-trades-slot')).toContainText('901');
     await expect(window.getByTestId('book-summary')).toBeVisible();
     await expect(book.locator('.book-price-value')).toHaveCount(askCount + bidCount);
     await expect(async () => {
@@ -4536,5 +4536,67 @@ test('장전 종가: 하단 총잔량은 종료 후 지정가 주문으로 바�
   await page.clock.setFixedTime(new Date('2026-10-30T08:40:00+09:00'));
   await expect(strip.getByRole('button', { name: '장전 종가 매수 총잔량', exact: true })).toHaveCount(0);
   await strip.dblclick();
+  expect(commands).toHaveLength(0);
+});
+
+for (const fullPrices of [false, true]) {
+  test(`REST 복합 오류와 재시도는 ${fullPrices ? '전체' : '기본'} 호가 위치를 유지하고 원인을 함께 표시한다`, async ({ page }, testInfo) => {
+    const now = Date.parse('2026-10-24T10:15:00+09:00');
+    await page.clock.install({ time: now });
+    await setup(page, false, true, false, 0, 1, { venue: 'KRX', lastBook: 'ready', time: now });
+    const window = page.getByTestId('order-window');
+    if (fullPrices) await window.getByRole('button', { name: '전체 호가', exact: true }).click();
+    const viewport = window.getByRole('region', { name: '실시간 호가 주문 사다리' });
+    const row = window.locator('[data-order-price]').first();
+    const status = window.getByTestId('order-status-bar');
+    const original = { row: await row.boundingBox(), viewport: await viewport.boundingBox(), status: await status.boundingBox(),
+      scroll: await viewport.evaluate(element => element.scrollTop) };
+    let failed = true;
+    let requests = 0;
+    await page.route('**/api/live/last-orderbook?*', route => {
+      requests++;
+      return route.fulfill({ json: {
+        code: '456160', venue: 'KRX', source: 'stored', fetched_at_ms: now, checked_at_ms: now,
+        refresh_failed: failed, storage_failed: failed,
+        book: { ask: Array.from({ length: 10 }, (_, i) => ({ price: 49600 + i * 50, qty: 43 + i })),
+          bid: Array.from({ length: 10 }, (_, i) => ({ price: 49500 - i * 50, qty: 1 + i })),
+          tot_ask: 2033, tot_bid: 1759, book_time: '20:00:00' },
+      } });
+    });
+    await page.clock.runFor(60_100);
+    const notice = window.getByTestId('book-availability');
+    await expect(notice).toHaveAttribute('data-state', 'rest_error');
+    const stable = async () => {
+      expect(await row.boundingBox()).toEqual(original.row);
+      expect(await viewport.boundingBox()).toEqual(original.viewport);
+      expect(await status.boundingBox()).toEqual(original.status);
+      expect(await viewport.evaluate(element => element.scrollTop)).toBe(original.scroll);
+    };
+    await stable();
+    await notice.getByText('상세', { exact: true }).click();
+    await expect(notice.getByText('호가 저장 실패', { exact: true })).toBeVisible();
+    await stable();
+    await window.screenshot({ path: testInfo.outputPath(`rest-compound-overlay-${fullPrices ? 'full' : 'default'}.png`) });
+    failed = false;
+    const before = requests;
+    await notice.getByRole('button', { name: '다시 조회', exact: true }).click();
+    await expect(notice).toHaveCount(0);
+    expect(requests).toBe(before + 1);
+    await stable();
+  });
+}
+
+test('전체 호가에서 수신 사다리가 없어도 조회 실패 안내를 유지한다', async ({ page }) => {
+  const now = Date.parse('2026-10-24T10:15:00+09:00');
+  await page.clock.setFixedTime(now);
+  const { window, commands } = await setup(page, false, true, false, 0, 1, { venue: 'KRX', lastBook: 'failed', time: now });
+  await window.getByRole('button', { name: '전체 호가', exact: true }).click();
+  await expect(window.getByRole('button', { name: '전체 호가', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const notice = window.getByTestId('book-availability');
+  await expect(notice).toHaveCount(1);
+  await expect(notice).toHaveAttribute('data-state', 'rest_error');
+  await expect(notice).toContainText('마지막 호가 조회 실패');
+  await expect(window.locator('.book-status-overlay')).toContainText('마지막 호가 조회 실패');
+  await expect(window.locator('[data-order-price]').first()).toBeVisible();
   expect(commands).toHaveLength(0);
 });

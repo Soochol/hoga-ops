@@ -29,7 +29,6 @@ import { useRecentBookTrades } from './useRecentBookTrades';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { useOrderbookAvailability } from '../useOrderbookAvailability';
 import { BookAvailabilityState } from './BookAvailabilityState';
-import { RestOrderbookEmpty, RestOrderbookSource } from './RestOrderbookState';
 import { useLiveRestOrderbook } from '../../api/liveRestOrderbook';
 import { hasBookPrices } from '../../api/livePreAuctionBook';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
@@ -283,7 +282,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
   const { snapshot, ladderSource, bookFresh, monitorBook, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
-    allowRestBook, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
+    allowRestBook, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode, bookQuery } = useBookSessionDisplay({
     code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
   // Current REST data must never fill a historical cursor or replace a
@@ -478,9 +477,15 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const bookStale = !useSinglePrice && spotOrderbookStale;
   const { availability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
     live, bookMs: snapshot?.ts_ms, nowMs, exclusion: aftermarketExclusion,
+    hasBook: hasBookPrices(snapshot) || !!restBook, bookQuery,
+    rest: { enabled: needsRestBook, loading: live.isLoading || rest.isLoading, isError: rest.isError, data: rest.data,
+      retry: () => rest.refetch({ cancelRefetch: false }) },
     enabled: monitorBook && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
-  const bookAvailability = <BookAvailabilityState state={availability} onRetry={retryBook} />;
+  const bookAvailability = <BookAvailabilityState state={availability} onRetry={retryBook}
+    testId={needsRestBook && !restBook ? 'book-empty-book' : undefined}
+    reference={restBook ? { testId: 'book-rest-book-source',
+      text: `${rest.data?.source === 'stored' ? '저장된 마지막 호가' : 'REST 마지막 호가'} · ${restBook.book_time ?? '시각 미제공'} · ${effectiveVenue === 'UN' ? '통합' : effectiveVenue} · 거래일 미제공` } : undefined} />;
   // 조회 중에는 안내 행을 추가하지 않아 호가 사다리의 위치를 유지한다.
   const bookContextMode = scope.kind === 'second-cursor' ? '저장 호가' : null;
   // 스팟 조회 실패는 **패널을 대체한다**(칩으로 얹지 않는다). `useSpot` 이 실패분을
@@ -503,8 +508,6 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   }
   return (
     <div className="flex h-full flex-col">
-      {snapshot != null && !needsRestBook && bookAvailability}
-      {restBook && <RestOrderbookSource rest={rest} venue={effectiveVenue} testId="book-rest-book-source" />}
       {isSpot && (bookContextMode !== null || showAvailableHint || showFormingHint) && <DataContext
         mode={bookContextMode ?? ''}
         time={bookContextMode !== null ? snapshot?.ts_ms : undefined}
@@ -532,12 +535,12 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           </span>
         )}
       </DataContext>}
-      <div className="min-h-0 flex-1">
+      <div className="book-status-host">
+        {(hasBookPrices(snapshot) || restBook) && <div className="book-status-overlay">{bookAvailability}</div>}
         <BookPanel
           symbol={code}
           emptyState={isSpot && snapshot === null
             ? <div className="m-auto text-xs text-fg-dim">선택 시점의 저장 호가 없음</div>
-            : needsRestBook ? <RestOrderbookEmpty rest={rest} loading={live.isLoading || rest.isLoading} onRetry={retryBook} testId="book-empty-book" />
             : availability ? bookAvailability : undefined}
           snapshot={displayedBook}
           showEmptySummary={!restBook && !hasBookPrices(snapshot)}

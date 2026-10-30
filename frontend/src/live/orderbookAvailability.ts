@@ -3,7 +3,17 @@ import type { LiveVenueOption } from '../state/liveVenue';
 
 export type OrderbookAvailabilityKind = 'loading' | 'registering' | 'awaiting_book' | 'waiting_slot'
   | 'recovering' | 'unconfigured' | 'reference_limit' | 'query_error' | 'closed' | 'stale' | 'aftermarket_excluded'
-  | 'display_delayed' | 'timestamp_old';
+  | 'display_delayed' | 'timestamp_old' | 'status_error' | 'rest_error' | 'storage_error'
+  | 'provider_error' | 'empty' | 'single_price_error' | 'saved_error';
+export type BookRetryTarget = 'series' | 'status' | 'last_orderbook' | 'single_price' | 'saved_regular';
+export interface BookIssue {
+  kind: OrderbookAvailabilityKind;
+  message: string;
+  detail?: string;
+  action?: 'retry' | 'status';
+  retryTarget?: BookRetryTarget;
+  quiet?: boolean;
+}
 export interface BookDiagnostics {
   code: string;
   venue: LiveVenueOption;
@@ -14,15 +24,33 @@ export interface BookDiagnostics {
   checkedAtMs: number;
   message: string;
 }
-export interface OrderbookAvailability {
-  kind: OrderbookAvailabilityKind;
-  message: string;
-  detail?: string;
-  action?: 'retry' | 'status';
+export interface OrderbookAvailability extends BookIssue {
   lastBookMs?: number;
+  lastBookClock?: string;
   diagnostics?: BookDiagnostics;
-  /** Keep stale-book diagnostics while showing only the last update time. */
-  quiet?: boolean;
+  /** All observed causes, ordered by their effect on the displayed book. */
+  issues?: BookIssue[];
+}
+
+const PRIORITY: Record<BookIssue['kind'], number> = {
+  reference_limit: 100, unconfigured: 100, recovering: 95, waiting_slot: 90,
+  display_delayed: 85, query_error: 80, rest_error: 80, single_price_error: 80, saved_error: 80,
+  status_error: 60, provider_error: 55, storage_error: 50, aftermarket_excluded: 40,
+  closed: 35, loading: 30, registering: 25, awaiting_book: 20, empty: 15, stale: 10, timestamp_old: 10,
+};
+
+/** Keep secondary causes for details; only one cause owns the visible notice. */
+export function combineBookAvailability(states: (OrderbookAvailability | null | undefined)[]): OrderbookAvailability | null {
+  const present = states.filter((state): state is OrderbookAvailability => state != null);
+  if (!present.length) return null;
+  const issues = present.flatMap(state => state.issues ?? [state])
+    .filter((issue, index, all) => all.findIndex(other => other.kind === issue.kind && other.retryTarget === issue.retryTarget) === index)
+    .sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind]);
+  const primary = issues[0];
+  return { ...primary, quiet: primary.quiet === true, issues,
+    lastBookMs: present.find(state => state.lastBookMs !== undefined)?.lastBookMs,
+    lastBookClock: present.find(state => state.lastBookClock != null)?.lastBookClock,
+    diagnostics: present.find(state => state.diagnostics)?.diagnostics };
 }
 
 export const BOOK_STALE_MS = 30_000;
@@ -59,14 +87,15 @@ export function deriveOrderbookAvailability(input: {
     state = { kind: 'unconfigured', message: '실시간 시세 연결 설정이 필요합니다', action: 'status' };
   } else if (view?.phase === 'waiting_slot') state = { kind: 'waiting_slot', message: '실시간 구독 한도로 연결 대기 중',
     detail: '구독 슬롯이 반환되면 자동으로 연결됩니다', action: 'status' };
-  else if (!hasBook && input.error) state = { kind: 'query_error', message: '호가 불러오기 실패', action: 'retry' };
+  else if (!hasBook && input.error) state = { kind: 'query_error', message: '호가 불러오기 실패',
+    detail: '실시간 호가 이력을 조회하지 못했습니다. 기존 호가가 있으면 유지합니다.', action: 'retry', retryTarget: 'series' };
   else if (!connected || view?.phase === 'waiting_connection'
     || (kiwoom?.collector && !kiwoom.collector.ready)) {
     state = { kind: 'recovering', message: '실시간 연결 복구 중', action: 'status' };
   } else if (view?.phase === 'registering') state = { kind: 'registering', message: '실시간 호가 연결 중…' };
   else if (recentBookEvidence(serverReceived, nowMs) && !recentBookEvidence(input.browserReceivedMs, nowMs)) {
     state = { kind: 'display_delayed', message: '화면 호가 갱신 지연',
-      detail: '서버의 최근 호가 수신을 확인했습니다. 화면의 최신 호가 확인이 필요합니다', action: 'status' };
+      detail: '서버의 최근 호가 수신을 확인했습니다. 화면의 최신 호가 확인이 필요합니다', action: 'status', retryTarget: 'series' };
   } else if (hasBook) {
     if (recentBookEvidence(input.browserReceivedMs, nowMs)) {
       state = { kind: 'timestamp_old', message: '호가 시각 갱신 대기',
@@ -87,9 +116,16 @@ export function deriveOrderbookAvailability(input: {
       : { kind: 'registering', message: '실시간 호가 연결 중…', action: 'status' };
   }
   const provider = status?.provider_status;
-  const reportedIssue = input.error || input.statusFailed || provider?.failures?.length
-    || (provider && ['connecting', 'unavailable', 'partial', 'unconfigured'].includes(provider.connection))
-    || kiwoom?.collector?.error || kiwoom?.collector?.storage_errors?.length;
-  return hasBook ? { ...state, lastBookMs: bookMs,
-    quiet: (state.kind === 'stale' || state.kind === 'timestamp_old') && !reportedIssue } : state;
+  const states: OrderbookAvailability[] = [{ ...state, lastBookMs: bookMs,
+    quiet: hasBook && (state.kind === 'stale' || state.kind === 'timestamp_old') }];
+  if (input.error) states.push({ kind: 'query_error', message: '호가 불러오기 실패',
+    detail: '실시간 호가 이력을 조회하지 못했습니다. 기존 호가가 있으면 유지합니다.', action: 'retry', retryTarget: 'series' });
+  if (input.statusFailed) states.push({ kind: 'status_error', message: '호가 수신 상태 확인 실패',
+    detail: '연결 상태 조회에 실패했습니다. 호가 수신 중단이 확인된 것은 아닙니다.', action: 'status', retryTarget: 'status' });
+  if (provider?.failures?.length || (provider && ['connecting', 'unavailable', 'partial'].includes(provider.connection))
+    || kiwoom?.collector?.error) states.push({ kind: 'provider_error', message: '실시간 시세 서비스 확인 필요',
+    detail: '서비스에서 오류가 관측됐습니다. 이 종목의 호가 수신 상태는 상세에서 확인하세요.', action: 'status' });
+  if (kiwoom?.collector?.storage_errors?.length) states.push({ kind: 'storage_error', message: '실시간 데이터 저장 실패',
+    detail: '서버 저장 오류가 관측됐습니다. 호가 수신 여부와는 별개입니다.', action: 'status' });
+  return combineBookAvailability(states);
 }

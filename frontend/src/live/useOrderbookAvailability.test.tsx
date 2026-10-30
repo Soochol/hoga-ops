@@ -47,7 +47,7 @@ it('ignores pre-reconnect and stale status observations', () => {
   expect(hook.result.current.availability?.kind).toBe('awaiting_book');
   source.query.isError = true;
   hook.rerender({ code: '005930', venue: 'KRX', enabled: true });
-  expect(hook.result.current.availability?.kind).toBe('registering');
+  expect(hook.result.current.availability?.kind).toBe('status_error');
 });
 it('keeps a reference-limit reason after its toast is dismissed', () => {
   const hook = setup();
@@ -66,7 +66,7 @@ it('distinguishes an expired observation from a failed status request for an exi
   expect(hook.result.current.availability).toMatchObject({ kind: 'stale', quiet: true, lastBookMs: 67_000 });
   source.query.isError = true;
   hook.rerender();
-  expect(hook.result.current.availability).toMatchObject({ kind: 'stale', quiet: false });
+  expect(hook.result.current.availability).toMatchObject({ kind: 'status_error', retryTarget: 'status' });
   hook.unmount(); client.clear();
 });
 it('retries only the current code series query', () => {
@@ -115,4 +115,39 @@ it('explains exclusion even while a stored ladder disables live-delay reporting'
   }), { wrapper });
   expect(result.current.availability).toMatchObject({ kind: 'aftermarket_excluded',
     message: 'KRX 장후 거래 제외 · 투자경고종목' });
+});
+
+it('retries a failed status observation without fetching series or reconnecting', () => {
+  source.query.isError = true;
+  const hook = setup();
+  const invalidate = vi.spyOn(hook.client, 'invalidateQueries');
+  expect(hook.result.current.availability?.kind).toBe('status_error');
+  act(() => hook.result.current.retry());
+  expect(invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: ['live', 'status'], exact: true }, { cancelRefetch: false });
+  hook.unmount(); hook.client.clear();
+});
+
+it('retries only the failed selected REST or saved source, retaining its flags until recovery', () => {
+  const client = new QueryClient();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  const retryRest = vi.fn();
+  const retrySaved = vi.fn();
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  const hook = renderHook((enabled: boolean) => useOrderbookAvailability({
+    code: '005930', venue: 'KRX', live, nowMs: 100_000, enabled: false, hasBook: true,
+    rest: { enabled, loading: false, isError: true, retry: retryRest },
+    bookQuery: { target: 'saved_regular', loading: false, error: !enabled, retry: retrySaved },
+  }), { wrapper, initialProps: true });
+  expect(hook.result.current.availability?.kind).toBe('rest_error');
+  act(() => hook.result.current.retry());
+  expect(retryRest).toHaveBeenCalledOnce();
+  expect(retrySaved).not.toHaveBeenCalled();
+  expect(invalidate).not.toHaveBeenCalled();
+  expect(hook.result.current.availability?.kind).toBe('rest_error');
+  hook.rerender(false);
+  expect(hook.result.current.availability?.kind).toBe('saved_error');
+  act(() => hook.result.current.retry());
+  expect(retrySaved).toHaveBeenCalledOnce();
+  expect(retryRest).toHaveBeenCalledOnce();
+  hook.unmount(); client.clear();
 });

@@ -45,7 +45,6 @@ import { bookDayMarkers } from './bookDayMarkers';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { useOrderbookAvailability } from '../useOrderbookAvailability';
 import { BookAvailabilityState } from './BookAvailabilityState';
-import { RestOrderbookEmpty, RestOrderbookSource } from './RestOrderbookState';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
@@ -167,7 +166,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
   const { snapshot, ladderSource, bookFresh, monitorBook, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
-    allowRestBook, morningReset, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
+    allowRestBook, morningReset, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode, bookQuery } = useBookSessionDisplay({
     code, venue, nowMs: now, todayKst, isSpot: false, regularSnapshot: latestSnapshot,
     latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
@@ -182,6 +181,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     ? rest.data.book : null;
   const { availability: bookAvailability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
     live, bookMs: snapshot?.ts_ms, nowMs: now, exclusion: aftermarketExclusion,
+    hasBook: hasBookPrices(snapshot) || !!restBook, bookQuery,
+    rest: { enabled: needsRestBook, loading: loadingLastBook, isError: rest.isError, data: rest.data,
+      retry: () => rest.refetch({ cancelRefetch: false }) },
     enabled: monitorBook && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
@@ -895,8 +897,10 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         }}
         render={() => settingsDraft && <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
-    {snapshot != null && !needsRestBook && <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />}
-    {restBook && <RestOrderbookSource rest={rest} venue={effectiveVenue} testId="order-rest-book-source" showProvenance={false} />}
+    <div className="book-status-host">
+      {(explorer.enabled || hasBookPrices(snapshot) || restBook) && <div className="book-status-overlay">
+        <BookAvailabilityState state={bookAvailability} onRetry={retryBook} testId={restBook ? 'order-rest-book-source' : undefined} />
+      </div>}
     <div ref={priceViewportRef} className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리"
       tabIndex={explorer.enabled ? 0 : undefined} onKeyDown={explorer.onKeyDown}
       onPointerDown={explorer.onPointerDown} onPointerMove={explorer.onPointerMove} onPointerUp={explorer.onPointerUp}
@@ -913,7 +917,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           <span data-lane-probe className="order-total-probe" data-figure={samples.total} />
         </span>
         {explorer.enabled ? explorer.prices.map(fullPriceRow) : prices.length === 0 ? <div className={`order-empty-layout ${expanded ? 'order-empty-expanded' : ''}`}>
-          <div>{needsRestBook ? <RestOrderbookEmpty rest={rest} loading={loadingLastBook} onRetry={retryBook} testId="order-empty-book" /> : bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />
+          <div>{bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} testId={needsRestBook ? 'order-empty-book' : undefined} />
             : <p className="order-notice">{afterHoursTotals ? '호가 사다리 없음 (총잔량만 수신 중)' : '현재 표시할 호가가 없습니다'}</p>}</div>
           <div className="order-empty-summary">{renderSummary(264)}</div>
         </div>
@@ -974,6 +978,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           })}
         </div>
       </div>
+    </div>
     </div>
     {(showPreopen || book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip
       totals={displayTotals}

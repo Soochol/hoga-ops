@@ -1,0 +1,14 @@
+/* Overlays are siblings of the scroll region: never alter its size or scroll anchoring. */
+.book-status-host { position:relative; display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; }
+.order-window > .book-status-host { min-height:160px; }
+.book-status-overlay { position:absolute; inset:0; z-index:3; overflow:hidden; pointer-events:none; }
+.book-notice-surface { pointer-events:auto; margin:8px; padding:6px 10px; max-height:calc(100% - 16px); overflow:auto; overscroll-behavior:contain; font-size:var(--text-xs); line-height:1.6; color:var(--fg-dim); background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); overflow-wrap:anywhere; }
+.book-notice-surface[data-tone=warn] .book-notice-heading { color:var(--warn); }
+.book-notice-surface[data-tone=error] .book-notice-heading { color:var(--error); }
+.book-notice-heading,.book-notice-actions { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; }
+.book-notice-surface button { padding:1px 6px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-input); color:var(--fg); font:inherit; }
+.book-notice-surface button:hover { background:var(--bg-input-hover); }
+.book-notice-actions details { flex-basis:100%; min-width:0; }
+.book-notice-actions summary { cursor:pointer; width:fit-content; }
+.book-notice-details { display:flex; flex-direction:column; gap:6px; padding-top:4px; }
+.book-notice-details p { margin:0; }

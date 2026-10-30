@@ -336,3 +336,54 @@ test('an investment-warning designation does not replace normal-session book del
   await expect(states).toHaveCount(0);
   await expect(page.getByText(/KRX 장후 거래 제외/)).toHaveCount(0);
 });
+
+test('book notices and expanded details never shift the order ladder or its fixed status bar', async ({ page }, testInfo) => {
+  const fixture = await setup(page);
+  fixture.setPhase('registered');
+  fixture.ws.pushLive(CODE, { kind: 'ob', venue: 'KRX', t_ms: NOW,
+    asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
+    total_ask_qty: 100, total_bid_qty: 200 });
+  const window = page.getByTestId('order-window');
+  const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  const viewport = window.getByRole('region', { name: '실시간 호가 주문 사다리' });
+  const status = window.getByTestId('order-status-bar');
+  await expect(buy).toHaveAttribute('aria-disabled', 'false');
+  const original = { row: await buy.boundingBox(), viewport: await viewport.boundingBox(), status: await status.boundingBox(),
+    scroll: await viewport.evaluate(element => element.scrollTop) };
+  const stable = async () => {
+    expect(await buy.boundingBox()).toEqual(original.row);
+    expect(await viewport.boundingBox()).toEqual(original.viewport);
+    expect(await status.boundingBox()).toEqual(original.status);
+    expect(await viewport.evaluate(element => element.scrollTop)).toBe(original.scroll);
+  };
+  await page.clock.runFor(31_000);
+  await expect(window.getByTestId('book-last-update')).toBeVisible();
+  await stable();
+  fixture.setStatusFailure(true);
+  await page.clock.runFor(15_000);
+  const notice = window.getByTestId('book-availability');
+  await expect(notice).toHaveAttribute('data-state', 'status_error');
+  await stable();
+  await notice.getByText('상세', { exact: true }).click();
+  await expect(notice.getByText('연결 상태 조회에 실패했습니다.', { exact: false })).toBeVisible();
+  await stable();
+  // The surface receives pointer events even where it covers a price row.
+  const surface = window.locator('.book-notice-surface');
+  const box = await surface.boundingBox();
+  expect(box).not.toBeNull();
+  expect(await surface.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return element.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + 4));
+  })).toBe(true);
+  await surface.dblclick({ position: { x: 5, y: 5 } });
+  await expect(window.getByRole('alert', { name: '주문 알림', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('orderbook-overlay-stable.png') });
+  fixture.setStatusFailure(false);
+  const fresh = await page.evaluate(() => Date.now());
+  fixture.ws.pushLive(CODE, { kind: 'ob', venue: 'KRX', t_ms: fresh,
+    asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
+    total_ask_qty: 100, total_bid_qty: 200 });
+  await expect(notice).toHaveCount(0);
+  await expect(buy).toHaveAttribute('aria-disabled', 'false');
+  await stable();
+});
