@@ -1,6 +1,6 @@
 import { AppIcon } from '../../ui/AppIcon';
 import { useThemePrefsStore } from '../../state/themePrefs';
-import { useState, useEffect, useRef, useCallback, useContext, Fragment, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useContext, useId, Fragment, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useChartPrefActions, useScopedChartPrefs } from '../../state/chartPrefs';
 import { useIndicatorActions, useWindowIndicators, useWindowIndicatorScope, WindowViewContext } from '../workspace/windowView';
@@ -22,8 +22,11 @@ import { isCalendarTimeframe, isSecondTimeframe, type LiveTimeframe } from '../.
 import { SettingsEditor } from '../settings/SettingsEditor';
 import { useSettingsUndo } from '../settings/useSettingsUndo';
 import { readIndicatorEditor, restoreIndicatorEditor, subscribeIndicatorEditor } from '../settings/editorSnapshots';
-import { type CategoryId, type GroupId, type Placement, CATEGORIES } from './IndicatorPanelHelpers';
+import { type CategoryId, type GroupId, CATEGORIES } from './IndicatorPanelHelpers';
 import { indicatorResetPatch } from './indicatorReset';
+import { CompactSettingsContext, SettingsDescriptionTooltipContext } from '../settings/SettingsRow';
+import { IndicatorExplanationContext } from './IndicatorExplanation';
+import './IndicatorEditor.css';
 
 const GROUP_LABEL: Record<GroupId, string> = {
   top: '상단 지표',
@@ -52,12 +55,6 @@ function HighlightedLabel({ label, query }: { label: string; query: string }) {
     </>
   );
 }
-
-const PLACEMENT_LABEL: Record<Placement, string> = {
-  overlay: '캔들 오버레이',
-  pane: '하단 패널',
-};
-
 
 // 모든 지표 설정이 현재 봉(분/일/주/월) 버킷에 저장되므로(#699), 카테고리별
 // 스코프 칩 대신 헤더에 '현재: 분봉' 배지 하나로 스코프를 알린다(PR-C).
@@ -194,6 +191,8 @@ export default function IndicatorPanel({
   // 우측 상세가 어느 카테고리를 보여주는가. 행의 라벨을 누르면 여기가 바뀐다 —
   // 추가 여부와 무관하다(아직 없는 지표도 골라서 미리 볼 수 있다).
   const [selected, setSelected] = useState<CategoryId>('moving-average');
+  const [helpFor, setHelpFor] = useState<CategoryId | null>(null);
+  const helpId = useId();
   // 좌측 목록의 모드 — 내 지표(존재하는 것) / 카탈로그(추가할 수 있는 것).
   //
   // 2026-08-26 에 한 번 단일 리스트로 합쳤다가 **사용자 결정으로 되돌렸다**. 합친
@@ -417,11 +416,13 @@ export default function IndicatorPanel({
       height={WORKSPACE_PANEL_HEIGHT_CLASS}
       onClose={handleEscape}
     >
+      <CompactSettingsContext.Provider value><SettingsDescriptionTooltipContext.Provider value>
+      <IndicatorExplanationContext.Provider value={helpFor === selectedId}>
       <SettingsEditor title="보조지표" onClose={onClose} undo={undo} testId="indicator-panel-shell" className="indicator-editor"
         scope={<span data-testid="indicator-panel-scope-badge">{targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}</span>}
         actions={<IndicatorPanelMenu open={menuOpen} onOpenChange={setMenuOpen}
           resetLabel={`${currentTimeframeLabel} 지표 초기화`} confirmLabel={`${currentTimeframeLabel} 초기화?`} onReset={handleReset} />}
-        footer={draft ? '설정한 값은 추가할 때 적용돼요.' : '변경 즉시 반영 · 현재 차트에 저장'}
+        footer={draft ? '추가 전' : '즉시 반영'}
         statusIcon={draft ? null : undefined}
         footerAction={mode === 'catalog' && !emptyCatalog && (draft || selectedAdded) ? (draft
           ? <CatalogAddButton count={ind.indicatorInstances?.length ?? 0} draft={draft} category={selectedId} onAdd={() => addFor(selectedId)} />
@@ -439,7 +440,7 @@ export default function IndicatorPanel({
                 { value: 'mine', label: '내 지표', testId: mode === 'catalog' ? 'indicator-panel-mode-toggle' : undefined },
                 { value: 'catalog', label: '지표 추가', testId: mode === 'mine' ? 'indicator-panel-mode-toggle' : undefined },
               ]}
-              onChange={next => { setMode(next); setLastAdded(null); setQuery(''); setKbdIndex(-1); }} />
+              onChange={next => { setMode(next); setLastAdded(null); setQuery(''); setKbdIndex(-1); setHelpFor(null); }} />
             <div className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-2 focus-within:border-accent">
               <AppIcon name="search" className="text-fg-dim" />
               <input
@@ -493,7 +494,7 @@ export default function IndicatorPanel({
                     kbdIndex={i}
                     query={trimmedQuery}
                     dotColors={added ? dotColorsFor(c.id, ind, theme) : EMPTY_DOT_COLORS}
-                    onSelect={() => { setSelected(c.id); setLastAdded(null); setSelectedInstance(instancesFor(c.id)[0]?.id ?? PRIMARY_INDICATOR_ID); }}
+                    onSelect={() => { setSelected(c.id); setLastAdded(null); setHelpFor(null); setSelectedInstance(instancesFor(c.id)[0]?.id ?? PRIMARY_INDICATOR_ID); }}
                     action={mode === 'mine' && added && instancesFor(c.id).length === 1
                       ? { label: `${c.label} 삭제`, onClick: () => removeFor(c.id, instancesFor(c.id)[0].id) }
                       : undefined}
@@ -502,7 +503,7 @@ export default function IndicatorPanel({
                     {instancesFor(c.id).map((row, ri) => <div className="indicator-instance-row" key={row.id}>
                       <button type="button" className={selectedId === c.id && currentId === row.id ? 'is-selected' : ''}
                         aria-label={`${c.label} ${ri + 1} 설정`} aria-current={selectedId === c.id && currentId === row.id ? 'true' : undefined}
-                        onClick={() => { setSelected(c.id); setSelectedInstance(row.id); }}>
+                        onClick={() => { setSelected(c.id); setSelectedInstance(row.id); setHelpFor(null); }}>
                         <span className="font-data">{ri + 1}</span><span>{indicatorInstanceSummary(c.id, row.settings)}</span>
                       </button>
                       <button type="button" aria-label={`${c.label} ${ri + 1} ${row.hidden ? '표시' : '숨기기'}`} onClick={() => toggleInstance(c.id, row.id)}><EyeGlyph hidden={row.hidden === true} /></button>
@@ -522,19 +523,22 @@ export default function IndicatorPanel({
       </div>}
       >
           <div className="settings-editor-detail-heading">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-fg-dim">{GROUP_LABEL[selectedCategory.group]} · {PLACEMENT_LABEL[selectedCategory.placement]}</div>
-              <span className="text-xs text-fg-dim">{draft ? '추가 전' : selectedAdded ? '차트에 추가됨' : ''}</span>
+            <div className="indicator-detail-title">
+              <h3>{emptyCatalog ? '지표 추가' : selectedCategory.label}</h3>
+              {!emptyCatalog && <button type="button" className="ui-icon-button" aria-label={`${selectedCategory.label} 설명`}
+                aria-expanded={helpFor === selectedId} aria-controls={helpFor === selectedId ? helpId : undefined}
+                data-tooltip="지표 설명" onClick={() => setHelpFor(value => value === selectedId ? null : selectedId)}>
+                <AppIcon name="help" />
+              </button>}
             </div>
-            <h3>{emptyCatalog ? '지표 추가' : selectedCategory.label}</h3>
             {!draft && currentInstance && <div className="indicator-instance-actions">
-              <span>{indicatorInstanceSummary(selectedId, currentInstance.settings)}</span>
               <button type="button" onClick={() => toggleInstance(selectedId, currentId)}>{currentInstance.hidden ? '표시' : '숨기기'}</button>
               <button type="button" onClick={() => removeFor(selectedId, currentId)}>삭제</button>
-              <button type="button" onClick={copyInstance}>설정 복사해서 추가</button>
+              <button type="button" aria-label="설정 복사해서 추가" onClick={copyInstance}>복사해서 추가</button>
               <button type="button" aria-label={`${selectedCategory.label} 초기화`} onClick={resetCurrentInstance}>초기화</button>
             </div>}
-            <p className="settings-editor-description mt-1">{emptyCatalog ? '' : selectedCategory.description}</p>
+            {!emptyCatalog && selectedCategory.notice && <p className="indicator-config-notice">{selectedCategory.notice}</p>}
+            {!emptyCatalog && helpFor === selectedId && <p id={helpId} className="settings-editor-description indicator-help-description">{selectedCategory.description}</p>}
           </div>
           <section
             aria-label={selectedCategory.label}
@@ -548,6 +552,8 @@ export default function IndicatorPanel({
                 : <p className="text-sm text-fg-dim">{mode === 'mine' ? '지표 추가에서 원하는 지표를 골라 주세요.' : '추가할 수 있는 지표를 전부 쓰고 있습니다.'}</p>}
           </section>
       </SettingsEditor>
+      </IndicatorExplanationContext.Provider>
+      </SettingsDescriptionTooltipContext.Provider></CompactSettingsContext.Provider>
     </ModalShell>
   );
 }
@@ -555,5 +561,5 @@ export default function IndicatorPanel({
 /** The footer follows the same draft store as the form, including zero-slot validation. */
 function CatalogAddButton({ draft, category, onAdd, count }: { count: number; draft: CatalogDraft; category: CategoryId; onAdd: () => void }) {
   const canAdd = useStore(draft.store, s => indicatorIsPresent(category, s.settings));
-  return <button type="button" className="indicator-catalog-add" onClick={onAdd} disabled={!canAdd || count >= MAX_INDICATOR_INSTANCES} data-tooltip={count >= MAX_INDICATOR_INSTANCES ? '추가한 지표가 128개입니다' : undefined}>설정대로 추가</button>;
+  return <button type="button" className="indicator-catalog-add" aria-label="설정대로 추가" onClick={onAdd} disabled={!canAdd || count >= MAX_INDICATOR_INSTANCES} data-tooltip={count >= MAX_INDICATOR_INSTANCES ? '추가한 지표가 128개입니다' : undefined}>추가</button>;
 }

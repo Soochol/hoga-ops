@@ -11,6 +11,7 @@ import {
   type ChartToggleKey,
 } from '../../state/chartPrefs';
 import { SettingsRow, ToggleSwitch } from '../settings/SettingsRow';
+import { IndicatorExplanation } from './IndicatorExplanation';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 import type { PeakWallPaneMode } from '../../state/liveIndicatorsPersistence';
@@ -664,10 +665,10 @@ function PaneStage() {
         </span>
       )}
     >
-      <p className="text-2xs leading-relaxed text-fg-dim">
+      <IndicatorExplanation>
         ② 계열의 pane 스위치로 하단 패널을 켭니다. 매도·매수가 함께 사용하며,{' '}
         <b className="font-semibold text-fg">모두 끄면 패널을 숨깁니다</b>.
-      </p>
+      </IndicatorExplanation>
       <PaneSlotSummary />
       <PaneModeRow />
     </Stage>

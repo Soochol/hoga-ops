@@ -2,6 +2,7 @@ import { useState } from 'react';
 import LineVisibilityRow from './LineVisibilityRow';
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
 import MAStylePicker from './MAStylePicker';
+import { IndicatorExplanation } from './IndicatorExplanation';
 
 export default function SupertrendConfig() {
   const settings = useWindowIndicators();
@@ -46,7 +47,7 @@ export default function SupertrendConfig() {
             })} />
         </LineVisibilityRow>
       ))}
-      <p className="text-xs text-fg-dim">설정한 봉 수가 쌓이면 표시됩니다. 진행 중인 봉의 추세는 바뀔 수 있으며, 두 선의 두께는 함께 적용됩니다.</p>
+      <IndicatorExplanation summary="진행 중인 봉의 추세는 바뀔 수 있습니다. 두 선의 두께는 함께 적용됩니다.">설정한 봉 수가 쌓이면 표시됩니다. 진행 중인 봉의 추세는 바뀔 수 있으며, 두 선의 두께는 함께 적용됩니다.</IndicatorExplanation>
     </div>
   );
 }

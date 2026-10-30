@@ -21,7 +21,7 @@ it.each(CATEGORIES)('$label has reset immediately after copy and retains its pre
   render(<IndicatorPanel timeframe={tf} onClose={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: category.label }));
   const reset = screen.getByRole('button', { name: `${category.label} 초기화` });
-  expect(reset.previousElementSibling).toHaveTextContent('설정 복사해서 추가');
+  expect(reset.previousElementSibling).toHaveTextContent('복사해서 추가');
   fireEvent.click(reset);
   expect(indicatorIsPresent(category.id, useLivePageStore.getState())).toBe(true);
   await act(() => new Promise(resolve => setTimeout(resolve, 0)));

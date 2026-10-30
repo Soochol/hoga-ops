@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import MAStylePicker from './MAStylePicker';
+import { IndicatorExplanation } from './IndicatorExplanation';
 
 export default function NewHighBearishConfig() {
   const s = useWindowIndicators();
@@ -44,7 +45,7 @@ export default function NewHighBearishConfig() {
       시가선<MAStylePicker label="신고가 음봉 시가선" color={s.newHighBearishColor} lineWidth={s.newHighBearishLineWidth}
         onChange={patch => setNewHighBearishSettings({ ...(patch.color ? { newHighBearishColor: patch.color } : {}), ...(patch.lineWidth ? { newHighBearishLineWidth: patch.lineWidth } : {}) })} />
     </div>
-    <p className="text-xs text-fg-dim">하락률은 양수로 입력합니다. 신고가 다음 거래일부터 음봉·저가 하락률·종가의 5일선 하회를 모두 만족한 봉을 찾습니다. 5일선에는 해당 봉의 종가를 포함합니다.</p>
-    <p className="text-xs text-fg-dim">마감된 국내 종목 일봉만 판정합니다. 신고가 갱신 시 개수를 다시 세며 기존 선은 유지합니다. 선은 발생일부터 설정한 개월까지 확장하며, 현재 봉 이후 여백은 기존 그리기 좌표 규칙을 따릅니다. 불러온 일봉에 N거래일의 선행 자료가 있는 구간부터 계산합니다.</p>
+    <IndicatorExplanation summary="하락률은 양수로 입력합니다.">하락률은 양수로 입력합니다. 신고가 다음 거래일부터 음봉·저가 하락률·종가의 5일선 하회를 모두 만족한 봉을 찾습니다. 5일선에는 해당 봉의 종가를 포함합니다.</IndicatorExplanation>
+    <IndicatorExplanation summary="마감된 국내 종목 일봉 전용 · N거래일 선행 자료가 있는 구간부터 계산합니다.">마감된 국내 종목 일봉만 판정합니다. 신고가 갱신 시 개수를 다시 세며 기존 선은 유지합니다. 선은 발생일부터 설정한 개월까지 확장하며, 현재 봉 이후 여백은 기존 그리기 좌표 규칙을 따릅니다. 불러온 일봉에 N거래일의 선행 자료가 있는 구간부터 계산합니다.</IndicatorExplanation>
   </div>;
 }

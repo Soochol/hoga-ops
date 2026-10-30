@@ -108,7 +108,7 @@ export default function IndicatorStylePreview({ category, settings }: { category
   const y = (value: number) => 106 - (value - low) / (high - low) * 96;
   const x = (index: number) => 8 + index / 39 * 464;
   return <figure className="indicator-style-preview" aria-label="지표 스타일 미리보기" data-testid="indicator-style-preview">
-    <figcaption><span>스타일 미리보기</span><span>예시 데이터 · 스타일 확인용</span></figcaption>
+    <figcaption><span>미리보기</span><span>예시</span></figcaption>
     {(controlled || lines.length > 0) ? <svg viewBox="0 0 480 116" role="img" aria-label="설정한 색상과 두께를 반영한 지표 예시">
       <defs><clipPath id={clipId}><rect width="480" height="116" /></clipPath></defs>
       <g clipPath={`url(#${clipId})`}>
@@ -125,6 +125,6 @@ export default function IndicatorStylePreview({ category, settings }: { category
       </g>
     </svg> : <div className="indicator-style-swatches">{colors.map((color, index) => <span key={index} style={{ background: color }} aria-label={`선택 색상 ${index + 1}: ${color}`} />)}</div>}
     {controlled && lines.length === 0 && <p className="text-xs text-fg-dim">표시 중인 선이 없습니다.</p>}
-    {lines.length > 0 && <div className="indicator-style-legend">{lines.map((line, index) => <span key={index}><i style={{ background: line.color, height: line.width }} />{line.label}</span>)}</div>}
+    {lines.length > 0 && category !== 'moving-average' && category !== 'daily-moving-average' && <div className="indicator-style-legend">{lines.map((line, index) => <span key={index}><i style={{ background: line.color, height: line.width }} />{line.label}</span>)}</div>}
   </figure>;
 }

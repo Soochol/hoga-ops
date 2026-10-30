@@ -44,9 +44,6 @@
 .window-settings-editor .settings-row-label { display: flex; align-items: center; flex: 1; padding-block: var(--space-2xs); cursor: pointer; line-height: 1.5; }
 .window-settings-editor .opacity-50 .settings-row-label { cursor: not-allowed; }
 .window-settings-editor .settings-row-control { display: flex; align-items: center; gap: var(--space-xs); flex-shrink: 0; max-width: none; }
-.window-settings-switch { width: 1.625rem; height: .9375rem; }
-.window-settings-switch-knob { width: .6875rem; height: .6875rem; transform: translateX(1px); }
-.window-settings-switch[aria-checked=true] > .window-settings-switch-knob { transform: translateX(.75rem); }
 .window-settings-editor .window-settings-disclosure {
   width: 1.5rem; height: 1.5rem; padding: 0; flex-shrink: 0; display: inline-flex;
   align-items: center; justify-content: center; color: var(--fg-dim); border-radius: var(--radius-md);

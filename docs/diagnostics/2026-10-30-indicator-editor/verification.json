@@ -1,0 +1,57 @@
+{
+  "checked_at_kst": "2026-10-30T21:50:57.437185+09:00",
+  "branch": "codex/compact-indicator-settings",
+  "head_and_base_sha": "1c2a5b0426a77a6161a5b11773b1afa08621e2ae",
+  "origin_main_sha": "1c2a5b0426a77a6161a5b11773b1afa08621e2ae",
+  "worktree_changes": "Uncommitted indicator-editor implementation on the recorded base; input hashes identify the tested source.",
+  "inputs": {
+    "scope": "All tracked/untracked frontend, hoga and tests files, plus .python-version, pyproject.toml and uv.lock; ignored dependencies and build outputs excluded.",
+    "file_count": 2905,
+    "sha256": "cc4ce0f6513474fc909cf14cf7213eef5eadead7d6f8f8341d53129b059c95a7"
+  },
+  "runtime": {
+    "node": "v24.13.1",
+    "react": "18.3.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "python": "Python 3.14.7",
+    "browser": "Google Chrome 156.0.8078.73"
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed: app, unit-test and E2E TypeScript projects"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/indicators src/live/settings src/live/workspace/WorkspaceIndicatorDrawer.test.tsx src/live/workspace/secondsIndicatorSettings.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx src/live/workspace/WindowSettingsPopover.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/MajorIndicesWindow.test.tsx",
+      "result": "passed: 58 files, 776 tests"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed: 3439 modules, 7.41s"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test tests/e2e/indicator-compact.spec.ts tests/e2e/indicator-configure-before-add.spec.ts tests/e2e/indicator-line-visibility.spec.ts tests/e2e/indicator-instances.spec.ts tests/e2e/indicator-reset.spec.ts tests/e2e/settings-editor.spec.ts tests/e2e/live-window-settings.spec.ts --grep 'indicator-(compact|configure-before-add|line-visibility|instances|reset)\\.spec\\.ts|보조지표 스타일|공통 24px' --reporter=line",
+      "result": "passed: 19 tests, one worker, desktop Chrome; dedicated backend 20318 / frontend 21318, empty vendor credentials"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "review": [
+    "All 20 indicator categories retain the existing modal, master/detail, search, catalog draft and undo structure.",
+    "Shared ToggleSwitch geometry: 26x15px in both window sheets and indicator editor, including explicit small controls. Labels and Space keyboard input toggle once.",
+    "Descriptions are opt-in through title help or shared label/control tooltips. Units, limits, field errors, auction exclusions, shared line width, uncollected seconds and provisional data notices remain visible.",
+    "Existing tests verify configure-before-add isolation, preview updates, per-window/timeframe/instance persistence, repeated addition, copy, reset, undo and palette Escape.",
+    "Reviewed actual application screenshots in Toss Light and Trading Desk, including the 320px layout."
+  ],
+  "main_update": "Updated to 1c2a5b0426a77a6161a5b11773b1afa08621e2ae before final type/unit/build/browser checks; earlier results on 517b0e181 are not reused.",
+  "limits": "UI-only changes. No production server restart/deployment, real vendor credentials or production orders."
+}
