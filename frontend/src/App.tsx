@@ -143,6 +143,7 @@ export default function App() {
   return (
     <div
       data-testid="app-content-grid"
+      data-floating-tool={floating && window.hogaDesktop?.floatingToolWindow ? '' : undefined}
       // 반응형 바닥(--app-floor-min-w): 유효 폭이 바닥 미만이면 셸이 계속 눌리는 대신
       // #root 가 가로 스크롤을 얻는다(global.css). 바닥을 정하는 건 페이지 콘텐츠가
       // 아니라 전 라우트가 공유하는 셸 크롬이고, 현재 병목은 **TopNav** 다 —

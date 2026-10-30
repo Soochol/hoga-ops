@@ -1,5 +1,6 @@
 const { test, expect, _electron: electron } = require('@playwright/test');
 const { createServer } = require('node:http');
+const { execFileSync } = require('node:child_process');
 const { mkdtemp, mkdir, rm, writeFile, readFile } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
@@ -281,9 +282,20 @@ test('floating controls retain sandboxing, control the OS window and notify the 
     await expect(floating.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
     const prefs = await app.evaluate(({ BrowserWindow }, token) => {
       const win = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes(token));
-      return { sandbox: win.webContents.getLastWebPreferences().sandbox, node: win.webContents.getLastWebPreferences().nodeIntegration, minimum: win.getMinimumSize() };
+      return { sandbox: win.webContents.getLastWebPreferences().sandbox, node: win.webContents.getLastWebPreferences().nodeIntegration,
+        minimum: win.getMinimumSize(), parentUrl: win.getParentWindow()?.webContents.getURL(),
+        frameInsets: { w: win.getBounds().width - win.getContentBounds().width, h: win.getBounds().height - win.getContentBounds().height } };
     }, token);
-    expect(prefs).toEqual({ sandbox: true, node: false, minimum: [160, 120] });
+    expect(prefs).toEqual({ sandbox: true, node: false, minimum: [160, 120], parentUrl: server.origin + '/live', frameInsets: { w: 0, h: 0 } });
+    expect(await floating.evaluate(() => window.hogaDesktop.floatingToolWindow)).toBe(true);
+    if (process.platform === 'linux' && process.env.HOGA_DESKTOP_TEST_PLATFORM === 'x11') {
+      const nativeId = await app.evaluate(({ BrowserWindow }, token) => BrowserWindow.getAllWindows()
+        .find(win => win.webContents.getURL().includes(token)).getNativeWindowHandle().readUInt32LE(0).toString(16), token);
+      const hints = () => execFileSync('xprop', ['-id', '0x' + nativeId, '_NET_WM_WINDOW_TYPE', '_NET_WM_STATE', 'WM_TRANSIENT_FOR', '_MOTIF_WM_HINTS'], { encoding: 'utf8' });
+      await expect.poll(hints).toMatch(/_NET_WM_WINDOW_TYPE_(UTILITY|DIALOG)/);
+      await expect.poll(hints).toContain('_NET_WM_STATE_SKIP_TASKBAR');
+      expect(hints()).toMatch(/WM_TRANSIENT_FOR.*window id # 0x/);
+    }
     await floating.evaluate(() => window.hogaDesktop.controls.setFloatingAlwaysOnTop(true));
     expect((await floating.evaluate(() => window.hogaDesktop.controls.floatingState())).alwaysOnTop).toBe(true);
     await floating.evaluate(() => window.hogaDesktop.controls.setFloatingAlwaysOnTop(false));
@@ -306,5 +318,62 @@ test('floating controls retain sandboxing, control the OS window and notify the 
     await closed;
     await expect.poll(() => content.evaluate(() => window.closedFloating)).toEqual([token, token]);
     expect(await app.evaluate(() => globalThis.floatingMainErrors)).toEqual([]);
+  } finally { if (app) await app.close(); await server.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+
+test('tool windows hide and restore with their owner, including tools loaded while hidden', async () => {
+  const server = await fixture(); const dir = await mkdtemp(join(tmpdir(), 'ticklane-tools-owner-'));
+  let app;
+  try {
+    app = await launch(dir, process.env.HOGA_DESKTOP_EXECUTABLE);
+    const launcher = await app.firstWindow();
+    const contentEvent = app.waitForEvent('window');
+    await connect(launcher, server.origin);
+    const content = await contentEvent;
+    await expect(content.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    const ownerId = await app.evaluate(({ BrowserWindow }, url) => BrowserWindow.getAllWindows().find(win => win.webContents.getURL() === url).id, content.url());
+    const openTool = async (page, index) => {
+      const token = `12345678-1234-1234-1234-${String(index).padStart(12, '0')}`;
+      const event = app.waitForEvent('window');
+      await page.evaluate(({ origin, token }) => window.hogaDesktop.controls.openFloating(`${origin}/live?floating=${token}&window=w${token.slice(-1)}`, 320, 260), { origin: server.origin, token });
+      const tool = await event;
+      await expect(tool.getByRole('heading', { name: 'Fixture workspace' })).toBeAttached();
+      return { page: tool, token };
+    };
+    const one = await openTool(content, 1);
+    const two = await openTool(content, 2);
+    const otherEvent = app.waitForEvent('window');
+    await content.evaluate(() => window.hogaDesktop.controls.newWindow());
+    const other = await otherEvent;
+    await expect(other.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    const unrelated = await openTool(other, 3);
+    const visible = async token => app.evaluate(({ BrowserWindow }, token) => BrowserWindow.getAllWindows()
+      .find(win => win.webContents.getURL().includes(token))?.isVisible() ?? false, token);
+    await expect.poll(() => visible(one.token)).toBe(true);
+    await expect.poll(() => visible(two.token)).toBe(true);
+    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).minimize(), ownerId);
+    await expect.poll(() => visible(one.token)).toBe(false);
+    await expect.poll(() => visible(two.token)).toBe(false);
+    expect(await visible(unrelated.token)).toBe(true);
+    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).restore(), ownerId);
+    await expect.poll(() => visible(one.token)).toBe(true);
+    await expect.poll(() => visible(two.token)).toBe(true);
+    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).hide(), ownerId);
+    await expect.poll(() => visible(one.token)).toBe(false);
+    const late = await openTool(content, 4);
+    expect(await visible(late.token)).toBe(false);
+    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).show(), ownerId);
+    await expect.poll(() => visible(one.token)).toBe(true);
+    await expect.poll(() => visible(two.token)).toBe(true);
+    await expect.poll(() => visible(late.token)).toBe(true);
+    // Test the renderer visibility route as well: Wayland compositor minimization
+    // does not consistently deliver BrowserWindow's native minimize/restore events.
+    await content.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect.poll(() => visible(one.token)).toBe(true);
+    await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id).close(), ownerId);
+    await expect.poll(() => app.evaluate(({ BrowserWindow }, tokens) => BrowserWindow.getAllWindows()
+      .filter(win => tokens.some(token => win.webContents.getURL().includes(token))).length, [one.token, two.token, late.token])).toBe(0);
+    expect(await visible(unrelated.token)).toBe(true);
   } finally { if (app) await app.close(); await server.close(); await rm(dir, { recursive: true, force: true }); }
 });

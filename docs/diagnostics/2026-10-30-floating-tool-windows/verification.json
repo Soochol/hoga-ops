@@ -1,0 +1,105 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "f9dffde18783aad8c8237fa9327bc5d0cac2e7b6",
+  "origin_main_sha": "f9dffde18783aad8c8237fa9327bc5d0cac2e7b6",
+  "branch": "codex/floating-tool-windows",
+  "scope": [
+    "All Electron LivePage floating windows use their workspace as non-modal parent, frame:false, skipTaskbar:true and minimizable:false. Linux requests utility type.",
+    "Only the owning workspace hides/restores its ready tools. Loading while hidden stays hidden. Separate workspace tools remain visible. Owner closure removes its tools.",
+    "Frameless tools retain one compact header, native drag on blank header areas and no-drag on interactive controls. Existing top, maximize, dock and original layout restoration remain usable."
+  ],
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E projects"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/App.test.tsx src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowFrame.pin.test.tsx src/live/workspace/WorkspaceCanvas.errorBoundary.test.tsx",
+      "result": "4 files, 50 passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build",
+      "result": "passed; existing large-chunk advisory"
+    },
+    {
+      "cwd": "frontend",
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-tool-windows npx playwright test tests/e2e/live-floating-windows.spec.ts tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts --reporter=line",
+      "result": "40 passed (1.6m); all 14 window kinds, action order, dock/rect restoration and browser interactions"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run typecheck && npm run lint && npm test",
+      "result": "passed; 20 unit tests; npm test also rebuilds desktop"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/desktop.spec.cjs --grep 'floating controls|tool windows hide' --reporter=line",
+      "result": "2 passed (3.0s)"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=wayland npx playwright test tests/e2e/desktop.spec.cjs --grep 'floating controls|tool windows hide' --reporter=line",
+      "result": "2 passed (3.0s)"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/full-app.spec.cjs --repeat-each=3 --reporter=line",
+      "result": "3 passed (34.3s); actual production React + isolated FastAPI + Electron; 9 total minimize/restore cycles, header drag/no-drag CSS, click top/maximize/restore/dock, viewport and original rect"
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=wayland npx playwright test tests/e2e/full-app.spec.cjs --reporter=line",
+      "result": "1 passed (10.0s); 3 minimize/restore cycles plus same full integration flow"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "input_reuse": "Frontend sources, tests, fixtures, dependencies and configuration did not change after their checks; subsequent fixes and repetitions touched only desktop main/preload/E2E and documentation. Backend code and contracts unchanged; no backend-wide suite required for this native UI change.",
+  "fingerprint_method": "Sorted tracked/nonignored regular paths; digest UTF-8 path + NUL + SHA256(file bytes).digest(). Include root pyproject.toml, uv.lock, .python-version, VERSION and ruff.toml. Documentation and ignored build outputs excluded.",
+  "frontend_inputs": {
+    "file_count": 2019,
+    "sha256": "acc7a8ca88af4a16301009157b3197c54990f546958969d77a32a259d2e5606e"
+  },
+  "combined_inputs": {
+    "file_count": 2935,
+    "sha256": "5a42edee0a53e8b7fe20b1f5c5764acbf80f49e0d256902122284b068eacacaa"
+  },
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3 frontend / 6.0.2 desktop",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0 frontend / 1.64.1 desktop",
+    "electron": "44.8.0",
+    "python": "3.14.7",
+    "browser_chrome": "156.0.8078.73",
+    "workers": 1,
+    "browser_backend_port": 20439,
+    "browser_frontend_port": 21439,
+    "vendor_credentials": "Empty environment variables; isolated native FastAPI test blanks all six Kiwoom accounts and mock account.",
+    "user_servers": "5173/8000 preserved; native test servers use random isolated ports; no permanent launcher/install paths changed"
+  },
+  "native_evidence": {
+    "x11": "xprop verifies transient parent XID, _NET_WM_STATE_SKIP_TASKBAR and _NET_WM_WINDOW_TYPE_DIALOG (WM maps requested utility + parent to dialog). Frame/content dimensions have zero inset.",
+    "wayland": "API-driven parent/frameless and hide/restore integration passed. Shell taskbar appearance and compositor-driven titlebar minimization were not visually inspected.",
+    "platform_scope": "Linux X11 and Wayland verified; Windows/macOS not run in this environment."
+  },
+  "regressions_resolved": [
+    "Document navigation hides the old page without requiring a visible event for its replacement; refresh visibility at each DOMContentLoaded and read current main-frame state instead of stale queued payloads.",
+    "Linux transient dialogs can reject native maximize; fill monitor work area and keep explicit restore bounds.",
+    "Closing native parent/child windows during shutdown must not notify a destroyed owner webContents."
+  ],
+  "visual_qa": [
+    "electron-tool-window.png inspected: single compact header; close followed by maximize, no duplicate in-content titlebar, chart fills tool viewport. Native frame absence additionally asserted through zero frame insets."
+  ],
+  "references": [
+    "https://www.electronjs.org/docs/latest/api/browser-window#page-visibility"
+  ]
+}
