@@ -1,29 +1,53 @@
-import type { OrderbookAvailability } from '../orderbookAvailability';
-import { InlineState } from '../../ui/DataSurface';
+import type { BookIssue, BookRetryTarget, OrderbookAvailability } from '../orderbookAvailability';
 import { useServiceStatusPanel } from '../../serviceStatus/controls';
 import { unixMsToKSTClock } from '../../util/time';
+import './BookAvailabilityState.css';
 
-export function BookAvailabilityState({ state, onRetry }: {
-  state: OrderbookAvailability | null; onRetry: () => void;
+function toneFor(kind: BookIssue['kind']) {
+  return ['query_error', 'rest_error', 'status_error', 'single_price_error', 'saved_error'].includes(kind) ? 'error'
+    : ['waiting_slot', 'reference_limit', 'unconfigured', 'display_delayed', 'recovering', 'provider_error', 'storage_error'].includes(kind) ? 'warn' : 'neutral';
+}
+
+/** One surface for live, REST and saved-book states. Hosts decide overlay vs empty placement. */
+export function BookAvailabilityState({ state, onRetry, reference, testId }: {
+  state: OrderbookAvailability | null; onRetry: (target?: BookRetryTarget) => void;
+  reference?: { text: string; testId: string };
+  testId?: string;
 }) {
-  if (!state) return null;
-  if (state.quiet) return state.lastBookMs === undefined ? null
-    : <div className="m-2 text-xs text-fg-dim" data-testid="book-last-update">
-      마지막 호가 · {unixMsToKSTClock(state.lastBookMs)}
-    </div>;
-  const tone = state.kind === 'query_error' ? 'error' : ['waiting_slot', 'reference_limit', 'unconfigured', 'display_delayed'].includes(state.kind) ? 'warn' : 'neutral';
-  return <InlineState tone={tone} data-testid="book-availability" data-state={state.kind} className="m-2 text-xs">
-    <div>{state.message}</div>
-    {state.detail && <div className="mt-1 text-xs text-fg-dim">{state.detail}</div>}
-    {state.lastBookMs !== undefined && <div className="mt-1 text-xs text-fg-dim">마지막 호가 · {unixMsToKSTClock(state.lastBookMs)}</div>}
-    {state.action && <button type="button" className="mt-2 rounded-sm border border-border px-2 py-1 text-xs text-fg hover:bg-bg-input-hover"
-      onClick={state.action === 'retry' ? onRetry : () => {
-        const panel = useServiceStatusPanel.getState();
-        if (state.diagnostics) panel.showBook(state.diagnostics); else panel.show();
-      }}>
-      {state.action === 'retry' ? '다시 조회' : state.kind === 'waiting_slot' ? '구독 현황' : '연결 상태'}
-    </button>}
-    {(state.kind === 'display_delayed' || state.kind === 'stale') && <button type="button" onClick={onRetry}
-      className="ml-2 mt-2 rounded-sm border border-border px-2 py-1 text-xs text-fg hover:bg-bg-input-hover">다시 조회</button>}
-  </InlineState>;
+  const clock = state?.lastBookMs !== undefined ? unixMsToKSTClock(state.lastBookMs) : state?.lastBookClock;
+  if (!reference && (!state || (state.quiet && !clock))) return null;
+  const issues = state?.issues ?? (state ? [state] : []);
+  const status = () => {
+    const panel = useServiceStatusPanel.getState();
+    if (state?.diagnostics) panel.showBook(state.diagnostics); else panel.show();
+  };
+  const tone = state ? toneFor(state.kind) : 'neutral';
+  return <div className="book-notice-surface" data-tone={tone} data-testid={testId}
+    onPointerDown={event => event.stopPropagation()} onPointerMove={event => event.stopPropagation()}
+    onPointerUp={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
+    onDoubleClick={event => event.stopPropagation()}
+    onContextMenu={event => { event.preventDefault(); event.stopPropagation(); }}>
+    {reference && <div data-testid={reference.testId} className="text-fg-dim">{reference.text}</div>}
+    {state?.quiet ? clock && <div className="text-fg-dim" data-testid="book-last-update">마지막 호가 · {clock}</div>
+      : state && <div data-testid="book-availability" data-state={state.kind}>
+        <div className="book-notice-heading" role={tone === 'error' ? 'alert' : 'status'}>
+          <span>{state.message}</span>
+          {clock && <span className="text-fg-dim">마지막 호가 · {clock}</span>}
+        </div>
+        <div className="book-notice-actions">
+          {issues.some(issue => issue.action === 'status') && <button type="button" onClick={status}>{state.kind === 'waiting_slot' ? '구독 현황' : '연결 상태'}</button>}
+          {(state.retryTarget || state.action === 'retry') && <button type="button" onClick={() => onRetry(state.retryTarget)}>다시 조회</button>}
+          {(issues.length > 1 || state.detail) && <details key={`${state.diagnostics?.code}:${state.diagnostics?.venue}:${state.kind}`}>
+            <summary>상세</summary>
+            <div className="book-notice-details">
+              {issues.map(issue => <div key={`${issue.kind}:${issue.retryTarget}`}>
+                <div>{issue.message}</div>
+                {issue.detail && <p className="text-fg-dim">{issue.detail}</p>}
+                {issue !== issues[0] && issue.retryTarget && <button type="button" onClick={() => onRetry(issue.retryTarget)}>{issue.message} 다시 조회</button>}
+              </div>)}
+            </div>
+          </details>}
+        </div>
+      </div>}
+  </div>;
 }
