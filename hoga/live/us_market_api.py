@@ -18,7 +18,7 @@ from hoga.live import kis_runtime, kiwoom_access, kiwoom_rest_runtime, settings 
 from hoga.live.kis_global_index_candles import fetch_index_daily
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import KiwoomRestError
-from hoga.live.kiwoom_us_daily_candles import EXCHANGE_CODES, fetch_stock_daily
+from hoga.live.kiwoom_us_daily_candles import EXCHANGE_CODES, StockDailyWalks, fetch_stock_daily
 from hoga.live.us_calendar_candles import aggregate_us_calendar, calendar_bounds
 from hoga.live.us_daily_candles import (
     UsDailyBar,
@@ -56,6 +56,7 @@ class UsMarketApi:
     def __init__(self, data_dir: Path | None) -> None:
         self.data_dir = data_dir
         self.daily = UsDailyService()
+        self.stock_daily_walks = StockDailyWalks()
         self.minutes = UsIndexMinuteService()
         self.stock_minute_service = UsStockMinuteService()
         self.stock_current_day = UsStockCurrentDay()
@@ -192,21 +193,24 @@ class UsMarketApi:
         client = kiwoom_rest_runtime.ensure_rest_client(self.data_dir) if self.data_dir and not self.bypass() else None
         scheduler = kiwoom_rest_runtime.ensure_scheduler(self.data_dir) if client else None
         key = f"us-stock:{exchange}:{symbol}"
+        today = self.daily.calendar_now().strftime("%Y%m%d")
+        history_key = f"{key}:adjusted:USD:{today}"
+        walk = self.stock_daily_walks.get(exchange, symbol, today)
 
         async def fetch(frm, too):
-            return await fetch_stock_daily(client, scheduler, exchange, symbol, frm, too)
+            return await fetch_stock_daily(client, scheduler, exchange, symbol, frm, too,
+                                           adjusted_as_of=today, walk=walk)
 
         history = self.daily.get(
-            f"{key}:raw:USD",
+            history_key,
             from_,
             to,
             source="kiwoom",
-            price_basis="raw",
+            price_basis="adjusted",
             stock=True,
             fetch=fetch if client else None,
             bypass=self.bypass(),
         )
-        today = self.daily.calendar_now().strftime("%Y%m%d")
         if client and timeframe == "D" and from_ <= today <= to:
             (bars, meta), current = await asyncio.gather(
                 history, self.stock_current_day.get(client, scheduler, exchange, symbol, today),
@@ -215,7 +219,8 @@ class UsMarketApi:
                 bars = [*bars, current]
         else:
             bars, meta = await history
-        bars, meta = self.calendar_bars(f"{key}:raw:USD", bars, meta, timeframe, to, stock=True)
+        bars, meta = self.calendar_bars(history_key, bars, meta, timeframe, to, stock=True)
+        meta = meta.model_copy(update={"adjusted_as_of": today})
         return UsStockDailyResponse(
             instrument_key=key,
             exchange=exchange,

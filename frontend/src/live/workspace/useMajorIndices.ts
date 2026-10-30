@@ -4,39 +4,49 @@ import { isWarningFailure } from '../../api/dataWarnings';
 import { useMinuteClock } from '../useMinuteClock';
 import { realMsToYyyymmdd, regularSessionCloseMs, subtractDaysKst } from '../liveDateTime';
 import { buildMajorIndexSeries, latestIndexDate, MAJOR_INDICES } from './majorIndicesModel';
+import { DEFAULT_MAJOR_INDICES_SETTINGS, type MajorIndexId } from '../../state/majorIndicesSettings';
 
 /** Same query keys as the market page and index chart windows. The immutable daily
  * range ends yesterday: today's daily backend cache is not refreshed intraday.
  * Query today's minutes first; only fetch a previous session when today is empty.
  */
-export function useMajorIndices() {
+export function useMajorIndices(indices: readonly MajorIndexId[] = DEFAULT_MAJOR_INDICES_SETTINGS.indices) {
   const now = useMinuteClock();
   const today = realMsToYyyymmdd(now);
   const from = subtractDaysKst(today, 35), yesterday = subtractDaysKst(today, 1);
   const quotes = useMarketIndexQuotes();
-  const dailyK = useLiveIndexCandles('KOSPI', 'D', from, yesterday);
-  const dailyQ = useLiveIndexCandles('KOSDAQ', 'D', from, yesterday);
-  const daily200 = useLiveIndexCandles('KOSPI200', 'D', from, yesterday);
-  const todayK = useLiveIndexCandles('KOSPI', '1m', today, today);
-  const todayQ = useLiveIndexCandles('KOSDAQ', '1m', today, today);
-  const today200 = useLiveIndexCandles('KOSPI200', '1m', today, today);
-  const dailyQueries = [dailyK, dailyQ, daily200];
-  const todayQueries = [todayK, todayQ, today200];
+  const k = indices.includes('KOSPI') ? 'KOSPI' : null;
+  const q = indices.includes('KOSDAQ') ? 'KOSDAQ' : null;
+  const k200 = indices.includes('KOSPI200') ? 'KOSPI200' : null;
+  // Keep hook order fixed; disabled queries can still contain cached data and
+  // remain pending. Only selected queries participate in date/status decisions.
+  const dailyK = useLiveIndexCandles(k, 'D', from, yesterday);
+  const dailyQ = useLiveIndexCandles(q, 'D', from, yesterday);
+  const daily200 = useLiveIndexCandles(k200, 'D', from, yesterday);
+  const todayK = useLiveIndexCandles(k, '1m', today, today);
+  const todayQ = useLiveIndexCandles(q, '1m', today, today);
+  const today200 = useLiveIndexCandles(k200, '1m', today, today);
+  const allDaily = [dailyK, dailyQ, daily200];
+  const allToday = [todayK, todayQ, today200];
+  const selected = (_: unknown, i: number) => indices.includes(MAJOR_INDICES[i].id);
+  const dailyQueries = allDaily.filter(selected);
+  const todayQueries = allToday.filter(selected);
   const hasToday = todayQueries.some(q => latestIndexDate(q.data?.candles ?? [], today) === today);
   const settledToday = todayQueries.every(q => !q.isPending);
   const previousDates = dailyQueries.map(q => latestIndexDate(q.data?.candles ?? [], yesterday))
     .filter((date): date is string => date !== null).sort();
   const date = hasToday || !settledToday ? today : previousDates.at(-1) ?? today;
   const past = date !== today ? date : null;
-  const pastK = useLiveIndexCandles('KOSPI', '1m', past, past);
-  const pastQ = useLiveIndexCandles('KOSDAQ', '1m', past, past);
-  const past200 = useLiveIndexCandles('KOSPI200', '1m', past, past);
-  const minuteQueries = past ? [pastK, pastQ, past200] : todayQueries;
-  const series = MAJOR_INDICES.map((index, i) => ({
+  const pastK = useLiveIndexCandles(k, '1m', past, past);
+  const pastQ = useLiveIndexCandles(q, '1m', past, past);
+  const past200 = useLiveIndexCandles(k200, '1m', past, past);
+  const allMinutes = past ? [pastK, pastQ, past200] : allToday;
+  const minuteQueries = allMinutes.filter(selected);
+  const series = MAJOR_INDICES.flatMap((index, i) => indices.includes(index.id) ? [{
     ...index,
-    ...buildMajorIndexSeries(date, now, minuteQueries[i].data?.candles ?? [], dailyQueries[i].data?.candles ?? [],
+    ...buildMajorIndexSeries(date, now, allMinutes[i].data?.candles ?? [], allDaily[i].data?.candles ?? [],
       quotes.data?.find(q => q.id === index.id)),
-  }));
+  }] : []);
   const loading = todayQueries.some(q => q.isPending) || minuteQueries.some(q => q.isPending) || dailyQueries.some(q => q.isPending);
   const failed = quotes.isError || [...todayQueries, ...minuteQueries, ...dailyQueries].some(q => q.isError
     || q.data?.data_warnings.some(isWarningFailure));

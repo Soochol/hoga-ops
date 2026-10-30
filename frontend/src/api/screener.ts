@@ -22,6 +22,8 @@ export interface ScreenerVolumeEvidence {
 
 // --- condition params (one per catalog type; type keys MUST match backend) ---
 export interface TradeValueParams extends CandleOptions { min_eok: number }
+export interface TradeValueRankParams { top_n: number }
+export interface ChangePctRankParams { top_n: number }
 export interface CandleOptions { timeframe?: ScreenerTimeframe; include_open_bar?: boolean }
 export interface BreakoutParams extends CandleOptions { lookback: number; period: number }
 export type ScreenerTimeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m' | '60m' | 'D' | 'W' | 'M';
@@ -134,6 +136,8 @@ export interface DepthPeakPeriodParams { lookback: number; period: number; thres
 export interface DepthRenewalParams { start_hhmm: number; threshold_pct: number }
 
 export type ConditionLeaf =
+  | { id: string; type: 'change_pct_rank'; params: ChangePctRankParams }
+  | { id: string; type: 'trade_value_rank'; params: TradeValueRankParams }
   | { id: string; type: 'trade_value'; params: TradeValueParams }
   | { id: string; type: 'trade_value_period'; params: TradeValuePeriodOptions }
   | { id: string; type: 'new_high_today'; params: PeriodParams }
@@ -169,6 +173,7 @@ export interface ScreenerUniverse {
 export type ScanBasis = 'eod' | 'intraday' | 'auto';
 
 export interface ScanRequest {
+  venue?: 'KRX' | 'NXT' | 'UN';
   calculation_policy?: CalculationPolicy;
   snapshot_id?: string | null;
   /** A/B/C reference the conditions array; omitted/null means all AND. */
@@ -626,7 +631,17 @@ export const updatePatternSave = (id: string, body: PatternSaveWriteRequest) =>
 export const deletePatternSave = (id: string) =>
   apiAction(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });
 
+export interface TradeValueRankMatch {
+  rank: number; trade_value_won: number | null; market: 'all' | 'kospi' | 'kosdaq';
+  venue: 'KRX' | 'NXT' | 'UN'; fetched_at_ms: number;
+}
+export interface ChangePctRankMatch {
+  rank: number; change_pct: number; market: 'all' | 'kospi' | 'kosdaq';
+  venue: 'KRX' | 'NXT' | 'UN'; fetched_at_ms: number;
+}
 export interface ScreenerOccurrence {
+  change_pct_rank_match?: ChangePctRankMatch | null;
+  trade_value_rank_match?: TradeValueRankMatch | null;
   volume_evidence?: ScreenerVolumeEvidence | null;
   amount_evidence?: ScreenerAmountEvidence | null;
   bar_start_ms?: number | null;

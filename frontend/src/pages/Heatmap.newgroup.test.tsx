@@ -57,7 +57,7 @@ function renderPage() {
 }
 
 async function createGroup(name: string) {
-  fireEvent.click(await screen.findByRole('button', { name: '＋ 새 그룹' }));
+  fireEvent.click(await screen.findByRole('button', { name: '새 그룹' }));
   fireEvent.change(screen.getByPlaceholderText('그룹 이름 입력'), { target: { value: name } });
   fireEvent.click(screen.getByRole('button', { name: '만들기' }));
 }

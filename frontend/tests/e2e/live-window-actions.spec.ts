@@ -21,10 +21,14 @@ async function expectHeaderFits(frame: Locator) {
     const titleBounds = title?.getBoundingClientRect();
     const headerBounds = header.getBoundingClientRect();
     const actions = header.querySelector('.live-window-direct-actions')!.getBoundingClientRect();
-    const close = header.lastElementChild!.getBoundingClientRect();
+    const closeButton = header.querySelector(':scope > button[aria-label$="창 닫기"]')!;
+    const close = closeButton.getBoundingClientRect();
+    const maximize = header.querySelector('.live-window-maximize')!;
+    const maximizeBounds = maximize.getBoundingClientRect();
     const buttons = Array.from(header.querySelectorAll('button')).filter(button => button.getBoundingClientRect().width > 0);
     const bounds = buttons.map(button => button.getBoundingClientRect()).sort((a, b) => a.left - b.left);
-    return close.left - actions.right <= 4.1 && bounds.every((box, index) => box.width >= 20 && box.left >= headerBounds.left && box.right <= headerBounds.right
+    return maximize.nextElementSibling === closeButton && closeButton.nextElementSibling === null
+      && close.left >= maximizeBounds.right && maximizeBounds.left - actions.right <= 4.1 && bounds.every((box, index) => box.width >= 20 && box.left >= headerBounds.left && box.right <= headerBounds.right
       && (index === 0 || box.left >= bounds[index - 1].right - 1)
       && (!titleBounds || box.right <= titleBounds.left + 1 || box.left >= titleBounds.right - 1))
       && buttons.every(button => {
@@ -48,6 +52,7 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
     await page.goto('/live');
     const frame = page.locator('[data-win="actions-test"]');
     await expect(frame).toBeVisible();
+    await expect(frame.getByRole('button', { name: '창 분리', exact: true })).toHaveCount(0);
     await expect(frame.locator('.live-window-titlebar [title]')).toHaveCount(0);
     await expect(frame.locator('[data-handle="move"]')).not.toContainText('⠿');
     if (kind !== 'account-fills') await expect(frame.getByRole('button', { name: '링크 그룹 1 변경' })).toHaveText('1');
@@ -216,7 +221,10 @@ test('차트 설정은 제목줄에서 열리고 각 창에 독립적으로 저�
   const dialog = page.getByRole('dialog', { name: '차트 설정', exact: true });
   await settings.click();
   await expect(dialog.getByText('이 차트에 적용')).toBeVisible();
-  await expect(dialog.getByRole('switch', { includeHidden: true })).toHaveCount(CHART_DISPLAY_TOGGLES.length);
+  // 거래량 겹쳐 표시는 보조지표 편집기로 이동해 차트 설정에 표시하지 않는다.
+  await expect(dialog.getByRole('switch', { includeHidden: true })).toHaveCount(
+    CHART_DISPLAY_TOGGLES.filter(toggle => toggle.key !== 'volumeOverlayEnabled').length,
+  );
   const scale = dialog.getByRole('switch', { name: '캔들 기준 Y축', exact: true });
   await expect(scale).toHaveAttribute('aria-checked', 'false');
   await scale.click();

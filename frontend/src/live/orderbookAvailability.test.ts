@@ -87,7 +87,7 @@ describe('orderbook availability', () => {
     healthy.provider_status!.failures = [{ channel, kind: 'timeout', operation: 'REG',
       observed_at_ms: nowMs, code: null }];
     expect(derive({ ...input, bookMs: nowMs - 33_000, status: healthy }))
-      .toMatchObject({ message: '호가 갱신 확인 중', quiet: false });
+      .toMatchObject({ kind: 'provider_error', quiet: false });
   });
   it('requires current connection, error and matching registration evidence before softening copy', () => {
     const stale = { ...input, bookMs: nowMs - 33_000, status: healthyStatus() };
@@ -97,10 +97,11 @@ describe('orderbook availability', () => {
     partial.provider_status!.connection = 'partial';
     for (const candidate of [
       { ...stale, statusCurrent: false }, { ...stale, status: status() },
-      { ...stale, status: unknownFailures }, { ...stale, status: partial },
-      { ...stale, error: new Error('series failed') }, { ...stale, venue: 'NXT' as const },
+      { ...stale, status: unknownFailures }, { ...stale, venue: 'NXT' as const },
     ]) expect(derive(candidate)?.message).toBe('호가 갱신 확인 중');
     expect(derive({ ...stale, connected: false })?.kind).toBe('recovering');
+    expect(derive({ ...stale, status: partial })?.kind).toBe('provider_error');
+    expect(derive({ ...stale, error: new Error('series failed') })?.kind).toBe('query_error');
     stale.status.kiwoom!.data_received_ms = { '005930:KRX:ob': nowMs };
     expect(derive(stale)?.kind).toBe('display_delayed');
     expect(derive({ ...stale, browserReceivedMs: nowMs })?.kind).toBe('timestamp_old');

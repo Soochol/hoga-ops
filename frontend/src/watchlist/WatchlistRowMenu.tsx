@@ -9,8 +9,8 @@ type MenuItem = { key: string; label: string; icon: React.ReactNode; onClick: ()
 // DESIGN.md 2026-08-04 의 승격 제외 (2) "장식 글리프" 에 해당한다.
 function MenuGlyph({ children }: { children: React.ReactNode }) {
   return (
-    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+    <svg data-ui-icon="" width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
     </svg>
   );

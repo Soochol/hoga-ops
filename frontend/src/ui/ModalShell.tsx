@@ -1,3 +1,4 @@
+import { AppIcon } from './AppIcon';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 // Shared center-modal chrome: full-screen backdrop, Escape + backdrop dismissal,
@@ -114,7 +115,7 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side
           <div className="ui-modal-header flex items-center justify-between px-4 py-3 border-b border-border">
             <h2 className="text-fg text-base font-medium">{title}</h2>
             <button type="button" aria-label="닫기" onClick={onClose}
-              className="ui-icon-button text-lg leading-none">✕</button>
+              className="ui-icon-button text-lg leading-none"><AppIcon name="close" /></button>
           </div>
         )}
         {children}

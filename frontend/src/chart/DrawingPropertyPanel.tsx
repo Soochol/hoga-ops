@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { extendRectToTime } from './drawing/rectCoordinates';
 import { useCallback, useId, useMemo, useState, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
@@ -546,7 +547,7 @@ function MultiSelectionToolbar({
         onClick={(event) => toggle('color', event)}
         className={triggerClass('color') + ' flex-col justify-center gap-0.5'}
       >
-        <span className="text-sm leading-none">✎</span>
+        <span className="text-sm leading-none"><AppIcon name="pencil" size={16} /></span>
         <span
           data-testid="drawing-color-bar"
           className="block h-[3px] w-4 rounded-sm"
@@ -658,7 +659,7 @@ function MultiSelectionToolbar({
                   : ' text-fg-dim hover:bg-bg-input-hover')
             }
           >
-            →
+            <AppIcon name="arrowRight" size={16} />
           </button>
           <button
             type="button"
@@ -691,7 +692,7 @@ function MultiSelectionToolbar({
               (canExtendToView ? ' text-fg-dim hover:bg-bg-input-hover' : ' opacity-40 cursor-not-allowed')
             }
           >
-            ⇥
+            <AppIcon name="arrowToRight" size={16} />
           </button>
         </>
       )}
@@ -767,7 +768,7 @@ function MultiSelectionToolbar({
           (allLocked ? 'bg-tint-selection text-accent' : 'text-fg-dim')
         }
       >
-        {allLocked ? '🔒' : '🔓'}
+        {allLocked ? <AppIcon name="lock" size={16} /> : <AppIcon name="unlock" size={16} />}
       </button>
       <button
         type="button"
@@ -781,7 +782,7 @@ function MultiSelectionToolbar({
           (allLocked ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
         }
       >
-        🗑
+        <AppIcon name="trash" size={16} />
       </button>
     </DrawingPanelFrame>
   );
@@ -912,7 +913,7 @@ export default function DrawingPropertyPanel({
         onClick={(event) => togglePopover('color', event)}
         className={'h-7 px-2 inline-flex flex-col items-center justify-center rounded gap-0.5' + controlDisabled}
       >
-        <span className="text-sm leading-none">✎</span>
+        <span className="text-sm leading-none"><AppIcon name="pencil" size={16} /></span>
         <span
           data-testid="drawing-color-bar"
           className="block h-[3px] w-4 rounded-sm"
@@ -1059,7 +1060,7 @@ export default function DrawingPropertyPanel({
               (locked ? controlDisabled : extendedRight ? ' bg-tint-selection text-accent' : controlDisabled)
             }
           >
-            →
+            <AppIcon name="arrowRight" size={16} />
           </button>
 
           <button
@@ -1078,7 +1079,7 @@ export default function DrawingPropertyPanel({
               (extendToViewDisabled ? ' opacity-40 cursor-not-allowed' : ' hover:bg-bg-input-hover')
             }
           >
-            ⇥
+            <AppIcon name="arrowToRight" size={16} />
           </button>
         </>
       )}
@@ -1120,7 +1121,7 @@ export default function DrawingPropertyPanel({
           (locked ? 'bg-tint-selection text-accent' : 'text-fg-dim')
         }
       >
-        {locked ? '🔒' : '🔓'}
+        {locked ? <AppIcon name="lock" size={16} /> : <AppIcon name="unlock" size={16} />}
       </button>
       <button
         type="button"
@@ -1132,7 +1133,7 @@ export default function DrawingPropertyPanel({
           'h-7 w-7 inline-flex items-center justify-center rounded text-[#F43F5E]' + controlDisabled
         }
       >
-        🗑
+        <AppIcon name="trash" size={16} />
       </button>
     </DrawingPanelFrame>
   );

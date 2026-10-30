@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { useIndexHeaderQuote } from '../../api/indexHeaderQuote';
 import { QuoteChange } from '../../rightrail/QuoteChange';
 import type { LiveIndexId } from '../liveInstrument';
@@ -43,11 +44,11 @@ export function IndexTitleBarSymbolRow({ name, indexId, windowId }: {
       onPointerDown={e => e.stopPropagation()} onClick={e => {
         e.stopPropagation();
         void query.retryQuote().catch(() => { /* query error state keeps the retry reachable */ });
-      }}>{query.isFetching ? '조회 중…' : `${status} ↻`}</button>
+      }}>{query.isFetching ? '조회 중…' : <>{status} <AppIcon name="refresh" /></>}</button>
       : <span data-testid="titlebar-index-status" className="live-index-quote-status text-fg-dim">{status}</span>
       : data?.session_status === 'closed' && <span data-testid="titlebar-index-status"
         className="live-index-quote-status text-fg-dim">장 종료</span>}
     {shortDate && <span data-testid="past-backfill-progress-chip" className="live-symbol-backfill font-data text-fg-dim"
-      aria-label={`과거 데이터 불러오는 중 — ${shortDate}까지 로드됨`}>↻<span className="live-symbol-warning-label">{shortDate}</span></span>}
+      aria-label={`과거 데이터 불러오는 중 — ${shortDate}까지 로드됨`}><AppIcon name="refresh" /><span className="live-symbol-warning-label">{shortDate}</span></span>}
   </span>;
 }

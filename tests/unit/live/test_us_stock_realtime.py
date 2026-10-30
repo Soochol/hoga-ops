@@ -84,7 +84,7 @@ async def test_current_day_cache_singleflight_and_never_promotes_coverage(monkey
     service = UsStockCurrentDay(clock=lambda: 0)
     bars = await asyncio.gather(*(service.get(object(), None, "NYSE", "KO", day.trading_date) for _ in range(5)))
     assert all(bar == day for bar in bars) and len(calls) == 1
-    assert calls[0][1] == {"max_pages": 1}
+    assert calls[0][1] == {"max_pages": 1, "adjusted_as_of": day.trading_date}
     await service.aclose()
 
 

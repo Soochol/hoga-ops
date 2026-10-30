@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 /**
  * 캘린더 봉 창 헤더의 **「분봉으로」** — 지금 보고 있는 날짜를 그룹의 분봉 창에서 연다.
  *
@@ -91,10 +92,7 @@ export function JumpToMinuteButton({
       title={title}
       style={{ paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE }}
       icon={(
-        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="4" y1="12" x2="18" y2="12" />
-          <polyline points="13 7 18 12 13 17" />
-        </svg>
+        <AppIcon name="arrowRight" />
       )}
     >
       {showLabel && (

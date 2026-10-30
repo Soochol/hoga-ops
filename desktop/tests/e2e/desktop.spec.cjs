@@ -116,8 +116,9 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
   let app;
   try {
     app = await launch(dir, process.env.HOGA_DESKTOP_EXECUTABLE);
+    const launcherPage = await app.firstWindow();
     const next = app.waitForEvent('window');
-    await connect(await app.firstWindow(), server.origin);
+    await connect(launcherPage, server.origin);
     const content = await next;
     await expect(content.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
     const overlay = content.locator('#ticklane-desktop-zoom');
@@ -254,4 +255,34 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
     expect(factors).toContain(1.1);
     expect((await fetch(server.origin + '/health')).ok).toBe(true);
   } finally { if (app) await app.close(); await server.close(); await otherServer.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a new workspace remains sandboxed after the recovery launcher is destroyed', async () => {
+  const server = await fixture(); const dir = await mkdtemp(join(tmpdir(), 'ticklane-workspace-lifecycle-'));
+  let app;
+  try {
+    app = await launch(dir, process.env.HOGA_DESKTOP_EXECUTABLE);
+    const launcher = await app.firstWindow();
+    const contentPromise = app.waitForEvent('window');
+    await connect(launcher, server.origin);
+    const content = await contentPromise;
+    await expect(content.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    // Native destruction bypasses the recovery launcher's ordinary close-to-hide path.
+    await app.evaluate(({ BrowserWindow }) => {
+      globalThis.workspaceMainErrors = [];
+      process.on('uncaughtExceptionMonitor', error => globalThis.workspaceMainErrors.push(error.message));
+      BrowserWindow.getAllWindows().find(win => win.webContents.getURL().startsWith('app:')).destroy();
+    });
+    const nextWindow = app.waitForEvent('window');
+    await content.evaluate(() => window.hogaDesktop.controls.newWindow());
+    const next = await nextWindow;
+    await expect(next.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    const prefs = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map(win => ({
+      sandbox: win.webContents.getLastWebPreferences().sandbox,
+      node: win.webContents.getLastWebPreferences().nodeIntegration,
+      parent: win.getParentWindow()?.id ?? null,
+    })));
+    expect(prefs).toEqual([{ sandbox: true, node: false, parent: null }, { sandbox: true, node: false, parent: null }]);
+    expect(await app.evaluate(() => globalThis.workspaceMainErrors)).toEqual([]);
+  } finally { if (app) await app.close(); await server.close(); await rm(dir, { recursive: true, force: true }); }
 });

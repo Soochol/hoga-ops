@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 /**
  * 「데이터 수집」 — 차트 창 헤더 소유.
  *
@@ -43,11 +44,7 @@ export function CollectButton({
       className="inline-flex min-h-6 shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
       style={{ background: 'transparent', paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE }}
     >
-      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 3v12" />
-        <path d="m7 11 5 4.5 5-4.5" />
-        <path d="M5 21h14" />
-      </svg>
+      <AppIcon name="collect" />
       {showLabel && <span>수집</span>}
     </TooltipButton>
   );

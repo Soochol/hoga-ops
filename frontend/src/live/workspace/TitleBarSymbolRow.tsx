@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { useStockDescriptionTooltip } from '../../heatmap/StockDescriptionTooltip';
 import { isLiveIndexId, usStockFromKey } from '../liveInstrument';
 import { IndexTitleBarSymbolRow } from './IndexTitleBarSymbolRow';
@@ -142,7 +143,7 @@ function StockTitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
         style={{ visibility: backfillDate ? undefined : 'hidden',
           background: backfillPill.bg, border: backfillPill.border, color: backfillPill.fg }}
       >
-        <span aria-hidden>↻</span><span className="live-symbol-warning-label">{backfillDate}</span>
+        <AppIcon name="refresh" /><span className="live-symbol-warning-label">{backfillDate}</span>
       </span>
     </span>
   );

@@ -17,7 +17,7 @@ export function GroupToggleButton({
     <button type="button" data-testid={testId} aria-label={label} data-tooltip={title ?? label}
       onClick={onToggle} disabled={disabled}
       className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-dim hover:bg-bg-input-hover hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent motion-safe:transition-colors motion-safe:duration-150 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim">
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65"
+      <svg data-ui-icon="" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {allCollapsed ? <>
           <path d="m7 15 5 5 5-5" />

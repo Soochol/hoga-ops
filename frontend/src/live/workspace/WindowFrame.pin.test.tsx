@@ -110,7 +110,7 @@ describe('창 헤더 고정(핀) 버튼', () => {
   });
 });
 
-it.each(WINDOW_KINDS)('%s 최대화 옆 항상 위 버튼은 상태와 토글을 제공하며 드래그를 시작하지 않는다', async (kind) => {
+it.each(WINDOW_KINDS)('%s 항상 위 버튼은 상태와 토글을 제공하며 드래그를 시작하지 않는다', async (kind) => {
   const onToggleAlwaysOnTop = vi.fn();
   const onHandleDown = vi.fn();
   render(<WindowFrame id="w1" kind={kind} group={1} rect={{ x: 0, y: 0, w: 660, h: 215 }}
@@ -121,7 +121,9 @@ it.each(WINDOW_KINDS)('%s 최대화 옆 항상 위 버튼은 상태와 토글을
   const button = screen.getByRole('button', { name: '항상 위' });
   expect(button).toHaveAttribute('aria-pressed', 'true');
   expect(button.closest('.live-window-titlebar')!.querySelectorAll('[title]')).toHaveLength(0);
-  expect(screen.getByRole('button', { name: '창 최대화' }).nextElementSibling).toBe(button);
+  const maximize = screen.getByRole('button', { name: '창 최대화' });
+  expect(maximize.nextElementSibling).toHaveAccessibleName(/창 닫기$/);
+  expect(maximize.nextElementSibling!.nextElementSibling).toBeNull();
   await userEvent.click(button);
   expect(onToggleAlwaysOnTop).toHaveBeenCalledWith('w1');
   expect(onHandleDown).not.toHaveBeenCalled();

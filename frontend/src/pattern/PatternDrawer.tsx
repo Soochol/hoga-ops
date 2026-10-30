@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/RailShell';
 import { SegmentedControl } from '../ui/PageShell';
@@ -931,7 +932,7 @@ export function PatternDrawer() {
                 onClick={() => setSeededRange(null)}
                 className="text-accent hover:opacity-70"
               >
-                ✕
+                <AppIcon name="close" />
               </button>
             </span>
             <span className="min-w-0 flex-1 truncate text-2xs text-fg-dim">
@@ -948,7 +949,7 @@ export function PatternDrawer() {
               onClick={() => setLength((n) => Math.max(MIN_LENGTH, n - 1))}
               className="bg-bg-input px-sm py-[3px] text-fg hover:bg-bg-input-hover disabled:text-fg-dimmer disabled:hover:bg-bg-input"
             >
-              −
+              <AppIcon name="minus" />
             </button>
             <span className="border-x border-border px-sm py-[3px] font-data text-xs font-semibold tabular-nums">
               {length}봉
@@ -960,7 +961,7 @@ export function PatternDrawer() {
               onClick={() => setLength((n) => Math.min(MAX_LENGTH, n + 1))}
               className="bg-bg-input px-sm py-[3px] text-fg hover:bg-bg-input-hover disabled:text-fg-dimmer disabled:hover:bg-bg-input"
             >
-              +
+              <AppIcon name="plus" />
             </button>
           </div>
           <span className="min-w-0 flex-1 truncate text-2xs text-fg-dim">

@@ -1,0 +1,131 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "c12a64263ee9f10f7199879b9ec112575ac3f92c",
+  "origin_main_sha": "c12a64263ee9f10f7199879b9ec112575ac3f92c",
+  "branch": "codex/major-indices-display-options",
+  "working_tree": "Implementation committed; publication metadata update changes only this diagnostics record.",
+  "scope": [
+    "Persistent wrapping line-color/name legend for selected indices and linked stock.",
+    "Standard header settings popover: at least one of KOSPI/KOSDAQ/KOSPI200; linked stock toggle; defaults all enabled.",
+    "Per-window persistence, cross-tab hydration and layout preset capture/restore.",
+    "Selected indices alone determine series, tooltip, percentage range, date/loading/error status and candle requests. Stock OFF removes this window history/live subscription.",
+    "Remove scale wording from visible and accessible chart labels; preserve original stock scaling and actual-close tooltip."
+  ],
+  "main_update": {
+    "from": "6edace3090fdb9914675b38bd83f8482c506a070",
+    "to": "c12a64263ee9f10f7199879b9ec112575ac3f92c",
+    "reason": "PR2346 removed floating windows during verification. Fast-forwarded branch, retained removal, removed obsolete popup E2E scenario and adjusted new documentation. All checks below run after integration."
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E TypeScript projects"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/state/majorIndicesSettings.test.ts src/state/windowSettings.test.tsx src/state/settingsTransfer.test.ts src/state/windowPreferenceMemory.test.ts src/live/presets/layoutPresetSnapshot.test.ts src/live/workspace/MajorIndicesWindow.test.tsx src/live/workspace/useMajorIndices.test.tsx src/live/workspace/useMajorIndicesStock.test.tsx src/live/workspace/majorIndicesModel.test.ts src/live/workspace/majorIndicesStockModel.test.ts src/live/workspace/majorIndicesTimeAxis.test.ts",
+      "result": "11 files, 107 passed (2.34s)"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run --maxWorkers=4",
+      "result": "742 files passed, 2 failed; 9498 tests passed, 3 failed (186.14s). All three failures reproduce on unmodified base; not an all-green suite."
+    },
+    {
+      "cwd": "isolated temporary git archive of base/frontend with independent npm ci installation",
+      "command": "npx vitest run src/state/persistencePolicy.test.ts src/screener/ConditionRow.test.tsx --maxWorkers=2",
+      "result": "same 3 failures, 53 passed (5.39s); archive refreshed to current base, unchanged dependency lockfile reused from independent npm ci."
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx playwright test major-indices-settings.spec.ts major-indices-linked-stock.spec.ts --repeat-each=5 --reporter=line",
+      "result": "15 passed (52.7s); three scenarios each five times: selection/request suppression and re-enable; independent settings/reload/preset/narrow legend; linked-stock group change/shared cursor."
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed (4.75s); existing large-chunk advisory"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx eslint src/state/majorIndicesSettings.ts src/state/majorIndicesSettings.test.ts src/state/windowSettings.ts src/live/workspace/MajorIndicesSettings.tsx src/live/workspace/MajorIndicesWindow.tsx src/live/workspace/useMajorIndices.ts src/live/workspace/majorIndicesModel.ts tests/e2e/major-indices-settings.spec.ts",
+      "result": "passed, zero warnings/errors"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "baseline_failures": [
+    "ConditionRow: trade_value_rank saved-value edit expects removed lookback field.",
+    "ConditionRow: change_pct_rank saved-value edit expects removed lookback field.",
+    "persistencePolicy: storage listener count does not match cross-tab policy count."
+  ],
+  "fingerprints": {
+    "method": "Sorted tracked/nonignored regular paths; SHA256 of UTF-8 path + NUL + raw SHA256(file bytes). New untracked sources/tests included; ignored build outputs and diagnostics excluded.",
+    "frontend_inputs": {
+      "file_count": 2014,
+      "sha256": "106e2a6b74692d36b6de3e334d74247568d923072879d5dbc8d338b113368a8d"
+    },
+    "combined_inputs": {
+      "file_count": 2870,
+      "sha256": "db6fd2cdb9f63b453879d7d49c1affcebe2c956e7231aa785afefb6eb3772124"
+    },
+    "changed_file_sha256": {
+      "frontend/src/live/workspace/MajorIndicesSettings.tsx": "ca3de3d8e4e1f38e35bbd12c0f4f6b6395dccdc4440603b32fc3621da87f4879",
+      "frontend/src/live/workspace/MajorIndicesWindow.css": "2b079fd5007f637b9c7cf2e6ba95835849629afeaaccb420f1a00a497b426af3",
+      "frontend/src/live/workspace/MajorIndicesWindow.test.tsx": "bfde487bdb30b714277876cb92ddd831c51cd110e0c472edc929791223adfafd",
+      "frontend/src/live/workspace/MajorIndicesWindow.tsx": "ec4f32db3f30e888959d0659ff4adca4c6f88562c6a66355ba9cccb42ff66a46",
+      "frontend/src/live/workspace/majorIndicesModel.ts": "5657ca92af9a3b2c10a58ad712017146c57dd01478eb185c0a7149512610c192",
+      "frontend/src/live/workspace/useMajorIndices.test.tsx": "326c8257eac53e0929ec9bf84f0370a5c943cb59e9e4f657afbd33995b1ca966",
+      "frontend/src/live/workspace/useMajorIndices.ts": "87e9d52a00ba003e5b4ef4c658ed819e966f8f0099604dc5fd3a44efa8d1de22",
+      "frontend/src/state/majorIndicesSettings.test.ts": "109e768cc6366800158c0956f3d14d4d39146e53eed09e9a25306b171592fe41",
+      "frontend/src/state/majorIndicesSettings.ts": "d06f46715ca5824a45bf6cc191bd971e88ec9f8fe590d4d4cfd0cf9d32529c14",
+      "frontend/src/state/windowSettings.test.tsx": "76dd01b4ec5fb39d4c2bde1571ce5a105610ff259b176e42d04fd44fe92dec4b",
+      "frontend/src/state/windowSettings.ts": "d052aaa9521b7b17a932053ca4ecab8de7f682d7caf51db7c1c2d30946aa1e9d",
+      "frontend/tests/e2e/major-indices-linked-stock.spec.ts": "6a9c58f866191861c3d7a57d1a134490bf36692656a57736deed9b9bd99a310e",
+      "frontend/tests/e2e/major-indices-settings.spec.ts": "010b0cfcc20d2304c4a2eac1962aae4d33984ccedf8ffab358f7af5a0fc9ab6e"
+    },
+    "roots": [
+      "frontend",
+      "hoga",
+      "tests",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version",
+      "VERSION",
+      "ruff.toml"
+    ]
+  },
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "python": "3.14.7",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.73",
+    "e2e_workers": 1,
+    "backend_port": 20054,
+    "frontend_port": 21054,
+    "data_dir": "/tmp/hoga-e2e-data-54",
+    "dist_dir": "/tmp/hoga-e2e-dist-54",
+    "credentials": "Empty per unchanged E2E config; ignored worktree .env is empty. User ports 5173/8000 preserved."
+  },
+  "visual_review": [
+    "Reviewed final settings popover screenshot: index checkboxes, minimum-one disabled state, stock toggle, scope text.",
+    "Reviewed final 210px window screenshot: legend wraps above plot without overlap/overflow; header retains gear and current main controls."
+  ],
+  "limits": [
+    "Existing three unrelated frontend unit failures remain and are reproduced on base.",
+    "Backend API/models unchanged; no backend-wide test suite or real broker calls."
+  ],
+  "validated_code_commit": "21e8ab06a858d112970d6aaffd483a450a8f6779",
+  "publication_reuse": {
+    "verified_base_sha": "c12a64263ee9f10f7199879b9ec112575ac3f92c",
+    "reason": "Current frontend and combined inputs exactly match the recorded fingerprints. Successful checks reused for validated_code_commit and its following diagnostics-only commit. The three reproduced baseline failures remain failures."
+  }
+}

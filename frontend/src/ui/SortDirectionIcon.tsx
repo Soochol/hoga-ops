@@ -20,7 +20,7 @@ export function SortDirectionIcon({
 }) {
   const testKey = direction === 'asc' ? 'asc' : direction === 'desc' ? 'desc' : 'default';
   return (
-    <svg
+    <svg data-ui-icon=""
       data-testid={`sort-icon-${testKey}`}
       data-sort-icon={direction}
       className={className}
@@ -29,7 +29,7 @@ export function SortDirectionIcon({
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.9"
+      strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

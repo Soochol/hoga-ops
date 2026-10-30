@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useDismissablePopover } from '../../util/useDismissablePopover';
@@ -212,9 +213,7 @@ export function PresetMenu<P>({
               onClick={() => setPendingDelete(preset.id)}
               className="flex h-6 w-6 items-center justify-center rounded text-fg-dimmer hover:bg-bg-input-hover hover:text-fg"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
-              </svg>
+              <AppIcon name="trash" />
             </button>
           )}
         </div>
@@ -286,12 +285,7 @@ export function PresetMenu<P>({
         aria-expanded={open}
         aria-label={labels.ariaLabel}
         icon={(
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
+          <AppIcon name="layout" />
         )}
       >
         <span>{activePreset ? activePreset.name : labels.buttonFallback}</span>

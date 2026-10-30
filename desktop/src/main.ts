@@ -72,9 +72,11 @@ function showLauncher(message = ''): void {
     launcher.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     launcher.webContents.on('will-navigate', (event, url) => { if (url !== LAUNCHER_URL) event.preventDefault(); });
     launcher.webContents.on('will-redirect', event => event.preventDefault());
-    launcher.on('close', event => {
-      if (!quitting && contentWindows.size > 0) { event.preventDefault(); launcher?.hide(); }
+    const launcherWindow = launcher;
+    launcherWindow.on('close', event => {
+      if (!quitting && contentWindows.size > 0) { event.preventDefault(); launcherWindow.hide(); }
     });
+    launcherWindow.on('closed', () => { if (launcher === launcherWindow) launcher = undefined; });
     void launcher.loadURL(LAUNCHER_URL);
   } else {
     void launcher.webContents.executeJavaScript('window.refreshLauncher?.()');
@@ -83,7 +85,7 @@ function showLauncher(message = ''): void {
 }
 
 function trustedLauncher(event: IpcMainInvokeEvent): void {
-  if (!launcher || event.sender !== launcher.webContents || event.senderFrame !== launcher.webContents.mainFrame
+  if (!launcher || launcher.isDestroyed() || event.sender !== launcher.webContents || event.senderFrame !== launcher.webContents.mainFrame
     || event.senderFrame.url !== LAUNCHER_URL) throw new Error('허용되지 않은 설정 요청입니다.');
 }
 
@@ -166,7 +168,7 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
     if (win.isDestroyed()) return;
     if (primary && settings.bounds[key]?.maximized) win.maximize();
     win.show();
-    launcher?.hide();
+    if (launcher && !launcher.isDestroyed()) launcher.hide();
   });
   win.on('close', () => {
     if (primary && !win.isDestroyed()) {
@@ -179,7 +181,7 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
     windowProfileKeys.delete(win);
     if (!quitting && contentWindows.size === 0) {
       // A visible connection window keeps a failed connection recoverable.
-      if (!launcher?.isVisible()) app.quit();
+      if (!launcher || launcher.isDestroyed() || !launcher.isVisible()) app.quit();
     }
   });
   void win.loadURL(url).catch(() => { /* did-fail-load presents recovery UI */ });

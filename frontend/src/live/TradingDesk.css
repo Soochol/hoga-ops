@@ -47,7 +47,7 @@
 }
 
 [data-theme='trading-desk'] .live-window-direct-actions > button,
-[data-theme='trading-desk'] .live-window-titlebar > button:last-child {
+[data-theme='trading-desk'] .live-window-titlebar > button {
   border-radius: var(--radius-md);
 }
 

@@ -5,12 +5,12 @@
  */
 export function FunnelIcon({ filled, className }: { filled: boolean; className?: string }) {
   return (
-    <svg
+    <svg data-ui-icon="" width="0.875rem" height="0.875rem"
       className={className}
       viewBox="0 0 24 24"
       fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.6"
       strokeLinejoin="round"
       strokeLinecap="round"
       aria-hidden="true"

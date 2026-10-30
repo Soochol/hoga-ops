@@ -1,3 +1,4 @@
+import { AppIcon } from './AppIcon';
 import { useCallback, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../util/useAnchoredPopover';
@@ -21,7 +22,7 @@ export function DataControlPopover({ label, children }: { label: string; childre
       className="ui-popover data-settings-popover" style={style}>
       <div className="flex items-center justify-between gap-2 border-b border-border pb-1">
         <span className="font-medium">{label}</span>
-        <button type="button" className="ui-icon-button" aria-label={`${label} 닫기`} onClick={close}>×</button>
+        <button type="button" className="ui-icon-button" aria-label={`${label} 닫기`} onClick={close}><AppIcon name="close" /></button>
       </div>
       <div className="data-settings-content">{children}</div>
     </div>, document.body)}

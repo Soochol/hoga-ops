@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { hogaplayPeriodLabel } from './HogaplaySourceChipHelpers';
 
 
@@ -36,7 +37,7 @@ export function HogaplaySourceChip({
         className="shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
         style={{ color: 'var(--fg-muted)' }}
       >
-        ×
+        <AppIcon name="close" />
       </button>
     </div>
   );

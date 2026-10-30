@@ -1,0 +1,88 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "168e283cbccda759cf96d340030d301843c74e8d",
+  "origin_main_sha": "168e283cbccda759cf96d340030d301843c74e8d",
+  "scope": [
+    "All 14 LivePage window kinds: detach, close/dock and restore original rect.",
+    "Private same-workspace leaf-patch synchronization; pinned symbols, groups, timeframes, settings, saved-view range, chart links and cursors.",
+    "Electron OS maximize/restore and always-on-top with sandbox maintained. Browser popups use fullscreen and disable OS always-on-top."
+  ],
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed (app, unit and E2E projects)"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/workspace src/workspace src/state/workspace.test.ts src/state/crossTabSync.test.tsx src/live/LivePage.test.tsx",
+      "result": "1041 passed in 80 files"
+    },
+    {
+      "cwd": "frontend",
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-floating-verified npx playwright test tests/e2e/live-floating-windows.spec.ts tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts --reporter=line",
+      "result": "40 passed (1.7m); production Vite build passed as webServer startup"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run typecheck && npm run lint && npm run build",
+      "result": "passed with the destroyed-launcher fix"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm test",
+      "result": "20 passed; navigation, profiles, zoom, sandbox profile generation, server configuration and server-process inputs unchanged by the subsequent main-window lifecycle fix"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npx playwright test tests/e2e/desktop.spec.cjs --grep 'floating controls'",
+      "result": "1 passed (1.6s); force-destroy launcher, open floating window, sandbox/node isolation, native maximize/on-top, close notification and owner cancellation; uncaughtExceptionMonitor observed zero errors"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npx eslint tests/e2e/full-app.spec.cjs && npx playwright test tests/e2e/full-app.spec.cjs --reporter=line",
+      "result": "1 passed (11.1s); actual production React + isolated FastAPI + Electron, detach/maximize/restore/on-top/dock, viewport fills and original geometry restored"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "error_report": {
+    "reported_exception": "TypeError: Object has been destroyed at desktop/dist/main.js:217:19",
+    "confirmed_cause": "ready-to-show called launcher.hide() on a destroyed BrowserWindow; optional chaining only checked null/undefined.",
+    "fix": "Clear only the matching launcher reference on closed; check isDestroyed before hide, visibility and trusted-launcher webContents access. Regression forcibly destroys the launcher before opening a floating window.",
+    "pre_fix_observation": "Real-app integration timed out at new-workspace bootstrap; reproduced with 5s and 15s readiness assertions. After the lifecycle fix, full integration passes.",
+    "inferred_effect": "The uncaught-error dialog likely blocked the subsequent bootstrap. Before the fix the real-app new-window config gate timed out; after the fix the same integration passes."
+  },
+  "fingerprint_method": "Sorted tracked/nonignored regular paths; digest UTF-8 path + NUL + SHA256(file bytes).digest(). Root pyproject.toml, uv.lock, .python-version, VERSION and ruff.toml are included. Documentation and ignored build outputs are excluded.",
+  "frontend_inputs": {
+    "file_count": 2870,
+    "sha256": "56ca5077a2ba7e42e4a82043c045bd56c7a227660f2cad444448ae42b5311651"
+  },
+  "combined_inputs": {
+    "file_count": 2935,
+    "sha256": "54afb30e101d9e1728d3a602ee30520518d75087f69190cd5bcb038503a8d05f"
+  },
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3 frontend / 6.0.2 desktop",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0 frontend / 1.64.1 desktop",
+    "electron": "44.8.0",
+    "python": "3.14.7",
+    "chrome": "156.0.8078.73",
+    "workers": 1,
+    "browser_backend_port": 20439,
+    "browser_frontend_port": 21439,
+    "vendor_credentials": "empty environment variables; native production fixture additionally blanks all six Kiwoom accounts and mock account",
+    "user_servers": "5173/8000 preserved; no permanent launcher/install paths changed"
+  },
+  "visual_qa": [
+    "Inspected 330px browser popup: all controls including close and maximize fit.",
+    "Inspected 160px source header in existing E2E.",
+    "electron-floating-chart.png: production native floating chart after maximize/restore; viewport and frame sizes asserted before capture."
+  ]
+}

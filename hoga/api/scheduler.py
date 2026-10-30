@@ -576,8 +576,14 @@ async def _daily_loop(data_dir: Path) -> None:
       블립 한 번이 그날 관심종목 캡처를 통째로 날렸고, hogaplay 보유가 ~18시간
       이라 다음 날 알아채면 이미 복구 불가였다.
 
+    스크리너는 시작 직후와 KST 날짜가 바뀐 첫 틱에도 일반 갱신을 점검한다.
+    전날 잠정 일봉의 독립 확인을 다음 22시까지 미루지 않으며, 실제 수집 필요 여부와
+    일일 예산은 기존 갱신 경로가 판단한다. 낮의 완료된 점검은 같은 루프에서 반복하지
+    않아 매분 과거 parquet를 읽지 않는다. 재시작 시에도 영속 원장의 시도 제한을 따른다.
+
     한 실패가 루프를 죽이지 않는다 — ADR-0034 의 "scheduler is a queue client" 프레이밍.
     """
+    screener_checked_date = None
     while True:
         try:
             now = now_kst()
@@ -602,12 +608,13 @@ async def _daily_loop(data_dir: Path) -> None:
                     log.exception("daily trading stage retry crashed; loop continues")
             else:
                 await retry_pending_enqueues(data_dir, now=now)
-            # Friday's provisional daily observations also need Saturday confirmation.
-            # The ingest ledger makes this a no-op after a completed sweep; capture
-            # enqueue and all other trading-day tasks retain their calendar gate.
-            if now.hour >= _DAILY_TRIGGER_HOUR:
+            # Boot/date rollover confirms yesterday without waiting until tonight.
+            # Keep nightly retries and the shared ingest admission/budget gates.
+            # Capture enqueue retains its separate calendar and startup opt-in.
+            if now.hour >= _DAILY_TRIGGER_HOUR or screener_checked_date != today:
                 from hoga.api import screener  # noqa: PLC0415 — shared server-owned job
                 await screener.trigger_update(data_dir)
+                screener_checked_date = today
         except Exception:
             # 판정·마커 읽기 실패도 루프를 죽이면 안 된다.
             log.exception("daily loop tick failed; loop continues")

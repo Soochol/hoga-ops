@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import {
   BROKER_LATE_ENTRY_SLOT_LIMIT,
   type BrokerLateEntryConfig as Instance,
@@ -55,7 +56,7 @@ function InstanceBlock({
           onClick={onRemove}
           className="px-1 text-sm leading-none text-fg-dim transition-colors hover:text-fg"
         >
-          ✕
+          <AppIcon name="close" />
         </button>
       </div>
       <div className="mb-3">

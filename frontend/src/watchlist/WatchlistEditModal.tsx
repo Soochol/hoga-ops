@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useEffect, useState } from 'react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDroppable, closestCenter,
@@ -291,7 +292,7 @@ export function WatchlistEditModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <button type="button" onClick={() => setAdding(true)}
                   className="w-full px-3 py-2 rounded border border-border text-sm text-fg-dim hover:text-accent hover:border-accent">
-                  ＋ 그룹 추가
+                  <AppIcon name="plus" /> 그룹 추가
                 </button>
               )}
             </div>

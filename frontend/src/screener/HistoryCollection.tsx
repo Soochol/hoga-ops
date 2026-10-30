@@ -1,3 +1,4 @@
+import { isRankCondition } from './rankConditions';
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from '../api/client';
@@ -29,7 +30,7 @@ export function HistoryCollection({ request, coverage, onComplete }: {
   const client = useQueryClient();
   const conditions = referencedConditions(request.conditions, request.expression);
   const enabled = request.calculation_policy === 'separate_bases_v2'
-    ? conditions.some(leaf => !leaf.type.includes('depth') &&
+    ? conditions.some(leaf => !isRankCondition(leaf) && !leaf.type.includes('depth') &&
       !('timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')))
     : conditions.some(isHistoricalCondition);
   const query = useQuery({ queryKey: ['screener-history-job'], enabled,

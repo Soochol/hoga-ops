@@ -1,3 +1,5 @@
+import { SortDirectionIcon } from '../ui/SortDirectionIcon';
+import { MarketRankEvidence } from './MarketRankEvidence';
 import { useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
@@ -131,7 +133,6 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
   onSortChange?: (mode: ScreenerResultSortMode) => void;
 }) {
   const active = sortMode !== 'default' && sortMode.field === field;
-  const arrow = active ? (sortMode.direction === 'asc' ? '▲' : '▼') : '↕';
   return (
     <button
       type="button"
@@ -142,7 +143,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
       } ${active ? 'text-accent' : 'text-fg-dim hover:text-fg'}`}
     >
       <span className="truncate">{label}</span>
-      <span className="font-data text-2xs" aria-hidden="true">{arrow}</span>
+      <SortDirectionIcon direction={active ? sortMode.direction : 'none'} className="h-3.5 w-3.5" />
     </button>
   );
 }
@@ -172,7 +173,9 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       className="cursor-pointer outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
       <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
       <span className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0"><span className="block truncate">{r.name}</span></span>
+        <span className="min-w-0"><span className="block truncate">{r.name}</span>
+          <MarketRankEvidence row={r} />
+        </span>
         {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
         {depthValues?.[r.code] && depthSides && (depthSides.askRenewal || depthSides.bidRenewal)
           && <DepthRenewalBadge v={depthValues[r.code]} sides={depthSides} />}

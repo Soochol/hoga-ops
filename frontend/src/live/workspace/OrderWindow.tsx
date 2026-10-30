@@ -12,7 +12,6 @@ import { TextTooltip } from '../../ui/TextTooltip';
 import { BookAmountTooltip, BookPriceAmount } from './BookPriceAmount';
 import { useBookPriceLayout } from './useBookPriceLayout';
 import { useOrderColumnLayout } from './useOrderColumnLayout';
-import { priceDirClass } from '../../ui/priceDir';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { MAX_ORDER_QUANTITY, normalizeOrderSettings,
@@ -42,12 +41,10 @@ import { realMsToYyyymmdd, regularSessionOpenMs } from '../liveDateTime';
 import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookPanel';
 import { resolveBookBaseline } from './bookDisplay';
 import { useRecentBookTrades } from './useRecentBookTrades';
-import { tradeHighlightBackground, useTradeHighlight } from '../tradeHighlight';
 import { bookDayMarkers } from './bookDayMarkers';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { useOrderbookAvailability } from '../useOrderbookAvailability';
 import { BookAvailabilityState } from './BookAvailabilityState';
-import { RestOrderbookEmpty, RestOrderbookSource } from './RestOrderbookState';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
@@ -61,6 +58,7 @@ import { OrderStatusBar, type OrderReceipt } from './OrderStatusBar';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import { useOrderFillSound } from './useOrderFillSound';
 import './OrderWindow.css';
+import { BookTradeList } from './BookTradeList';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
 const accountDisplayLabel = (label?: string) => label?.replace(' · 실전 ·', ' ·') ?? '계좌 연결 대기';
@@ -89,7 +87,8 @@ const orderKey = (account: TradingAccountId, id: string) => JSON.stringify([acco
 type CancelFailure = { action: Action; notice: OrderNotice };
 type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
 
-export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSymbol, selectedAccountId, onResolvedAccount, onOpenExecutions }: {
+export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSymbol, selectedAccountId, onResolvedAccount, onOpenExecutions, onOpenTrades }: {
+  onOpenTrades?: () => void;
   selectedAccountId?: TradingAccountId; onResolvedAccount?: (account: TradingAccountId) => void; onOpenExecutions?: (account: TradingAccountId) => void;
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
 }) {
@@ -113,16 +112,17 @@ export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSy
   return <OrderWindowContent key={code} code={code} name={name}
     preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} onApplySettings={applySettings}
     profitAsPercent={profitAsPercent} onToggleProfitDisplay={() => setProfitAsPercent(value => !value)}
-    accounts={accounts} account={account} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} onOpenExecutions={onOpenExecutions} />;
+    accounts={accounts} account={account} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} onOpenExecutions={onOpenExecutions} onOpenTrades={onOpenTrades} />;
 }
 
-function OrderWindowContent({ code, name, accounts, account, onAccountChange, onSelectSymbol, onOpenExecutions,
+function OrderWindowContent({ code, name, accounts, account, onAccountChange, onSelectSymbol, onOpenExecutions, onOpenTrades,
   preferences, quantity, onQuantityChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
   code: string; name: string;
   accounts: ReturnType<typeof useTradingAccounts>; account: TradingAccountId; onAccountChange: (account: TradingAccountId) => void; preferences: OrderWindowSettings;
   quantity: number | null; onQuantityChange: (quantity: number | null) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
   onOpenExecutions?: (account: TradingAccountId) => void;
+  onOpenTrades?: () => void;
   profitAsPercent: boolean; onToggleProfitDisplay: () => void;
 }) {
   const client = useQueryClient();
@@ -165,8 +165,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     [live.latestOb, live.ob]);
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
-  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
-    allowRestBook, morningReset, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
+  const { snapshot, ladderSource, bookFresh, monitorBook, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
+    allowRestBook, morningReset, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode, bookQuery } = useBookSessionDisplay({
     code, venue, nowMs: now, todayKst, isSpot: false, regularSnapshot: latestSnapshot,
     latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
@@ -181,12 +181,15 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     ? rest.data.book : null;
   const { availability: bookAvailability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
     live, bookMs: snapshot?.ts_ms, nowMs: now, exclusion: aftermarketExclusion,
-    enabled: (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
+    hasBook: hasBookPrices(snapshot) || !!restBook, bookQuery,
+    rest: { enabled: needsRestBook, loading: loadingLastBook, isError: rest.isError, data: rest.data,
+      retry: () => rest.refetch({ cancelRefetch: false }) },
+    enabled: monitorBook && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [dragInProgress, setDragInProgress] = useState(false);
   const book = restBook ?? snapshot;
-  const deltaBadges = useOrderbookDeltaBadges(live.ob, !storedLadder && !restBook);
+  const deltaBadges = useOrderbookDeltaBadges(live.ob, bookFresh && !restBook);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
   const closeSettings = useCallback(() => {
     setSettingsDraft(null);
@@ -303,7 +306,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     : contextMenu.price == null ? sideOrders[contextMenu.side] : groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
     : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
-  const fresh = !restBook && !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
+  const fresh = !restBook && bookFresh;
   const ready = !!account && !!activeAccount && !!state.data && !state.isError && !exclusiveBusy && activeAccount.order_enabled !== false;
   const availability = {
     accountsLoading: accounts.isLoading, configured: accounts.data?.configured === true, account,
@@ -311,7 +314,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
     stateReady: !!state.data && !state.isError, stateError: state.error,
     unresolved: !!state.data?.unresolved_commands.length || cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent), settingsOpen: !!settingsDraft,
-    locked: dragInProgress, stored: !!restBook || (storedLadder && snapshot != null), singlePrice: activeSinglePrice !== null,
+    locked: dragInProgress, stored: !!restBook || ladderSource === 'saved' || ladderSource === 'retained', singlePrice: activeSinglePrice !== null,
     hasBook: !!book, fresh, quantity,
     bookIssue: bookAvailability ? { title: '주문 대기', message: bookAvailability.message, tone: 'warn' as const } : undefined,
     brokerBlocked: account && !activeAccount ? '선택 계좌의 연결을 확인하세요.'
@@ -704,8 +707,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
 
   const recentTrades = useRecentBookTrades({ code, date: todayKst, venue: effectiveVenue,
     frames: live.trade, enabled: activeSinglePrice === null });
-  const highlight = useTradeHighlight();
-  const trades = activeSinglePrice !== null ? singlePriceFills.slice(0, 9) : recentTrades;
+  const trades = activeSinglePrice !== null ? singlePriceFills : recentTrades;
   const lastPrice = activeSinglePrice !== null ? (afterHoursBook.data?.cur_price ?? null) : (recentTrades[0]?.price ?? null);
   const { setProbe, setSummaryProbe, samples, style: columnStyle } = useOrderColumnLayout(`${account}:${code}`,
     asks.concat(bids).map(level => level.qty), deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [],
@@ -721,10 +723,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     showChangePct={infoChangePct} onToggleChangePct={() => setInfoChangePct(show => !show)}
     showVi={infoVi} onToggleVi={() => setInfoVi(show => !show)}
     showSameTimeVolume={infoSameTimeVolume} onToggleVolume={() => setInfoSameTimeVolume(show => !show)}
-    expectedFill={{
-      price: restBook ? 0 : storedLadder || activeSinglePrice !== null ? snapshot?.exp_price ?? 0 : quote?.expected_price ?? 0,
-      qty: restBook ? null : storedLadder || activeSinglePrice !== null ? snapshot?.exp_qty ?? 0 : quote?.expected_qty ?? null,
-    }} />;
+    expectedFill={restBook || ladderSource === 'saved' ? null : activeSinglePrice !== null
+      ? { price: snapshot?.exp_price ?? 0, qty: snapshot?.exp_qty ?? null }
+      : { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null }} />;
   function saveSettingsEdits(next: OrderWindowSettings) {
     if (busy) return;
     setSettingsDraft(next);
@@ -896,8 +897,10 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         }}
         render={() => settingsDraft && <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
-    {snapshot != null && !needsRestBook && <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />}
-    {restBook && <RestOrderbookSource rest={rest} venue={effectiveVenue} testId="order-rest-book-source" showProvenance={false} />}
+    <div className="book-status-host">
+      {(explorer.enabled || hasBookPrices(snapshot) || restBook) && <div className="book-status-overlay">
+        <BookAvailabilityState state={bookAvailability} onRetry={retryBook} testId={restBook ? 'order-rest-book-source' : undefined} />
+      </div>}
     <div ref={priceViewportRef} className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리"
       tabIndex={explorer.enabled ? 0 : undefined} onKeyDown={explorer.onKeyDown}
       onPointerDown={explorer.onPointerDown} onPointerMove={explorer.onPointerMove} onPointerUp={explorer.onPointerUp}
@@ -914,7 +917,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           <span data-lane-probe className="order-total-probe" data-figure={samples.total} />
         </span>
         {explorer.enabled ? explorer.prices.map(fullPriceRow) : prices.length === 0 ? <div className={`order-empty-layout ${expanded ? 'order-empty-expanded' : ''}`}>
-          <div>{needsRestBook ? <RestOrderbookEmpty rest={rest} loading={loadingLastBook} onRetry={retryBook} testId="order-empty-book" /> : bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />
+          <div>{bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} testId={needsRestBook ? 'order-empty-book' : undefined} />
             : <p className="order-notice">{afterHoursTotals ? '호가 사다리 없음 (총잔량만 수신 중)' : '현재 표시할 호가가 없습니다'}</p>}</div>
           <div className="order-empty-summary">{renderSummary(264)}</div>
         </div>
@@ -925,15 +928,16 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           const level = isAsk ? asks[index] : bids[bidIndex];
           const firstBid = bidIndex === 0;
           const key = `${isAsk ? 'ask' : 'bid'}-${slot}`;
-          const trade = bidIndex > 0 ? trades[bidIndex - 1] : undefined;
-          const tradePriceColor = trade && baseline != null && baseline > 0 ? priceDirClass(trade.price - baseline) : 'text-fg-dim';
-          const info = <div className={`order-info ${firstBid ? 'order-strength' : 'order-trade'}`}><span className={firstBid ? 'order-meta' : tradePriceColor}>{firstBid ? '체결강도' : trade ? fmt(trade.price) : ''}</span><span className={trade ? `rounded-sm ${priceDirClass(trade.side)}` : undefined}
-            style={trade ? { background: tradeHighlightBackground(trade, highlight) } : undefined}>{firstBid ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : trade ? fmt(trade.qty) : ''}</span></div>;
+          const info = firstBid ? <div className="order-info order-strength"><span className="order-meta">체결강도</span>
+            <span>{summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%`}</span></div>
+            : bidIndex === 1 ? <div className="order-trades-slot"><BookTradeList
+              key={`${code}:${todayKst}:${effectiveVenue}:${activeSinglePrice !== null}`} trades={trades}
+              baselinePrice={baseline ?? null} layout="order" onOpen={onOpenTrades} /></div> : <div />;
           // Empty slots preserve the center without becoming order/drag targets.
           // Recent fills still occupy their fixed slots beside the bid ladder.
           if (!level) return <div className={`order-row order-empty ${firstBid ? 'order-divider' : ''}`} key={key}
-            aria-hidden={isAsk || (!firstBid && !trade) ? true : undefined}>
-            <div />{!isAsk && (firstBid || trade) ? info : <div />}<div /><div className={isAsk ? 'order-summary-slot' : undefined} /><div />
+            aria-hidden={isAsk ? true : undefined}>
+            <div />{!isAsk ? info : <div />}<div /><div className={isAsk ? 'order-summary-slot' : undefined} /><div />
           </div>;
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
           return <div className={`order-row ${firstBid ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}>
@@ -974,6 +978,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           })}
         </div>
       </div>
+    </div>
     </div>
     {(showPreopen || book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip
       totals={displayTotals}

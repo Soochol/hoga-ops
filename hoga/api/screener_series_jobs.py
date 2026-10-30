@@ -14,6 +14,7 @@ from hoga.api import (
     trading_days,
 )
 from hoga.api.models import HistoryCoverage, HistoryCoverageItem, HistoryJob
+from hoga.api.screener_bar_policy import RANK_TYPES
 from hoga.api.screener_calendar import completed_day
 from hoga.api.screener_depth import DEPTH_TYPES
 from hoga.api.screener_expression import active_conditions
@@ -28,7 +29,8 @@ def plans(data_dir, req):
     expected = [
         day
         for leaf in active_conditions(req.conditions, req.expression)
-        if leaf.type not in DEPTH_TYPES and not getattr(leaf.params, "timeframe", "D").endswith("m")
+        if leaf.type not in DEPTH_TYPES and leaf.type not in RANK_TYPES
+        and not getattr(leaf.params, "timeframe", "D").endswith("m")
         for window, _ in evaluation._windows(leaf, days, now)
         for bucket, _, _ in window
         for day in bucket

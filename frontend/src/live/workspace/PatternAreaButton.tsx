@@ -39,7 +39,7 @@ export function PatternAreaButton({ showLabel = true }: { showLabel?: boolean })
         (active ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg')
       }
     >
-      <PatternIcon filled={active} className="h-[1.125em] w-[1.125em]" />
+      <PatternIcon filled={active} className="h-3.5 w-3.5" />
       {showLabel && <span>패턴 영역</span>}
     </TooltipButton>
   );

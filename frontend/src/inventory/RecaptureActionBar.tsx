@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import type { RecaptureStatus } from './useInventoryRecapture';
 import { RECAPTURABLE_DISK_STATES, STATE_SHORT_LABEL } from './DiskStateBadgeHelpers';
 
@@ -34,7 +35,7 @@ export function RecaptureActionBar({
           onClick={onRecaptureAll}
           className="rounded-md px-2.5 py-1 font-semibold cursor-pointer disabled:cursor-not-allowed border bg-bg-input border-accent text-accent hover:bg-accent hover:text-bg"
         >
-          ↻ 미완결 전체 재캡처 ({recapturableCount})
+          <AppIcon name="refresh" /> 미완결 전체 재캡처 ({recapturableCount})
         </button>
       )}
       {status?.kind === 'success' && (

@@ -1,10 +1,10 @@
 export function BellIcon({ className = '' }: { className?: string }) {
   return (
-    <svg
+    <svg data-ui-icon="" width="0.875rem" height="0.875rem"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

@@ -13,6 +13,7 @@
  * 리사이즈 핸들이 이 틈(이음매)에 닿으며, 잡은 핸들의 창 하나만 리사이즈한다.
  */
 import { memo } from 'react';
+import { WindowHeaderIcon } from './WindowHeaderIcon';
 import type { ResizeMode } from './snapEngine';
 
 /** 인접 창 사이 시각 간격(px). 카드는 바깥 rect 에서 이 값의 절반씩 물러난다. */
@@ -57,6 +58,8 @@ export interface WindowFrameCoreProps {
   focused: boolean;
   /** 헤더 내용(× 왼쪽) — 제목·뱃지 등 페이지가 구성한다. */
   header: React.ReactNode;
+  /** 닫기 버튼 왼쪽에 배치할 페이지별 헤더 액션. */
+  headerEnd?: React.ReactNode;
   /** × 버튼 표시 여부(기본 true) — 닫을 수 없는 창(예: /study 단일 차트)은 숨긴다. */
   closable?: boolean;
   closeLabel?: string;
@@ -83,7 +86,7 @@ export interface WindowFrameCoreProps {
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', closeTitle = '창 닫기', lifting = false, flat = false, outlined = false, className = '', headerClassName = '', gap = GAP, resizable = true, onHandleDown, onFocus, onClose, children } =
+  const { id, rect, zIndex, focused, header, headerEnd, closable = true, closeLabel = '창 닫기', closeTitle = '창 닫기', lifting = false, flat = false, outlined = false, className = '', headerClassName = '', gap = GAP, resizable = true, onHandleDown, onFocus, onClose, children } =
     props;
 
   return (
@@ -120,16 +123,17 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
           onPointerDown={(e) => onHandleDown(e, id, 'move')}
         >
           {header}
+          {headerEnd}
           {closable && (
             <button
               type="button"
               aria-label={closeLabel}
-              className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-sm leading-none text-fg-dim hover:bg-tint-selection hover:text-fg"
+              className="ui-icon-button window-close-button ml-auto"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => onClose(id)}
               data-tooltip={closeTitle ?? undefined}
             >
-              ×
+              <WindowHeaderIcon kind="close" />
             </button>
           )}
         </div>

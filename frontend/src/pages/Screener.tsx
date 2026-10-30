@@ -1,3 +1,5 @@
+import { AppIcon } from '../ui/AppIcon';
+import { isRankCondition } from '../screener/rankConditions';
 import { CalculationNotice } from "../screener/CalculationNotice";
 import { useScreenerJump } from "../screener/useScreenerJump";
 import { calculationLabel } from '../screener/calculationPolicy';
@@ -9,7 +11,8 @@ import { HistoryCollection } from '../screener/HistoryCollection';
 import { useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
 import { useScreener } from '../screener/useScreener';
-import { useScreenerMonitor, MONITOR_PERIOD_FULL_MS, MONITOR_PERIOD_SCOPED_MS } from '../screener/useScreenerMonitor';
+import { useScreenerMonitor, monitorPeriod } from '../screener/useScreenerMonitor';
+import { useLiveVenueStore } from '../state/liveVenue';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
 import { useScreenerUpdate } from '../screener/useScreenerUpdate';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from '../screener/useScreenerUpdateSync';
@@ -109,7 +112,7 @@ function SavedActionsMenu({ save, onRename, onDuplicate, onDelete }: {
   return (
     <div ref={wrapRef} className="relative shrink-0">
       <button ref={btnRef} type="button" aria-label="저장 조건 메뉴" aria-expanded={open} onClick={toggle}
-        className="px-1.5 py-1 rounded-md text-fg-dim hover:text-fg hover:bg-bg-input-hover">⋯</button>
+        className="px-1.5 py-1 rounded-md text-fg-dim hover:text-fg hover:bg-bg-input-hover"><AppIcon name="more" /></button>
       {open && anchorRect && (
         <div ref={menuRef} role="menu"
           className="z-50 min-w-[104px] overflow-hidden rounded-md border border-border-strong bg-bg-card shadow-overlay"
@@ -128,6 +131,7 @@ function SavedActionsMenu({ save, onRename, onDuplicate, onDelete }: {
 interface StatusFlag { key: string; text: string }
 
 export function Screener() {
+  const venue = useLiveVenueStore(s => s.venue);
   const editor = useSavedScreenerEditor();
   const numericValidation = useNumericInputValidation();
   const [formRevision, setFormRevision] = useState(0);
@@ -184,9 +188,10 @@ export function Screener() {
   const invalidEditor = invalidExpression || invalidInput;
   const scanBody = useMemo(
     () => ({ conditions: editor.conditions, universe: editor.universe, basis: 'auto' as const,
+      ...(editor.conditions.some(isRankCondition) ? { venue } : {}),
       ...(editor.calculationPolicy === 'separate_bases_v2' ? { calculation_policy: editor.calculationPolicy } : {}),
       ...(editor.expression != null ? { expression: editor.expression } : {}) }),
-    [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe],
+    [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe, venue],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
   const screener = useScreener({ continuous: !volumeRefreshStopped && !invalidEditor, anchor: scanKey });
@@ -250,7 +255,8 @@ export function Screener() {
       return false;
     }
   };
-  const liveVolume = !!editor.universe.scopes?.length && editor.conditions.some(leaf =>
+  const liveVolume = editor.conditions.some(isRankCondition)
+    || !!editor.universe.scopes?.length && editor.conditions.some(leaf =>
     (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
     && 'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m'));
   useScreenerMonitor({
@@ -258,7 +264,7 @@ export function Screener() {
     active: liveVolume && lastScan?.scanKey === scanKey && !volumeRefreshStopped,
     selectedId: scanKey,
     disabled: notSeeded || !!invalidEditor,
-    periodMs: editor.universe.scopes?.length ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS,
+    periodMs: monitorPeriod(editor.conditions, !!editor.universe.scopes?.length),
     resultCodes: rows.map(row => row.code),
     hasResults: lastScan !== null,
     conditions: editor.conditions,
@@ -318,7 +324,7 @@ export function Screener() {
             <span className="text-2xs font-semibold uppercase text-fg-dim">조건검색</span>
             <button type="button" aria-label="새 조건검색" data-tooltip="새 조건검색"
               disabled={editor.isSaving || !status?.calculation_policies?.includes('separate_bases_v2')} onClick={() => switchEditor(null)}
-              className="ml-auto rounded-md border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:text-fg disabled:opacity-50">＋ 새 조건</button>
+              className="ml-auto rounded-md border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:text-fg disabled:opacity-50"><AppIcon name="plus" /> 새 조건</button>
           </div>
           <div className="flex items-center gap-1.5">
             <SavedConditionSelect saves={saves} selectedId={editor.anchorId}

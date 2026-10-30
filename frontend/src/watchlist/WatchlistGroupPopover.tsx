@@ -15,7 +15,11 @@ export function WatchlistGroupPopover({ x, y, role, label, testId, onClose, anch
   children: ReactNode;
 }) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
-  useDismissablePopover(true, anchorRef ?? ref, onClose, ref);
+  const closeFromKeyboard = () => {
+    onClose();
+    anchorRef?.current?.focus({ preventScroll: true });
+  };
+  useDismissablePopover(true, anchorRef ?? ref, onClose, ref, closeFromKeyboard);
   const [, measure] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
     // 그룹 조회·검색·저장 안내로 자식 높이가 바뀌어도 화면 경계를 다시 확인한다.
@@ -40,8 +44,7 @@ export function WatchlistGroupPopover({ x, y, role, label, testId, onClose, anch
         event.stopPropagation();
         if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
         event.preventDefault();
-        onClose();
-        anchorRef?.current?.focus({ preventScroll: true });
+        closeFromKeyboard();
       }}
       className="z-[60] flex max-h-[calc(100vh-16px)] w-[var(--watchlist-panel-w)] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-lg border border-border bg-bg-card py-1 shadow-overlay"
       style={{ position: 'fixed', left, top }}>

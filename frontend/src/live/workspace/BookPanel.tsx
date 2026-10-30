@@ -34,10 +34,10 @@ import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters'
 import type { BookSessionControl, BookSessionMode } from '../bookSessionMode';
 import { otherBookSessionMode } from '../bookSessionMode';
 import { useBookSideLayout } from './useBookSideLayout';
-import { tradeHighlightBackground, useTradeHighlight } from '../tradeHighlight';
+import { BookTradeList, type BookTrade } from './BookTradeList';
 
 /** 체결 리스트 한 줄. */
-export type BookTrade = { price: number; qty: number; side: number };
+export type { BookTrade } from './BookTradeList';
 
 /** 상하한가·기준가·250일 최고/최저 — /api/live/stock-limits(키움 ka10001) 부분집합.
  *  **날짜 단위 상수**다: 오늘 안에서는 시각이 달라도 고정이라 당일 스팟 커서에서
@@ -63,6 +63,8 @@ type Props = {
   baselinePrice: number | null;
   summary: LiveTradeSummary;
   trades: readonly BookTrade[];
+  onOpenTrades?: () => void;
+  tradeScopeKey?: string;
   /** 종가 동시호가 구간이면 매수/매도 비율을 가린다(ADR-0062). */
   maskRatio: boolean;
   /** 현재가 — 해당 호가 행을 박스로 강조. */
@@ -150,6 +152,8 @@ export default function BookPanel({
   baselinePrice,
   summary,
   trades,
+  onOpenTrades,
+  tradeScopeKey,
   maskRatio,
   lastPrice,
   expectedFill,
@@ -165,11 +169,10 @@ export default function BookPanel({
   onSelectSessionMode,
   stale = false,
 }: Props) {
-  const highlight = useTradeHighlight();
   const priceLayout = useBookPriceLayout(snapshot ? [...snapshot.ask, ...snapshot.bid] : [], symbol, false, baselinePrice);
   const { setProbe, setSummaryProbe, samples: sideSamples, style: sideStyle } = useBookSideLayout(symbol,
     snapshot ? [...snapshot.ask, ...snapshot.bid].filter(level => level.price > 0).map(level => level.qty) : [],
-    deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [], trades.slice(0, 9), summary.fillStrengthPct);
+    deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [], trades, summary.fillStrengthPct);
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoPage, setInfoPage] = useState<0 | 1>(0);
   const [infoChangePct, setInfoChangePct] = useState(false);
@@ -329,25 +332,8 @@ export default function BookPanel({
                   : `${summary.fillStrengthPct.toFixed(2)}%`}
               </span>
             </div>
-            {/* 체결은 최신 9건을 유지한다. 매수 호가가 적어도 체결 내역은 자르지 않는다. */}
-            {trades.slice(0, 9).map((t, i) => (
-              <div key={i} className="book-trade-row grid items-center" style={{ height: ROW_H }}>
-                <span
-                  className={`text-right font-data text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
-                >
-                  {t.price.toLocaleString('ko-KR')}
-                </span>
-                <span
-                  data-tooltip={t.qty.toLocaleString('ko-KR')}
-                  style={{ background: tradeHighlightBackground(t, highlight) }}
-                  className={`rounded-sm text-right font-data text-sm tabular-nums ${
-                    t.side > 0 ? 'text-price-up' : t.side < 0 ? 'text-price-down' : 'text-fg-dim'
-                  }`}
-                >
-                  {t.qty.toLocaleString('ko-KR')}
-                </span>
-              </div>
-            ))}
+            <BookTradeList key={`${symbol}:${tradeScopeKey ?? sessionMode}`} trades={trades}
+              baselinePrice={baselinePrice} layout="book" onOpen={onOpenTrades} />
           </div>
 
           {/* 중앙: 가격축 — 세로 프레임(border-x) 없음. 열 분리는 좌우 잔량 바의

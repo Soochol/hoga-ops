@@ -1,3 +1,5 @@
+import { SortDirectionIcon } from '../ui/SortDirectionIcon';
+import { AppIcon } from '../ui/AppIcon';
 import { Fragment, useMemo, useState } from 'react';
 import type { StockDateGroup } from './types';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume, fmtClock, fmtGapDuration } from './format';
@@ -365,7 +367,7 @@ function RowRecaptureCell({
           : 'text-accent hover:text-fg cursor-pointer',
       ].join(' ')}
     >
-      ↻
+      <AppIcon name="refresh" />
     </button>
   );
 }
@@ -409,7 +411,6 @@ function SortableTh({ column, sort, onSort, right, title, children }: SortableTh
   // 비활성 인디케이터(↕)는 상시 표시 — /screener 결과 표와 같은 문법. 종전의
   // hover 전용 노출(opacity-0 group-hover)은 터치·키보드 사용자가 정렬 가능
   // 여부 자체를 알 수 없었다. 라벨도 활성 컨트롤이므로 fg-dim 이 바닥이다.
-  const indicator = dir === 'desc' ? '▼' : dir === 'asc' ? '▲' : '↕';
   const indicatorClass = active ? 'text-accent' : 'opacity-40';
   const labelClass = active ? 'text-fg' : 'text-fg-dim hover:text-fg';
 
@@ -429,9 +430,7 @@ function SortableTh({ column, sort, onSort, right, title, children }: SortableTh
         }`}
       >
         <span>{children}</span>
-        <span className={`font-data ${indicatorClass}`} aria-hidden="true">
-          {indicator}
-        </span>
+        <SortDirectionIcon direction={dir ?? 'none'} className={`h-3.5 w-3.5 ${indicatorClass}`} />
       </button>
     </th>
   );

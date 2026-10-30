@@ -15,14 +15,14 @@ import type { WindowKind } from '../../state/workspace';
 export type IconWindowKind = WindowKind | 'memo';
 
 const svg = (children: ReactNode) => (
-  <svg
+  <svg data-ui-icon=""
     aria-hidden="true"
-    width="13"
-    height="13"
+    width="0.875rem"
+    height="0.875rem"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.8"
+    strokeWidth="1.6"
     strokeLinecap="round"
     strokeLinejoin="round"
   >

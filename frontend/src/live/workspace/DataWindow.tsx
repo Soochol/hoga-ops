@@ -23,12 +23,12 @@ import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import BookPanel from './BookPanel';
+import { openTradeWindow } from './tradeWindowNavigation';
 import { resolveBookBaseline } from './bookDisplay';
 import { useRecentBookTrades } from './useRecentBookTrades';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { useOrderbookAvailability } from '../useOrderbookAvailability';
 import { BookAvailabilityState } from './BookAvailabilityState';
-import { RestOrderbookEmpty, RestOrderbookSource } from './RestOrderbookState';
 import { useLiveRestOrderbook } from '../../api/liveRestOrderbook';
 import { hasBookPrices } from '../../api/livePreAuctionBook';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
@@ -159,6 +159,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
         selectedAccountId={win.orderAccount}
         onResolvedAccount={account => useWorkspaceStore.getState().setOrderAccount(win.id, account)}
         onOpenExecutions={account => useWorkspaceStore.getState().openExecutionHistory(win.id, account)}
+        onOpenTrades={() => openTradeWindow(win.id)}
         settings={win.order} onSelectSymbol={(nextCode, name) => { if (nextCode !== code) useWorkspaceStore.getState().setWindowSymbol(win.id, { code: nextCode, name }); }} onSettingsChange={settings => useWorkspaceStore.getState().setOrderWindowSettings(win.id, settings)} /></Suspense>;
     case 'news':
       return <NewsWindow key={code} code={code} name={symbol?.name ?? code} linkedOnly={win.newsLinkedOnly ?? true}
@@ -280,8 +281,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const todayKst = link?.todayKst ?? realMsToYyyymmdd(nowMs);
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
-  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
-    allowRestBook, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
+  const { snapshot, ladderSource, bookFresh, monitorBook, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
+    allowRestBook, afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode, bookQuery } = useBookSessionDisplay({
     code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
   // Current REST data must never fill a historical cursor or replace a
@@ -292,7 +293,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const restBook = needsRestBook && rest.data?.code === code && rest.data.venue === effectiveVenue
     ? rest.data.book : null;
   const displayedBook = restBook ?? (needsRestBook ? null : snapshot);
-  const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot && !storedLadder && !restBook);
+  const deltaBadges = useOrderbookDeltaBadges(venueOb, bookFresh && !restBook);
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
   //
@@ -442,7 +443,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     () => (isSpot ? EMPTY_TRADE_SUMMARY : fillTradeSummaryFromQuote(latestTradeSummary(venueTrade), quote)),
     [isSpot, venueTrade, quote],
   );
-  // Seed the nine recent executions from the tape's shared REST cache, then
+  // Seed recent executions from the tape's shared REST cache, then
   // merge the live tail. Current-day history must never leak into a past cursor.
   const recentTrades = useRecentBookTrades({ code, date: todayKst, venue: effectiveVenue,
     frames: venueTrade, enabled: !isSpot && activeSinglePrice === null });
@@ -476,9 +477,15 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const bookStale = !useSinglePrice && spotOrderbookStale;
   const { availability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
     live, bookMs: snapshot?.ts_ms, nowMs, exclusion: aftermarketExclusion,
-    enabled: !isSpot && (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
+    hasBook: hasBookPrices(snapshot) || !!restBook, bookQuery,
+    rest: { enabled: needsRestBook, loading: live.isLoading || rest.isLoading, isError: rest.isError, data: rest.data,
+      retry: () => rest.refetch({ cancelRefetch: false }) },
+    enabled: monitorBook && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
-  const bookAvailability = <BookAvailabilityState state={availability} onRetry={retryBook} />;
+  const bookAvailability = <BookAvailabilityState state={availability} onRetry={retryBook}
+    testId={needsRestBook && !restBook ? 'book-empty-book' : undefined}
+    reference={restBook ? { testId: 'book-rest-book-source',
+      text: `${rest.data?.source === 'stored' ? '저장된 마지막 호가' : 'REST 마지막 호가'} · ${restBook.book_time ?? '시각 미제공'} · ${effectiveVenue === 'UN' ? '통합' : effectiveVenue} · 거래일 미제공` } : undefined} />;
   // 조회 중에는 안내 행을 추가하지 않아 호가 사다리의 위치를 유지한다.
   const bookContextMode = scope.kind === 'second-cursor' ? '저장 호가' : null;
   // 스팟 조회 실패는 **패널을 대체한다**(칩으로 얹지 않는다). `useSpot` 이 실패분을
@@ -501,8 +508,6 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   }
   return (
     <div className="flex h-full flex-col">
-      {snapshot != null && !needsRestBook && bookAvailability}
-      {restBook && <RestOrderbookSource rest={rest} venue={effectiveVenue} testId="book-rest-book-source" />}
       {isSpot && (bookContextMode !== null || showAvailableHint || showFormingHint) && <DataContext
         mode={bookContextMode ?? ''}
         time={bookContextMode !== null ? snapshot?.ts_ms : undefined}
@@ -530,17 +535,17 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           </span>
         )}
       </DataContext>}
-      <div className="min-h-0 flex-1">
+      <div className="book-status-host">
+        {(hasBookPrices(snapshot) || restBook) && <div className="book-status-overlay">{bookAvailability}</div>}
         <BookPanel
           symbol={code}
           emptyState={isSpot && snapshot === null
             ? <div className="m-auto text-xs text-fg-dim">선택 시점의 저장 호가 없음</div>
-            : needsRestBook ? <RestOrderbookEmpty rest={rest} loading={live.isLoading || rest.isLoading} onRetry={retryBook} testId="book-empty-book" />
             : availability ? bookAvailability : undefined}
           snapshot={displayedBook}
           showEmptySummary={!restBook && !hasBookPrices(snapshot)}
-          expectedFill={restBook ? null : !isSpot && !storedLadder && activeSinglePrice === null
-            ? { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null } : undefined}
+          expectedFill={restBook || ladderSource === 'saved' ? null : isSpot || activeSinglePrice !== null ? undefined
+            : { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null }}
           afterHoursTotals={restBook ? null : afterHoursTotals}
           afterHoursLabel={afterHoursLabel}
           sessionControl={restBook ? { kind: 'label', label: '마지막 조회 호가' } : sessionControl}
@@ -551,6 +556,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           krxPreviousClose={!isSpot && krxPreviousClose.data?.as_of === quoteDate ? krxPreviousClose.data.price : null}
           summary={summary}
           trades={bookTrades}
+          tradeScopeKey={`${todayKst}:${effectiveVenue}:${scope.kind}:${scope.cursorMs ?? ''}:${activeSinglePrice !== null}`}
+          onOpenTrades={() => openTradeWindow(win.id)}
           maskRatio={maskRatio}
           lastPrice={lastPrice}
           deltaBadges={isSpot ? null : deltaBadges}

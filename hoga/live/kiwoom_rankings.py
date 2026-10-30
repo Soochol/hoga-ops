@@ -105,6 +105,7 @@ class RankingRow:
     name: str
     price: int | None
     change_pct: float | None
+    provider_rank: int | None = None
     trade_value_won: int | None = None
     program_net_buy_won: int | None = None
     investor_net_buy_won: int | None = None
@@ -256,6 +257,7 @@ def parse_rankings(kind: RankingKind, body: dict) -> tuple[RankingRow, ...]:
         rows.append(
             RankingRow(
                 rank=i,
+                provider_rank=_signed_integer(item.get("now_rank")) if kind == "value" else None,
                 code=bare_code,
                 name=name.strip() if isinstance(name, str) else "",
                 price=_abs_price(item.get("cur_prc")),
@@ -411,6 +413,12 @@ class KiwoomRankingsFetcher:
                 raise ValueError("순위 조회 범위를 벗어났습니다")
             key += (str(limit),)
         ttl_ms = _CACHE_TTL_MS
+        if kind not in _NET_BUY_KINDS:
+            day = now.strftime("%Y%m%d")
+            key += (day,)
+            self._cache = {
+                k: v for k, v in self._cache.items() if k[0] in _NET_BUY_KINDS or k[-1] == day
+            }
         if kind in _NET_BUY_KINDS:
             direction = "up"  # 이 탭은 순매수 금액 상위이며 등락률 방향과 무관하다.
             day = now.strftime("%Y%m%d")

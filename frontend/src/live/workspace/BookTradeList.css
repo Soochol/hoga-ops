@@ -1,0 +1,3 @@
+.book-trade-scroll { overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:contain; flex-shrink:0; }
+.book-panel-grid:has(.book-trade-scroll[data-scrollable=true]),.order-scroll:has(.book-trade-scroll[data-scrollable=true]) { --book-trade-gutter:12px; }
+.book-trade-scroll:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }

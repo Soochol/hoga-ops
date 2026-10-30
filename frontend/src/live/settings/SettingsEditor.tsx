@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { WORKSPACE_PANEL_SHELL_CLASS } from '../workspacePanel';
 import { SettingsUndoContext } from './settingsUndoContext';
@@ -20,7 +21,7 @@ export function SettingsEditor({ title, scope, onClose, closeLabel = '닫기', a
       <header className="settings-editor-heading">
         <h2>{title}</h2>
         <div className="settings-editor-heading-actions">{scope && <span className="settings-editor-scope">{scope}</span>}{actions}
-          {onClose && <button type="button" aria-label={closeLabel} onClick={onClose} className="ui-icon-button text-lg leading-none">✕</button>}
+          {onClose && <button type="button" aria-label={closeLabel} onClick={onClose} className="ui-icon-button text-lg leading-none"><AppIcon name="close" /></button>}
         </div>
       </header>
       <div className="settings-editor-body">

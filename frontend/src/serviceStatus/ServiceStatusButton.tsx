@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useCallback, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLiveStatus, type LiveStatus } from '../api/liveStatus';
@@ -90,7 +91,7 @@ export function ServiceStatusButton() {
     {open && createPortal(<section ref={ref} id={id} role="dialog" aria-label="서비스 상태" style={{ ...style, maxHeight: 'min(640px, calc(100dvh - 64px))' }}
       className="overflow-y-auto rounded-lg border border-border-strong bg-bg-card text-fg shadow-overlay">
       <header className="flex items-center justify-between px-lg pb-2 pt-md"><strong className="text-md">서비스 상태</strong>
-        <button type="button" aria-label="서비스 상태 닫기" onClick={dismiss} className="rounded px-2 py-1 text-lg text-fg-dim hover:bg-bg-input-hover">×</button>
+        <button type="button" aria-label="서비스 상태 닫기" onClick={dismiss} className="rounded px-2 py-1 text-lg text-fg-dim hover:bg-bg-input-hover"><AppIcon name="close" /></button>
       </header>
       <div className="flex gap-lg border-b border-border px-lg pb-2">
         {(['current', 'cleared'] as const).map((tab) => <button key={tab} type="button" aria-pressed={selectedView === tab}

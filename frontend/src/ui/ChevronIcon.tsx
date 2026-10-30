@@ -6,13 +6,13 @@
  */
 export function ChevronIcon({ collapsed, size = 12 }: { collapsed: boolean; size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
+    <svg data-ui-icon=""
+      width={`${size / 16}rem`}
+      height={`${size / 16}rem`}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -35,13 +35,13 @@ export function DoubleChevronIcon({
   size?: number;
 }) {
   return (
-    <svg
-      width={size}
-      height={size}
+    <svg data-ui-icon=""
+      width={`${size / 16}rem`}
+      height={`${size / 16}rem`}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

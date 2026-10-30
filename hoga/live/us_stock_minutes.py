@@ -36,7 +36,8 @@ class UsStockMinuteMetadata(UsMinuteMetadata):
     source: str = "kiwoom"
     history_scope: str = "bounded_recent_window"
     session_scope: str = "vendor_extended_unverified"
-    price_basis: str = "raw"
+    price_basis: str = "adjusted"
+    adjusted_as_of: str | None = None
     currency: str = "USD"
     bar_limit: int = MAX_BARS
     pages_fetched: int = 0
@@ -89,7 +90,7 @@ async def fetch_stock_minutes(client, scheduler, exchange, symbol, timeframe, an
                               *, max_pages=MAX_PAGES, budget_seconds=12, start_cursor="",
                               before_ms=None) -> StockMinuteWindow:
     body = {"stex_tp": EXCHANGE_CODES[exchange], "stk_cd": symbol, "strt_dt": anchor,
-            "tic_scope": timeframe[:-1], "upd_stkpc_tp": "0", "exrt_appl_tp": "0"}
+            "tic_scope": timeframe[:-1], "upd_stkpc_tp": "1", "exrt_appl_tp": "0"}
     result = StockMinuteWindow()
     seen: dict[int, UsDailyBar] = {}
     cursor, cursors, previous_oldest = start_cursor, {start_cursor} if start_cursor else set(), before_ms
@@ -104,7 +105,7 @@ async def fetch_stock_minutes(client, scheduler, exchange, symbol, timeframe, an
                 return await c.call("usa06011", body, cont=bool(token), next_key=token)
 
             page = await asyncio.wait_for(kiwoom_access.run_with_capacity(
-                scheduler, key=("us-stock-minute", exchange, symbol, timeframe, anchor, "raw-USD", cursor),
+                scheduler, key=("us-stock-minute", exchange, symbol, timeframe, anchor, "adjusted-USD", cursor),
                 api_id="usa06011", priority="user_visible", fetch_fn=call, client=client,
             ), remaining)
             if page.raw.get("return_code") != 0 or not isinstance(page.raw.get("result_list"), list):
@@ -189,6 +190,12 @@ class UsStockMinuteService:
             raise ValueError("unsupported US stock minute exchange/period")
         key = (exchange, symbol, timeframe)
         context = self._decode_cursor(key, cursor) if cursor else None
+        anchor = self.calendar_now().strftime("%Y%m%d")
+        if context and context[0] != anchor:
+            raise ValueError("수정주가 기준일이 바뀌었습니다. 차트를 새로고침하세요.")
+        # Cache/cursor context must include the adjustment day, including latest
+        # snapshots: a stale previous-day window cannot survive a split rollover.
+        key = (*key, anchor)
         if cursor:
             key = (*key, cursor)
         if key not in self.entries:
@@ -211,11 +218,11 @@ class UsStockMinuteService:
         meta = entry.meta
         if bypass or client is None:
             meta = meta.model_copy(update={"refresh_status": "bypass" if bypass else "unconfigured"})
-        return entry.bars, meta
+        return entry.bars, meta.model_copy(update={"adjusted_as_of": anchor})
 
     async def _refresh(self, key, entry, client, scheduler, context=None):
         try:
-            anchor, vendor, before = context or (self.calendar_now().strftime("%Y%m%d"), "", None)
+            anchor, vendor, before = context or (key[3], "", None)
             options = {"start_cursor": vendor, "before_ms": before} if context else {}
             if not context and entry.bars and entry.meta.last_successful_check_at_ms is not None:
                 age_ms = self.wall_clock() * 1000 - entry.meta.last_successful_check_at_ms
@@ -227,6 +234,7 @@ class UsStockMinuteService:
             else:
                 entry.bars = window.bars
                 entry.meta = UsStockMinuteMetadata(
+                    adjusted_as_of=anchor,
                     pages_fetched=window.pages, more_available=bool(window.more and window.cursor and window.bars),
                     next_cursor=self._encode_cursor(key, anchor, window.cursor, window.bars[0].t_ms)
                     if window.more and window.cursor and window.bars else None,

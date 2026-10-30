@@ -3,11 +3,13 @@ import { create } from 'zustand';
 import { HIGH_LOW_WINDOW_PREF_KEYS, normalizeChartDisplayPrefs } from './chartDisplayPrefs';
 import { persistJson, readJsonObject } from './persist';
 import { notifyChartPreferenceEdit } from './windowPreferenceMemory';
+import { normalizeMajorIndicesSettings } from './majorIndicesSettings';
 
 /** Add a typed section here to share validation, persistence and preset transport.
  * Settings belong to a window, independently of its symbol or timeframe. */
 const WINDOW_SETTINGS_REGISTRY = {
   chart: { kind: 'chart', normalize: normalizeChartDisplayPrefs },
+  majorIndices: { kind: 'market-indices', normalize: normalizeMajorIndicesSettings },
 } as const;
 export type WindowSettings = { [K in keyof typeof WINDOW_SETTINGS_REGISTRY]?: ReturnType<(typeof WINDOW_SETTINGS_REGISTRY)[K]['normalize']> };
 export type WindowSettingsSection = keyof WindowSettings;

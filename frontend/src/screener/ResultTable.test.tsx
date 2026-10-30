@@ -41,7 +41,7 @@ describe('ResultTable', () => {
     const onSortChange = renderTable({ field: 'name', direction: 'asc' });
 
     const nameHeader = screen.getByRole('button', { name: '종목명 정렬' });
-    expect(within(nameHeader).getByText('▲')).toBeInTheDocument();
+    expect(within(nameHeader).getByTestId('sort-icon-asc')).toBeInTheDocument();
     fireEvent.click(nameHeader);
 
     expect(onSortChange).toHaveBeenCalledWith({ field: 'name', direction: 'desc' });

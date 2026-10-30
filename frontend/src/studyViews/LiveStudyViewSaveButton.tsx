@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { isMinuteTimeframe } from '../state/livePage';
 import { studyTimeframeLabel } from './studyViewPeriod';
 import { persistJson, readJsonObject } from '../state/persist';
@@ -91,7 +92,7 @@ export function LiveStudyViewSaveButton({
         className="inline-flex min-h-6 shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
         style={{ background: 'transparent', paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE }}
       >
-        <span aria-hidden="true" className="font-data">▤</span>
+        <AppIcon name="saveView" />
         {showLabel && <span>저장</span>}
       </TooltipButton>
       {command && !groupsQuery.data && createPortal(<ModalShell ariaLabel="저장 그룹 불러오기" width="w-[360px]" onClose={() => setCommand(null)}>

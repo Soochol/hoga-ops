@@ -20,6 +20,11 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(minute + 30_000
 afterEach(() => vi.useRealTimers());
 
 describe('US observation overlay', () => {
+  it('waits for the current adjustment basis before adding current-day observations', () => {
+    const original = base();
+    expect(overlayUsBundle(original, event(), '1m', minute, day, '20261022')).toBe(original);
+    expect(overlayUsBundle(original, event(), '1m', minute, day, day)?.candles).toHaveLength(2);
+  });
   it('adds an observed minute while retaining historical object references and layout', () => {
     const original = base();
     const next = overlayUsBundle(original, event(), '1m', minute, day)!;

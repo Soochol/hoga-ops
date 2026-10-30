@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 /**
  * ChartWindow — 워크스페이스 차트 창의 실 콘텐츠 (ADR-0119 PR-C2b·C2c-2c).
  *
@@ -900,7 +901,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           {!isIndex && isMinuteTimeframe(view.timeframe) && <IconToolbarButton aria-label="초봉으로 확대"
             title="초봉으로 확대 — 화면 오른쪽 봉을 초봉 창에서 엽니다. 측정 도구로 구간을 선택할 수도 있습니다."
             onClick={inspectVisibleMinute} disabled={!d.workareaChartBundle?.candles.length}
-            icon={<span aria-hidden>↘</span>} />}
+            icon={<AppIcon name="arrowDownRight" />} />}
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
             destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
             showLabel={false} />}
