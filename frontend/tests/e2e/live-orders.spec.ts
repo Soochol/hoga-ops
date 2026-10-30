@@ -2122,7 +2122,11 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(summary.getByText('매도 가능', { exact: true })).toHaveCount(0);
   await expect(summary.getByText('KRX종가', { exact: true })).toBeVisible();
   await showInfoPage(page, window);
-  for (const label of ['상승VI', '하강VI', '상한가']) await expect(summary.getByText(label, { exact: true })).toBeVisible();
+  await expect(summary.getByText('상한가', { exact: true })).toBeVisible();
+  await expect(summary.getByText('상승VI', { exact: true })).toHaveCount(0);
+  await showInfoPage(page, window, 1);
+  await summary.getByText('예상 체결가', { exact: true }).click();
+  for (const label of ['상승VI', '하강VI']) await expect(summary.getByText(label, { exact: true })).toBeVisible();
   await buy.dblclick();
   await expect(window.getByLabel('매수 67,200원 주문', { exact: true })).toHaveText('50');
   expect(commands[0]).toMatchObject({ side: 'BUY', quantity: 50 });
@@ -3633,6 +3637,69 @@ test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상
     results.push({ width, before, after });
   }
   await testInfo.attach('digit-layout', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
+  expect(commands).toHaveLength(0);
+});
+
+test('예상 체결·VI 가격은 두 창의 같은 두 행에서 전환하고 팝오버와 선택을 공유한다', async ({ page }, testInfo) => {
+  const { window, ws, commands } = await setup(page, false, false);
+  const book = page.locator('.book-panel');
+  for (const [panel, left, width] of [[book, 0, 680], [window, 700, 576]] as const) {
+    await page.locator('[data-win]').filter({ has: panel }).evaluate((el, rect) => {
+      Object.assign((el as HTMLElement).style, { left: `${rect.left}px`, top: '0px', width: `${rect.width}px`, height: '720px' });
+    }, { left, width });
+  }
+  await ws.waitForSubscribe('005930');
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(),
+    day_open: 68000, day_high: 70000, day_low: 64000, trades: [] });
+  await page.evaluate(() => document.fonts.ready);
+  const measure = (panel: Locator) => panel.evaluate(el => {
+    const rows = el.querySelector('.book-panel-grid')?.children[1].children ?? el.querySelectorAll('.order-row');
+    const rect = (row: Element) => { const r = row.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+    return { ladder: [...rows].map(rect), information: [...el.querySelectorAll('.book-summary-row')].map(rect) };
+  });
+  for (const panel of [book, window]) {
+    const summary = panel.getByTestId('book-summary');
+    await expect(summary.getByText('68,000', { exact: true })).toBeVisible();
+    const expected = summary.getByTestId('book-expected-fill');
+    await expect(expected).toHaveText('예상 체결가예상 체결량');
+    const before = await measure(panel);
+    const slot = await expected.boundingBox();
+    await expected.getByText('예상 체결량', { exact: true }).click();
+    const vi = summary.getByTestId('book-vi-prices');
+    await expect(summary).toHaveAttribute('data-page', '1');
+    await expect(vi).toHaveText('상승VI74,800하강VI61,200');
+    expect(await vi.boundingBox()).toEqual(slot);
+    expect(await measure(panel)).toEqual(before);
+    await expect(vi.locator('.book-summary-row').first()).toHaveCSS('border-top-width', '1px');
+    await panel.screenshot({ path: testInfo.outputPath(`${panel === book ? 'book' : 'order'}-vi-slot.png`) });
+    await summary.getByRole('button', { name: /다음 정보 페이지로 전환/ }).click();
+    await expect(summary.getByText('상한가', { exact: true })).toBeVisible();
+    await expect(summary.getByText('상승VI', { exact: true })).toHaveCount(0);
+    await summary.getByRole('button', { name: /다음 정보 페이지로 전환/ }).click();
+    await expect(vi).toBeVisible();
+    await vi.getByText('74,800', { exact: true }).click();
+    await expect(expected).toBeVisible();
+    await expected.getByRole('button', { name: '예상 체결가 예상체결·VI 전환' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(vi).toBeVisible();
+    await vi.getByRole('button', { name: '하강VI 예상체결·VI 전환' }).focus();
+    await page.keyboard.press('Space');
+    await expect(expected).toBeVisible();
+    expect(await measure(panel)).toEqual(before);
+    await expected.getByText('예상 체결가', { exact: true }).click();
+    const frame = page.locator('[data-win]').filter({ has: panel });
+    await frame.evaluate(el => { (el as HTMLElement).style.width = '420px'; });
+    await panel.getByRole('button', { name: '종목 상세 정보', exact: true }).click();
+    const popup = page.getByRole('dialog', { name: '종목 상세 정보', exact: true });
+    await expect(popup.getByTestId('book-vi-prices')).toHaveText('상승VI74,800하강VI61,200');
+    await popup.getByText('하강VI', { exact: true }).click();
+    await expect(popup.getByTestId('book-expected-fill')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(popup).toHaveCount(0);
+    await panel.getByRole('button', { name: '종목 상세 정보', exact: true }).click();
+    await expect(popup.getByTestId('book-expected-fill')).toBeVisible();
+    await popup.getByRole('button', { name: /정보 닫기/ }).click();
+  }
   expect(commands).toHaveLength(0);
 });
 

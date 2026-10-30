@@ -465,13 +465,13 @@ describe('BookPanel', () => {
     expect(screen.getByText('4,668만')).toBeInTheDocument();  // 거래량(만 단위 절사)
     expect(screen.getByText('824억')).toBeInTheDocument();    // 거래대금(억 절사)
     fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
-    // limits 미로드 시 상한가·하한가 2행은 대시(VI 행은 시가 기반 계산값).
+    // limits 미로드 시 상한가·하한가 2행은 대시.
     expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(2);
   });
 
   it('VI 예상 발동가를 시가 기준으로 계산해 표시한다', () => {
     renderPanel(); // dayOpen 245,500 → ±10% 틱 반올림(절사/올림)
-    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    fireEvent.click(screen.getByRole('button', { name: '예상 체결가 예상체결·VI 전환' }));
     expect(screen.getByText('270,000')).toBeInTheDocument(); // 270,050 → tick 500 절사
     expect(screen.getByText('221,000')).toBeInTheDocument(); // 220,950 → tick 500 올림
   });
@@ -481,7 +481,7 @@ describe('BookPanel', () => {
       summary: EMPTY_TRADE_SUMMARY,
       limits: { base_price: 245_500, upper_limit: null, lower_limit: null, high_250: null, low_250: null },
     });
-    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    fireEvent.click(screen.getByRole('button', { name: '예상 체결가 예상체결·VI 전환' }));
     expect(screen.getByText('270,000')).toBeInTheDocument();
     expect(screen.getByText('221,000')).toBeInTheDocument();
   });
@@ -494,7 +494,7 @@ describe('BookPanel', () => {
 
   it('VI 발동 중이면 해당 방향 행을 발동가로 강조한다', () => {
     renderPanel({ vi: VI_UP_ACTIVE });
-    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    fireEvent.click(screen.getByRole('button', { name: '예상 체결가 예상체결·VI 전환' }));
     const active = screen.getByText('251,900 발동');
     expect(active.className).toContain('text-price-up');
     // 반대 방향(하강)은 예상가 유지 — 기준가는 발동가 근사(251,900×0.9=226,710→227,000 (tick 500 올림)).
@@ -503,7 +503,7 @@ describe('BookPanel', () => {
 
   it('VI 해제 후엔 발동가를 기준가 근사로 써서 예상가를 갱신한다', () => {
     renderPanel({ vi: { ...VI_UP_ACTIVE, released_at: '101750', active: false } });
-    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    fireEvent.click(screen.getByRole('button', { name: '예상 체결가 예상체결·VI 전환' }));
     expect(screen.queryByText(/발동/)).toBeNull();
     // 251,900×1.1=277,090 → tick 500 절사 = 277,000.
     expect(screen.getByText('277,000')).toBeInTheDocument();
@@ -606,7 +606,7 @@ describe('BookPanel', () => {
     expect(screen.getByText('256,000')).toBeInTheDocument();
     expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(7);
     fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
-    expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(2);
   });
 
   it('총잔량 바는 마스크 시 비율을 숨긴다', () => {
@@ -827,6 +827,57 @@ describe('BookPanel', () => {
     expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가121,100원');
     expect(screen.getByTestId('book-expected-fill')).toHaveTextContent(/^예상 체결가121,100원예상 체결량$/);
     expect(screen.queryByText('12,345')).not.toBeInTheDocument();
+  });
+});
+
+describe('예상 체결·VI 가격 자리 전환', () => {
+  it.each(['예상 체결가', '예상 체결량'])('%s를 누르면 같은 두 행에 VI 가격을 표시하고 다시 돌아온다', label => {
+    renderPanel({ expectedFill: { price: 251_500, qty: 30 } });
+    const summary = screen.getByTestId('book-summary');
+    fireEvent.click(within(summary).getByText(label));
+    expect(summary).toHaveAttribute('data-page', '1');
+    expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+    const vi = screen.getByTestId('book-vi-prices');
+    expect(vi.querySelectorAll('.book-summary-row')).toHaveLength(2);
+    expect(within(vi).getByText('270,000')).toBeInTheDocument();
+    expect(within(vi).getByText('221,000')).toBeInTheDocument();
+    expect(within(vi).getByText('상승VI').parentElement).toHaveClass('border-t');
+    expect(summary.querySelectorAll('.book-summary-row')).toHaveLength(9);
+    fireEvent.click(within(vi).getByText('221,000'));
+    expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가251,500원예상 체결량30');
+    fireEvent.click(screen.getByText('251,500원'));
+    expect(screen.getByTestId('book-vi-prices')).toBeInTheDocument();
+  });
+
+  it('값이 없어도 전환할 수 있고 페이지 전환 후 선택을 유지하며 시고저 표시와 독립적이다', () => {
+    renderPanel({ summary: EMPTY_TRADE_SUMMARY, krxPreviousClose: PREV_CLOSE });
+    fireEvent.click(screen.getByRole('button', { name: '예상 체결량 예상체결·VI 전환' }));
+    expect(screen.getByTestId('book-vi-prices')).toHaveTextContent('상승VI−하강VI−');
+    fireEvent.click(screen.getByRole('button', { name: '시작 가격·등락률 전환' }));
+    expect(screen.getByTestId('book-vi-prices')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    expect(screen.queryByTestId('book-vi-prices')).not.toBeInTheDocument();
+    expect(screen.queryByText('상승VI')).not.toBeInTheDocument();
+    expect(screen.getByText('상한가')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    expect(screen.getByTestId('book-vi-prices')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '시작 가격·등락률 전환' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('VI 표시 중에도 시세를 갱신하고 팝오버와 선택을 공유한다', () => {
+    const props = { snapshot: snap(), baselinePrice: PREV_CLOSE, summary: SUMMARY,
+      trades: [], maskRatio: false, lastPrice: null, expectedFill: { price: 251_500, qty: 30 } };
+    const view = render(<BookPanel {...props} />);
+    fireEvent.click(screen.getByText('예상 체결량'));
+    view.rerender(<BookPanel {...props} summary={{ ...SUMMARY, dayOpen: 250_000 }} expectedFill={{ price: 252_000, qty: 40 }} />);
+    expect(screen.getByTestId('book-vi-prices')).toHaveTextContent('275,000');
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    const dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    expect(within(dialog).getByTestId('book-vi-prices')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByText('상승VI'));
+    expect(within(dialog).getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가252,000원예상 체결량40');
+    fireEvent.click(within(dialog).getByRole('button', { name: '상세 정보 닫기' }));
+    expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가252,000원예상 체결량40');
   });
 });
 

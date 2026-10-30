@@ -38,6 +38,8 @@
 .book-summary .book-summary-pages:focus-visible,.book-summary .book-summary-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .book-summary-row.book-summary-toggle { width:100%; padding-block:0; border:0; border-radius:0; background:transparent; color:inherit; font:inherit; cursor:pointer; }
 .book-summary-row.book-summary-toggle:hover { background:var(--bg-input-hover); }
+.book-summary-row.book-summary-toggle.border-t { border-top:1px solid var(--border); }
+.book-summary-row.book-summary-toggle.bg-bg-subtle { background:var(--bg-subtle); }
 .book-summary-page { flex:1; min-height:0; }
 .book-summary [data-testid="book-expected-fill"] .book-summary-row > span:last-child { display:block; flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; text-align:right; }
 /* The detail popover uses z=70; its portaled price tooltip must sit above it. */
