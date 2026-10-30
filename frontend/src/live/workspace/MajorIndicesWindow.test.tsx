@@ -7,12 +7,14 @@ import { useMajorIndicesStock } from './useMajorIndicesStock';
 import { MAJOR_INDICES } from './majorIndicesModel';
 import { regularSessionOpenMs as open } from '../liveDateTime';
 import { useWorkspaceStore, activationTarget, activeGroupOf, focusedWindowSymbol, snapshotWorkspace } from '../../state/workspace';
+import { useWindowSettingsStore } from '../../state/windowSettings';
 vi.mock('./useMajorIndices', () => ({ useMajorIndices: vi.fn() }));
 vi.mock('./useMajorIndicesStock', () => ({ useMajorIndicesStock: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 const frameProps = { id: 'indices', kind: 'market-indices' as const, group: 1 as const, rect: { x: 0, y: 0, w: 660, h: 215 }, zIndex: 1, focused: true,
   symbolLabel: '삼성전자', symbolCode: '005930', paletteOpen: false, onHandleDown: vi.fn(), onFocus: vi.fn(), onClose: vi.fn(), onTogglePalette: vi.fn(), onPickGroup: vi.fn(), onTogglePin: vi.fn() };
 beforeEach(() => {
+  useWindowSettingsStore.setState({ byWindow: {} });
   vi.mocked(useMajorIndicesStock).mockReturnValue({ points: [], loading: false, failed: false });
   vi.mocked(useMajorIndices).mockReturnValue({ date: '20261015', now: open('20261015') + 60_000, status: '장중', label: '장중', loading: false,
     series: MAJOR_INDICES.map((s, i) => ({ ...s, points: [{ tMs: open('20261015'), percent: i }, { tMs: open('20261015') + 60_000, percent: i + .1 }], value: 100 + i, percent: i, observedMs: open('20261015') + 60_000, closed: false, delayed: false })) });
@@ -26,11 +28,51 @@ describe('major indices window', () => {
     expect(tooltipQueries().queryByText('링크 그룹 변경')).toBeNull();
     expect(screen.getByRole('button', { name: '링크 그룹 1 변경' })).toHaveTextContent('1');
     expect(screen.queryByTestId('window-pin-toggle')).toBeNull();
-    expect(screen.queryByText('삼성전자')).toBeNull();
+    expect(within(screen.getByRole('list', { name: '표시 항목' })).getByText('삼성전자')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '주요 지수 설정' })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/별도\s?배율|독립\s?배율/);
     expect(container.querySelector('[data-handle="move"]')).toHaveTextContent('×');
     expect(container.querySelector('[data-handle="move"]')).toHaveTextContent('주요 지수');
     expect(container.querySelector('[data-handle="move"]')!.textContent).not.toMatch(/코스피|코스닥|K200|장중|%|⠿/);
     expect(container.querySelector('footer')).toBeNull();
+  });
+  it('applies selection to the legend, tooltip and axis, and preserves at least one index', () => {
+    const current = vi.mocked(useMajorIndices)();
+    vi.mocked(useMajorIndices).mockImplementation((indices = ['KOSPI', 'KOSDAQ', 'KOSPI200']) => ({ ...current,
+      series: current.series.filter(series => indices.includes(series.id)),
+    }));
+    const { container } = render(<MajorIndicesWindow frameProps={frameProps} />);
+    const axisBefore = screen.getByTestId('major-indices-axis-labels').textContent;
+    fireEvent.click(screen.getByRole('button', { name: '주요 지수 설정' }));
+    const settings = screen.getByRole('dialog', { name: '주요 지수 설정' });
+    fireEvent.click(within(settings).getByRole('checkbox', { name: 'K200' }));
+    fireEvent.click(within(settings).getByRole('checkbox', { name: '코스닥' }));
+    expect(within(settings).getByRole('checkbox', { name: '코스피' })).toBeDisabled();
+    expect(container.querySelectorAll('[data-index-series]')).toHaveLength(1);
+    const legend = screen.getByRole('list', { name: '표시 항목' });
+    expect(legend).toHaveTextContent('코스피삼성전자');
+    expect(legend).not.toHaveTextContent(/코스닥|K200/);
+    expect(screen.getByTestId('major-indices-axis-labels').textContent).not.toBe(axisBefore);
+    fireEvent.keyDown(settings, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('button', { name: '주요 지수 설정' })).toHaveFocus();
+    fireEvent.pointerMove(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('코스피');
+    expect(screen.getByRole('tooltip')).not.toHaveTextContent(/코스닥|K200/);
+  });
+  it('disables the linked stock source, legend, notices and tooltip when stock display is OFF', () => {
+    const { rerender, container } = render(<MajorIndicesWindow frameProps={frameProps} />);
+    fireEvent.click(screen.getByRole('button', { name: '주요 지수 설정' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '그룹 종목 표시' }));
+    expect(useMajorIndicesStock).toHaveBeenLastCalledWith(null, '20261015');
+    expect(screen.getByRole('list', { name: '표시 항목' })).not.toHaveTextContent('삼성전자');
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(container.querySelector('[data-stock-series]')).toBeNull();
+    rerender(<MajorIndicesWindow frameProps={{ ...frameProps, symbolCode: '000660', symbolLabel: 'SK하이닉스' }} />);
+    expect(useMajorIndicesStock).toHaveBeenLastCalledWith(null, '20261015');
+    fireEvent.click(screen.getByRole('checkbox', { name: '그룹 종목 표시' }));
+    expect(useMajorIndicesStock).toHaveBeenLastCalledWith('000660', '20261015');
+    expect(screen.getByRole('list', { name: '표시 항목' })).toHaveTextContent('SK하이닉스');
   });
   it('shows all three series at a shared cursor position', () => {
     render(<MajorIndicesWindow frameProps={frameProps} />);

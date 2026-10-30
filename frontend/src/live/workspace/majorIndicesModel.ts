@@ -2,11 +2,7 @@ import type { LiveIndexCandle } from '../../api/liveIndices';
 import type { MarketIndexQuote } from '../../api/marketIndexQuotes';
 import { realMsToYyyymmdd, regularSessionOpenMs, regularSessionCloseMs } from '../liveDateTime';
 
-export const MAJOR_INDICES = [
-  { id: 'KOSPI', label: '코스피', color: 'var(--price-up)' },
-  { id: 'KOSDAQ', label: '코스닥', color: 'var(--price-down)' },
-  { id: 'KOSPI200', label: 'K200', color: 'var(--success)' },
-] as const;
+export { MAJOR_INDICES } from '../../state/majorIndicesSettings';
 
 export interface IndexPercentPoint { tMs: number; percent: number }
 export interface MajorIndexSeries {

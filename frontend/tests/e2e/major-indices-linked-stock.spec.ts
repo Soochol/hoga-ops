@@ -48,7 +48,7 @@ test('major indices: group stock uses a hidden independent scale and shared time
   const svg = frame.getByRole('img');
   const stock = frame.locator('[data-stock-series]');
   const indexAxis = frame.getByTestId('major-indices-axis-labels');
-  await expect(stock).toHaveAttribute('aria-label', '삼성전자 종가 · 독립 배율');
+  await expect(stock).toHaveAttribute('aria-label', '삼성전자 종가');
   await expect(frame.getByRole('button', { name: '링크 그룹 1 변경' })).toHaveText('1');
   const axisBefore = await indexAxis.textContent();
   const stockBefore = await stock.locator('path').getAttribute('d');
@@ -66,7 +66,7 @@ test('major indices: group stock uses a hidden independent scale and shared time
 
   await frame.getByRole('button', { name: '링크 그룹 1 변경' }).click();
   await page.getByRole('dialog', { name: '연결 그룹 선택' }).getByRole('button', { name: '2', exact: true }).click();
-  await expect(stock).toHaveAttribute('aria-label', 'SK하이닉스 종가 · 독립 배율');
+  await expect(stock).toHaveAttribute('aria-label', 'SK하이닉스 종가');
   await expect(stock.locator('path')).toHaveAttribute('d', stockBefore!);
   await expect(frame.getByRole('button', { name: '링크 그룹 2 변경' })).toHaveText('2');
   await expect(indexAxis).toHaveText(axisBefore!);
@@ -78,5 +78,5 @@ test('major indices: group stock uses a hidden independent scale and shared time
   await frame.screenshot({ path: info.outputPath('major-indices-linked-stock.png') });
   await page.reload();
   await expect(frame.getByRole('button', { name: '링크 그룹 2 변경' })).toHaveText('2');
-  await expect(stock).toHaveAttribute('aria-label', 'SK하이닉스 종가 · 독립 배율');
+  await expect(stock).toHaveAttribute('aria-label', 'SK하이닉스 종가');
 });
