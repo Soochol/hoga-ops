@@ -255,3 +255,56 @@ test('page zoom keys, menus, same-server children and restart share the saved fa
     expect((await fetch(server.origin + '/health')).ok).toBe(true);
   } finally { if (app) await app.close(); await server.close(); await otherServer.close(); await rm(dir, { recursive: true, force: true }); }
 });
+
+test('floating controls retain sandboxing, control the OS window and notify the owner on close', async () => {
+  const server = await fixture(); const dir = await mkdtemp(join(tmpdir(), 'ticklane-floating-'));
+  let app;
+  try {
+    app = await launch(dir, process.env.HOGA_DESKTOP_EXECUTABLE);
+    const launcher = await app.firstWindow();
+    const contentPromise = app.waitForEvent('window');
+    await connect(launcher, server.origin);
+    const content = await contentPromise;
+    await expect(content.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    // CDP/OS destruction can bypass the launcher's ordinary close-to-hide path.
+    // A newly ready content window must not dereference that destroyed object.
+    await app.evaluate(({ BrowserWindow }) => {
+      globalThis.floatingMainErrors = [];
+      process.on('uncaughtExceptionMonitor', error => globalThis.floatingMainErrors.push(error.message));
+      BrowserWindow.getAllWindows().find(win => win.webContents.getURL().startsWith('app:')).destroy();
+    });
+    const token = '12345678-1234-1234-1234-123456789012';
+    await content.evaluate(() => { window.closedFloating = []; window.hogaDesktop.controls.onFloatingClosed(token => window.closedFloating.push(token)); });
+    const floatingPromise = app.waitForEvent('window');
+    await content.evaluate(({ origin, token }) => window.hogaDesktop.controls.openFloating(`${origin}/live?floating=${token}&window=w1`, 320, 260), { origin: server.origin, token });
+    const floating = await floatingPromise;
+    await expect(floating.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    const prefs = await app.evaluate(({ BrowserWindow }, token) => {
+      const win = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes(token));
+      return { sandbox: win.webContents.getLastWebPreferences().sandbox, node: win.webContents.getLastWebPreferences().nodeIntegration, minimum: win.getMinimumSize() };
+    }, token);
+    expect(prefs).toEqual({ sandbox: true, node: false, minimum: [160, 120] });
+    await floating.evaluate(() => window.hogaDesktop.controls.setFloatingAlwaysOnTop(true));
+    expect((await floating.evaluate(() => window.hogaDesktop.controls.floatingState())).alwaysOnTop).toBe(true);
+    await floating.evaluate(() => window.hogaDesktop.controls.setFloatingAlwaysOnTop(false));
+    expect((await floating.evaluate(() => window.hogaDesktop.controls.floatingState())).alwaysOnTop).toBe(false);
+    await floating.evaluate(() => window.hogaDesktop.controls.toggleFloatingMaximize());
+    await expect.poll(() => floating.evaluate(() => window.hogaDesktop.controls.floatingState())).toMatchObject({ maximized: true });
+    await floating.evaluate(() => window.hogaDesktop.controls.toggleFloatingMaximize());
+    await expect.poll(() => floating.evaluate(() => window.hogaDesktop.controls.floatingState())).toMatchObject({ maximized: false });
+    expect(await content.evaluate(async origin => {
+      try { await window.hogaDesktop.controls.openFloating(origin + '/api/trading', 320, 260); return false; } catch { return true; }
+    }, server.origin)).toBe(true);
+    await floating.close();
+    await expect.poll(() => content.evaluate(() => window.closedFloating)).toEqual([token]);
+    const anotherEvent = app.waitForEvent('window');
+    await content.evaluate(({ origin, token }) => window.hogaDesktop.controls.openFloating(`${origin}/live?floating=${token}&window=w1`, 320, 260), { origin: server.origin, token });
+    const another = await anotherEvent;
+    await expect(another.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    const closed = another.waitForEvent('close');
+    await content.evaluate(token => window.hogaDesktop.controls.closeFloating(token), token);
+    await closed;
+    await expect.poll(() => content.evaluate(() => window.closedFloating)).toEqual([token, token]);
+    expect(await app.evaluate(() => globalThis.floatingMainErrors)).toEqual([]);
+  } finally { if (app) await app.close(); await server.close(); await rm(dir, { recursive: true, force: true }); }
+});

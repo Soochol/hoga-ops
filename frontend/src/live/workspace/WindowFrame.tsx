@@ -5,6 +5,7 @@
  * 이 컴포넌트는 /live 전용 헤더 — 링크 그룹 뱃지·팔레트·종목 제목 — 만 구성해
  * 주입한다. prop 표면은 일반화 이전과 동일하다(소비자·테스트 무변경).
  */
+import { detachFloatingWindow } from './floatingWindows';
 import { memo, useState } from 'react';
 import type { ResizeMode } from '../../workspace/snapEngine';
 import { WindowFrameCore, type WindowRectPx } from '../../workspace/WindowFrame';
@@ -40,6 +41,9 @@ export interface WindowFrameProps {
   /** 지수 종목 여부 — 타이틀바 종목 행에서 현재가/등락률/히트맵/수집점을 숨긴다. */
   isIndex?: boolean;
   paletteOpen: boolean;
+  floating?: boolean;
+  alwaysOnTopDisabled?: boolean;
+  onToggleFloating?: (id: string) => void;
   maximized?: boolean;
   alwaysOnTop?: boolean;
   onToggleAlwaysOnTop?: (id: string) => void;
@@ -99,6 +103,9 @@ function WindowFrameImpl(props: WindowFrameProps) {
     nxtEnabled,
     isIndex = false,
     paletteOpen,
+    floating = false,
+    alwaysOnTopDisabled = false,
+    onToggleFloating = detachFloatingWindow,
     maximized = false,
     alwaysOnTop = false,
     onToggleAlwaysOnTop,
@@ -135,11 +142,22 @@ function WindowFrameImpl(props: WindowFrameProps) {
       headerClassName="live-window-titlebar"
       gap={4}
       onHandleDown={maximized ? () => {} : onHandleDown}
-      resizable={!maximized}
+      resizable={!maximized && !floating}
       onFocus={onFocus}
       onClose={onClose}
       closeTitle={null}
       closeLabel={marketWide ? `${title} 창 닫기` : `${title} ${KIND_LABEL[kind]} 창 닫기`}
+      headerEnd={
+        onToggleMaximize && (
+          <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
+            aria-label={maximized ? '원래 크기로 복원' : '창 최대화'}
+            onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {maximized ? <><path d="M8 8V4h12v12h-4" /><rect x="4" y="8" width="12" height="12" /></> : <rect x="4" y="4" width="16" height="16" />}
+            </svg>
+          </button>
+        )
+      }
       header={
         <>
           {/* 뱃지·팔레트 마크업은 `/study` 와 공유한다(`workspace/GroupBadge`) —
@@ -177,19 +195,11 @@ function WindowFrameImpl(props: WindowFrameProps) {
             {kind === 'trade' && onTradeMinAmountChange && <WindowSettingsPopover title="체결창 설정"
               render={close => <TradeWindowSettings minAmountManwon={tradeMinAmountManwon}
                 onApply={amount => { onTradeMinAmountChange(amount); close(); }} />} />}
-            {onToggleMaximize && (
-              <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
-                aria-label={maximized ? '원래 크기로 복원' : '창 최대화'}
-                onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
-                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  {maximized ? <><path d="M8 8V4h12v12h-4" /><rect x="4" y="8" width="12" height="12" /></> : <rect x="4" y="4" width="16" height="16" />}
-                </svg>
-              </button>
-            )}
             {onToggleAlwaysOnTop && (
               <button
                 type="button"
                 aria-label="항상 위"
+                disabled={alwaysOnTopDisabled}
                 aria-pressed={alwaysOnTop}
                 className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${alwaysOnTop
                   ? 'bg-tint-selection text-accent hover:brightness-125'
@@ -225,6 +235,14 @@ function WindowFrameImpl(props: WindowFrameProps) {
                 </button>
               </>
             )}
+            <button type="button" aria-label={floating ? '원래 화면에 합치기' : '창 분리'}
+              className="live-window-detach inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
+              onPointerDown={event => event.stopPropagation()} onClick={() => onToggleFloating(id)}>
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {floating ? <><path d="M20 4 9 15m0-7v7h7" /><path d="M5 4H4v16h16v-1" /></>
+                  : <><path d="M14 4h6v6M20 4 9 15" /><path d="M9 4H4v16h16v-5" /></>}
+              </svg>
+            </button>
           </div>
         </>
       }

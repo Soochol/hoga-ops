@@ -1,3 +1,4 @@
+import { subscribeToChartTradeAccountsStorage } from './chartTradeAccounts';
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LIVE_SETTINGS_KEY, subscribeToLiveSettingsPing } from '../api/liveSettings';
@@ -44,6 +45,7 @@ export function useCrossTabSync(): void {
   useEffect(() => subscribeToIndicatorsStorage(), []);
   useEffect(() => subscribeToChartPrefsStorage(useChartPrefsStore), []);
   useEffect(() => subscribeToWindowSettingsStorage(), []);
+  useEffect(() => subscribeToChartTradeAccountsStorage(), []);
   useEffect(
     () =>
       subscribeToLiveSettingsPing(() => {

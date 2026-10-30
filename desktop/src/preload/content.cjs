@@ -5,6 +5,17 @@ contextBridge.exposeInMainWorld('hogaDesktop', Object.freeze({
     getState: () => ipcRenderer.invoke('desktop:read'),
     selectServer: () => ipcRenderer.invoke('desktop:select-server'),
     newWindow: () => ipcRenderer.invoke('desktop:new-window'),
+    openFloating: (url, width, height) => ipcRenderer.invoke('desktop:open-floating', url, width, height),
+    closeFloating: token => ipcRenderer.invoke('desktop:close-floating', token),
+    floatingState: () => ipcRenderer.invoke('desktop:floating-state'),
+    toggleFloatingMaximize: () => ipcRenderer.invoke('desktop:floating-maximize'),
+    setFloatingAlwaysOnTop: enabled => ipcRenderer.invoke('desktop:floating-on-top', enabled),
+    focusFloating: () => ipcRenderer.invoke('desktop:floating-focus'),
+    onFloatingClosed: callback => {
+      const listener = (_event, token) => { if (typeof token === 'string') callback(token); };
+      ipcRenderer.on('desktop:floating-closed', listener);
+      return () => ipcRenderer.removeListener('desktop:floating-closed', listener);
+    },
     zoom: command => ipcRenderer.invoke('desktop:zoom', command),
     onZoomChange: callback => {
       const listener = (_event, factor) => {

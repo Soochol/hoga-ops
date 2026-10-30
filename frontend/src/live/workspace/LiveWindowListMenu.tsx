@@ -9,6 +9,7 @@
  * 종목명이 그 창에 대해 거짓이 된다. 행에 종목을 실어 헤더와 어긋난 것을 눈에 보이게
  * 한다(그게 핀의 정의이므로, 감출 것이 아니라 드러낼 차이다).
  */
+import { dockFloatingWindow, focusFloatingWindow, useFloatingWindows } from './floatingWindows';
 import { useMemo } from 'react';
 import { WindowListMenu, type WindowListSection } from '../../workspace/WindowListMenu';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
@@ -16,6 +17,7 @@ import { WINDOW_KIND_ICON } from './windowKindIcons';
 import { useWorkspaceStore, type GroupId } from '../../state/workspace';
 
 export function LiveWindowListMenu() {
+  const detached = useFloatingWindows(state => state.entries);
   const windows = useWorkspaceStore((s) => s.windows);
   const zOrder = useWorkspaceStore((s) => s.zOrder);
   const groupSymbols = useWorkspaceStore((s) => s.groupSymbols);
@@ -41,7 +43,7 @@ export function LiveWindowListMenu() {
             ...(w.pinned ? { sublabel: `고정 ${w.pinned.name}` } : {}),
             icon: WINDOW_KIND_ICON[w.kind],
             isFocused: w.id === focusedId,
-            badges: [w.pinned ? '종목 고정' : null, w.alwaysOnTop ? '항상 위' : null].filter((label): label is string => label !== null),
+            badges: [w.pinned ? '종목 고정' : null, w.alwaysOnTop ? '항상 위' : null, detached[w.id] ? '분리됨' : null].filter((label): label is string => label !== null),
             closable: true,
           })),
       };
@@ -49,10 +51,10 @@ export function LiveWindowListMenu() {
     return [...(globalWindows.length ? [{
       key: 'market', heading: '시장·계좌', rows: globalWindows.map(w => ({
         id: w.id, label: WINDOW_KIND_LABEL[w.kind], icon: WINDOW_KIND_ICON[w.kind],
-        isFocused: w.id === focusedId, badges: w.alwaysOnTop ? ['항상 위'] : [], closable: true,
+        isFocused: w.id === focusedId, badges: [w.alwaysOnTop ? '항상 위' : null, detached[w.id] ? '분리됨' : null].filter((label): label is string => label !== null), closable: true,
       })),
     }] : []), ...grouped];
-  }, [windows, groupSymbols, focusedId]);
+  }, [windows, groupSymbols, focusedId, detached]);
 
   const groupCount = sections.filter(s => s.key !== 'market').length;
   const summary = `열린 창 ${windows.length} · 그룹 ${groupCount}`;
@@ -63,8 +65,8 @@ export function LiveWindowListMenu() {
       count={windows.length}
       summary={summary}
       sections={sections}
-      onFocus={focusWindow}
-      onClose={closeWindow}
+      onFocus={id => { focusWindow(id); focusFloatingWindow(id); }}
+      onClose={id => { if (detached[id]) dockFloatingWindow(id); else closeWindow(id); }}
     />
   );
 }

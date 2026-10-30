@@ -57,6 +57,8 @@ export interface WindowFrameCoreProps {
   focused: boolean;
   /** 헤더 내용(× 왼쪽) — 제목·뱃지 등 페이지가 구성한다. */
   header: React.ReactNode;
+  /** 닫기 버튼 오른쪽에 배치할 페이지별 헤더 액션. */
+  headerEnd?: React.ReactNode;
   /** × 버튼 표시 여부(기본 true) — 닫을 수 없는 창(예: /study 단일 차트)은 숨긴다. */
   closable?: boolean;
   closeLabel?: string;
@@ -83,7 +85,7 @@ export interface WindowFrameCoreProps {
 }
 
 function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
-  const { id, rect, zIndex, focused, header, closable = true, closeLabel = '창 닫기', closeTitle = '창 닫기', lifting = false, flat = false, outlined = false, className = '', headerClassName = '', gap = GAP, resizable = true, onHandleDown, onFocus, onClose, children } =
+  const { id, rect, zIndex, focused, header, headerEnd, closable = true, closeLabel = '창 닫기', closeTitle = '창 닫기', lifting = false, flat = false, outlined = false, className = '', headerClassName = '', gap = GAP, resizable = true, onHandleDown, onFocus, onClose, children } =
     props;
 
   return (
@@ -132,6 +134,7 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
               ×
             </button>
           )}
+          {headerEnd}
         </div>
 
         <div className={`min-h-0 flex-1 overflow-hidden${outlined ? ' isolate' : ''}`}>{children}</div>

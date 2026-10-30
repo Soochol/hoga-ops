@@ -148,7 +148,7 @@ export interface InstallLiveMocksOpts {
  * destabilize the test.
  */
 export async function installLiveMocks(
-  page: Page,
+  page: Pick<Page, 'route'>,
   opts: InstallLiveMocksOpts = {},
 ): Promise<void> {
   const rangeBody = opts.range === 'with-defects' ? RANGE_WITH_DEFECTS : RANGE_NO_DEFECTS;

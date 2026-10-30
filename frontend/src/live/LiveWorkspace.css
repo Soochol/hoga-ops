@@ -42,7 +42,7 @@
 .live-window .live-window-titlebar > button,
 .live-window-direct-actions button { width: 1.5rem; height: 1.5rem; }
 .live-window-direct-actions { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--space-xs); width: max-content; margin-left: auto; }
-.live-window .live-window-titlebar > button:last-child { margin-left: 0; }
+.live-window .live-window-titlebar > button { margin-left: 0; }
 /* All window kinds surrender text space before the action group. */
 .live-window-titlebar > .live-data-title,
 .live-window-titlebar > .live-symbol-row { flex: 1 1 0; min-width: 0; overflow: hidden; }
@@ -134,6 +134,7 @@
   .live-window-title-meta { display: none; }
 }
 @container (max-width: 180px) {
+  .live-window .live-window-titlebar { gap: 0; }
   .live-window-titlebar > .live-data-title,
   .live-window-titlebar > .live-symbol-row { display: none; }
 }
@@ -183,3 +184,6 @@
   .indicator-instance-row > button:not(:first-child) { display: none; }
   .indicator-instance-row > button:first-child { width: 100%; }
 }
+
+.live-floating-shell, .live-floating-workspace { min-width: 0; min-height: 0; overflow: hidden; }
+.live-floating-workspace { padding: 0; gap: 0; }
