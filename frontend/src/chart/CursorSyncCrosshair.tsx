@@ -47,8 +47,8 @@
  * 그래서 **레전드는 별도 경로로 연동돼 있다**: 같은 판정을 `useCursorSyncResolution`
  * 으로 나눠 받아 OHLC 행은 그 봉을(2026-08-22), 이동평균·pane 값 행과 flag provider
  * 는 그 봉의 가상초로 자기 series 를 조회한다(2026-08-24, `readSeriesValue` 의
- * `atTimeSec`). **`CandleTooltip` 도 같은 판정을 사용한다** — 동기화 대상 봉의 종가 좌표에
- * 붙이고, 화면 밖이거나 동기화가 해제되면 숨긴다. 합성 이벤트로 툴팁을 갱신하지 않는다.
+ * `atTimeSec`). **`CandleTooltip` 은 실제 마우스가 있는 차트에만 표시한다**
+ * (2026-10-30 사용자 요청). 날짜·크로스헤어·레전드 동기화는 툴팁을 열지 않는다.
  */
 import { memo, useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
