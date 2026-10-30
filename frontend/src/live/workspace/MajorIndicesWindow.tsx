@@ -1,7 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { WindowFrame, type WindowFrameProps } from './WindowFrame';
 import { useMajorIndices } from './useMajorIndices';
-import { indexPercentAt, type IndexPercentPoint } from './majorIndicesModel';
+import { indexPercentAt, seriesValueAt } from './majorIndicesModel';
+import { stockCloseRange } from './majorIndicesStockModel';
+import { useMajorIndicesStock } from './useMajorIndicesStock';
 import { majorIndicesTimeAxis } from './majorIndicesTimeAxis';
 import { unixMsToKSTHhmm } from '../../util/time';
 import './MajorIndicesWindow.css';
@@ -16,19 +18,23 @@ const timeLabel = (ms: number) => {
 
 export function MajorIndicesWindow({ frameProps }: { frameProps: Omit<WindowFrameProps, 'children' | 'headerContent'> }) {
   const model = useMajorIndices();
+  const code = frameProps.isIndex ? null : frameProps.symbolCode;
+  const stock = useMajorIndicesStock(code, model.date);
   return <WindowFrame {...frameProps}>
-    <MajorIndicesChart key={model.date} model={model} />
+    <MajorIndicesChart key={model.date} model={model} stock={stock} stockLabel={code ? frameProps.symbolLabel ?? code : null} />
   </WindowFrame>;
 }
 
-function linePath(points: readonly IndexPercentPoint[], x: (t: number) => number, y: (v: number) => number) {
+function linePath<T extends { tMs: number }>(points: readonly T[], x: (t: number) => number, y: (v: number) => number, value: (point: T) => number) {
   return points.map((point, i) => {
     const command = i === 0 || point.tMs - points[i - 1].tMs > 120_000 ? 'M' : 'L';
-    return `${command}${x(point.tMs).toFixed(2)},${y(point.percent).toFixed(2)}`;
+    return `${command}${x(point.tMs).toFixed(2)},${y(value(point)).toFixed(2)}`;
   }).join(' ');
 }
 
-function MajorIndicesChart({ model }: { model: Overview }) {
+function MajorIndicesChart({ model, stock, stockLabel }: {
+  model: Overview; stock: ReturnType<typeof useMajorIndicesStock>; stockLabel: string | null;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const axisLabels = useRef<SVGGElement>(null);
   const [axisWidth, setAxisWidth] = useState(52);
@@ -62,6 +68,9 @@ function MajorIndicesChart({ model }: { model: Overview }) {
   const max = Math.ceil((high + tickStep * .15) / tickStep) * tickStep;
   const x = (t: number) => left + (t - open) / Math.max(1, timeSpan) * (right - left);
   const y = (v: number) => bottom - (v - min) / (max - min) * (bottom - top);
+  const stockRange = stockCloseRange(stock.points);
+  const stockY = (price: number) => stockRange
+    ? bottom - (price - stockRange.min) / (stockRange.max - stockRange.min) * (bottom - top) : top;
   const ticks: number[] = [];
   for (let value = min; value <= max + tickStep / 100; value += tickStep) ticks.push(Math.abs(value) < tickStep / 100 ? 0 : value);
   const decimals = tickStep >= 0.1 ? 1 : 2;
@@ -83,9 +92,11 @@ function MajorIndicesChart({ model }: { model: Overview }) {
     labels.forEach(label => observer.observe(label));
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [min, max, tickStep, decimals]);
-  const cursorTime = pinnedTime ?? (hover === null ? null : open + hover * timeSpan);
+  const cursorTimeRaw = pinnedTime ?? (hover === null ? null : open + hover * timeSpan);
+  const cursorTime = cursorTimeRaw === null ? null : Math.floor(cursorTimeRaw / 60_000) * 60_000;
   const hovered = model.series.map(s => ({ ...s, at: cursorTime === null ? null : indexPercentAt(s.points, cursorTime) }));
-  const hasData = values.length > 0;
+  const stockAt = cursorTime === null ? null : seriesValueAt(stock.points, cursorTime, point => point.close, 0);
+  const hasData = values.length > 0 || stock.points.length > 0;
   const pointerFraction = (event: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     return Math.max(0, Math.min(1, (event.clientX - bounds.left - left) / (right - left)));
@@ -93,7 +104,7 @@ function MajorIndicesChart({ model }: { model: Overview }) {
   const cursorX = cursorTime === null ? left : x(cursorTime);
   const tooltipX = Math.max(2, Math.min(width - 132, cursorX + (cursorX > left + (right - left) * .6 ? -132 : 10)));
   return <div ref={container} className="major-indices-chart" data-testid="major-indices-chart">
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${model.date} 코스피·코스닥·K200 당일 등락률 비교 · 오른쪽 Y축 등락률 %`}
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${model.date} 코스피·코스닥·K200 당일 등락률 비교 · 오른쪽 Y축 등락률 %${stockLabel ? ` · ${stockLabel} 종가 · 독립 배율` : ''}`}
       onPointerMove={event => { if (!pinned) setHover(pointerFraction(event)); }}
       onPointerLeave={() => { if (!pinned) setHover(null); }}
       onClick={event => {
@@ -113,19 +124,28 @@ function MajorIndicesChart({ model }: { model: Overview }) {
       )}</g>
       <g clipPath={`url(#${clipId})`}>
         {model.series.map(s => <g key={s.id} data-index-series={s.id}>
-          <path d={linePath(s.points, x, y)} fill="none" stroke={s.color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
+          <path d={linePath(s.points, x, y, point => point.percent)} fill="none" stroke={s.color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
           {s.points.length > 0 && <circle cx={x(s.points.at(-1)!.tMs)} cy={y(s.points.at(-1)!.percent)} r={2} fill={s.color} />}
         </g>)}
+        {stockLabel && stock.points.length > 0 && <g data-stock-series="" aria-label={`${stockLabel} 종가 · 독립 배율`}>
+          <path d={linePath(stock.points, x, stockY, point => point.close)} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+          <circle cx={x(stock.points.at(-1)!.tMs)} cy={stockY(stock.points.at(-1)!.close)} r={2} fill="var(--accent)" />
+        </g>}
         {cursorTime !== null && hasData && <g>
           <line x1={x(cursorTime)} x2={x(cursorTime)} y1={top} y2={bottom} className="major-indices-cursor" />
           {hovered.map(s => s.at !== null && <circle key={s.id} cx={x(cursorTime)} cy={y(s.at)} r={3} fill={s.color} stroke="var(--bg-card)" />)}
+          {stockAt !== null && <circle cx={x(cursorTime)} cy={stockY(stockAt)} r={3} fill="var(--accent)" stroke="var(--bg-card)" />}
         </g>}
       </g>
     </svg>
-    {!hasData && <span className="major-indices-empty">{model.loading ? '지수 불러오는 중…' : '지수 데이터 없음'}</span>}
+    {values.length === 0 && <span className="major-indices-empty">{model.loading ? '지수 불러오는 중…' : '지수 데이터 없음'}</span>}
+    {stockLabel && (stock.failed || !stock.points.length) && <span className="major-indices-stock-notice text-xs text-fg-dim" role="status">
+      {stock.failed ? `${stockLabel} 종가 조회 실패` : stock.loading ? `${stockLabel} 불러오는 중…` : `${stockLabel} 종가 데이터 없음`}
+    </span>}
     {cursorTime !== null && hasData && <div className="tooltip-surface major-indices-tooltip" role="tooltip" style={{ left: tooltipX }}>
       <span>{timeLabel(cursorTime)}</span>
       {hovered.map(s => <div key={s.id}><i aria-hidden style={{ background: s.color }} /><span>{s.label}</span><span>{formatPercent(s.at)}</span></div>)}
+      {stockLabel && <div><i aria-hidden style={{ background: 'var(--accent)' }} /><span>{stockLabel}</span><span>{stockAt === null ? '—' : `${stockAt.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}원`}</span></div>}
     </div>}
   </div>;
 }

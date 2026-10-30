@@ -83,6 +83,10 @@ export function buildMajorIndexSeries(
 
 /** No extrapolation across missing minutes or past a series' last observation. */
 export function indexPercentAt(points: readonly IndexPercentPoint[], tMs: number): number | null {
+  return seriesValueAt(points, tMs, point => point.percent);
+}
+
+export function seriesValueAt<T extends { tMs: number }>(points: readonly T[], tMs: number, value: (point: T) => number, maxGapMs = 120_000): number | null {
   let lo = 0, hi = points.length - 1;
   if (!points.length || tMs < points[0].tMs || tMs > points[hi].tMs) return null;
   while (lo < hi) {
@@ -91,8 +95,8 @@ export function indexPercentAt(points: readonly IndexPercentPoint[], tMs: number
     else hi = mid;
   }
   const next = points[lo];
-  if (next.tMs === tMs) return next.percent;
+  if (next.tMs === tMs) return value(next);
   const prev = points[lo - 1];
-  if (!prev || next.tMs - prev.tMs > 120_000) return null;
-  return prev.percent + (next.percent - prev.percent) * (tMs - prev.tMs) / (next.tMs - prev.tMs);
+  if (!prev || next.tMs - prev.tMs > maxGapMs) return null;
+  return value(prev) + (value(next) - value(prev)) * (tMs - prev.tMs) / (next.tMs - prev.tMs);
 }
