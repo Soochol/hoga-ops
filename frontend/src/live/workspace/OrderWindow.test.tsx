@@ -813,7 +813,7 @@ describe('호가 주문', () => {
   it('예상 체결값이 없어도 정보 2페이지의 다른 항목은 유지한다', () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
-    fireEvent.click(screen.getByTestId('book-summary'));
+    fireEvent.click(screen.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
     expect(screen.getByText('상한가')).toBeInTheDocument();
   });
@@ -1518,7 +1518,7 @@ describe('호가 주문', () => {
     expect(summaryContent.getByText('833만')).toBeInTheDocument();
     expect(summaryContent.getByText('184.55%')).toBeInTheDocument();
     expect(summaryContent.getByText('12조 2,908억')).toBeInTheDocument();
-    fireEvent.click(summaryContent.getByText('833만'));
+    fireEvent.click(summaryContent.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
     for (const label of ['상한가', '하한가', '상승VI', '하강VI']) expect(summaryContent.getByText(label)).toBeInTheDocument();
     expect(summaryContent.queryByText('250일')).not.toBeInTheDocument();
     expect(summaryContent.queryByText('70,000/50,000')).not.toBeInTheDocument();
