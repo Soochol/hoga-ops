@@ -17,8 +17,8 @@ async function resize(page: Page, frame: Locator, width: number) {
 
 async function expectHeaderFits(frame: Locator) {
   await expect.poll(() => frame.locator('[data-handle="move"]').evaluate(header => {
-    const title = header.querySelector('.live-data-title, .live-symbol-row, .major-indices-header')!;
-    const titleBounds = title.getBoundingClientRect();
+    const title = header.querySelector('.live-data-title, .live-symbol-row');
+    const titleBounds = title?.getBoundingClientRect();
     const headerBounds = header.getBoundingClientRect();
     const actions = header.querySelector('.live-window-direct-actions')!.getBoundingClientRect();
     const close = header.lastElementChild!.getBoundingClientRect();
@@ -26,7 +26,7 @@ async function expectHeaderFits(frame: Locator) {
     const bounds = buttons.map(button => button.getBoundingClientRect()).sort((a, b) => a.left - b.left);
     return close.left - actions.right <= 4.1 && bounds.every((box, index) => box.width >= 20 && box.left >= headerBounds.left && box.right <= headerBounds.right
       && (index === 0 || box.left >= bounds[index - 1].right - 1)
-      && (box.right <= titleBounds.left + 1 || box.left >= titleBounds.right - 1))
+      && (!titleBounds || box.right <= titleBounds.left + 1 || box.left >= titleBounds.right - 1))
       && buttons.every(button => {
         const box = button.getBoundingClientRect();
         return button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
@@ -36,6 +36,7 @@ async function expectHeaderFits(frame: Locator) {
 
 for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
   test(`${kind}: 최소 폭까지 제목보다 창 조작 아이콘을 우선한다`, async ({ page }, testInfo) => {
+    const marketWide = kind === 'market-indices' || kind === 'account-fills';
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.addInitScript(kind => {
       sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
@@ -48,7 +49,27 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
     const frame = page.locator('[data-win="actions-test"]');
     await expect(frame).toBeVisible();
     await expect(frame.locator('.live-window-titlebar [title]')).toHaveCount(0);
-    if (kind === 'market-indices') await expect(frame.getByTestId('major-indices-header')).toBeVisible();
+    await expect(frame.locator('[data-handle="move"]')).not.toContainText('⠿');
+    if (kind === 'market-indices') {
+      await expect(frame.getByTestId('major-indices-chart')).toBeVisible();
+      await expect(frame.locator('[data-handle="move"]')).not.toContainText(/코스피|코스닥|K200|장중|%/);
+    }
+    const before = (await frame.boundingBox())!;
+    const dragPoint = await frame.locator('[data-handle="move"]').evaluate(header => {
+      const bounds = header.getBoundingClientRect();
+      for (const y of [bounds.bottom - 3, bounds.top + 3]) {
+        for (const x of [bounds.x + bounds.width / 2, bounds.x + bounds.width / 4, bounds.x + 12]) {
+          if (document.elementFromPoint(x, y) === header) return { x, y };
+        }
+      }
+      throw new Error('No exposed header drag area');
+    });
+    await page.mouse.move(dragPoint.x, dragPoint.y);
+    await page.mouse.down();
+    await page.mouse.move(dragPoint.x + 32, dragPoint.y + 24, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => (await frame.boundingBox())!.x - before.x).toBeGreaterThan(10);
+    await expect.poll(async () => (await frame.boundingBox())!.y - before.y).toBeGreaterThan(10);
     const maximize = frame.getByRole('button', { name: '창 최대화', exact: true });
     const onTop = frame.getByRole('button', { name: '항상 위', exact: true });
     const pin = frame.getByRole('button', { name: '종목 고정', exact: true });
@@ -56,7 +77,7 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
       await resize(page, frame, width);
       await expect(maximize).toBeVisible();
       await expect(onTop).toBeVisible();
-      if (kind !== 'market-indices') await expect(pin).toBeVisible();
+      if (!marketWide) await expect(pin).toBeVisible();
       await expect(frame.getByRole('button', { name: '창 옵션', exact: true })).toHaveCount(0);
       if (kind === 'trade' || kind === 'chart' || kind === 'order') {
         const settings = frame.getByRole('button', { name: kind === 'trade' ? '체결창 설정' : kind === 'order' ? '주문 설정' : '차트 설정', exact: true });
@@ -66,12 +87,12 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
         expect(settingsBounds.x + settingsBounds.width).toBeLessThanOrEqual(maximizeBounds.x);
       }
       await expectHeaderFits(frame);
-      if (width === 160) await expect(frame.locator('.live-data-title, .live-symbol-row, .major-indices-header')).toBeHidden();
+      if (width === 160) await expect(frame.locator('.live-data-title, .live-symbol-row')).toBeHidden();
     }
     await frame.screenshot({ path: testInfo.outputPath(`${kind}-160-actions.png`) });
     await onTop.click();
     await expect(onTop).toHaveAttribute('aria-pressed', 'true');
-    if (kind !== 'market-indices') {
+    if (!marketWide) {
       await pin.click();
       await expect(pin).toHaveAttribute('aria-pressed', 'true');
     }
@@ -82,7 +103,7 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
     await expectHeaderFits(frame);
     await resize(page, frame, 420);
     await expect(onTop).toHaveAttribute('aria-pressed', 'true');
-    if (kind !== 'market-indices') await expect(pin).toHaveAttribute('aria-pressed', 'true');
+    if (!marketWide) await expect(pin).toHaveAttribute('aria-pressed', 'true');
   });
 }
 

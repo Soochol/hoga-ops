@@ -52,10 +52,13 @@ for (const fontSize of [16,20]) for (const kind of ['sector','indices','volume',
       await expect(page.locator('.pattern-match-figures').last()).toContainText('-1234.5%');
     }
     if (kind === 'alerts') await expect(page.locator('.signal-alert-row')).toHaveCount(2);
-    if (kind === 'indices') await expect(page.locator('.major-indices-value').first()).toHaveText('123,456.78');
+    if (kind === 'indices') {
+      await expect(host.locator('[data-index-series] circle')).toHaveCount(3);
+      await expect(host.locator('[data-handle="move"]')).not.toContainText(/코스피|코스닥|K200|장중|%|⠿/);
+    }
     for (const width of [900,360,320,280,240]) {
       await page.evaluate(width => (window as unknown as HarnessWindow).panels.resize(width), width * fontSize / 16);
-      const selectors:Record<Kind,string> = { sector:'.sector-ranking-sectors .sector-ranking-row > :last-child', indices:'.major-indices-value, .major-indices-percent',
+      const selectors:Record<Kind,string> = { sector:'.sector-ranking-sectors .sector-ranking-row > :last-child', indices:'[data-testid="major-indices-axis-labels"] text',
         volume:'[data-testid="volume-distribution-price-axis"] > span:not(.volume-distribution-axis-budget)', pattern:'.pattern-match-figures > span', alerts:'.signal-alert-row > :nth-child(2), .signal-alert-quantity > :last-child' };
       const figures = host.locator(selectors[kind]);
       await expect(figures.first()).toBeVisible();
@@ -74,10 +77,6 @@ for (const fontSize of [16,20]) for (const kind of ['sector','indices','volume',
         const before = await box(axis);
         await page.evaluate(() => (window as unknown as HarnessWindow).panels.cursor(1792368600000));
         expect((await box(axis)).width).toBe(before.width);
-      }
-      if (kind === 'indices' && width <= 360) {
-        const rows = host.locator('.major-indices-quote');
-        expect((await box(rows.first().locator('.major-indices-value'))).right).toBeCloseTo((await box(rows.last().locator('.major-indices-value'))).right, 2);
       }
       if (kind === 'indices') {
         await expect.poll(() => host.getByTestId('major-indices-axis-labels').evaluate(group => {
@@ -170,7 +169,7 @@ for (const change of [10, -10]) {
       await document.fonts.ready;
     });
     const host = page.getByTestId('panel-host');
-    await expect(host.locator('.major-indices-value').first()).toHaveText('100.00');
+    await expect(host.locator('[data-index-series] circle')).toHaveCount(3);
     await expect.poll(() => host.getByTestId('major-indices-axis-labels').evaluate((group, change) => {
       const values = Array.from(group.querySelectorAll('text'), label => parseFloat(label.textContent!));
       return values.length > 1 && values.every(value => change > 0 ? value > 0 : value < 0);
