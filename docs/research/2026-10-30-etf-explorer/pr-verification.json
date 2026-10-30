@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-30",
+  "method": "Reuse completed local checks after verifying every recorded input hash and unchanged latest main. No runtime source, tests, fixtures, dependencies or validation settings changed after the final successful checks.",
+  "testedBase": "517b0e18172073e8a5e713fd85b4d4025e3848e9",
+  "latestMain": "517b0e18172073e8a5e713fd85b4d4025e3848e9",
+  "sourceVerification": "verification-record.json",
+  "sourceVerificationSha256": "882c54d861e244c02aac9f1aa6cc70f52f7742141aa125162fef5e837cc6aa9b",
+  "matchingInputCount": 34,
+  "allRecordedInputsMatch": true,
+  "results": {
+    "ruff": "passed",
+    "snapshotReplay": "passed",
+    "typecheck": "passed all 3 TypeScript projects",
+    "eslint": "passed",
+    "vitest": "24 passed",
+    "e2e": "9 passed initially; final ETF-specific 5 passed after largest-holding summary display change, prior breadth inputs unchanged",
+    "productionBuild": "passed in final E2E startup"
+  },
+  "validationSha256": "8e300330d9fa09165f0f6569d8e703d19bac33cab0061f3085aff7cb8b33813f",
+  "scope": "Create/merge PR and pull primary main; preserve other local edits and existing servers."
+}

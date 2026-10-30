@@ -1,0 +1,120 @@
+{
+  "date": "2026-10-30",
+  "head": "517b0e18172073e8a5e713fd85b4d4025e3848e9",
+  "latestMain": "517b0e18172073e8a5e713fd85b4d4025e3848e9",
+  "workingTreeImplementation": true,
+  "commands": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": ".venv/bin/python docs/research/2026-10-30-etf-explorer/build_snapshot.py",
+      "result": "passed, deterministic snapshot replay"
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed all three projects after final source changes"
+    },
+    {
+      "command": "npx eslint src/etfExplorer",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "npx vitest run src/etfExplorer/model.test.ts src/nav/TopNav.test.tsx src/breadth/report.test.ts",
+      "cwd": "frontend",
+      "result": "24 passed; tested model, snapshot, math, nav and breadth inputs unchanged since this run"
+    },
+    {
+      "command": "E2E_BACKEND_PORT=20382 E2E_FRONTEND_PORT=21382 E2E_DATA_DIR=/tmp/hoga-etf-explorer-e2e-bd18 E2E_DIST_DIR=/tmp/hoga-etf-explorer-dist-bd18 npx playwright test etf-explorer.spec.ts breadth-page.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": "9 passed"
+    },
+    {
+      "command": "E2E_BACKEND_PORT=20382 E2E_FRONTEND_PORT=21382 E2E_DATA_DIR=/tmp/hoga-etf-explorer-e2e-bd18 E2E_DIST_DIR=/tmp/hoga-etf-explorer-dist-bd18 npx playwright test etf-explorer.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": "5 passed after the final largest-holding summary addition; prior breadth regression inputs unchanged. Includes current production build."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "browser": {
+    "method": "CUA fallback because repository /browse skill is unavailable",
+    "url": "http://127.0.0.1:20382/etfs",
+    "nativeRouteHttp": 200,
+    "snapshotHttp": 200,
+    "servedSnapshotExactlyMatchesValidatedProducer": true,
+    "artifact": "native-page.png",
+    "tabKept": true
+  },
+  "scope": {
+    "funds": 119,
+    "active": 81,
+    "passive": 38,
+    "stocks": 896,
+    "memberships": 4937,
+    "holdingsDate": "2026-10-30",
+    "priceDate": "2026-10-29",
+    "automaticRefresh": false
+  },
+  "reviewServer": {
+    "port": 20382,
+    "dataDir": "/tmp/hoga-etf-explorer-review-bd18",
+    "distDir": "/tmp/hoga-etf-explorer-dist-bd18",
+    "testEndpoints": false,
+    "brokerCredentials": "blank",
+    "existingServersPreserved": [
+      8000,
+      5173,
+      20181
+    ]
+  },
+  "tools": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "typescript": "6.0.3",
+    "@playwright/test": "1.60.0"
+  },
+  "inputSha256": {
+    "frontend/src/etfExplorer/EtfExplorerPage.tsx": "610a43caf96edb09e98c814a2accb807a901917b5b500210c1f50745857d73f1",
+    "frontend/src/etfExplorer/etfExplorer.css": "ec86865bde43b60593f48693ea168c0ff5d3ffd49531e64ed56911e4a14a3863",
+    "frontend/src/etfExplorer/model.test.ts": "e3aa63f86d9013477db20b442e28fc6dc6e5fbc30a79ecde87844c46d990ce24",
+    "frontend/src/etfExplorer/model.ts": "7373ffee1c071fe161e1c2ee6cd637b17af6e164f8c7af51a94369389ee25252",
+    "frontend/src/etfExplorer/EtfLibrary.tsx": "6372d377bbc00e6e6cb82f889b6bbaa76bd865be5940c14ffc3c87cfcca2d63e",
+    "frontend/src/etfExplorer/EtfComparison.tsx": "da330f22e2f2af268483f9080816bc542a3e6eee385f2553879e74d327c6652d",
+    "frontend/src/etfExplorer/EtfHoldings.tsx": "fd128d4f964491fddcaaef7d11c99bd1547f11e42814c7d0ada2528f39014783",
+    "docs/research/2026-10-30-etf-explorer/build_snapshot.py": "460335da5743cd5422fb3b5d92dcf86829d2f23a1cd290a203c9f23088924c7f",
+    "docs/research/2026-10-30-etf-explorer/validation.json": "8e300330d9fa09165f0f6569d8e703d19bac33cab0061f3085aff7cb8b33813f",
+    "frontend/public/etf-explorer/snapshot.json": "4dff0b5b4775f4f611a1134005bd60ee56c37570f05fa8e72cbe1527070130f1",
+    "frontend/src/main.tsx": "514d1f6abd3be76edf8a88daeec61a3dda0434edadc8d4430e6f87ea61572406",
+    "frontend/src/mainRoutes.tsx": "4f924a2fd5bc478ed1163c12d0bcdfb956892d99894fa82495be721e8b9c8be0",
+    "frontend/src/nav/items.ts": "3bbe8ec4bf82e6191263e1aa5471687a075325e83123c00ad74952afb433c1d8",
+    "frontend/src/nav/TopNav.test.tsx": "77d00d4680d65a2756e3fb4e044ca4a7bcaa1a4f46f2cae2998158cb8d93cf7d",
+    "frontend/src/ui/PageShell.tsx": "24929614f9534ffb176a5342b28255dd5e3a29ab18cef23675725d94c8937ecc",
+    "frontend/src/state/persist.ts": "ca16b686fcdc7d9656bb21b45f99a92a5a7d505f44a9e6e69d39e2ab50c07957",
+    "frontend/src/styles/tokens.css": "0b4e4257df694c105919784886de14913bbb8b11b37a800f9f2d8947a8caac1a",
+    "frontend/src/styles/global.css": "d6080682dabb4da2308fcaa1d6112f263847583270851be7f53c6aa6b1d72ae0",
+    "frontend/src/styles/controls.css": "0b26116e513bd9234701f011bd4868efb75732df099de3ff701fbeb4d0fde026",
+    "frontend/tests/e2e/etf-explorer.spec.ts": "41046bd1616e45a9382c670ec236f026effa938aa3ac3feb212b8fd2268c6b6c",
+    "frontend/tests/e2e/breadth-page.spec.ts": "b74393c674d50fdf83c22973c3f1b8dd3152d5f1d6974eea5e7436ad5cc323d5",
+    "frontend/tests/e2e/helpers/liveMocks.ts": "bf672b57868930d1ec123a64c263413fcca4f877fcf83f42a4444cdb690d46f3",
+    "frontend/tests/e2e/global-setup.ts": "3be1043ac5eb5fd7da5caa45e9ae1e684ed30feefc0d78d01fbc799fdee2473a",
+    "frontend/tests/e2e/worktreeEnv.ts": "8e63a68d925dccb4358177556b03fd58c5e997b793eb236fb7188e75d343eaa2",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764",
+    "ruff.toml": "422277b5742ea124f25690201cb540117de803f74719052a6dbdc3bfa8aa7d07"
+  }
+}

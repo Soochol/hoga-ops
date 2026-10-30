@@ -25,6 +25,8 @@ export const Capture = lazy(() => import('./pages/Capture'));
 
 export const Sentiment = lazy(() => import('./pages/Sentiment'));
 
+export const EtfExplorer = lazy(() => import('./etfExplorer/EtfExplorerPage'));
+
 export const Breadth = lazy(() => import('./breadth/BreadthPage'));
 
 export const Market = lazy(() => import('./pages/Market'));
