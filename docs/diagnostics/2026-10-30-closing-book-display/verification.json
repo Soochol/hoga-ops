@@ -1,0 +1,104 @@
+{
+  "verified_at": "2026-10-30T15:57:49.475458+09:00",
+  "head": "f9dffde18783aad8c8237fa9327bc5d0cac2e7b6",
+  "base": "f9dffde18783aad8c8237fa9327bc5d0cac2e7b6",
+  "working_tree": "Uncommitted implementation; all fingerprints describe current saved files, not just HEAD",
+  "inputs": {
+    "frontend": {
+      "file_count": 2014,
+      "sha256": "582471fea0badae1154c15a705389af6d1f65e1088c7475ecfba4e0f88d3fa19",
+      "method": "sorted path + NUL + raw SHA256(file bytes)"
+    },
+    "frontend_app_and_unit": {
+      "file_count": 1821,
+      "sha256": "027b08d11304c0e8640d498e477f3fd4809f49e69ae63ccb9e1ee611de5c7c61",
+      "method": "sorted path + NUL + raw SHA256(file bytes)"
+    },
+    "e2e_with_backend_and_fixtures": {
+      "file_count": 2868,
+      "sha256": "d37f57a72d6bc98689ddd4ead34f3981c25d1b23b019e88d5e8b2c26718313b6",
+      "method": "sorted path + NUL + raw SHA256(file bytes)"
+    }
+  },
+  "changed_files_sha256": {
+    "CONTEXT.md": "505647cdcf5d43c4a2e31590b4809d22a24683d1bba6cf0cdba6f97a9ff82469",
+    "DESIGN.md": "cb3035ef1a8bcf55d28db89043be7bbadfa607ea4897caf0cc5787bce4857fd6",
+    "frontend/src/live/workspace/DataWindow.tsx": "cd6a4f6f04dd0c831f97e74894d97a7682b9c2a3b0fa36aab19ef8e4732b17df",
+    "frontend/src/live/workspace/OrderWindow.test.tsx": "e3243b2cddee150c5e2534dc2429871c4edc277fca91bbaec6f0528964258bf3",
+    "frontend/src/live/workspace/OrderWindow.tsx": "40925fe63ab06b101cf21b1d0f062bb175d5b8cde8fc8dfae76da6e8e30d3b7d",
+    "frontend/src/live/workspace/useBookSessionDisplay.test.tsx": "072c0c6a421a6a0f352693de5a62d55342778569779e880941b6a7d476cd6825",
+    "frontend/src/live/workspace/useBookSessionDisplay.ts": "911bc5a91649d730030004e26e4f4a3e6a5aee566f189b6231bdc1a86617f852",
+    "frontend/tests/e2e/book-availability.spec.ts": "20f178dbf3747187502d04ce611d3f3ea4444b4f428a30d1b1639d1ed37dc793",
+    "frontend/tests/e2e/krx-aftermarket.spec.ts": "4d719bb86bb512be2823325943851cdb89e164a6de332114af250ecfffd557c3"
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "3.14.7",
+    "chrome": "Google Chrome 156.0.8078.73",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "backend_port": 20054,
+    "frontend_port": 21054,
+    "workers": 1,
+    "vendor_credentials": "Blank per Playwright configuration; local empty .env prevents main-checkout inheritance"
+  },
+  "checks": [
+    {
+      "command": "npx vitest run src/live/workspace/useBookSessionDisplay.test.tsx -t 'never rewinds the closing book' (before implementation)",
+      "result": "Regression reproduced: failed at 15:30 because the displayed book rewound to 15:19:50"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed; app, unit and E2E projects. After subsequent E2E-only fixture changes, npx tsc -p tsconfig.e2e.json --noEmit also passed on final inputs; app/unit inputs unchanged"
+    },
+    {
+      "command": "npx vitest run src/live/workspace/useBookSessionDisplay.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/DataWindow.test.tsx src/api/sharedLiveSeries.test.tsx src/api/liveTickOverlay.test.tsx src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx",
+      "result": "395 passed across 7 files; app/unit source, tests, dependencies and config unchanged since this result"
+    },
+    {
+      "command": "npx playwright test book-availability.spec.ts --reporter=line",
+      "result": "11 passed (48.7s) on final inputs"
+    },
+    {
+      "command": "npx playwright test book-availability.spec.ts krx-aftermarket.spec.ts --grep 'received auction across|KRX 15:30' --repeat-each=5 --reporter=line",
+      "result": "10 passed (54.8s); each of the 2 critical scenarios passed 5 times"
+    },
+    {
+      "command": "npx playwright test live-orders.spec.ts --grep '장중 0H|예상 체결가·체결량은|시간외종가의 잔량|총 접수의 오래된 호가' --reporter=line",
+      "result": "7 passed (30.7s); KRX/NXT/UN expected-price lifecycle, after-hours totals and stale-order restrictions"
+    },
+    {
+      "command": "npx vite build (Playwright startup)",
+      "result": "passed; existing large-chunk warning"
+    },
+    {
+      "command": "npx eslint src/live/workspace/useBookSessionDisplay.ts src/live/workspace/DataWindow.tsx src/live/workspace/OrderWindow.tsx src/live/workspace/useBookSessionDisplay.test.tsx tests/e2e/book-availability.spec.ts tests/e2e/krx-aftermarket.spec.ts",
+      "result": "0 errors. 6 react-hooks/refs warnings in unchanged OrderWindow render locations; HEAD baseline has the same 6 warnings at corresponding lines (current lines are baseline minus 1)"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "15:29:59 -> 15:30 with no exchange message -> delayed auction -> empty book -> silence -> next live book",
+    "Late disk response cannot overwrite received/retained auction; saved books never satisfy order freshness",
+    "Retaining live or reset books never resurrects expired expected price/quantity",
+    "Historical cursor, next-day 08:30 reset, effective venue, shared recovery and aftermarket exclusions",
+    "Visual inspection of both book windows retaining 15:30:02 book at 15:30:34 with matching last-received footers"
+  ],
+  "fixture_repairs": [
+    "Pause the mock clock before loading the app, so the initial jump does not race its 45-second WS watchdog",
+    "After a 30-minute jump, wait for the renewed subscription before injecting the next book",
+    "Update legacy aftermarket assertions to the existing timestamped labels"
+  ],
+  "limits": [
+    "Scoped frontend checks; full repository suites not run",
+    "No live market or broker calls, live trading, production deployment or user-server restart",
+    "The backend 0D expected-value time gate is unchanged; extending it requires raw-feed verification separately",
+    "Existing ResizeObserver loop warnings appeared in successful browser runs"
+  ]
+}

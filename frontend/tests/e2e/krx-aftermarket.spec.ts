@@ -23,13 +23,17 @@ test('KRX 15:30 → 16:00 → 20:00 keeps the live ladder and evening candle', a
     code:CODE,from:'20260914',to:'20260914',candles:[{t_ms:at(15),open:30000,high:30000,low:30000,close:30000,volume:10}],cached_dates:[],fresh_dates:[],data_warnings:[],
     effective_sessions:[{date:'20260914',open_ms:at(9),close_ms:at(20)}],
   }}));
-  await page.route(apiPrefix('orderbook'), route => route.fulfill({ json: {
+  let savedReads = 0;
+  await page.route(apiPrefix('orderbook'), route => {
+    savedReads++;
+    return route.fulfill({ json: {
     source: 'kiwoom_live', available_from: null, snapshot: {
       ts_ms: at(15, 19) + 50_000, seq: 0, tot_ask: 1000, tot_bid: 2000,
       ask: Array.from({ length: 10 }, (_, i) => ({ price: 31001 + i, qty: 100 })),
       bid: Array.from({ length: 10 }, (_, i) => ({ price: 30999 - i, qty: 200 })),
     },
-  } }));
+    } });
+  });
   let retiredRequests = 0;
   await page.route(apiPrefix('live/after-hours-book'), route => {
     retiredRequests += 1;
@@ -65,16 +69,19 @@ test('KRX 15:30 → 16:00 → 20:00 keeps the live ladder and evening candle', a
   push(at(15,29),31000);
   await expect.poll(() => chartCloses(page,chartId)).toContain(31000);
   await page.clock.fastForward(60_000);
-  await expect(page.getByText('정규장 마지막 · 15:19:50',{exact:true})).toBeVisible();
+  await expect(page.getByText('마지막 수신 · 15:29:00',{exact:true})).toBeVisible();
+  const beforeReopen = ws.connectionCount();
   await page.clock.fastForward(30*60_000);
-  await expect(page.getByText('정규장 마지막 · 15:19:50 · 수신 대기',{exact:true})).toBeVisible();
-  // A KRX ladder timestamped before 16:00 must replace the saved book too.
+  await expect(page.getByText('마지막 수신 · 15:29:00',{exact:true})).toBeVisible();
+  await expect.poll(ws.connectionCount).toBeGreaterThan(beforeReopen);
+  await ws.waitForSubscribe(CODE);
+  // A pre-reopening frame replaces the retained closing book immediately.
   push(at(16) - 10_000, 31500);
   await expect(page.getByText('실시간 호가 · 15:59:50', { exact: true })).toBeVisible();
   push(at(16),32000);
   const closeRow = page.getByText('KRX종가', { exact: true }).locator('..');
   await expect(closeRow).toContainText('31,000');
-  await expect(page.getByText('애프터마켓',{exact:true})).toBeVisible();
+  await expect(page.getByText('애프터마켓 · 16:00:00',{exact:true})).toBeVisible();
   await expect.poll(() => chartCloses(page,chartId)).toContain(32000);
   const connections = ws.connectionCount();
   await page.clock.fastForward(239*60_000);
@@ -85,9 +92,10 @@ test('KRX 15:30 → 16:00 → 20:00 keeps the live ladder and evening candle', a
   push(at(19,59),33000);
   await expect.poll(() => chartCloses(page,chartId)).toContain(33000);
   await page.clock.fastForward(60_000);
-  await expect(page.getByText('애프터마켓 · 마지막',{exact:true})).toBeVisible();
+  await expect(page.getByText('애프터마켓 · 마지막 · 19:59:00',{exact:true})).toBeVisible();
   expect(await chartCloses(page,chartId)).toContain(33000);
   await expect(closeRow).toContainText('31,000');
   await page.screenshot({ path: 'test-results/krx-close-aftermarket.png' });
   expect(retiredRequests).toBe(0);
+  expect(savedReads).toBe(0);
 });
