@@ -54,6 +54,7 @@ function makeChart(paneHeights: number[] = [400]) {
     unsubscribeCrosshairMove: () => { handler = null; },
     panes: () => paneHeights.map((h) => ({ getHeight: () => h })),
     chartElement: () => ({ clientWidth: 800, clientHeight: 400 }),
+    timeScale: () => ({ timeToIndex: () => null }),
   };
   return { chart: chart as never, rawChart: chart, fire: (p: unknown) => act(() => { handler?.(p); }) };
 }

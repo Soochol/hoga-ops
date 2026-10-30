@@ -4,6 +4,7 @@ import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { useCursorSyncResolution } from './useCursorSyncResolution';
 import { isSyncConsumerTimeframe } from '../chart/cursorSync';
 import DailyCandleDetails from './DailyCandleDetails';
+import CandleMovingAverageDetails from './CandleMovingAverageDetails';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { IChartApi, MouseEventParams, UTCTimestamp } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
@@ -271,6 +272,8 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
           {m.barOverBarWon == null ? '—' : signed(m.barOverBarWon, bundle.code)}
         </span>
       </Row>
+      <CandleMovingAverageDetails chart={chart} timeSec={axis.toVirtual(m.tsMs) / 1000}
+        close={m.close} code={bundle.code} timeframe={timeframe} />
       <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
       {!isUsWorkareaCode(bundle.code) && <Row k="거래량"><span style={valStyle}>{formatKoreanInt(m.volume)}</span></Row>}
       {!isUsWorkareaCode(bundle.code) && <Row k="거래량비">
