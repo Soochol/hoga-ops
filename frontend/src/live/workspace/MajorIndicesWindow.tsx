@@ -7,8 +7,6 @@ import { unixMsToKSTHhmm } from '../../util/time';
 import './MajorIndicesWindow.css';
 
 type Overview = ReturnType<typeof useMajorIndices>;
-const formatValue = (value: number | null) => value === null ? '—'
-  : value.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatPercent = (value: number | null) => value === null ? '—'
   : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
 const timeLabel = (ms: number) => {
@@ -18,19 +16,9 @@ const timeLabel = (ms: number) => {
 
 export function MajorIndicesWindow({ frameProps }: { frameProps: Omit<WindowFrameProps, 'children' | 'headerContent'> }) {
   const model = useMajorIndices();
-  const description = `${model.date} · 전일 종가 대비 등락률 · ${model.label}`;
-  return <WindowFrame {...frameProps} headerContent={
-    <div className="major-indices-header" data-testid="major-indices-header">
-      <div className="major-indices-legend" aria-label="주요 지수 시세">
-        {model.series.map(s => <span key={s.id} className="major-indices-quote">
-          <span className="major-indices-name"><i aria-hidden style={{ background: s.color }} />{s.label}</span>
-          <span className="major-indices-value">{formatValue(s.value)}</span>
-          <span className="major-indices-percent">{formatPercent(s.percent)}</span>
-        </span>)}
-      </div>
-      <span className="major-indices-status" role="status" aria-label={description}>{model.label}</span>
-    </div>
-  }><MajorIndicesChart key={model.date} model={model} /></WindowFrame>;
+  return <WindowFrame {...frameProps} headerContent={<></>}>
+    <MajorIndicesChart key={model.date} model={model} />
+  </WindowFrame>;
 }
 
 function linePath(points: readonly IndexPercentPoint[], x: (t: number) => number, y: (v: number) => number) {
