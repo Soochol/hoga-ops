@@ -21,7 +21,7 @@ import { useCallback, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { BookScrollArea } from './BookScrollArea';
-import { BookPriceAmount } from './BookPriceAmount';
+import { BookAmountTooltip, BookPriceAmount } from './BookPriceAmount';
 import { useBookPriceLayout } from './useBookPriceLayout';
 import { bookDayMarkers, type BookPriceMarker } from './bookDayMarkers';
 import type { OrderbookSnapshot } from '../../api/types';
@@ -292,6 +292,7 @@ export default function BookPanel({
             {asksDesc.map((l, i) => (
               <QtyBar
                 key={`a-${i}`}
+                price={l.price}
                 qty={l.qty}
                 maxQty={maxQty}
                 side="ask"
@@ -387,6 +388,7 @@ export default function BookPanel({
             {bids.map((l, i) => (
               <QtyBar
                 key={`b-${i}`}
+                price={l.price}
                 qty={l.qty}
                 maxQty={maxQty}
                 side="bid"
@@ -642,6 +644,7 @@ function PriceCell({
 
 /** 깊이 막대. ask 는 가격축 쪽(우)에서, bid 는 가격축 쪽(좌)에서 자란다. */
 function QtyBar({
+  price,
   qty,
   maxQty,
   side,
@@ -649,6 +652,7 @@ function QtyBar({
   topDivider = false,
   dimClass = '',
 }: {
+  price: number;
   qty: number;
   maxQty: number;
   side: 'ask' | 'bid';
@@ -704,9 +708,9 @@ function QtyBar({
             priceDirClass 와는 **다른 축**이다 — 뱃지는 delta 의 부호(늘었나/줄었나),
             이건 호가의 방향(매도냐/매수냐)이라 같은 행에서 두 색이 어긋날 수 있고
             그게 정상이다(매수 잔량이 줄면 빨간 숫자 옆에 파란 −뱃지). */}
-        <span className={`flex-1 ${isAsk ? 'text-right text-qty-ask' : 'text-left text-qty-bid'}`}>
+        <BookAmountTooltip price={price} qty={qty} className={`book-qty-amount flex-1 ${isAsk ? 'text-right text-qty-ask' : 'text-left text-qty-bid'}`}>
           {qty > 0 ? qty.toLocaleString('ko-KR') : ''}
-        </span>
+        </BookAmountTooltip>
       </span>
     </div>
   );

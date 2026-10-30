@@ -268,7 +268,7 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   };
   if (win.kind === 'market-indices') {
     return <ChartErrorBoundary title="주요 지수 창을 표시하지 못했습니다">
-      <Suspense fallback={<WindowFrame {...frameProps} headerContent={<span>주요 지수</span>}><div className="p-1 text-xs text-fg-dim">불러오는 중…</div></WindowFrame>}>
+      <Suspense fallback={<WindowFrame {...frameProps} headerContent={<span />}><div className="p-1 text-xs text-fg-dim">불러오는 중…</div></WindowFrame>}>
         <MajorIndicesWindow frameProps={frameProps} />
       </Suspense>
     </ChartErrorBoundary>;
