@@ -174,9 +174,11 @@ export default function BookPanel({
   const [infoPage, setInfoPage] = useState<0 | 1>(0);
   const [infoChangePct, setInfoChangePct] = useState(false);
   const [infoVi, setInfoVi] = useState(false);
+  const [infoSameTimeVolume, setInfoSameTimeVolume] = useState(false);
   const nextInfoPage = () => setInfoPage(page => page === 0 ? 1 : 0);
   const toggleInfoChangePct = () => setInfoChangePct(show => !show);
   const toggleInfoVi = () => setInfoVi(show => !show);
+  const toggleInfoVolume = () => setInfoSameTimeVolume(show => !show);
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const infoId = useId();
   const closeInfo = useCallback(() => {
@@ -223,7 +225,8 @@ export default function BookPanel({
                 limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={ROW_H * SUMMARY_ROWS}
                 page={infoPage} onNextPage={nextInfoPage}
                 showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct}
-                showVi={infoVi} onToggleVi={toggleInfoVi} expectedFill={null} />}
+                showVi={infoVi} onToggleVi={toggleInfoVi}
+                showSameTimeVolume={infoSameTimeVolume} onToggleVolume={toggleInfoVolume} expectedFill={null} />}
             </div>
           </div>
           <SessionOnlyStrip
@@ -384,6 +387,7 @@ export default function BookPanel({
                   page={infoPage} onNextPage={nextInfoPage}
                   showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct}
                   showVi={infoVi} onToggleVi={toggleInfoVi}
+                  showSameTimeVolume={infoSameTimeVolume} onToggleVolume={toggleInfoVolume}
                   expectedFill={summaryExpectedFill}
                   expectedDimClass={staleDim} />
               </div>
@@ -416,6 +420,7 @@ export default function BookPanel({
           page={infoPage} onNextPage={nextInfoPage}
           showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct}
           showVi={infoVi} onToggleVi={toggleInfoVi}
+          showSameTimeVolume={infoSameTimeVolume} onToggleVolume={toggleInfoVolume}
           expectedFill={summaryExpectedFill}
           expectedDimClass={staleDim} />
       </div>, document.body)}
@@ -443,6 +448,7 @@ export function BookSummary({
   page, onNextPage, expectedFill = null, expectedDimClass = '', headingLabel = '',
   showChangePct, onToggleChangePct,
   showVi, onToggleVi,
+  showSameTimeVolume, onToggleVolume,
   expectedFillPosition = 'bottom',
 }: {
   summary: LiveTradeSummary;
@@ -458,6 +464,8 @@ export function BookSummary({
   onToggleChangePct: () => void;
   showVi: boolean;
   onToggleVi: () => void;
+  showSameTimeVolume: boolean;
+  onToggleVolume: () => void;
   expectedFill?: { price: number; qty: number | null } | null;
   expectedDimClass?: string;
   headingLabel?: string;
@@ -465,6 +473,8 @@ export function BookSummary({
 }) {
   const priceToggle = { label: '가격·등락률 전환', pressed: showChangePct, onToggle: onToggleChangePct };
   const viToggle = { label: '예상체결·VI 전환', pressed: showVi, onToggle: onToggleVi };
+  const volumeToggle = { label: '거래량 비교 기준 전환', pressed: showSameTimeVolume, onToggle: onToggleVolume };
+  const volumePct = showSameTimeVolume ? summary.vsPrevSameTimeVolumePct : summary.vsPrevVolumePct;
   const detailRows = showVi ? <div data-testid="book-vi-prices">
     <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} divider={expectedFillPosition === 'bottom'} toggle={viToggle} />
     <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} toggle={viToggle} />
@@ -513,8 +523,9 @@ export function BookSummary({
             수식 관계가 읽힌다. */}
         <SummaryRow label="거래량" value={fmtVolumeKo(summary.cumVolume)} divider />
         <SummaryRow
-          label="어제보다"
-          value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
+          label={showSameTimeVolume ? '동시간비' : '어제보다'}
+          value={volumePct == null || !Number.isFinite(volumePct) || volumePct <= 0 ? '−' : `${volumePct.toFixed(2)}%`}
+          toggle={volumeToggle}
         />
         <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
         {expectedFillPosition === 'bottom' ? <div className="mt-auto">{detailRows}</div> : null}

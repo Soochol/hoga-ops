@@ -39,6 +39,8 @@ export interface TradeEvent {
 export interface TradeSnapshot {
   t_ms: number;
   trades: TradeEvent[];
+  /** 키움 0B FID 851, 서버에서 0.01% 원시 정수를 %로 정규화. 미제공 시 키 없음. */
+  vs_prev_same_time_volume_pct?: number;
   kind?: string;
   /** 이 스냅샷을 실어온 시장(#524 시분할). 백엔드 태그; 구백엔드는 부재(=KRX 해석). */
   venue?: LiveFrameVenue;

@@ -227,6 +227,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const [infoPage, setInfoPage] = useState<0 | 1>(0);
   const [infoChangePct, setInfoChangePct] = useState(false);
   const [infoVi, setInfoVi] = useState(false);
+  const [infoSameTimeVolume, setInfoSameTimeVolume] = useState(false);
   const infoId = useId();
   const closeInfo = useCallback(() => {
     setInfoOpen(false);
@@ -719,6 +720,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     vi={vi.data?.vi} height={height} page={infoPage} onNextPage={() => setInfoPage(page => page === 0 ? 1 : 0)}
     showChangePct={infoChangePct} onToggleChangePct={() => setInfoChangePct(show => !show)}
     showVi={infoVi} onToggleVi={() => setInfoVi(show => !show)}
+    showSameTimeVolume={infoSameTimeVolume} onToggleVolume={() => setInfoSameTimeVolume(show => !show)}
     expectedFill={{
       price: restBook ? 0 : storedLadder || activeSinglePrice !== null ? snapshot?.exp_price ?? 0 : quote?.expected_price ?? 0,
       qty: restBook ? null : storedLadder || activeSinglePrice !== null ? snapshot?.exp_qty ?? 0 : quote?.expected_qty ?? null,

@@ -84,3 +84,38 @@ def test_last_ob_follows_the_requested_venue(client):
         )
         assert r.status_code == 200, r.text
         assert r.json()["last_ob"]["venue"] == venue
+
+
+async def test_native_same_time_volume_survives_buffer_and_http_serialization():
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.kiwoom_frames import parse_real_row
+    from hoga.live.snapshot import LiveSnapshot
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
+
+    now = hhmmssms_to_unix_ms("20260720", 102756000)
+    tick = parse_real_row({"type": "0B", "item": "005930_AL", "values": {
+        "20": "102756", "10": "67200", "15": "1", "30": "61.70", "851": "17629",
+    }}, date="20260720", now_ms=now)
+    assert tick is not None
+    buffer = LiveBuffer()
+    await buffer.publish(tick.code, [LiveSnapshot(
+        t_ms=tick.t_ms, kind=tick.kind, payload={**tick.payload, "venue": tick.venue},
+    )], now_ms=now)
+    app = FastAPI()
+    app.include_router(build_router(
+        get_status=lambda: LiveStatus(running=True, started_at_ms=None, last_tick_ms=None,
+                                      cycle_lag_ms=0, watchlist_count=0),
+        get_buffer=lambda: buffer,
+    ))
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://test") as http:
+        response = await http.get("/api/live/series", params={
+            "code": "005930", "date": "20260720", "venue": "UN",
+        })
+    assert response.status_code == 200
+    row = response.json()["trades"][0]
+    assert row["venue"] == "UN"
+    assert row["vs_prev_same_time_volume_pct"] == 176.29
+    assert row["vs_prev_volume_pct"] == 61.7

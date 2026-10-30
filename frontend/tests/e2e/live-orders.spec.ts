@@ -9,7 +9,7 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { preopen?: boolean; time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed' } = {}) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { preopen?: boolean; time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed'; sameTimeVolumePct?: number } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   const subject = market.lastBook ? { code: '456160', name: '지투지바이오' } : { code: '005930', name: '삼성전자' };
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
@@ -29,7 +29,9 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => route.fulfill({ json: {
     code: new URL(route.request().url()).searchParams.get('code') ?? '005930', date: new URL(route.request().url()).searchParams.get('date'), session_open_ms: Date.now(), session_close_ms: null, is_open: true,
     snapshots: market.lastBook ? [] : [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: market.preopen ? Date.parse('2026-10-30T08:25:00+09:00') : market.time ?? Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
-    trades: [], brokers: [], programs: [], after_hours: market.preopen ? [{ venue: 'KRX', t_ms: new Date('2026-10-30T08:35:00+09:00').getTime(), total_ask_qty: 1234, total_bid_qty: 5678 }] : [], expected: [], today_ask_peak: null, today_bid_peak: null,
+    trades: market.sameTimeVolumePct == null ? [] : [{ kind: 'trade', venue: market.venue ?? 'UN', t_ms: Date.now(),
+      vs_prev_volume_pct: 61.7, vs_prev_same_time_volume_pct: market.sameTimeVolumePct, cum_volume: 1_234_000, trades: [] }],
+    brokers: [], programs: [], after_hours: market.preopen ? [{ venue: 'KRX', t_ms: new Date('2026-10-30T08:35:00+09:00').getTime(), total_ask_qty: 1234, total_bid_qty: 5678 }] : [], expected: [], today_ask_peak: null, today_bid_peak: null,
   } }));
   if (market.lastBook) {
     await page.route('**/api/live/status', route => route.fulfill({ json: {
@@ -3638,6 +3640,82 @@ test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상
   }
   await testInfo.attach('digit-layout', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
   expect(commands).toHaveLength(0);
+});
+
+test('거래량 비교는 두 창에서 전일 전체·동시간비를 전환하고 같은 시장의 실시간 값을 반영한다', async ({ page }, testInfo) => {
+  const { window, ws, commands } = await setup(page, false, false, false, 0, 1, { sameTimeVolumePct: 176.29 });
+  const book = page.locator('.book-panel');
+  for (const [panel, left, width] of [[book, 0, 680], [window, 700, 576]] as const) {
+    await page.locator('[data-win]').filter({ has: panel }).evaluate((el, rect) => {
+      Object.assign((el as HTMLElement).style, { left: `${rect.left}px`, top: '0px', width: `${rect.width}px`, height: '720px' });
+    }, { left, width });
+  }
+  await ws.waitForSubscribe('005930');
+  await page.evaluate(() => document.fonts.ready);
+  const measure = (panel: Locator) => panel.evaluate(el => {
+    const rows = el.querySelector('.book-panel-grid')?.children[1].children ?? el.querySelectorAll('.order-row');
+    const rect = (row: Element) => { const r = row.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+    return { ladder: [...rows].map(rect), information: [...el.querySelectorAll('.book-summary-row')].map(rect) };
+  });
+  for (const panel of [book, window]) {
+    const summary = panel.getByTestId('book-summary');
+    const row = summary.getByRole('button', { name: /거래량 비교 기준 전환/ });
+    await expect(row).toHaveText('어제보다61.70%');
+    const before = await measure(panel);
+    await row.getByText('61.70%', { exact: true }).click();
+    await expect(row).toHaveText('동시간비176.29%');
+    await expect(summary).toHaveAttribute('data-page', '1');
+    expect(await measure(panel)).toEqual(before);
+    if (panel === book) await expect(window.getByRole('button', { name: /거래량 비교 기준 전환/ })).toHaveText('어제보다61.70%');
+    await row.focus();
+    await page.keyboard.press('Enter');
+    await expect(row).toHaveText('어제보다61.70%');
+    await page.keyboard.press('Space');
+    await expect(row).toHaveText('동시간비176.29%');
+    await summary.getByRole('button', { name: /다음 정보 페이지로 전환/ }).click();
+    await summary.getByRole('button', { name: /다음 정보 페이지로 전환/ }).click();
+    await expect(row).toHaveText('동시간비176.29%');
+    expect(await measure(panel)).toEqual(before);
+    await panel.screenshot({ path: testInfo.outputPath(`${panel === book ? 'book' : 'order'}-same-time-volume.png`) });
+  }
+  ws.pushLive('005930', { kind: 'trade', venue: 'KRX', t_ms: Date.now(), vs_prev_same_time_volume_pct: 999, trades: [] });
+  for (const panel of [book, window]) await expect(panel.getByRole('button', { name: /거래량 비교 기준 전환/ })).toHaveText('동시간비176.29%');
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now() + 1, vs_prev_same_time_volume_pct: 123.45, trades: [] });
+  for (const panel of [book, window]) {
+    await expect(panel.getByRole('button', { name: /거래량 비교 기준 전환/ })).toHaveText('동시간비123.45%');
+    const frame = page.locator('[data-win]').filter({ has: panel });
+    await frame.evaluate(el => { (el as HTMLElement).style.width = '420px'; });
+    await panel.getByRole('button', { name: '종목 상세 정보', exact: true }).click();
+    const popup = page.getByRole('dialog', { name: '종목 상세 정보', exact: true });
+    const row = popup.getByRole('button', { name: /거래량 비교 기준 전환/ });
+    await expect(row).toHaveText('동시간비123.45%');
+    await row.click();
+    await expect(row).toHaveText('어제보다61.70%');
+    await page.keyboard.press('Escape');
+    await expect(popup).toHaveCount(0);
+    await panel.getByRole('button', { name: '종목 상세 정보', exact: true }).click();
+    await expect(row).toHaveText('어제보다61.70%');
+    await popup.getByRole('button', { name: /정보 닫기/ }).click();
+  }
+  expect(commands).toHaveLength(0);
+});
+
+test('동시간비가 없으면 두 창에서 전일 전체 비율을 대신 표시하지 않는다', async ({ page }) => {
+  const { window, ws } = await setup(page, false, false);
+  for (const [panel, left, width] of [[page.locator('.book-panel'), 0, 680], [window, 700, 576]] as const) {
+    await page.locator('[data-win]').filter({ has: panel }).evaluate((el, rect) => {
+      Object.assign((el as HTMLElement).style, { left: `${rect.left}px`, top: '0px', width: `${rect.width}px`, height: '720px' });
+    }, { left, width });
+  }
+  await ws.waitForSubscribe('005930');
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(), vs_prev_volume_pct: 61.7, trades: [] });
+  for (const panel of [window, page.locator('.book-panel')]) {
+    const summary = await showInfoPage(page, panel, 1);
+    const row = summary.getByRole('button', { name: /거래량 비교 기준 전환/ });
+    await expect(row).toHaveText('어제보다61.70%');
+    await row.click();
+    await expect(row).toHaveText('동시간비−');
+  }
 });
 
 test('예상 체결·VI 가격은 두 창의 같은 두 행에서 전환하고 팝오버와 선택을 공유한다', async ({ page }, testInfo) => {
