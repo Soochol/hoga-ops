@@ -13,4 +13,5 @@
 .major-indices-tooltip { position: absolute; top: 20px; min-width: 118px; pointer-events: none; font-variant-numeric: tabular-nums; }
 .major-indices-tooltip > div { display:grid; grid-template-columns:7px minmax(3em, 1fr) max-content; align-items:center; gap:0.25rem; margin-top:3px; }
 .major-indices-tooltip > div > span:last-child { text-align:right; white-space:nowrap; }
+.major-indices-stock-notice { position:absolute; left:5px; bottom:24px; pointer-events:none; }
 .major-indices-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--fg-dim); font-size: var(--text-xs); pointer-events: none; }
