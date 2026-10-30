@@ -11,6 +11,7 @@ from hoga.trading.models import TradingHolding
 Broker = Literal["toss", "kiwoom"]
 Environment = Literal["real", "mock"]
 Route = Literal["KRX", "NXT", "SOR"]
+BrokerOrderType = Literal["LIMIT", "PREOPEN_CLOSE"]
 ExecutionBasis = Literal["execution", "order_average"]
 
 
@@ -90,7 +91,21 @@ class CreateBrokerOrder(BrokerCommand):
     quantity: int = Field(gt=0, le=1_000_000_000)
     price: int = Field(gt=0, le=1_000_000_000)
     route: Route
+    order_type: BrokerOrderType = "LIMIT"
     confirm_high_value: bool = False
+
+
+class PreopenCloseQuote(BaseModel):
+    account_ref: str
+    code: str
+    trading_date: str
+    supported: bool = False
+    price: int | None = None
+    starts_at_ms: int
+    ends_at_ms: int
+    can_order: bool = False
+    reason: str | None = None
+    fetched_at_ms: int
 
 
 class ModifyBrokerOrder(BrokerCommand):

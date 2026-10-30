@@ -827,6 +827,8 @@ export function TotalQtyStrip({
   sessionMode,
   onSelectSessionMode,
   dimClass = '',
+  renderTotal,
+  centerContent,
 }: {
   /** 스트립 중앙에 그릴 세션 선택기. `none` 이면 종전의 조건부 출처 표시로 폴백한다 —
    *  `nxt_enabled` 를 모르는 창에서 오늘과 같이 동작해야 하기 때문이다. */
@@ -846,6 +848,9 @@ export function TotalQtyStrip({
   /** stale 딤. **총잔량은 출처가 둘이라 조건도 둘**이다 — 시간외 값이면 커서
    *  스팟 경로를 타지 않으므로 호출부가 빈 문자열을 넘긴다. */
   dimClass?: string;
+  /** 주문창은 기존 총잔량 자리를 주문 표면으로 사용한다. 일반 10호가는 표시만 유지한다. */
+  renderTotal?: (side: 'ask' | 'bid', quantity: number) => ReactNode;
+  centerContent?: ReactNode;
 }) {
   // 시간외 총잔량이 오면 그걸 쓴다 — 위 사다리(정규장 15:30 마지막 스냅샷)는
   // 그대로 두고 이 스트립만 살아 움직인다. KRX-only 종목은 15:30 에 0D 가 끊겨
@@ -879,29 +884,29 @@ export function TotalQtyStrip({
           종전대로 `fallbackLabel` 이 그 일을 한다. 나머지 하중은 16:00–18:00 의 빈
           바깥 5행 설명이고, 그건 시간외 선택 라벨이 그대로 진다. */}
       <div className="flex items-center justify-between px-2 py-1">
-        <span
+        {renderTotal ? renderTotal('ask', ask) : <span
           aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매도총잔량 ${ask.toLocaleString('ko-KR')}`}
           className="font-data text-sm tabular-nums text-price-down"
         >
           {ask.toLocaleString('ko-KR')}
-        </span>
+        </span>}
         {/* 여기 라벨 아래에 누적 체결량("체결 17,474")을 두 줄로 쌓았었다. **뺐다**
             (사용자 결정 2026-08-19) — 그것을 두었던 근거가 무효가 됐기 때문이다.
             원 주석은 "시간외 단일가는 개별 체결 내역이 없어 이 누적이 그 구간에
             움직이는 유일한 체결 신호" 였는데, #1417 이 체결창에 주기별 개별 행을
             그리면서 그 자리가 생겼다. */}
-        <BookSessionCenter
+        {centerContent ?? <BookSessionCenter
           control={sessionControl}
           mode={sessionMode}
           onSelect={onSelectSessionMode}
           fallbackLabel={isAfterHours ? afterHoursLabel : null}
-        />
-        <span
+        />}
+        {renderTotal ? renderTotal('bid', bid) : <span
           aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매수총잔량 ${bid.toLocaleString('ko-KR')}`}
           className="font-data text-sm tabular-nums text-price-up"
         >
           {bid.toLocaleString('ko-KR')}
-        </span>
+        </span>}
       </div>
     </div>
   );

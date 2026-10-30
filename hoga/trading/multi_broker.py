@@ -27,6 +27,7 @@ from hoga.trading.contracts import (
 from hoga.trading.execution_range import ExecutionHistoryRange
 from hoga.trading.kiwoom import KiwoomAccountGateway, KiwoomTradingAdapter
 from hoga.trading.models import TradingCommand
+from hoga.trading.preopen import PreopenClose
 from hoga.trading.service import TradingService
 from hoga.trading.toss import TradingError
 from hoga.trading.toss_executions import TossExecutionHistory
@@ -51,6 +52,11 @@ class BrokerTradingService:
         self.execution_history = ExecutionHistory(data_dir)
         self.toss_execution_history = TossExecutionHistory(data_dir)
         self.execution_range = ExecutionHistoryRange(data_dir)
+        self.preopen = PreopenClose(data_dir)
+
+    async def preopen_close(self, ref: str, code: str):
+        adapter = await self.resolve(ref)
+        return await self.preopen.quote(None if adapter is self.toss else adapter, ref, code)
 
     def adapters(self) -> list[KiwoomTradingAdapter]:
         if self._kiwoom is None:
@@ -206,11 +212,14 @@ class BrokerTradingService:
         sent = False
         deadline = time.monotonic() + 10
         target = None
+        preopen_quote = None
 
         def mark_sending():
             nonlocal sent
             if target is not None:
                 adapter.validate_current(target)
+            if preopen_quote is not None:
+                self.preopen.check_clock(preopen_quote)
             self.journal.finish(command.command_id, "sending", {})
             sent = True
 
@@ -246,6 +255,19 @@ class BrokerTradingService:
                     if action == "create":
                         if not isinstance(command, CreateBrokerOrder):
                             raise TradingError(422, "invalid-command", "신규 주문 조건을 확인하세요.")
+                        if command.order_type == "PREOPEN_CLOSE":
+                            if route != "KRX":
+                                raise TradingError(422, "unsupported-route", "장전 종가 주문은 KRX 경로만 지원합니다.")
+                            preopen_quote = await self.preopen.quote(
+                                adapter, command.account_ref, command.code, fresh=True
+                            )
+                            if not preopen_quote.can_order:
+                                raise TradingError(409, "preopen-unavailable", preopen_quote.reason)
+                            if command.price != preopen_quote.price:
+                                raise TradingError(
+                                    409, "preopen-price-changed",
+                                    "장전 종가 적용 가격이 변경되었습니다. 다시 확인하세요."
+                                )
                         TradingService._check_amount(command.price, command.quantity, command.confirm_high_value)
                         # Cash policy is checked at the actual limit price; broker remains final authority.
                         capacity = await adapter.balances(command.code, command.price)
@@ -260,6 +282,9 @@ class BrokerTradingService:
                             "ord_uv": str(command.price),
                             "trde_tp": "0",
                         }
+                        if preopen_quote is not None:
+                            body["trde_tp"] = "61"
+                            body.pop("ord_uv")  # Fixed-price order; the exchange determines the price.
                         from datetime import datetime  # noqa: PLC0415
 
                         from hoga.util.timeenc import KST  # noqa: PLC0415
@@ -324,6 +349,10 @@ class BrokerTradingService:
                             503, "order-outcome-unknown", "원주문 응답이 일치하지 않습니다. 주문 내역을 확인하세요."
                         )
                     native_ref = self.registry.order_ref(command.account_ref, response["ord_no"], date, route)
+                    if action == "create":
+                        self.registry.remember_terms(native_ref, command.order_type, str(command.price))
+                    elif target is not None:
+                        self.registry.remember_terms(native_ref, target.order_type, target.price)
                     self.registry.remember_lineage(
                         native_ref,
                         order_ref or None,

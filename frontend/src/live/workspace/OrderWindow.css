@@ -189,3 +189,6 @@
 .order-lane-probe { padding-inline:3px; }
 .order-total-probe { font-size:var(--live-text-meta,var(--text-xs)); }
 .order-column-sizer [data-figure]::before,.order-column-sizer[data-figure]::before { content:attr(data-figure); }
+
+.order-window .order-preopen-total { color:var(--order-side); padding:0; border:0; background:transparent; font-size:var(--live-text-data,var(--text-sm)); font-variant-numeric:tabular-nums; }
+.order-window .order-preopen-total:hover { background:transparent; text-decoration:underline dotted; text-underline-offset:2px; }

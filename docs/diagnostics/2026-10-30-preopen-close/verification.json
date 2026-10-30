@@ -1,0 +1,73 @@
+{
+  "checked_at_kst": "2026-10-30T09:06:04.258616+09:00",
+  "head_sha": "c74e8beb378620756f5b4c0f04b43af58e17daf1",
+  "base_sha": "c74e8beb378620756f5b4c0f04b43af58e17daf1",
+  "worktree_changes": "uncommitted",
+  "input_fingerprint": {
+    "sha256": "16b05679727d4a46dfdf29070fde94ab731a30b08d7c88fa05d83ed083796c03",
+    "files": 2832,
+    "scopes": [
+      "hoga/",
+      "tests/",
+      "frontend/src/",
+      "frontend/tests/",
+      "Python dependency and lint configuration",
+      "frontend dependency, TypeScript, Vite and Playwright configuration"
+    ]
+  },
+  "environment": {
+    "python": "3.14.7",
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "uv": "0.11.8",
+    "credentials": "empty worktree .env and E2E empty vendor environment; synthetic responses only"
+  },
+  "results": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_broker_trading.py tests/unit/api/test_trading_v2_wire.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/api/test_toss_trading.py tests/unit/api/test_paper_trading.py tests/unit/live/test_kiwoom_trading_events.py tests/unit/live/test_kiwoom_trading_design_evidence.py tests/unit/test_probe_kiwoom_trading_readonly.py",
+      "result": "201 passed",
+      "tested_base_sha": "97e0ae3a4bbd153e959395818687db326de65e54",
+      "reuse_basis": "Merged main changed only frontend and documentation. Backend, backend tests, Python dependencies/configuration and mirrored trading wire inputs are unchanged."
+    },
+    {
+      "command": "npm run typecheck (frontend/)",
+      "result": "passed: app, unit and E2E TypeScript projects"
+    },
+    {
+      "command": "npx vitest run src/live/workspace/OrderWindow.test.tsx src/api/trading.test.tsx src/live/workspace/AccountTradingPanel.test.tsx src/api/tradingOrderEvents.test.ts src/live/workspace/BookPanel.test.tsx src/live/workspace/useBookSessionDisplay.test.tsx src/live/liveDateTime.test.ts src/live/workspace/DataWindow.test.tsx (frontend/)",
+      "result": "515 passed"
+    },
+    {
+      "command": "npx playwright test live-orders.spec.ts --grep '장전 종가|증권사 계좌 전환|전체 호가에서 기존 주문|NXT 미지원 장전 잔량' --reporter=line (frontend/)",
+      "result": "7 passed",
+      "ports": [
+        20061,
+        21061
+      ],
+      "build": "Vite production build passed as Playwright webServer prerequisite"
+    },
+    {
+      "command": "Wire enum guard with intentional BrokerOrderType mismatch, then restore",
+      "result": "mismatch rejected; restored contract check passed"
+    },
+    {
+      "command": "Visual inspection of preopen-kiwoom.png and preopen-toss.png",
+      "result": "existing ladder and bottom total quantity positions retained; separate mode/panel removed"
+    }
+  ],
+  "limitations": [
+    "Real broker order, fill and cancellation were not sent.",
+    "A confirmed trading day is required. The existing historical calendar does not guarantee tomorrow; verified dated sessions may be configured in calendar/preopen_sessions.json."
+  ],
+  "ui": {
+    "entry": "existing bottom ask/bid total quantity numbers",
+    "double_click": "Kiwoom real KRX PREOPEN_CLOSE",
+    "right_click": "same-side preopen pending orders and individual cancellation",
+    "toss": "unsupported label and command rejection",
+    "expiry": "quantity strip returns to display-only; no implicit LIMIT submission"
+  }
+}

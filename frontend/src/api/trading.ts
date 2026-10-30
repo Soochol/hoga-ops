@@ -12,6 +12,7 @@ const tradingPrefix = (mode: TradingMode, account?: TradingAccountId) => mode ==
 const accountParam = (account: TradingAccountId) => typeof account === 'string'
   ? `account_ref=${encodeURIComponent(account)}` : `account_seq=${account}`;
 export type TradingSide = 'BUY' | 'SELL';
+export type BrokerOrderType = 'LIMIT' | 'PREOPEN_CLOSE';
 export interface TossExecution {
   filledQuantity: string | null;
   averageFilledPrice: string | null;
@@ -63,6 +64,7 @@ type BalancesResponse = Pick<TradingStateResponse, 'account_seq' | 'code' | 'buy
 export interface TradingCommand { account_seq: TradingAccountId; command_id: string; code: string; route?: 'KRX' | 'NXT' | 'SOR' }
 export interface CreateTradingOrder extends TradingCommand {
   side: TradingSide; quantity: number; price: number; confirm_high_value: boolean;
+  order_type?: BrokerOrderType;
 }
 export interface ModifyTradingOrder extends TradingCommand {
   price: number; quantity: number | null; confirm_high_value: boolean;

@@ -29,14 +29,16 @@ import { hasBookPrices } from '../../api/livePreAuctionBook';
 import { acceptTradingReplacement, pauseTradingRefresh } from '../../api/tradingRefresh';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
+import { usePreopenClose } from '../../api/preopenClose';
 import { useLiveKrxClose } from '../../api/liveKrxClose';
 import { useLiveKrxPreviousClose } from '../../api/liveKrxPreviousClose';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
+import { unixMsToKSTHhmm } from '../../util/time';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingBookMarker, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
-import { realMsToYyyymmdd } from '../liveDateTime';
+import { realMsToYyyymmdd, regularSessionOpenMs } from '../liveDateTime';
 import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookPanel';
 import { resolveBookBaseline } from './bookDisplay';
 import { useRecentBookTrades } from './useRecentBookTrades';
@@ -79,6 +81,7 @@ type Action = {
   operation?: 'modify' | 'cancel';
   batch?: { order: TossOrder; base: TradingCommand }[];
   keepOrderList?: boolean;
+  orderType?: 'LIMIT' | 'PREOPEN_CLOSE';
 };
 const changesPrice = (action: Action) => action.type === 'create' || action.type === 'modify' || (action.type === 'group' && action.operation === 'modify');
 const cancelsOrders = (action: Action) => action.type === 'cancel' || (action.type === 'group' && action.operation === 'cancel');
@@ -137,6 +140,25 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const symbols = useSymbols();
   const now = useWallClockSecond();
   const todayKst = realMsToYyyymmdd(now);
+  const morningClock = unixMsToKSTHhmm(now);
+  const preopenSubject = symbols.data?.symbols.find(item => item.code === code)?.nxt_enabled === false && venue !== 'NXT';
+  const preopen = usePreopenClose(account, code, todayKst, preopenSubject && morningClock >= 800
+    && morningClock < 1000 && activeAccount?.broker === 'kiwoom');
+  const preopenQuote = preopen.data?.account_ref === account && preopen.data.code === code
+    && preopen.data.trading_date === todayKst && now - preopen.data.fetched_at_ms < 30_000
+    && now - preopen.data.fetched_at_ms >= -5_000 ? preopen.data : undefined;
+  const preopenPrice = preopenQuote?.price ?? null;
+  const preopenEnd = preopen.data?.account_ref === account && preopen.data.trading_date === todayKst
+    ? preopen.data.ends_at_ms : regularSessionOpenMs(todayKst) - 20 * 60_000;
+  const showPreopen = preopenSubject && morningClock >= 800 && now < preopenEnd;
+  const preopenEnded = now >= preopenEnd;
+  const preopenReason = !activeAccount ? '주문 계좌를 선택하세요.' : activeAccount.broker !== 'kiwoom' ? '토스 OpenAPI는 장전 시간외 종가 주문을 지원하지 않습니다.'
+    : preopenEnded ? '장전 종가 거래가 종료되었습니다.' : preopen.error ? preopen.error.message : !preopenQuote ? '장전 종가 주문 조건을 확인하고 있습니다.'
+    : !preopenQuote.supported ? preopenQuote.reason ?? '장전 종가 미지원 종목입니다.'
+    : now < preopenQuote.starts_at_ms ? `장전 종가는 ${new Date(preopenQuote.starts_at_ms).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false })}에 시작합니다.`
+    : now >= preopenQuote.ends_at_ms ? '장전 종가 거래가 종료되었습니다.'
+    : !preopenQuote.can_order ? preopenQuote.reason ?? '장전 종가 주문 조건을 확인하세요.'
+    : preopenPrice == null ? '장전 종가 적용 가격을 확인할 수 없습니다.' : null;
   const krxClose = useLiveKrxClose(code, todayKst);
   const krxPreviousClose = useLiveKrxPreviousClose(code, todayKst);
   const latestSnapshot = useMemo(() => latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : live.ob),
@@ -172,7 +194,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number; preopen?: boolean } | null>(null);
   const closeMenu = useCallback(() => setContextMenu(null), []);
   const [noticeState, setNoticeState] = useState<(OrderNotice & { account: TradingAccountId }) | null>(null);
   const [cancelFailures, setCancelFailures] = useState<CancelFailure[]>([]);
@@ -255,7 +277,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     if (current?.active) suppressDoubleClick.current = true;
     setDragInProgress(false); setDragTarget(null); setDragCancel(false); setDraggingOrders([]);
   }, []);
-  const displayKey = `${venue}:${effectiveVenue}:${sessionMode}:${activeSinglePrice !== null}`;
+  const displayKey = `${venue}:${effectiveVenue}:${sessionMode}:${activeSinglePrice !== null}:${account}`;
   const previousDisplayKey = useRef(displayKey);
   useLayoutEffect(() => {
     if (previousDisplayKey.current === displayKey) return;
@@ -263,7 +285,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     resetDrag(); suppressClick.current = false;
     setAction(null); confirmHigh(false); closeMenu();
   }, [displayKey, resetDrag, closeMenu]);
-  const orders = state.data?.orders ?? EMPTY_ORDERS;
+  const allOrders = state.data?.orders ?? EMPTY_ORDERS;
+  const orders = useMemo(() => allOrders.filter(order => order.orderType !== 'PREOPEN_CLOSE'), [allOrders]);
   const draggedOrder = draggingOrders[0] ?? null;
   const latestOrders = useRef(orders);
   useLayoutEffect(() => { latestOrders.current = orders; }, [orders]);
@@ -273,7 +296,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     return { SELL: active.filter(order => order.side === 'SELL'), BUY: active.filter(order => order.side === 'BUY') };
   }, [orders, code]);
   const contextOrders = contextMenu?.side
-    ? contextMenu.price == null ? sideOrders[contextMenu.side] : groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
+    ? contextMenu.preopen ? allOrders.filter(order => order.orderType === 'PREOPEN_CLOSE' && order.side === contextMenu.side)
+    : contextMenu.price == null ? sideOrders[contextMenu.side] : groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
     : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = !restBook && !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
@@ -291,6 +315,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       : activeAccount?.order_enabled === false ? activeAccount.blocked_reason ?? '이 계좌의 주문 경로를 확인하세요.' : null,
   };
   const creationIssue = newOrderIssue(availability);
+  const preopenAvailability = { ...availability, fixedPrice: true,
+    fixedPriceIssue: preopenReason ? { title: '장전 종가 주문 불가', message: preopenReason, tone: 'neutral' as const } : null };
+  const preopenCreationIssue = newOrderIssue(preopenAvailability);
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
   const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
   const masterSymbol = symbols.data?.symbols.find(symbol => symbol.code === code);
@@ -315,13 +342,13 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
   const priceLayout = useBookPriceLayout(explorer.enabled && fullRange
     ? [...prices, { price: fullRange.priceAt(0) }, { price: fullRange.priceAt(fullRange.count - 1) }] : prices, code, true, baseline, preferences.showPriceChangePercent);
-  const estimatePrice = quote?.price ?? null;
+  const estimatePrice = showPreopen && preopenPrice != null ? preopenPrice : quote?.price ?? null;
   const amountPresets = preferences.unit === 'amount';
   const presets = amountPresets ? preferences.amountPresets : preferences.quantityPresets;
-  const canConvertAmount = currentPrice != null && Number.isSafeInteger(currentPrice) && currentPrice > 0;
+  const canConvertAmount = estimatePrice != null && Number.isSafeInteger(estimatePrice) && estimatePrice > 0;
   function applyPreset(value: number) {
     if (!amountPresets) { onQuantityChange(value); setNotice(null); return; }
-    const converted = canConvertAmount ? quantityForAmount(value, currentPrice) : null;
+    const converted = canConvertAmount ? quantityForAmount(value, estimatePrice) : null;
     if (converted == null || converted > MAX_ORDER_QUANTITY) {
       setNotice('현재가와 금액을 확인한 후 수량을 환산하세요.'); return;
     }
@@ -402,7 +429,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     if (targets.some(item => cancellingRef.current.has(orderKey(account, item.order.orderId)) || awaitingResult(item.order)
       || cancelFailures.some(failure => failure.action.base.account_seq === account && failure.action.order?.orderId === item.order.orderId
         && failure.notice.persistent && failure.action.base.command_id !== item.base.command_id))) return;
-    const issue = next.type === 'create' ? newOrderIssue({ ...availability, quantity: next.quantity,
+    const issue = next.type === 'create' ? newOrderIssue({ ...(next.orderType === 'PREOPEN_CLOSE' ? preopenAvailability : availability), quantity: next.quantity,
       unresolved: cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent)
         || !!state.data?.unresolved_commands.some(id => id !== next.base.command_id) })
       : changesPrice(next) && !fresh ? newOrderIssue({ ...availability, settingsOpen: false, locked: false }) : null;
@@ -477,6 +504,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         let response: TradingCommandResponse;
         if (next.type === 'create') {
           const body: CreateTradingOrder = { ...next.base, side: next.side!, price: next.price, quantity: next.quantity!, confirm_high_value: high,
+            ...(next.orderType === 'PREOPEN_CLOSE' ? { order_type: next.orderType } : {}),
             ...(typeof account === 'string' ? { route: next.base.route } : {}) };
           response = await tradingCommand<TradingCommandResponse>('/orders', body, mode);
         } else {
@@ -526,6 +554,11 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   }
 
   function request(next: Action) {
+    if (next.type === 'bulk' && allOrders.length !== orders.length) {
+      next = { ...next, type: 'group', operation: 'cancel', batch: orders
+        .filter(order => (next.side == null || order.side === next.side) && editableOrder(order) && !pending(order))
+        .map(order => ({ order, base: base() })) };
+    }
     if (!next.keepOrderList) closeMenu();
     confirmHigh(false);
     const qty = next.quantity ?? (next.order ? orderRemainder(next.order) : 0);
@@ -545,19 +578,20 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     } catch (error) { setNotice(error instanceof Error ? error.message : '내역 확인 기록 실패'); }
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
   }
-  function create(side: TradingSide, price: number) {
+  function create(side: TradingSide, price: number, orderType: 'LIMIT' | 'PREOPEN_CLOSE' = 'LIMIT') {
     if (busyRef.current || cancellingRef.current.size || explorer.panning) return;
-    if (creationIssue) {
+    const issue = orderType === 'PREOPEN_CLOSE' ? preopenCreationIssue : creationIssue;
+    if (issue) {
       // A blocked new order must not hide the outstanding request's reconciliation action.
-      if (!(creationIssue.persistent && notice?.retry && failedRequest)) setNotice(creationIssue);
+      if (!(issue.persistent && notice?.retry && failedRequest)) setNotice(issue);
       return;
     }
     if (!Number.isSafeInteger(price) || price <= 0) { setNotice('유효한 주문 가격을 확인하세요.'); return; }
-    request({ type: 'create', base: { ...base(), ...(typeof account === 'string' ? { route: orderRoute } : {}) }, side, price, quantity });
+    request({ type: 'create', base: { ...base(), ...(typeof account === 'string' ? { route: orderType === 'PREOPEN_CLOSE' ? 'KRX' : orderRoute } : {}) }, side, price, quantity, orderType });
   }
 
   function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false) {
-    const targets = candidates.filter(order => editableOrder(order) && !pending(order) && orderRemainder(order) > 0);
+    const targets = candidates.filter(order => order.orderType !== 'PREOPEN_CLOSE' && editableOrder(order) && !pending(order) && orderRemainder(order) > 0);
     if (e.button !== 0 || !targets.length || !ready || settingsDraft || action || drag.current) return;
     e.stopPropagation();
     drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
@@ -935,10 +969,29 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         </div>
       </div>
     </div>
-    {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={displayTotals} maskRatio={displayTotals.ask + displayTotals.bid === 0}
-      afterHoursTotals={restBook ? null : afterHoursTotals} afterHoursLabel={afterHoursLabel}
+    {(showPreopen || book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip
+      totals={displayTotals}
+      maskRatio={displayTotals.ask + displayTotals.bid === 0}
+      afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel}
       sessionControl={restBook ? { kind: 'label', label: '마지막 조회 호가' } : sessionControl} sessionMode={sessionMode}
-      onSelectSessionMode={selectSessionMode} />}
+      onSelectSessionMode={selectSessionMode}
+      centerContent={showPreopen ? <TextTooltip text={preopenReason ?? '좌우 총잔량 숫자를 더블클릭해 장전 종가 주문 · 우클릭해 미체결 취소'}>
+        <span tabIndex={0} className="order-meta" data-testid="preopen-strip-label">장전 종가{preopenEnded ? ' · 종료' : ''}{preopenPrice != null ? ` · ${fmt(preopenPrice)}원` : ''}{activeAccount?.broker !== 'kiwoom' ? ' · 토스 미지원' : ''}</span>
+      </TextTooltip> : undefined}
+      renderTotal={showPreopen ? (side, quantity) => {
+        const direction = side === 'ask' ? 'SELL' : 'BUY';
+        return <TextTooltip text={preopenCreationIssue?.message ?? `${orderSideLabel(direction)} ${fmt(preopenPrice)}원 · 더블클릭 주문 · 우클릭 미체결 취소`}>
+          <button type="button" className={`order-preopen-total ${direction === 'SELL' ? 'order-sell' : 'order-buy'}`}
+            aria-label={`장전 종가 ${orderSideLabel(direction)} 총잔량`} aria-disabled={busy || !!preopenCreationIssue}
+            onDoubleClick={() => create(direction, preopenPrice ?? 0, 'PREOPEN_CLOSE')}
+            onContextMenu={event => {
+              event.preventDefault(); event.stopPropagation();
+              if (!drag.current && !action && !settingsDraft && !exclusiveBusy) setContextMenu({ x: event.clientX, y: event.clientY, side: direction, preopen: true });
+            }}>
+            <span aria-label={`${afterHoursTotals ? `${afterHoursLabel} ` : ''}${orderSideLabel(direction)}총잔량 ${fmt(quantity)}`}>{book || afterHoursTotals ? fmt(quantity) : '—'}</span>
+          </button>
+        </TextTooltip>;
+      } : undefined} />}
     {contextMenu?.side ? <PanelContextMenu point={contextMenu}
       label={`${orderSideLabel(contextMenu.side)} ${contextMenu.price == null ? '전체 접수' : `${fmt(contextMenu.price)}원`} 주문 목록`} showLabel={false} onClose={closeMenu} className="order-surface order-context-surface order-list-surface">
       <OrderSurfaceHeading closeLabel="주문 목록 닫기" onClose={closeMenu}><span className={contextMenu.side === 'BUY' ? 'text-price-up' : 'text-price-down'}>{orderSideLabel(contextMenu.side)}</span><span>{name || code}</span></OrderSurfaceHeading>
@@ -949,7 +1002,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             aria-label={`주문 ${index + 1} · ${fmt(orderRemainder(order))}주`}
             disabled={!ready || !editableOrder(order) || pending(order)}
             onPointerDown={e => beginDrag(e, [order], true)}>
-            <span className="order-list-grip" aria-hidden="true"><GripIcon /></span><span>{order.price == null ? '시장가' : fmt(order.price)}</span><strong>{fmt(orderRemainder(order))}</strong>
+            <span className="order-list-grip" aria-hidden="true">{order.orderType !== 'PREOPEN_CLOSE' && <GripIcon />}</span><span>{order.orderType === 'PREOPEN_CLOSE' ? '장전 종가' : order.price == null ? '시장가' : fmt(order.price)}</span><strong>{fmt(orderRemainder(order))}</strong>
           </button>
           <button type="button" className="order-list-cancel" aria-label={`주문 ${index + 1} 개별 취소`}
             disabled={!ready || !editableOrder(order) || pending(order)}
@@ -967,6 +1020,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     {action && highValue && createPortal(<div className="order-settings-surface font-data"><ModalShell ariaLabel="고액 주문 확인" width="w-[360px]" onClose={closeAction}>
       <div className="order-modal"><OrderSurfaceHeading closeLabel="고액 주문 확인 닫기" onClose={closeAction}>고액 주문 확인</OrderSurfaceHeading>
       <div className="order-confirm-body" role="group" aria-label="고액 주문 확인">
+        {action.orderType === 'PREOPEN_CLOSE' && <div className="order-confirm-row">장전 시간외 종가 · KRX</div>}
         <div className="order-confirm-row"><span className={action.side === 'BUY' ? 'text-price-up' : 'text-price-down'}>{orderSideLabel(action.side!)}</span><span>{fmt(actionQty)}주</span></div>
         <div className="order-confirm-row"><span className="order-meta">주문 가격</span><span>{fmt(action.price)}원</span></div>
         <div className="order-confirm-row"><span className="order-meta">주문 금액</span><strong>{fmt(action.price * actionQty)}원</strong></div>

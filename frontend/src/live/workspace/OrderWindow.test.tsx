@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TossOrder } from '../../api/trading';
@@ -22,19 +22,24 @@ vi.mock('./orderReceiptSound', () => ({
   subscribeOrderReceiptSoundRecovery: vi.fn(),
 }));
 
-const mock = vi.hoisted(() => ({ afterHours: [] as Record<string, unknown>[], configured: true, accountsLoading: false, accountError: null as Error | null, stateError: null as Error | null, unresolved: [] as string[], balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0 as number | null, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ afterHours: [] as Record<string, unknown>[], morningTotals: undefined as Record<string, unknown> | undefined, broker: undefined as 'kiwoom' | 'toss' | undefined, configured: true, accountsLoading: false, accountError: null as Error | null, stateError: null as Error | null, unresolved: [] as string[], balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0 as number | null, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+
+const morningQuote = vi.hoisted(() => ({ data: undefined as import('../../api/preopenClose').PreopenCloseQuote | undefined,
+  isError: false, error: null as Error | null, refetch: vi.fn() }));
+vi.mock('../../api/preopenClose', () => ({ usePreopenClose: () => morningQuote }));
+
 const restBookQuery = vi.hoisted(() => ({ data: undefined as RestOrderbookResponse | undefined,
   isLoading: false, isError: false, refetch: vi.fn() }));
 vi.mock('../../api/liveRestOrderbook', () => ({ useLiveRestOrderbook: () => restBookQuery }));
 afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
-  useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: mock.accountsLoading, error: mock.accountError }),
+  useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: mock.broker === 'kiwoom' ? 'acc_' + 'a'.repeat(32) : index + 1, broker: mock.broker, label: `계좌 ${index + 1}` })) : [] }, isLoading: mock.accountsLoading, error: mock.accountError }),
   useTradingState: () => ({ isError: !!mock.stateError, error: mock.stateError, balancesError: mock.balancesError, data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: mock.sellableQuantity, holding_quantity: mock.holdingQuantity, average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: mock.unresolved } : undefined }),
   useTradingAccountList: () => ({ orders: { data: undefined }, holdings: { data: undefined }, paused: false }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
-vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => i < mock.askCount ? { price: 67300 + mock.priceOffset + i * 100, qty: 100 + i } : { price: 0, qty: 0 }), bids: Array.from({ length: 10 }, (_, i) => i < mock.bidCount ? { price: 67200 + mock.priceOffset - i * 100, qty: 200 + i } : { price: 0, qty: 0 }), total_ask_qty: 1000, total_bid_qty: 2000, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }, trade: [], afterHours: mock.afterHours })) }));
+vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => i < mock.askCount ? { price: 67300 + mock.priceOffset + i * 100, qty: 100 + i } : { price: 0, qty: 0 }), bids: Array.from({ length: 10 }, (_, i) => i < mock.bidCount ? { price: 67200 + mock.priceOffset - i * 100, qty: 200 + i } : { price: 0, qty: 0 }), total_ask_qty: 1000, total_bid_qty: 2000, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }, trade: [], afterHours: mock.morningTotals ? [mock.morningTotals] : mock.afterHours })) }));
 vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }]])) }));
 const stockLimitsState = vi.hoisted(() => ({ code: '005930', dateOffset: 0, lower: 46200 as number | null }));
 vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { code: stockLimitsState.code, fetched_at_ms: mock.now + stockLimitsState.dateOffset, base_price: 66000, upper_limit: 85800, lower_limit: stockLimitsState.lower, high_250: 70000, low_250: 50000 } }) }));
@@ -70,6 +75,9 @@ function enableReceiptSound() {
 }
 beforeEach(() => {
   mock.now = 1791856800000; mock.afterHours = [];
+  mock.broker = undefined;
+  mock.morningTotals = undefined;
+  morningQuote.data = undefined;
   stockLimitsState.code = '005930'; stockLimitsState.dateOffset = 0; stockLimitsState.lower = 46200;
   restBookQuery.data = undefined; restBookQuery.isLoading = false; restBookQuery.isError = false;
   restBookQuery.refetch.mockReset();
@@ -2119,6 +2127,100 @@ describe('호가 주문', () => {
       expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
       expect(onGlobalEscape).not.toHaveBeenCalled();
     } finally { window.removeEventListener('keydown', onGlobalEscape); }
+  });
+
+});
+
+describe('장전 시간외 종가 총잔량 주문', () => {
+  afterEach(() => { mock.now = 1791856800000; });
+  function morning() {
+    mock.broker = 'kiwoom';
+    symbolMaster.nxtEnabled = false;
+    mock.now = Date.parse('2026-10-30T08:35:00+09:00');
+    mock.snapshotAt = mock.now - 600_000;
+    mock.askCount = 0; mock.bidCount = 0;
+    mock.morningTotals = { venue: 'KRX', t_ms: mock.now, total_ask_qty: 1234, total_bid_qty: 5678 };
+    morningQuote.data = { account_ref: 'acc_' + 'a'.repeat(32), code: '005930', trading_date: '20261030',
+      supported: true, price: 66000, starts_at_ms: mock.now - 1000, ends_at_ms: mock.now + 60_000,
+      can_order: true, reason: null, fetched_at_ms: mock.now };
+    return show();
+  }
+
+  it.each(['매수', '매도'])('맨 아래 총잔량 숫자를 더블클릭해 키움 KRX %s 주문을 전송한다', async side => {
+    morning();
+    expect(screen.getByRole('region', { name: '실시간 호가 주문 사다리' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '주문 방식' })).not.toBeInTheDocument();
+    const strip = screen.getByTestId('book-total-strip');
+    const total = within(strip).getByRole('button', { name: `장전 종가 ${side} 총잔량` });
+    expect(total).toHaveTextContent(side === '매수' ? '5,678' : '1,234');
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '10' } });
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('660,000원');
+    fireEvent.doubleClick(total);
+    await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(1));
+    expect(mock.command.mock.calls[0][1]).toMatchObject({ order_type: 'PREOPEN_CLOSE', route: 'KRX',
+      side: side === '매수' ? 'BUY' : 'SELL', quantity: 10, price: 66000 });
+  });
+
+  it('토스는 같은 위치에 미지원을 표시하고 전송하지 않는다', () => {
+    mock.broker = 'toss'; symbolMaster.nxtEnabled = false;
+    mock.now = Date.parse('2026-10-30T08:35:00+09:00');
+    show();
+    expect(screen.getByTestId('preopen-strip-label')).toHaveTextContent('토스 미지원');
+    const button = screen.getByRole('button', { name: '장전 종가 매수 총잔량' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.doubleClick(button);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
+  it('종료 뒤에는 기존 총잔량 표시만 남고 주문을 보내지 않는다', () => {
+    morning();
+    morningQuote.data!.ends_at_ms = mock.now + 1000;
+    mock.now += 2000;
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '11' } });
+    expect(screen.queryByRole('button', { name: '장전 종가 매수 총잔량' })).not.toBeInTheDocument();
+    fireEvent.doubleClick(screen.getByTestId('book-total-strip'));
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
+  it('총잔량 우클릭에는 장전 미체결만 표시하고 호가 없이 개별 취소한다', async () => {
+    mock.orders = [order('normal'), { ...order('morning'), orderType: 'PREOPEN_CLOSE' }];
+    morning();
+    fireEvent.contextMenu(screen.getByRole('button', { name: '장전 종가 매수 총잔량' }));
+    expect(screen.getByRole('menu')).toHaveTextContent('장전 종가');
+    expect(screen.getAllByRole('button', { name: /개별 취소/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '주문 1 개별 취소' }));
+    await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(1));
+    expect(mock.command.mock.calls[0][0]).toBe('/orders/morning/cancel');
+  });
+
+  it('금액 프리셋은 장전 고정 가격으로 환산한다', () => {
+    mock.quotePrice = 100000;
+    morning();
+    fireEvent.click(screen.getByRole('button', { name: '금액', pressed: false }));
+    fireEvent.click(screen.getByRole('button', { name: '100만' }));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(15);
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('990,000원');
+  });
+
+  it('장전 총잔량 주문과 사다리의 지정가 주문 경로를 구분한다', async () => {
+    morning();
+    mock.askCount = 10; mock.bidCount = 10; mock.snapshotAt = mock.now;
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '11' } });
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(1));
+    expect(mock.command.mock.calls[0][1]).toMatchObject({ route: 'SOR', price: 67200 });
+    expect(mock.command.mock.calls[0][1].order_type).toBeUndefined();
+    expect(screen.getByTestId('preopen-strip-label')).toBeInTheDocument();
+  });
+
+  it.each(['stale', 'wrong-account', 'wrong-date'])('장전 조회가 %s이면 전송하지 않는다', reason => {
+    morning();
+    if (reason === 'stale') morningQuote.data!.fetched_at_ms -= 30_000;
+    if (reason === 'wrong-account') morningQuote.data!.account_ref = 'other';
+    if (reason === 'wrong-date') morningQuote.data!.trading_date = '20200101';
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '11' } });
+    fireEvent.doubleClick(screen.getByRole('button', { name: '장전 종가 매수 총잔량' }));
+    expect(mock.command).not.toHaveBeenCalled();
   });
 
 });

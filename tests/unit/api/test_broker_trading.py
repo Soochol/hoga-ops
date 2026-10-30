@@ -73,6 +73,8 @@ class Kiwoom:
         self.block = None
         self.custom_response = None
         self.holdings_rows = None
+        self.preopen_stock = {"code": "005930", "nxtEnable": "N", "marketCode": "0", "lastPrice": "67200", "state": ""}
+        self.preopen_basic = {"stk_cd": "005930", "base_pric": "67200"}
 
     async def handle(self, request):  # noqa: PLR0912 — fake broker explicitly implements each pinned TR
         self.requests.append(request)
@@ -82,6 +84,12 @@ class Kiwoom:
         assert request.url.host in {"api.kiwoom.com", "mockapi.kiwoom.com"}
         if api == "ka00001":
             result = {"acctNo": self.number}
+        elif api == "ka10100":
+            assert request.url.path == "/api/dostk/stkinfo"
+            result = self.preopen_stock
+        elif api == "ka10001":
+            assert request.url.path == "/api/dostk/stkinfo"
+            result = self.preopen_basic
         elif api == "ka10075":
             result = {"oso": self.opens}
         elif api == "kt00007":
@@ -801,3 +809,161 @@ async def test_execution_history_pages_are_account_bound_and_preserve_modified_o
     assert first['rows'][0]['order_ref'] != second['rows'][0]['order_ref']
     assert seen[0][1] == '' and seen[1][1] == 'opaque-next'
     assert all(body['dmst_stex_tp'] == '%' for body, _ in seen)
+
+
+@pytest.fixture
+async def morning(setup, monkeypatch):
+    from hoga.trading import preopen
+
+    clock = [datetime(2026, 10, 30, 8, 35, tzinfo=KST)]
+    monkeypatch.setattr(preopen, "now_kst", lambda: clock[0])
+    monkeypatch.setattr(preopen, "is_trading_day", lambda *args: True)
+    return (*setup, clock)
+
+
+@pytest.mark.parametrize("side", ["BUY", "SELL"])
+async def test_preopen_exact_wire_dedup_terms_modify_rejection_and_cancel(morning, side):
+    broker, _, adapter, service, api, _ = morning
+    body = create(adapter.account_ref, order_type="PREOPEN_CLOSE").model_dump()
+    body["side"] = side
+    quote = await api.get("/api/trading/v2/preopen-close",
+                          params={"account_ref": adapter.account_ref, "code": "005930"})
+    assert quote.status_code == 200
+    assert quote.json()["price"] == 67200 and quote.json()["can_order"] is True
+    first = await api.post("/api/trading/v2/orders", json=body, headers=HEADERS)
+    assert first.status_code == 200, first.text
+    assert (await api.post("/api/trading/v2/orders", json=body, headers=HEADERS)).json() == first.json()
+    assert len(broker.writes) == 1
+    assert json.loads(broker.writes[0].content) == {
+        "dmst_stex_tp": "KRX", "stk_cd": "005930", "ord_qty": "10", "trde_tp": "61",
+    }
+    assert broker.writes[0].headers["api-id"] == ("kt10000" if side == "BUY" else "kt10001")
+    ref = first.json()["order_ref"]
+    # Reopen the registry, then parse a vendor row which does not disclose the order type.
+    adapter.registry = AccountRegistry(service.data_dir / "trading/accounts.sqlite3")
+    state = await adapter.order_state("005930", fresh=True, date="20261030")
+    order = next(o for o in state.orders if o.order_ref == ref)
+    assert order.order_type == "PREOPEN_CLOSE"
+    change = {"account_ref": adapter.account_ref, "command_id": "change-preopen", "code": "005930", "price": 67300}
+    rejected = await api.post(f"/api/trading/v2/orders/{ref}/modify", json=change, headers=HEADERS)
+    assert rejected.status_code == 422
+    assert len(broker.writes) == 1
+    change.pop("price")
+    change["command_id"] = "cancel-preopen"
+    canceled = await api.post(f"/api/trading/v2/orders/{ref}/cancel", json=change, headers=HEADERS)
+    assert canceled.status_code == 200, canceled.text
+    assert json.loads(broker.writes[-1].content)["dmst_stex_tp"] == "KRX"
+    assert broker.writes[-1].headers["api-id"] == "kt10003"
+
+
+@pytest.mark.parametrize("problem", ["nxt", "unknown-nxt", "wrong-code", "wrong-basic", "no-price", "suspended",
+                                     "early", "closed", "calendar-unknown", "holiday", "mock", "price", "route"])
+async def test_preopen_failures_never_write(morning, monkeypatch, problem):
+    from hoga.trading import preopen
+
+    broker, _, adapter, _, api, clock = morning
+    body = create(adapter.account_ref, order_type="PREOPEN_CLOSE").model_dump()
+    if problem == "nxt":
+        broker.preopen_stock["nxtEnable"] = "Y"
+    elif problem == "unknown-nxt":
+        broker.preopen_stock.pop("nxtEnable")
+    elif problem == "wrong-code":
+        broker.preopen_stock["code"] = "000660"
+    elif problem == "wrong-basic":
+        broker.preopen_basic["stk_cd"] = "000660"
+    elif problem == "no-price":
+        broker.preopen_basic["base_pric"] = ""
+    elif problem == "suspended":
+        broker.preopen_stock["state"] = "거래정지"
+    elif problem in {"early", "closed"}:
+        clock[0] = clock[0].replace(minute=29 if problem == "early" else 40)
+    elif problem == "calendar-unknown":
+        monkeypatch.setattr(preopen, "is_trading_day", lambda *args: None)
+    elif problem == "holiday":
+        monkeypatch.setattr(preopen, "is_trading_day", lambda *args: False)
+    elif problem == "mock":
+        adapter.gateway.environment = "mock"
+    elif problem == "price":
+        body["price"] += 100
+    elif problem == "route":
+        body["route"] = "SOR"
+    response = await api.post("/api/trading/v2/orders", json=body, headers=HEADERS)
+    assert response.status_code in {409, 422, 503}, response.text
+    assert not broker.writes
+
+
+async def test_preopen_preview_cache_is_not_send_authority_and_clock_is_rechecked(morning):
+    broker, _, adapter, service, api, clock = morning
+    await service.preopen_close(adapter.account_ref, "005930")
+    broker.preopen_stock["nxtEnable"] = "Y"
+    command = create(adapter.account_ref, order_type="PREOPEN_CLOSE")
+    response = await api.post("/api/trading/v2/orders", json=command.model_dump(), headers=HEADERS)
+    assert response.status_code == 409 and not broker.writes
+    broker.preopen_stock["nxtEnable"] = "N"
+    original = adapter.balances
+
+    async def expire(*args):
+        result = await original(*args)
+        clock[0] = clock[0].replace(minute=40)
+        return result
+
+    adapter.balances = expire
+    body = command.model_dump() | {"command_id": "expires-in-queue"}
+    response = await api.post("/api/trading/v2/orders", json=body, headers=HEADERS)
+    assert response.status_code == 409 and not broker.writes
+    assert service.journal.lookup("expires-in-queue")[1] == "rejected"
+
+
+async def test_toss_preopen_quote_and_create_are_explicitly_unsupported(morning, monkeypatch):
+    broker, _, _, service, api, _ = morning
+    ref = "acc_" + "a" * 32
+    service._by_ref[ref] = service.toss
+
+    async def authorize(*args):
+        return 1
+
+    monkeypatch.setattr(service.toss, "authorize", authorize)
+    quote = await api.get("/api/trading/v2/preopen-close", params={"account_ref": ref, "code": "005930"})
+    assert quote.status_code == 200 and quote.json()["supported"] is False
+    assert "토스 OpenAPI" in quote.json()["reason"]
+    body = create(ref, order_type="PREOPEN_CLOSE").model_dump()
+    body["route"] = "SOR"
+    result = await api.post("/api/trading/v2/orders", json=body, headers=HEADERS)
+    assert result.status_code == 422 and result.json()["detail"]["code"] == "unsupported-order-type"
+    assert not broker.writes
+
+
+def test_preopen_special_hours_and_invalid_configuration(tmp_path, monkeypatch):
+    from hoga.trading import preopen
+
+    now = datetime(2026, 10, 30, 9, 35, tzinfo=KST)
+    monkeypatch.setattr(preopen, "is_trading_day", lambda *args: None)
+    path = tmp_path / "calendar/preopen_sessions.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"20261030": ["09:30", "09:40"]}))
+    start, end, reason = preopen.session(tmp_path, now)
+    assert reason is None and end - start == 600_000
+    assert preopen.session(tmp_path, now.replace(hour=8))[2] is not None
+    path.write_text(json.dumps({"20261030": None}))
+    assert "거래일이 아닙니다" in preopen.session(tmp_path, now)[2]
+    path.write_text('{bad-json')
+    assert preopen.session(tmp_path, now) == (0, 0, "장전 종가 거래시간 설정을 확인하세요.")
+
+
+async def test_preopen_high_value_uses_verified_fixed_price(morning):
+    broker, _, adapter, _, api, _ = morning
+    broker.preopen_basic["base_pric"] = "200000"
+    body = create(adapter.account_ref, order_type="PREOPEN_CLOSE").model_dump() | {"price": 200000, "quantity": 500}
+    rejected = await api.post("/api/trading/v2/orders", json=body, headers=HEADERS)
+    assert rejected.status_code == 400 and not broker.writes
+    body.update(command_id="confirmed-high", confirm_high_value=True)
+    accepted = await api.post("/api/trading/v2/orders", json=body, headers=HEADERS)
+    assert accepted.status_code == 200 and len(broker.writes) == 1
+
+
+@pytest.mark.parametrize("trade", ["61", "장전시간외", "장시작전시간외"])
+async def test_external_preopen_type_is_not_normalized_as_limit(setup, trade):
+    _, _, adapter, _, _ = setup
+    row = open_order()
+    row["trde_tp"] = trade
+    assert adapter.parse_order(row, "20261030").order_type == "PREOPEN_CLOSE"

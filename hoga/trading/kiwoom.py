@@ -21,7 +21,7 @@ from hoga.trading.contracts import BrokerAccount, BrokerBalances, BrokerOrder, B
 from hoga.trading.toss import TradingError
 from hoga.util.timeenc import KST
 
-READS = {"ka00001", "ka10075", "kt00007", "kt00009", "kt00015", "kt00018", "kt00011", "ka10081"}
+READS = {"ka00001", "ka10075", "kt00007", "kt00009", "kt00015", "kt00018", "kt00011", "ka10081", "ka10001", "ka10100"}
 WRITES = {"kt10000", "kt10001", "kt10002", "kt10003"}
 HOSTS = {"real": "https://api.kiwoom.com", "mock": "https://mockapi.kiwoom.com"}
 PREFIXED_CODE_LENGTH = 7
@@ -108,7 +108,8 @@ class KiwoomAccountGateway:
             before_send()  # Persist SENDING only after auth/admission, before the HTTP side effect.
         try:
             response = await self.http.post(
-                "/api/dostk/ordr" if write else "/api/dostk/chart" if api_id == "ka10081" else "/api/dostk/acnt",
+                "/api/dostk/ordr" if write else "/api/dostk/chart" if api_id == "ka10081"
+                else "/api/dostk/stkinfo" if api_id in {"ka10001", "ka10100"} else "/api/dostk/acnt",
                 json=body,
                 headers={
                     "authorization": f"Bearer {token}",
@@ -306,6 +307,15 @@ class KiwoomTradingAdapter:
             with contextlib.suppress(ValueError):
                 ordered_at = datetime.strptime(date + clock, "%Y%m%d%H%M%S").replace(tzinfo=KST).isoformat()
         ref = self.registry.order_ref(self.account_ref, native, date, route)
+        compact_trade = re.sub(r"\s", "", trade)
+        terms = self.registry.terms(ref)
+        order_type = terms[0] if terms else (
+            "PREOPEN_CLOSE" if compact_trade == "61" or "장전" in compact_trade or "장시작전" in compact_trade
+            else "UNSUPPORTED" if "시간외" in compact_trade
+            else "MARKET" if "시장가" in trade else "LIMIT"
+        )
+        if order_type == "PREOPEN_CLOSE" and terms and (price is None or price == "0"):
+            price = terms[1]
         return BrokerOrder(
             order_ref=ref,
             account_ref=self.account_ref,
@@ -324,7 +334,7 @@ class KiwoomTradingAdapter:
             broker_status=raw_status,
             ordered_at=ordered_at,
             operation=operation,
-            order_type="MARKET" if "시장가" in trade else "LIMIT",
+            order_type=order_type,
             editable=working
             and status in {"PENDING", "PARTIAL_FILLED"}
             and int(remainder) > 0
