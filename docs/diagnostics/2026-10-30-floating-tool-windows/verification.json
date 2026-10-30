@@ -1,7 +1,7 @@
 {
   "date_kst": "2026-10-30",
-  "base_sha": "f9dffde18783aad8c8237fa9327bc5d0cac2e7b6",
-  "origin_main_sha": "f9dffde18783aad8c8237fa9327bc5d0cac2e7b6",
+  "base_sha": "d451039c9dea4fe99a8d56ea43aafcda3a7b152f",
+  "origin_main_sha": "d451039c9dea4fe99a8d56ea43aafcda3a7b152f",
   "branch": "codex/floating-tool-windows",
   "scope": [
     "All Electron LivePage floating windows use their workspace as non-modal parent, frame:false, skipTaskbar:true and minimizable:false. Linux requests utility type.",
@@ -16,18 +16,18 @@
     },
     {
       "cwd": "frontend",
-      "command": "npx vitest run src/App.test.tsx src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowFrame.pin.test.tsx src/live/workspace/WorkspaceCanvas.errorBoundary.test.tsx",
-      "result": "4 files, 50 passed"
+      "command": "npx vitest run src/App.test.tsx src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowFrame.pin.test.tsx src/live/workspace/WorkspaceCanvas.errorBoundary.test.tsx src/live/workspace/useBookSessionDisplay.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/DataWindow.test.tsx src/api/sharedLiveSeries.test.tsx src/api/liveTickOverlay.test.tsx src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx",
+      "result": "11 files, 445 passed (20.36s), after integrating main"
     },
     {
       "cwd": "frontend",
       "command": "npx vite build",
-      "result": "passed; existing large-chunk advisory"
+      "result": "passed as Playwright webServer startup after integrating main; existing large-chunk advisory"
     },
     {
       "cwd": "frontend",
-      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-tool-windows npx playwright test tests/e2e/live-floating-windows.spec.ts tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts --reporter=line",
-      "result": "40 passed (1.6m); all 14 window kinds, action order, dock/rect restoration and browser interactions"
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-tool-pr-2344 npx playwright test tests/e2e/live-floating-windows.spec.ts tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts tests/e2e/book-availability.spec.ts tests/e2e/krx-aftermarket.spec.ts --reporter=line",
+      "result": "52 passed (2.3m), after integrating main"
     },
     {
       "cwd": "desktop",
@@ -47,12 +47,12 @@
     {
       "cwd": "desktop",
       "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/full-app.spec.cjs --repeat-each=3 --reporter=line",
-      "result": "3 passed (34.3s); actual production React + isolated FastAPI + Electron; 9 total minimize/restore cycles, header drag/no-drag CSS, click top/maximize/restore/dock, viewport and original rect"
+      "result": "3 passed (33.6s); actual production React + isolated FastAPI + Electron; 9 total minimize/restore cycles, header drag/no-drag CSS, click top/maximize/restore/dock, viewport and original rect; repeated after integrating main"
     },
     {
       "cwd": "desktop",
       "command": "HOGA_DESKTOP_TEST_PLATFORM=wayland npx playwright test tests/e2e/full-app.spec.cjs --reporter=line",
-      "result": "1 passed (10.0s); 3 minimize/restore cycles plus same full integration flow"
+      "result": "1 passed (10.2s); 3 minimize/restore cycles plus same full integration flow; repeated after integrating main"
     },
     {
       "cwd": ".",
@@ -60,15 +60,15 @@
       "result": "passed"
     }
   ],
-  "input_reuse": "Frontend sources, tests, fixtures, dependencies and configuration did not change after their checks; subsequent fixes and repetitions touched only desktop main/preload/E2E and documentation. Backend code and contracts unchanged; no backend-wide suite required for this native UI change.",
+  "input_reuse": "Desktop main/preload/tests/fixtures/config/dependencies and backend/root runtime inputs are byte-identical to fb01d8858 (git diff fb01d8858..verified_code_head -- desktop hoga tests pyproject.toml uv.lock .python-version VERSION ruff.toml is empty). Reuse desktop type/lint/unit and native fixture results. Frontend type/unit/build/browser and full native integrations were repeated after integrating main.",
   "fingerprint_method": "Sorted tracked/nonignored regular paths; digest UTF-8 path + NUL + SHA256(file bytes).digest(). Include root pyproject.toml, uv.lock, .python-version, VERSION and ruff.toml. Documentation and ignored build outputs excluded.",
   "frontend_inputs": {
     "file_count": 2019,
-    "sha256": "acc7a8ca88af4a16301009157b3197c54990f546958969d77a32a259d2e5606e"
+    "sha256": "a18dc58d9d68fc9c0f0578ad48cdc447024e8eca639f224ee73a3b765c239cb3"
   },
   "combined_inputs": {
     "file_count": 2935,
-    "sha256": "5a42edee0a53e8b7fe20b1f5c5764acbf80f49e0d256902122284b068eacacaa"
+    "sha256": "83e1ef713aeb5a585ac0b15ae597dce2ee8afdbfa80e6709fd7428066f99daed"
   },
   "environment": {
     "node": "24.13.1",
@@ -101,5 +101,8 @@
   ],
   "references": [
     "https://www.electronjs.org/docs/latest/api/browser-window#page-visibility"
-  ]
+  ],
+  "original_implementation_sha": "fb01d8858aa54077d9121461d5ecf9203633589f",
+  "verified_code_head": "78399f4f1422cbf611713be8dad92424e9893f87",
+  "main_update": "Integrated PR #2345 (d451039c9) after main advanced immediately before merge. DESIGN.md retained both approved additions. Repeated affected frontend and real-app integration checks on the combined code."
 }
