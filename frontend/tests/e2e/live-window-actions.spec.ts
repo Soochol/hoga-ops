@@ -50,6 +50,7 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
     await expect(frame).toBeVisible();
     await expect(frame.locator('.live-window-titlebar [title]')).toHaveCount(0);
     await expect(frame.locator('[data-handle="move"]')).not.toContainText('⠿');
+    if (kind !== 'account-fills') await expect(frame.getByRole('button', { name: '링크 그룹 1 변경' })).toHaveText('1');
     if (kind === 'market-indices') {
       await expect(frame.getByTestId('major-indices-chart')).toBeVisible();
       await expect(frame.locator('[data-handle="move"]')).toContainText('주요 지수');

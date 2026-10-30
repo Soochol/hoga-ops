@@ -3,24 +3,28 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MajorIndicesWindow } from './MajorIndicesWindow';
 import { useMajorIndices } from './useMajorIndices';
+import { useMajorIndicesStock } from './useMajorIndicesStock';
 import { MAJOR_INDICES } from './majorIndicesModel';
 import { regularSessionOpenMs as open } from '../liveDateTime';
 import { useWorkspaceStore, activationTarget, activeGroupOf, focusedWindowSymbol, snapshotWorkspace } from '../../state/workspace';
 vi.mock('./useMajorIndices', () => ({ useMajorIndices: vi.fn() }));
+vi.mock('./useMajorIndicesStock', () => ({ useMajorIndicesStock: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 const frameProps = { id: 'indices', kind: 'market-indices' as const, group: 1 as const, rect: { x: 0, y: 0, w: 660, h: 215 }, zIndex: 1, focused: true,
   symbolLabel: '삼성전자', symbolCode: '005930', paletteOpen: false, onHandleDown: vi.fn(), onFocus: vi.fn(), onClose: vi.fn(), onTogglePalette: vi.fn(), onPickGroup: vi.fn(), onTogglePin: vi.fn() };
 beforeEach(() => {
+  vi.mocked(useMajorIndicesStock).mockReturnValue({ points: [], loading: false, failed: false });
   vi.mocked(useMajorIndices).mockReturnValue({ date: '20261015', now: open('20261015') + 60_000, status: '장중', label: '장중', loading: false,
     series: MAJOR_INDICES.map((s, i) => ({ ...s, points: [{ tMs: open('20261015'), percent: i }, { tMs: open('20261015') + 60_000, percent: i + .1 }], value: 100 + i, percent: i, observedMs: open('20261015') + 60_000, closed: false, delayed: false })) });
 });
 describe('major indices window', () => {
-  it('renders one pane, three lines and the right percent axis without a group or footer', () => {
+  it('renders one pane, three index lines, a group number and no stock axis or footer', () => {
     const { container } = render(<MajorIndicesWindow frameProps={frameProps} />);
     expect(screen.getByTestId('major-indices-chart').querySelectorAll('svg')).toHaveLength(1);
     expect(container.querySelectorAll('[data-index-series]')).toHaveLength(3);
     expect(screen.getByText('등락률 %')).toHaveAttribute('text-anchor', 'end');
     expect(tooltipQueries().queryByText('링크 그룹 변경')).toBeNull();
+    expect(screen.getByRole('button', { name: '링크 그룹 1 변경' })).toHaveTextContent('1');
     expect(screen.queryByTestId('window-pin-toggle')).toBeNull();
     expect(screen.queryByText('삼성전자')).toBeNull();
     expect(container.querySelector('[data-handle="move"]')).toHaveTextContent('×');
@@ -34,6 +38,28 @@ describe('major indices window', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('코스피');
     expect(screen.getByRole('tooltip')).toHaveTextContent('코스닥');
     expect(screen.getByRole('tooltip')).toHaveTextContent('K200');
+  });
+  it('draws the stock with a hidden independent scale and includes its close at the shared cursor', () => {
+    const view = render(<MajorIndicesWindow frameProps={frameProps} />);
+    const axis = screen.getByTestId('major-indices-axis-labels').textContent;
+    vi.mocked(useMajorIndicesStock).mockReturnValue({ points: [
+      { tMs: open('20261015'), close: 100_000 }, { tMs: open('20261015') + 60_000, close: 200_000 },
+    ], loading: false, failed: false });
+    view.rerender(<MajorIndicesWindow frameProps={frameProps} />);
+    expect(view.container.querySelector('[data-stock-series] path')).not.toBeNull();
+    expect(screen.getByTestId('major-indices-axis-labels').textContent).toBe(axis);
+    expect(screen.queryByText('100,000원')).toBeNull();
+    const path = view.container.querySelector('[data-stock-series] path')!.getAttribute('d')!;
+    expect(path).not.toMatch(/NaN|Infinity/);
+    fireEvent.pointerMove(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('삼성전자100,000원');
+    fireEvent.pointerLeave(screen.getByRole('img'));
+    vi.mocked(useMajorIndicesStock).mockReturnValue({ points: [], loading: true, failed: false });
+    view.rerender(<MajorIndicesWindow frameProps={{ ...frameProps, symbolLabel: 'SK하이닉스', symbolCode: '000660' }} />);
+    expect(view.container.querySelector('[data-stock-series]')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(view.container.querySelectorAll('[data-index-series]')).toHaveLength(3);
+    expect(screen.getByRole('status')).toHaveTextContent('SK하이닉스 불러오는 중');
   });
   it.each([3, -5])('fits the Y axis to actual changes without forcing zero (starting at %s%%)', first => {
     const current = vi.mocked(useMajorIndices)();
@@ -101,7 +127,7 @@ describe('major indices window', () => {
     rerender(<MajorIndicesWindow frameProps={frameProps} />);
     expect(within(screen.getByTestId('major-indices-time-axis')).getByText('15:30')).toBeInTheDocument();
   });
-  it('keeps search, drops, focus and preset restoration independent of this window', () => {
+  it('links focus, search, drops and presets to its group while keeping pinning disabled', () => {
     useWorkspaceStore.setState({ windows: [], zOrder: [], groupSymbols: { 2: { code: '005930', name: '삼성전자' } } });
     const stock = useWorkspaceStore.getState().addWindow('chart');
     useWorkspaceStore.getState().setWindowGroup(stock, 2);
@@ -109,10 +135,18 @@ describe('major indices window', () => {
     const state = useWorkspaceStore.getState();
     expect(activeGroupOf(state)).toBe(2);
     expect(focusedWindowSymbol(state)?.code).toBe('005930');
-    expect(activationTarget(state)).toMatchObject({ kind: 'window', window: { id: stock } });
+    expect(activationTarget(state)).toMatchObject({ kind: 'window', window: { id: indices } });
     state.setWindowSymbol(indices, { code: '000660', name: 'SK하이닉스' });
-    expect(useWorkspaceStore.getState().groupSymbols[2]?.code).toBe('005930');
+    expect(useWorkspaceStore.getState().groupSymbols[2]?.code).toBe('000660');
+    state.toggleWindowPin(indices);
+    state.pinWindows([indices]);
+    state.pinWindowToSymbol(indices, { code: '005930', name: '삼성전자' });
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === indices)?.pinned).toBeUndefined();
+    state.setWindowGroup(indices, 3);
+    state.setGroupSymbol(3, { code: '035420', name: 'NAVER' });
+    expect(activeGroupOf(useWorkspaceStore.getState())).toBe(3);
+    expect(focusedWindowSymbol(useWorkspaceStore.getState())?.code).toBe('035420');
     state.applyWorkspaceSnapshot(snapshotWorkspace());
-    expect(useWorkspaceStore.getState().windows.find(w => w.id === indices)?.kind).toBe('market-indices');
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === indices)).toMatchObject({ kind: 'market-indices', group: 3 });
   });
 });

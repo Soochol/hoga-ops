@@ -144,7 +144,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
         <>
           {/* 뱃지·팔레트 마크업은 `/study` 와 공유한다(`workspace/GroupBadge`) —
               번호가 가리키는 것만 페이지가 정하고 제스처는 하나다. */}
-          {!marketWide && <LiveGroupBadge
+          {kind !== 'account-fills' && <LiveGroupBadge
             group={group}
             open={paletteOpen}
             onToggle={() => onTogglePalette(id)}

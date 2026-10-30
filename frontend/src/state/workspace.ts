@@ -92,7 +92,7 @@ function isDeepLinkTab(): boolean {
 
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
  *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D).
- *  'market-indices' 는 시장 전체 창으로 종목·그룹 연동에서 제외한다. */
+ *  'market-indices' 는 지수 비교에 그룹 종목의 종가선을 함께 표시한다. */
 export const WINDOW_KINDS = ['chart', 'book', 'order', 'account-fills', 'broker', 'trade', 'program-trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking', 'market-indices'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
@@ -445,7 +445,7 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
   const rect = readRect(w.rect, legacyPx);
   if (!rect) return null;
   const win: WorkspaceWindow = { id: w.id, kind: w.kind, group: w.group, rect };
-  if (keepPin) {
+  if (keepPin && w.kind !== 'market-indices' && w.kind !== 'account-fills') {
     const pinned = readSymbol(w.pinned);
     if (pinned) win.pinned = pinned;
   }
@@ -658,11 +658,11 @@ export function groupTargetChartWindow(
   return null;
 }
 
-/** 포커스 종목 창의 그룹 = 활성 그룹(#711). 시장 전체 창은 건너뛰고, 없으면 그룹 1. */
+/** 포커스 연동 창의 그룹 = 활성 그룹(#711). 내 체결내역은 건너뛰고, 없으면 그룹 1. */
 export function activeGroupOf(state: Pick<Persisted, 'windows' | 'zOrder'>): GroupId {
   for (let i = state.zOrder.length - 1; i >= 0; i--) {
     const win = state.windows.find(w => w.id === state.zOrder[i]);
-    if (win && win.kind !== 'market-indices' && win.kind !== 'account-fills') return win.group;
+    if (win && win.kind !== 'account-fills') return win.group;
   }
   return 1;
 }
@@ -678,11 +678,12 @@ export function windowSymbolOf(
   state: Pick<Persisted, 'groupSymbols'>,
   win: WorkspaceWindow | null | undefined,
 ): GroupSymbol | null {
-  if (!win || (win.kind === 'market-indices' || win.kind === 'account-fills')) return null;
+  if (!win || win.kind === 'account-fills') return null;
+  if (win.kind === 'market-indices') return state.groupSymbols[win.group] ?? null;
   return win.pinned ?? state.groupSymbols[win.group] ?? null;
 }
 
-/** 포커스 종목 창이 그리는 종목 — 시장 전체 창은 기존 종목 포커스를 유지한다.
+/** 포커스 연동 창이 그리는 종목 — 내 체결내역은 기존 종목 포커스를 유지한다.
  *  레거시 미러(`activeCode`)·문서 제목의 원천.
  *
  *  `groupSymbols[activeGroupOf(s)]` 가 **아니다**: 포커스 창이 핀이면 그룹 종목과
@@ -691,7 +692,7 @@ export function windowSymbolOf(
 export function focusedWindowSymbol(state: Pick<Persisted, 'windows' | 'zOrder' | 'groupSymbols'>): GroupSymbol | null {
   for (let i = state.zOrder.length - 1; i >= 0; i--) {
     const win = state.windows.find(w => w.id === state.zOrder[i]);
-    if (win && win.kind !== 'market-indices' && win.kind !== 'account-fills') return windowSymbolOf(state, win);
+    if (win && win.kind !== 'account-fills') return windowSymbolOf(state, win);
   }
   return null;
 }
@@ -699,7 +700,7 @@ export function focusedWindowSymbol(state: Pick<Persisted, 'windows' | 'zOrder' 
 /**
  * 클릭 계열(관심종목·히트맵·스크리너·검색·지수바) 종목 교체의 **목적지 창**.
  *
- * z순서 위에서부터 훑어 **핀이 걸리지 않은 종목 창**. 시장 전체 창도 건너뛴다. 핀 창은 클릭으로 안 바뀌는 것이
+ * z순서 위에서부터 훑어 **핀이 걸리지 않은 연동 창**. 내 체결내역은 건너뛴다. 핀 창은 클릭으로 안 바뀌는 것이
  * 핀의 정의이므로 목적지 후보에서 빠지고, 클릭은 그 아래 살아 있는 창으로 넘어간다
  * (사용자 결정 2026-08-21 — 무반응보다 착지가 낫다).
  *
@@ -719,10 +720,10 @@ export type ActivationTarget =
   | { kind: 'blocked' };
 
 export function activationTarget(state: Pick<Persisted, 'windows' | 'zOrder'>): ActivationTarget {
-  if (state.windows.every(w => (w.kind === 'market-indices' || w.kind === 'account-fills'))) return { kind: 'empty', group: 1 };
+  if (state.windows.every(w => w.kind === 'account-fills')) return { kind: 'empty', group: 1 };
   for (let i = state.zOrder.length - 1; i >= 0; i--) {
     const w = state.windows.find((win) => win.id === state.zOrder[i]);
-    if (w && w.kind !== 'market-indices' && w.kind !== 'account-fills' && !w.pinned) return { kind: 'window', window: w };
+    if (w && w.kind !== 'account-fills' && !w.pinned) return { kind: 'window', window: w };
   }
   return { kind: 'blocked' };
 }
@@ -1039,7 +1040,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   toggleWindowPin: (id) => {
     set((state) => {
       const win = state.windows.find((w) => w.id === id);
-      if (!win) return {};
+      if (!win || win.kind === 'market-indices' || win.kind === 'account-fills') return {};
       const next = windowSymbolOf(state, win);
       // 고정할 종목이 없는 창(종목 미배정 그룹)은 켤 수 없다 — 빈 핀은 "그룹을 따르지도,
       // 자기 종목도 없는" 표현 불가 상태다.
@@ -1065,7 +1066,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       const wanted = new Set(state.pendingTransferPinIds);
       const windows = state.windows.map(w => {
         const symbol = windowSymbolOf(state, w);
-        return wanted.has(w.id) && !w.pinned && symbol ? { ...w, pinned: symbol } : w;
+        return wanted.has(w.id) && !w.pinned && symbol && w.kind !== 'market-indices' && w.kind !== 'account-fills' ? { ...w, pinned: symbol } : w;
       });
       const next = { windows, pendingTransferPinIds: undefined };
       persistFromState({ ...state, ...next });
@@ -1078,7 +1079,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       const wanted = new Set(ids);
       let changed = false;
       const windows = state.windows.map((w) => {
-        if (!wanted.has(w.id) || w.pinned) return w;
+        if (!wanted.has(w.id) || w.pinned || w.kind === 'market-indices' || w.kind === 'account-fills') return w;
         const symbol = windowSymbolOf(state, w);
         if (!symbol) return w;
         changed = true;
@@ -1102,7 +1103,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   setWindowSymbol: (id, symbol) => {
     if (/^us-stock:(NASDAQ|NYSE|AMEX):/.test(symbol.code)) symbol = { ...symbol, kind: 'us_stock' };
     const win = get().windows.find((w) => w.id === id);
-    if (!win || (win.kind === 'market-indices' || win.kind === 'account-fills')) return;
+    if (!win || win.kind === 'account-fills') return;
     if (!win.pinned) {
       get().setGroupSymbol(win.group, symbol);
       return;
