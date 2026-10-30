@@ -3,7 +3,7 @@
   "base_sha": "c12a64263ee9f10f7199879b9ec112575ac3f92c",
   "origin_main_sha": "c12a64263ee9f10f7199879b9ec112575ac3f92c",
   "branch": "codex/major-indices-display-options",
-  "working_tree": "Uncommitted implementation; fingerprints include saved new and modified source/test files.",
+  "working_tree": "Implementation committed; publication metadata update changes only this diagnostics record.",
   "scope": [
     "Persistent wrapping line-color/name legend for selected indices and linked stock.",
     "Standard header settings popover: at least one of KOSPI/KOSDAQ/KOSPI200; linked stock toggle; defaults all enabled.",
@@ -122,5 +122,10 @@
   "limits": [
     "Existing three unrelated frontend unit failures remain and are reproduced on base.",
     "Backend API/models unchanged; no backend-wide test suite or real broker calls."
-  ]
+  ],
+  "validated_code_commit": "21e8ab06a858d112970d6aaffd483a450a8f6779",
+  "publication_reuse": {
+    "verified_base_sha": "c12a64263ee9f10f7199879b9ec112575ac3f92c",
+    "reason": "Current frontend and combined inputs exactly match the recorded fingerprints. Successful checks reused for validated_code_commit and its following diagnostics-only commit. The three reproduced baseline failures remain failures."
+  }
 }
