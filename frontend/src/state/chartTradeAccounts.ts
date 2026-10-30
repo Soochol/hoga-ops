@@ -25,3 +25,14 @@ export const useChartTradeAccounts = create<{
     });
   },
 }));
+
+export function subscribeToChartTradeAccountsStorage(): () => void {
+  const listener = (event: StorageEvent) => {
+    if (event.key !== KEY) return;
+    const source = readJsonObject(KEY).byWindow ?? {};
+    useChartTradeAccounts.setState({ byWindow: Object.fromEntries(Object.entries(source)
+      .filter(([id, ref]) => id && !['__proto__', 'constructor', 'prototype'].includes(id) && validRef(ref)).slice(-1024)) as Record<string, string> });
+  };
+  window.addEventListener('storage', listener);
+  return () => window.removeEventListener('storage', listener);
+}

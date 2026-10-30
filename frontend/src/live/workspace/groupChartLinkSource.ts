@@ -53,6 +53,7 @@ export type GroupChartLink = {
 };
 
 const links = new Map<GroupId, GroupChartLink>();
+const remoteLinks = new Map<GroupId, GroupChartLink>();
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -81,11 +82,28 @@ export function useGroupChartLink(group: GroupId | null): GroupChartLink | null 
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    () => (group === null ? null : links.get(group) ?? null),
+    () => (group === null ? null : links.get(group) ?? remoteLinks.get(group) ?? null),
     () => null,
   );
 }
 
 export function __resetGroupChartLinksForTests(): void {
   links.clear();
+  remoteLinks.clear();
 }
+
+/** Same-workspace floating views transport publications without replacing local ownership. */
+export function subscribeGroupChartLinks(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+export function readGroupChartLinks(): GroupChartLink[] {
+  return [...new Map([...remoteLinks, ...links]).values()];
+}
+export function receiveFloatingChartLinks(next: GroupChartLink[]): void {
+  remoteLinks.clear();
+  for (const link of next) remoteLinks.set(link.group, link);
+  emit();
+}
+
+export function readRemoteGroupChartLinks(): GroupChartLink[] { return [...remoteLinks.values()]; }

@@ -1,3 +1,5 @@
+import { useFloatingWindows, useFloatingWorkspace } from './live/workspace/floatingWindows';
+import { floatingParams } from './live/workspace/floatingProtocol';
 import { StudyViewSaveToastHost } from './studyViews/StudyViewSaveToastHost';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
@@ -83,6 +85,10 @@ const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
 );
 
 export default function App() {
+  useFloatingWorkspace();
+  const floating = floatingParams();
+  const floatingReady = useFloatingWindows(state => state.ready);
+  const floatingError = useFloatingWindows(state => state.error);
   useEventStream();
   useSignalAlertEvents();
   // 지수·업종 실시간 오버레이. 하단 지수 바가 전 페이지에 있으므로 루트가 소유자다.
@@ -146,12 +152,12 @@ export default function App() {
       // 여기 박아 둔 939/993px 은 두 번 stale 이 됐다). rem 토큰이라 밀도 다이얼을 따라간다.
       // w-screen(100vw) → h-full+min-w: 100vw 는 세로 스크롤바 폭을 포함해 바닥 아래에서
       // 셸이 항상 뷰포트보다 넓어진다. 이제 폭은 #root 를 따르고 바닥만 min-width 가 건다.
-      className={`grid h-full min-h-app-floor ${['/market', '/heatmap', '/sentiment', '/whiteboard'].includes(pathname) ? 'responsive-board-shell min-w-0' : 'min-w-app-floor'} ${pathname === '/live' ? 'live-app-shell' : ''} overflow-hidden`}
+      className={`grid h-full ${floating ? 'live-floating-shell min-h-0 min-w-0' : 'min-h-app-floor'} ${floating ? '' : ['/market', '/heatmap', '/sentiment', '/whiteboard'].includes(pathname) ? 'responsive-board-shell min-w-0' : 'min-w-app-floor'} ${pathname === '/live' && !floating ? 'live-app-shell' : ''} overflow-hidden`}
       style={{
         // 열 기반 셸(2026-07-15): 우측 패널(드로어+고정 레일)이 화면 상단~하단 full-height
         // 열로 서고, 왼쪽 스택(TopNav/페이지/하단 시장지표 바)이 나머지 1fr 을 세로로 채운다.
         // 상단 헤더는 우측 패널 위 코너를 양보한다(우측 패널이 화면 맨 위까지 올라옴).
-        gridTemplateColumns: contentCols,
+        gridTemplateColumns: floating ? 'minmax(0, 1fr)' : contentCols,
         // 행도 반드시 명시한다. 비워두면 `grid-auto-rows: auto` 가 되고 그 트랙은 콘텐츠가
         // 원하는 만큼 커져서, `h-screen` 보다 낮은 뷰포트에서 셸이 화면 밖으로 밀린다
         // (뷰포트 260px 에서 트랙 341px). 아이템의 min-h-0 은 *트랙* 최소값을 못 푼다 —
@@ -161,6 +167,10 @@ export default function App() {
     >
       {staticTitle !== null && <StaticDocumentTitle title={staticTitle} />}
       <ToastViewport>
+        {floatingError && <div role="alert" className="rounded-lg bg-bg-card p-3 text-sm text-fg shadow-panel">
+          {floatingError}
+          <button type="button" className="ui-icon-button" aria-label="창 분리 오류 닫기" onClick={() => useFloatingWindows.setState({ error: null })}>×</button>
+        </div>}
         {/* flex-col-reverse: DOM 첫 자식이 최하단. 시그널(최신 prepend)을 먼저 둬
             새 토스트가 맨 아래에서 떠오르게 하고, KIS 경고는 스택 위쪽에 둔다. */}
         <SignalAlertToastHost />
@@ -206,7 +216,7 @@ export default function App() {
       )}
       {/* 왼쪽 스택(1fr 열): 상단 nav / 페이지 / 하단 시장지표 바 — 모두 main 너비.
           하단 바 행은 auto — 데이터 없으면(MarketIndexBar가 null) 0 으로 접힌다. */}
-      <div
+      {floating ? (floatingReady ? <Outlet /> : <div className="p-3 text-sm text-fg-dim">독립 창 연결 중…</div>) : <div
         data-testid="app-main-stack"
         className="grid min-h-0 min-w-0 overflow-hidden"
         style={{ gridTemplateRows: 'var(--h-top-nav) minmax(0, 1fr) auto' }}
@@ -214,31 +224,31 @@ export default function App() {
         <TopNav />
         <main className="overflow-hidden min-w-0"><Outlet /></main>
         <MarketIndexBar />
-      </div>
+      </div>}
       {/* 우측 패널: 드로어(열림 시) + 고정 레일 — 열 자동 배치로 왼쪽 스택 오른쪽에
           full-height 로 선다. */}
       {/* Suspense 는 DOM 요소를 만들지 않으므로 이 열의 자동 배치가 그대로 유지된다
           (위 gridTemplateColumns 주석의 전제). */}
-      {activePanel === 'watchlist' && <WatchlistDrawer />}
-      {activePanel === 'heatmap' && (
+      {!floating && activePanel === 'watchlist' && <WatchlistDrawer />}
+      {!floating && activePanel === 'heatmap' && (
         <Suspense fallback={null}><HeatmapDrawer /></Suspense>
       )}
-      {activePanel === 'screener' && (
+      {!floating && activePanel === 'screener' && (
         <Suspense fallback={null}><ScreenerDrawer /></Suspense>
       )}
-      {activePanel === 'ranking' && (
+      {!floating && activePanel === 'ranking' && (
         <Suspense fallback={null}><RankingDrawer /></Suspense>
       )}
-      {activePanel === 'pattern' && (
+      {!floating && activePanel === 'pattern' && (
         <Suspense fallback={null}><PatternDrawer /></Suspense>
       )}
-      {activePanel === 'savedViews' && (
+      {!floating && activePanel === 'savedViews' && (
         <Suspense fallback={null}><StudyViewsDrawer /></Suspense>
       )}
-      {activePanel === 'signalAlerts' && (
+      {!floating && activePanel === 'signalAlerts' && (
         <Suspense fallback={null}><SignalAlertsDrawer /></Suspense>
       )}
-      <RightRail settingsOpen={settingsOpen} />
+      {!floating && <RightRail settingsOpen={settingsOpen} />}
     </div>
   );
 }

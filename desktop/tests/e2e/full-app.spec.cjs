@@ -18,7 +18,8 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     HOGA_LOG_DIR: join(temp, 'logs'), HOGA_ALLOWED_ORIGINS: origin, HOGA_FRONTEND_DIST: join(repo, 'frontend/dist'),
     HOGA_ENABLE_TEST_ENDPOINTS: '1', HOGA_LIVE_STARTUP_ENABLED: 'false', HOGAPLAY_COOKIE: '',
     TOSSINVEST_CLIENT_ID: '', TOSSINVEST_CLIENT_SECRET: '', KIS_APP_KEY: '', KIS_APP_SECRET: '' };
-  for (const suffix of ['', '_2', '_3', '_4']) { env[`KIWOOM_APP_KEY${suffix}`] = ''; env[`KIWOOM_APP_SECRET${suffix}`] = ''; }
+  for (const suffix of ['', '_2', '_3', '_4', '_5', '_6']) { env[`KIWOOM_APP_KEY${suffix}`] = ''; env[`KIWOOM_APP_SECRET${suffix}`] = ''; }
+  env.KIWOOM_MOCK_APP_KEY = ''; env.KIWOOM_MOCK_APP_SECRET = ''; env.KOFIA_API_KEY = '';
   const server = spawn(join(repo, '.venv/bin/python'), ['-m', 'uvicorn', 'hoga.api.app:default_app', '--factory', '--host', '127.0.0.1', '--port', String(port)], { cwd: repo, env, stdio: 'ignore' });
   let app;
   try {
@@ -74,13 +75,39 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     const nextWindow = app.waitForEvent('window');
     await page.getByRole('button', { name: '새 작업 창', exact: true }).click();
     const child = await nextWindow;
-    await expect(child.getByRole('button', { name: '관심종목 패널 토글', exact: true })).toBeVisible();
+    await expect(child.getByRole('button', { name: '관심종목 패널 토글', exact: true })).toBeVisible({ timeout: 15000 });
     await installLiveMocks(page);
     await page.reload();
     await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
     await page.getByTestId('watchlist-row-098460').click();
     await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
     await page.screenshot({ path: join(desktop, 'test-results/real-chart.png') });
+    await installLiveMocks(page.context());
+    const frame = page.locator('[data-win]').filter({ has: page.getByTestId('live-chart-root') }).first();
+    const bounds = await frame.boundingBox();
+    const detachedEvent = app.waitForEvent('window');
+    await frame.getByRole('button', { name: '창 분리', exact: true }).click();
+    const detached = await detachedEvent;
+    await expect(detached.getByTestId('floating-workspace')).toBeVisible();
+    await expect(frame).toHaveCount(0);
+    await expect(detached.getByRole('navigation')).toHaveCount(0);
+    await detached.getByRole('button', { name: '항상 위', exact: true }).click();
+    await expect.poll(() => detached.evaluate(() => window.hogaDesktop.controls.floatingState())).toMatchObject({ alwaysOnTop: true });
+    const floatingSize = await detached.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+    await detached.getByRole('button', { name: '창 최대화', exact: true }).click();
+    await expect.poll(() => detached.evaluate(() => innerWidth)).toBeGreaterThan(floatingSize.w);
+    await expect(detached.getByRole('button', { name: '원래 크기로 복원', exact: true })).toBeVisible();
+    await detached.getByRole('button', { name: '원래 크기로 복원', exact: true }).click();
+    await expect.poll(() => detached.evaluate(() => ({ w: innerWidth, h: innerHeight }))).toEqual(floatingSize);
+    await expect.poll(() => detached.locator('[data-win]').evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return Math.max(Math.abs(box.width - innerWidth), Math.abs(box.height - innerHeight));
+    })).toBeLessThan(1);
+    await detached.screenshot({ path: join(desktop, 'test-results/real-floating-chart.png') });
+    await detached.getByRole('button', { name: '원래 화면에 합치기', exact: true }).click();
+    await expect(frame).toBeVisible();
+    const restored = await frame.boundingBox();
+    for (const key of ['x', 'y', 'width', 'height']) expect(restored[key]).toBeCloseTo(bounds[key], 0);
     expect(errors).toEqual([]);
     await app.close(); app = undefined;
     expect((await fetch(origin + '/health')).ok).toBe(true);

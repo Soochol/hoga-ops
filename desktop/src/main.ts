@@ -3,7 +3,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { appNavigation, externalLink, networkAllowed } from './navigation';
+import { appNavigation, externalLink, floatingTarget, networkAllowed } from './navigation';
 import { emptySettings, fitBounds, readSettings, saveSettings, sessionKey, validateProfile } from './profiles';
 import type { Profile, Settings } from './profiles';
 import { probeServer } from './connection';
@@ -28,6 +28,7 @@ let connectionId = 0;
 let quitting = false;
 const contentWindows = new Set<BrowserWindow>();
 const windowProfileKeys = new Map<BrowserWindow, string>();
+const floatingWindows = new Map<BrowserWindow, { owner: BrowserWindow; token: string }>();
 const configuredSessions = new Set<string>();
 const build = JSON.parse(readFileSync(join(__dirname, 'build.json'), 'utf8')) as { sourceVersion: string; commit: string };
 
@@ -72,9 +73,11 @@ function showLauncher(message = ''): void {
     launcher.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     launcher.webContents.on('will-navigate', (event, url) => { if (url !== LAUNCHER_URL) event.preventDefault(); });
     launcher.webContents.on('will-redirect', event => event.preventDefault());
-    launcher.on('close', event => {
-      if (!quitting && contentWindows.size > 0) { event.preventDefault(); launcher?.hide(); }
+    const launcherWindow = launcher;
+    launcherWindow.on('close', event => {
+      if (!quitting && contentWindows.size > 0) { event.preventDefault(); launcherWindow.hide(); }
     });
+    launcherWindow.on('closed', () => { if (launcher === launcherWindow) launcher = undefined; });
     void launcher.loadURL(LAUNCHER_URL);
   } else {
     void launcher.webContents.executeJavaScript('window.refreshLauncher?.()');
@@ -83,7 +86,7 @@ function showLauncher(message = ''): void {
 }
 
 function trustedLauncher(event: IpcMainInvokeEvent): void {
-  if (!launcher || event.sender !== launcher.webContents || event.senderFrame !== launcher.webContents.mainFrame
+  if (!launcher || launcher.isDestroyed() || event.sender !== launcher.webContents || event.senderFrame !== launcher.webContents.mainFrame
     || event.senderFrame.url !== LAUNCHER_URL) throw new Error('허용되지 않은 설정 요청입니다.');
 }
 
@@ -115,10 +118,19 @@ function configureSession(profile: Profile): Electron.Session {
   return ses;
 }
 
-function openContent(profile: Profile, url: string, primary = false): BrowserWindow {
+function trustedFloating(event: IpcMainInvokeEvent): BrowserWindow {
+  const win = trustedContent(event);
+  if (!floatingWindows.has(win)) throw new Error('독립 창에서만 사용할 수 있습니다.');
+  return win;
+}
+
+function openContent(profile: Profile, url: string, primary = false,
+  floating?: { owner: BrowserWindow; token: string; width: number; height: number }): BrowserWindow {
   const key = sessionKey(profile);
-  const bounds = fitBounds(settings.bounds[key], screen.getAllDisplays().map(d => d.workArea));
-  const win = new BrowserWindow({ ...bounds, minWidth: 480, minHeight: 360, show: false,
+  const ownerBounds = floating?.owner.getBounds();
+  const bounds = fitBounds(floating && ownerBounds ? { x: ownerBounds.x + 32, y: ownerBounds.y + 32,
+    width: floating.width, height: floating.height } : settings.bounds[key], screen.getAllDisplays().map(d => d.workArea));
+  const win = new BrowserWindow({ ...bounds, minWidth: floating ? 160 : 480, minHeight: floating ? 120 : 360, show: false,
     icon: join(__dirname, '../assets/icon.png'),
     title: `Ticklane · ${profile.name}`,
     webPreferences: { session: configureSession(profile), preload: join(__dirname, 'preload/content.cjs'),
@@ -127,6 +139,7 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
   });
   win.setMenuBarVisibility(false);
   contentWindows.add(win);
+  if (floating) floatingWindows.set(win, { owner: floating.owner, token: floating.token });
   windowProfileKeys.set(win, key);
   win.webContents.on('before-input-event', (event, input) => {
     const command = zoomCommand(input);
@@ -161,12 +174,15 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
   win.webContents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
     if (isMainFrame && code !== -3) showLauncher('화면을 불러오지 못했습니다. 서버 주소·프론트 빌드·연결을 확인한 뒤 다시 연결하세요.');
   });
-  win.webContents.on('render-process-gone', () => showLauncher('화면 프로세스가 종료됐습니다. 다시 연결하세요.'));
+  win.webContents.on('render-process-gone', () => {
+    for (const [child, info] of floatingWindows) if (info.owner === win) child.close();
+    if (floatingWindows.has(win)) win.close(); else showLauncher('화면 프로세스가 종료됐습니다. 다시 연결하세요.');
+  });
   win.once('ready-to-show', () => {
     if (win.isDestroyed()) return;
     if (primary && settings.bounds[key]?.maximized) win.maximize();
     win.show();
-    launcher?.hide();
+    if (launcher && !launcher.isDestroyed()) launcher.hide();
   });
   win.on('close', () => {
     if (primary && !win.isDestroyed()) {
@@ -175,11 +191,15 @@ function openContent(profile: Profile, url: string, primary = false): BrowserWin
     }
   });
   win.on('closed', () => {
+    const info = floatingWindows.get(win);
+    floatingWindows.delete(win);
+    if (info && !info.owner.isDestroyed()) info.owner.webContents.send('desktop:floating-closed', info.token);
+    for (const [child, childInfo] of floatingWindows) if (childInfo.owner === win) child.close();
     contentWindows.delete(win);
     windowProfileKeys.delete(win);
     if (!quitting && contentWindows.size === 0) {
       // A visible connection window keeps a failed connection recoverable.
-      if (!launcher?.isVisible()) app.quit();
+      if (!launcher || launcher.isDestroyed() || !launcher.isVisible()) app.quit();
     }
   });
   void win.loadURL(url).catch(() => { /* did-fail-load presents recovery UI */ });
@@ -258,6 +278,39 @@ else {
     });
     ipcMain.handle('desktop:select-server', event => { trustedContent(event); showLauncher(); });
     ipcMain.handle('desktop:new-window', event => { trustedContent(event); openContent(active!, `${active!.origin}/live`); });
+    ipcMain.handle('desktop:open-floating', (event, rawUrl: unknown, width: unknown, height: unknown) => {
+      const owner = trustedContent(event);
+      if (floatingWindows.has(owner)) throw new Error('독립 창을 중복 분리할 수 없습니다.');
+      const target = floatingTarget(rawUrl, active!);
+      if (typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height))
+        throw new Error('잘못된 창 크기입니다.');
+      openContent(active!, target.url, false, { owner, token: target.token,
+        width: Math.max(160, Math.min(7680, Math.round(width))), height: Math.max(120, Math.min(4320, Math.round(height))) });
+    });
+    ipcMain.handle('desktop:close-floating', (event, token: unknown) => {
+      const owner = trustedContent(event);
+      if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) throw new Error('잘못된 독립 창입니다.');
+      for (const [child, info] of floatingWindows) if (info.owner === owner && info.token === token) child.close();
+    });
+    ipcMain.handle('desktop:floating-state', event => {
+      const win = trustedFloating(event);
+      return { maximized: win.isMaximized(), alwaysOnTop: win.isAlwaysOnTop() };
+    });
+    ipcMain.handle('desktop:floating-maximize', event => {
+      const win = trustedFloating(event);
+      if (win.isMaximized()) win.unmaximize(); else win.maximize();
+      return win.isMaximized();
+    });
+    ipcMain.handle('desktop:floating-on-top', (event, enabled: unknown) => {
+      const win = trustedFloating(event);
+      if (typeof enabled !== 'boolean') throw new Error('잘못된 항상 위 설정입니다.');
+      win.setAlwaysOnTop(enabled);
+    });
+    ipcMain.handle('desktop:floating-focus', event => {
+      const win = trustedFloating(event);
+      if (win.isMinimized()) win.restore();
+      win.show(); win.focus();
+    });
     ipcMain.handle('desktop:zoom', (event, command: unknown) => {
       const win = trustedContent(event);
       if (command !== 'in' && command !== 'out' && command !== 'reset') throw new Error('잘못된 배율 명령입니다.');

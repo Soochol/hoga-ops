@@ -1,0 +1,63 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "31e3200e034ea4f89c38e741096dc47d6ee67044",
+  "origin_main_sha_at_verification": "31e3200e034ea4f89c38e741096dc47d6ee67044",
+  "scope": "All 14 LivePage window kinds: maximize/restore immediately after close, including 160px headers.",
+  "fingerprint_method": "Sorted tracked/nonignored regular files under frontend/, hoga/, tests/ plus pyproject.toml, uv.lock, .python-version, VERSION, ruff.toml; SHA256 of path UTF-8 + NUL + SHA256(file bytes).digest(). Documentation excluded.",
+  "input_file_count": 2856,
+  "initial_input_sha256": "25da62875f235e7836b80f9d11fd2b7eb020e55dc38ac5597986387b7d537fb3",
+  "final_input_sha256": "f4fabff7484da2fafe0b724bb2dbc7a0dc38bc432b7139e3bab1c817da1bf43c",
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed",
+      "input_sha256": "25da62875f235e7836b80f9d11fd2b7eb020e55dc38ac5597986387b7d537fb3"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowFrame.pin.test.tsx src/workspace/WorkspaceCanvas.test.tsx",
+      "result": "33 passed in 3 files",
+      "input_sha256": "25da62875f235e7836b80f9d11fd2b7eb020e55dc38ac5597986387b7d537fb3"
+    },
+    {
+      "command": "cd frontend && npx vite build",
+      "result": "passed; existing chunk-size warning",
+      "input_sha256": "25da62875f235e7836b80f9d11fd2b7eb020e55dc38ac5597986387b7d537fb3"
+    },
+    {
+      "command": "cd frontend && npx tsc -p tsconfig.e2e.json --noEmit",
+      "result": "passed",
+      "input_sha256": "f4fabff7484da2fafe0b724bb2dbc7a0dc38bc432b7139e3bab1c817da1bf43c"
+    },
+    {
+      "command": "cd frontend && E2E_DATA_DIR=/tmp/hoga-e2e-data-439-maximize-rerun npx playwright test tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts --reporter=line",
+      "result": "20 passed (55.2s)",
+      "input_sha256": "f4fabff7484da2fafe0b724bb2dbc7a0dc38bc432b7139e3bab1c817da1bf43c"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "python": "3.14.7",
+    "chrome": "156.0.8078.73",
+    "workers": 1,
+    "backend_port": 20439,
+    "frontend_port": 21439,
+    "data_dir": "/tmp/hoga-e2e-data-439-maximize-rerun",
+    "dist_dir": "/tmp/hoga-e2e-dist-439",
+    "vendor_credentials": "empty environment variables from playwright.config.ts"
+  },
+  "initial_e2e_run": {
+    "result": "19 passed, 1 failed",
+    "cause": "Existing chart-settings switch-count assertion included volumeOverlayEnabled, already moved to the indicator editor. Updated the test expectation to exclude it."
+  },
+  "reuse_basis": "After initial type/unit/build passes, only the existing E2E switch-count expectation was corrected. Application, unit, dependencies and build configuration stayed unchanged; reran E2E TypeScript and browser checks.",
+  "visual_qa": "Inspected chart-160-actions.png: close precedes maximize; all header buttons fit."
+}

@@ -1,3 +1,4 @@
+import { useChartTradeAccounts } from './chartTradeAccounts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
@@ -141,4 +142,11 @@ describe('useCrossTabSync', () => {
     expect(useLivePageStore.getState().indicatorsByTimeframe).toEqual({});
     expect(invalidate).not.toHaveBeenCalled();
   });
+});
+
+it('분리 창에서 바꾼 매매 계좌 참조를 본창에도 반영한다', () => {
+  renderHook(() => useCrossTabSync(), { wrapper: wrapper(new QueryClient()) });
+  const ref = 'acc_' + 'a'.repeat(32);
+  otherTabWrites('hoga.chart.trade.accounts.v1', JSON.stringify({ byWindow: { chart: ref, invalid: 'raw-account' } }));
+  expect(useChartTradeAccounts.getState().byWindow).toEqual({ chart: ref });
 });
