@@ -9,14 +9,14 @@ type ChartsWindow = Window & { __liveCharts?: Map<string, IChartApi> };
 const chartSettingToggles = CHART_DISPLAY_TOGGLES.filter(def => def.key !== 'volumeOverlayEnabled');
 const initial = { ...DEFAULT_CHART_DISPLAY_PREFS, candlePaneCandleOnlyScale: true, auctionWindowMask: false };
 
-async function setup(page: Page, timeframe = '1m') {
+async function setup(page: Page, timeframe: string | [string, string] = '1m') {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.addInitScript(({ initial, timeframe }) => {
     if (sessionStorage.getItem('window-settings-fixture')) return;
     sessionStorage.setItem('window-settings-fixture', '1');
     localStorage.setItem('hoga.chart.prefs.v1', JSON.stringify(initial));
     sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
-      windows: ['a', 'b'].map((id, i) => ({ id, kind: 'chart', group: 1, chart: { timeframe },
+      windows: ['a', 'b'].map((id, i) => ({ id, kind: 'chart', group: 1, chart: { timeframe: Array.isArray(timeframe) ? timeframe[i] : timeframe },
         rect: { x: i * .5, y: 0, w: .49, h: .8 } })),
       zOrder: ['a', 'b'], groupSymbols: { 1: { code: '098460', name: '고영' } },
     }));
@@ -699,3 +699,54 @@ test('캔들 차트 설정 설명은 공통 툴팁으로 호버·키보드 포�
   await panel.getByText('반전 시 캔들·거래량 색상 교환', { exact: true }).hover();
   await expect(tooltip).toHaveText('거꾸로 볼 때 캔들 몸통·꼬리와 거래량 봉의 상승·하락 색상을 서로 바꿉니다. 실제 가격·등락률은 유지합니다.');
 });
+
+for (const [minuteEnabled, dailyEnabled] of [[true, true], [true, false], [false, true]]) {
+  test(`캔들 툴팁은 실제 포인터 창에만 표시한다 (분봉 ${minuteEnabled}, 일봉 ${dailyEnabled})`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await setup(page, ['1m', 'D']);
+    await scaleFixtures(page);
+    await page.goto('/live');
+    await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts?.size)).toBe(2);
+    await page.evaluate(async ({ minuteEnabled, dailyEnabled }) => {
+      const path = '/src/state/windowSettings.ts';
+      const { useWindowSettingsStore } = await import(path);
+      useWindowSettingsStore.getState().patch('a', 'chart', { candleTooltipEnabled: minuteEnabled });
+      useWindowSettingsStore.getState().patch('b', 'chart', { candleTooltipEnabled: dailyEnabled });
+    }, { minuteEnabled, dailyEnabled });
+    const readPoint = (id: string) => page.evaluate(id => {
+      const chart = (window as ChartsWindow).__liveCharts?.get(id);
+      const series = chart?.panes()[0]?.getSeries().find(s => s.seriesType() === 'Candlestick');
+      const row = series?.data().at(-1);
+      if (!chart || !series || !row || !('close' in row)) return null;
+      const x = chart.timeScale().timeToCoordinate(row.time), y = series.priceToCoordinate(row.close);
+      if (x === null || y === null) return null;
+      const rect = chart.chartElement().getBoundingClientRect();
+      const clientX = rect.left + x, clientY = rect.top + y;
+      // Verify the actual topmost input surface belongs to the intended window.
+      if (document.elementFromPoint(clientX, clientY)?.closest('[data-win]')?.getAttribute('data-win') !== id) return null;
+      return { x: clientX, y: clientY };
+    }, id);
+    for (const id of ['a', 'b']) await expect.poll(() => readPoint(id)).not.toBeNull();
+    const minute = page.locator('[data-win="a"]').getByTestId('candle-tooltip');
+    const daily = page.locator('[data-win="b"]').getByTestId('candle-tooltip');
+    const minutePoint = (await readPoint('a'))!;
+    await page.mouse.move(minutePoint.x, minutePoint.y);
+    // Positive evidence that the daily chart really consumed the minute date.
+    await expect.poll(() => page.evaluate(async () => {
+      const path = '/src/chart/syntheticCrosshair.ts';
+      const { hasSyntheticCrosshair } = await import(path);
+      const chart = (window as ChartsWindow).__liveCharts?.get('b');
+      return !!chart && hasSyntheticCrosshair(chart);
+    })).toBe(true);
+    await expect(minute).toHaveCount(minuteEnabled ? 1 : 0);
+    await expect(daily).toHaveCount(0);
+    const dailyPoint = (await readPoint('b'))!;
+    await page.mouse.move(dailyPoint.x, dailyPoint.y);
+    await expect(minute).toHaveCount(0);
+    await expect(daily).toHaveCount(dailyEnabled ? 1 : 0);
+    await page.mouse.move(1, 1);
+    await expect(page.getByTestId('candle-tooltip')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}

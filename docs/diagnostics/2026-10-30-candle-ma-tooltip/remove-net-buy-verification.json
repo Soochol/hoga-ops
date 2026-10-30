@@ -1,0 +1,75 @@
+{
+  "verified_at": "2026-10-30T10:30:59.614449+09:00",
+  "base_sha": "878e81d75905c8b40101c57654f3dda1c171bca5",
+  "state": "Uncommitted working-tree changes on latest origin/main",
+  "scope": "Remove institution, foreign and program net-buy rows and tooltip-only queries; preserve daily turnover, OHLC, volume and MA readout.",
+  "input_fingerprint": {
+    "algorithm": "SHA-256 over sorted relative path, NUL, SHA-256(file bytes)",
+    "digest": "51606d0f773bd84d3b11b49c5670ddc7b035fa83815b9d6f35cf9375f0163030",
+    "file_count": 2352,
+    "paths": [
+      "frontend/src",
+      "frontend/tests",
+      "frontend/plugins",
+      "frontend/scripts",
+      "frontend/public",
+      "hoga",
+      "tests/fixtures",
+      "frontend/package.json",
+      "frontend/package-lock.json",
+      "frontend/vite.config.ts",
+      "frontend/playwright.config.ts",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.test.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/tsconfig.node.json",
+      "frontend/eslint.config.js",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ]
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "versions": {
+      "typescript": "6.0.3",
+      "vitest": "4.1.7",
+      "vite": "8.0.16",
+      "react": "18.3.1",
+      "lightweight-charts": "5.2.0"
+    }
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed; app, unit-test and E2E projects",
+      "exit_code": 0
+    },
+    {
+      "command": "npx vitest run src/live/CandleTooltip.test.tsx src/live/CandleMovingAverageDetails.test.tsx src/live/candleTooltipModel.test.ts",
+      "result": "3 files, 63 tests passed; removed labels and extra query demand, turnover retention, existing hover and MA behavior",
+      "exit_code": 0
+    },
+    {
+      "command": "npx vite build",
+      "result": "passed; chunk-size warning remains",
+      "exit_code": 0
+    },
+    {
+      "command": "npx eslint src/live/DailyCandleDetails.tsx",
+      "result": "passed",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "exit_code": 0
+    }
+  ],
+  "notes": [
+    "No browser interaction or layout logic changed; verification scoped to display removal, query elimination, typecheck and production build.",
+    "Backend source and other investor/program indicator requests are unchanged."
+  ]
+}

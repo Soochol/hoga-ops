@@ -568,12 +568,17 @@ _Avoid_: "live price" alone (the bundle includes **등락률** + 전일대비 �
 
 **Candle Tooltip (캔들 호버 툴팁)**:
 
+2026-10-30 후속 요청: 툴팁은 표시를 켠 창의 캔들 영역에 실제 마우스가 있을 때만 표시한다.
+분봉의 날짜가 일봉에 연결돼도 일봉에 마우스가 없으면 표시하지 않는다. 차트 이탈·
+포커스 상실·페이지 숨김에는 즉시 닫고 동기화·데이터 갱신만으로 다시 열지 않는다.
+날짜·크로스헤어·레전드 동기화는 기존대로 유지한다.
+
 2026-10-30: 표시 중인 현재봉·일봉 이동평균선의 호버 시점 가격과 이격도를
 `가격 (이격도%)`로 함께 보여준다. 이격도는 `(호버 봉 종가 / 같은 봉의 이평선 값 − 1) × 100`이며
 동일 가격은 0%다. 창·반복 지표별 실제 시리즈의 정확히 같은 봉 값을 읽고, 숨김은 제외하며
 결측·계산 불가는 `—`로 표시한다. 레전드 표시와 독립적이며 종가·이평선 변경 시 호버 중에도 갱신한다.
 
-The floating, cursor-following readout shown while hovering a candle on the `/live` chart's **candle pane** (and only there) — 시·고·저·종 + 봉대비 변동(액·률) + 거래량 + 직전봉 거래량비. Appears **only on hover** (unlike the always-on pane legend) and hides when the cursor leaves the candle pane. 일봉 종목에서는 해당 거래일의 실제 거래대금(억원)과 기관·외인·프로그램 순매수량(주)을 함께 보여주며, 레전드·보조지표 표시 및 매수/매도 선택과 독립적이다. 제공되지 않은 값은 0이나 전날 값으로 대체하지 않는다. Its reference convention is **봉대비**, *not* the **Live Quote** 등락률.
+The floating, cursor-following readout shown while hovering a candle on the `/live` chart's **candle pane** (and only there) — 시·고·저·종 + 봉대비 변동(액·률) + 거래량 + 직전봉 거래량비. Appears **only on hover** (unlike the always-on pane legend) and hides when the cursor leaves the candle pane. 일봉 종목에서는 해당 거래일의 실제 거래대금(억원)을 함께 보여주며, 레전드·보조지표 표시와 독립적이다. 2026-10-30 사용자 요청으로 기관·외인·프로그램 순매수량과 이를 위한 툴팁 전용 조회를 제거했다. 제공되지 않은 값은 0이나 전날 값으로 대체하지 않는다. Its reference convention is **봉대비**, *not* the **Live Quote** 등락률.
 _Avoid_: "legend" (that is the always-on pane legend, which tracks latest-when-idle); implying it shows the **Live Quote** 등락률 (it uses **봉대비**, a different reference).
 
 **봉대비 (Bar-over-Bar)**:

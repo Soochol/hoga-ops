@@ -1,0 +1,90 @@
+{
+  "verified_at": "2026-10-30T10:39:30.308999+09:00",
+  "base_sha": "4c5dde4537ebcdd8ac23130d9035cf139336c011",
+  "state": "Uncommitted working-tree changes after integrating current main",
+  "scope": "Tooltip is local-pointer-only; minute-to-daily date/crosshair/legend sync remains enabled but cannot open the daily tooltip without its own mouse. Includes preceding removal of tooltip net-buy rows and queries.",
+  "input_fingerprint": {
+    "algorithm": "SHA-256 over sorted relative path, NUL, SHA-256(file bytes)",
+    "digest": "c84e20d28379a2bd142cee2d436a06871ba59fc0c07a7f3d4647564e6a016b46",
+    "file_count": 2352,
+    "paths": [
+      "frontend/src",
+      "frontend/tests",
+      "frontend/plugins",
+      "frontend/scripts",
+      "frontend/public",
+      "hoga",
+      "tests/fixtures",
+      "frontend/package.json",
+      "frontend/package-lock.json",
+      "frontend/vite.config.ts",
+      "frontend/playwright.config.ts",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.test.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/tsconfig.node.json",
+      "frontend/eslint.config.js",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ]
+  },
+  "environment": {
+    "os": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "browser": "Google Chrome 156.0.8078.73",
+    "versions": {
+      "typescript": "6.0.3",
+      "vitest": "4.1.7",
+      "vite": "8.0.16",
+      "@playwright/test": "1.60.0",
+      "react": "18.3.1",
+      "lightweight-charts": "5.2.0"
+    },
+    "e2e": {
+      "workers": 1,
+      "slot": 12,
+      "backend_port": 20012,
+      "frontend_port": 21012,
+      "data_dir": "/tmp/hoga-e2e-data-12",
+      "dist_dir": "/tmp/hoga-e2e-dist-12",
+      "vendor_credentials": "empty per committed playwright.config.ts; original configuration preserved"
+    }
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed; app, unit-test and E2E projects",
+      "exit_code": 0
+    },
+    {
+      "command": "npx vitest run src/live/CandleTooltip.test.tsx src/live/CandleMovingAverageDetails.test.tsx src/live/candleTooltipModel.test.ts src/chart/CursorSyncCrosshair.test.tsx src/live/useCursorSyncResolution.test.tsx src/live/LiveChartRoot.test.tsx src/live/workspace/BookPanel.test.tsx src/live/workspace/OrderWindow.test.tsx",
+      "result": "8 files, 567 tests passed",
+      "exit_code": 0
+    },
+    {
+      "command": "npx playwright test tests/e2e/candle-moving-average-tooltip.spec.ts tests/e2e/chart-window-settings.spec.ts --grep 'MA tooltip|실제 포인터' --reporter=line",
+      "result": "5 passed (19.4s); production Vite build passed in server preparation",
+      "exit_code": 0
+    },
+    {
+      "command": "npx eslint src/live/CandleTooltip.tsx tests/e2e/chart-window-settings.spec.ts",
+      "result": "passed; seven existing ref-in-render warnings in CandleTooltip",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "exit_code": 0
+    }
+  ],
+  "evidence": [
+    "Real browser tests cover minute/daily tooltip enable pairs (on,on), (on,off), (off,on). Before checking absence of the remote tooltip, each test positively verifies the daily chart consumed a minute cursor using hasSyntheticCrosshair on that window-specific chart handle.",
+    "Native pointer moves target coordinates derived from each window-specific chart and verify the topmost element belongs to that window. The daily tooltip is absent while the pointer is on the minute chart, appears only when locally hovered and enabled, and all tooltips vanish on exit.",
+    "Existing MA browser checks retain stationary-cursor live updates and 320px dark/800px light placement.",
+    "Unit checks cover DOM leave without a native crosshair callback, cancellation of queued frames, synthetic event replay, blur, disable/re-enable, date-sync preservation and root chart integration.",
+    "Latest main changed book/order summaries; it was integrated without altering tooltip implementation, and final typecheck, affected unit tests, E2E and production build were rerun."
+  ]
+}

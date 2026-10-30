@@ -5432,6 +5432,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
         clearCrosshairPosition: vi.fn(),
         subscribeCrosshairMove: vi.fn(),
         unsubscribeCrosshairMove: vi.fn(),
+        chartElement: () => document.createElement('div'),
       };
     }) as never);
   });
