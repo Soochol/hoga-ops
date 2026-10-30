@@ -1,0 +1,8 @@
+{
+  "url": "https://www.plusetf.co.kr/api/v1/product/pdf/list?n=006279&page=0&d=20261030&pageSize=100",
+  "captured_at": "2026-10-30T03:27:53.179648+00:00",
+  "sha256": "b4e57c7025ce8fad5ed6691a588ec97649f8d9ed0b1154f33c0232f6b90c999e",
+  "bytes": 1720,
+  "content_type": "application/json",
+  "final_url": "https://www.plusetf.co.kr/api/v1/product/pdf/list?n=006279&page=0&d=20261030&pageSize=100"
+}

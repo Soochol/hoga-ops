@@ -1,0 +1,648 @@
+{
+  "091160": {
+    "source_url": "https://m.stock.naver.com/api/stock/091160/basic",
+    "retrieved_at": "2026-10-30T02:50:59.232917+00:00",
+    "response_sha256": "e4eba6d1b5914e47e426540b5d0ebe179660b4fc4427e6f53682ce9fbdeb0e25",
+    "itemCode": "091160",
+    "stockEndType": "etf",
+    "stockName": "KODEX 반도체",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:20+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "091180": {
+    "source_url": "https://m.stock.naver.com/api/stock/091180/basic",
+    "retrieved_at": "2026-10-30T02:50:59.827583+00:00",
+    "response_sha256": "4214e108f18307f65ede59d9236b9b05fe9e53669bb889b30943a8feadbf755b",
+    "itemCode": "091180",
+    "stockEndType": "etf",
+    "stockName": "KODEX 자동차",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:22+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "091170": {
+    "source_url": "https://m.stock.naver.com/api/stock/091170/basic",
+    "retrieved_at": "2026-10-30T02:51:00.429614+00:00",
+    "response_sha256": "f9029dbecdebd63c949e4fd72c4cae89b12406d82e762d7de40acf39456533b8",
+    "itemCode": "091170",
+    "stockEndType": "etf",
+    "stockName": "KODEX 은행",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:18+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "102970": {
+    "source_url": "https://m.stock.naver.com/api/stock/102970/basic",
+    "retrieved_at": "2026-10-30T02:51:01.027521+00:00",
+    "response_sha256": "22673f5eb4633cc3ba2df23aa3302f8eccd45394ca15ff81993bcedbf376b7b1",
+    "itemCode": "102970",
+    "stockEndType": "etf",
+    "stockName": "KODEX 증권",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:20+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "140700": {
+    "source_url": "https://m.stock.naver.com/api/stock/140700/basic",
+    "retrieved_at": "2026-10-30T02:51:01.580300+00:00",
+    "response_sha256": "6c65ef846ba159f0c49f4c29ff4992a3a50f2d0383eb0f26aa51ebd837e014d7",
+    "itemCode": "140700",
+    "stockEndType": "etf",
+    "stockName": "KODEX 보험",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:21+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "102960": {
+    "source_url": "https://m.stock.naver.com/api/stock/102960/basic",
+    "retrieved_at": "2026-10-30T02:51:02.179704+00:00",
+    "response_sha256": "1b573e69192149f2119cd99da4822f11eedd04fa85ac0ee2d874efc1cd1e1c01",
+    "itemCode": "102960",
+    "stockEndType": "etf",
+    "stockName": "KODEX 기계장비",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:21+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "117700": {
+    "source_url": "https://m.stock.naver.com/api/stock/117700/basic",
+    "retrieved_at": "2026-10-30T02:51:02.779697+00:00",
+    "response_sha256": "c80233f3c151b35170439d43a9caee557563fd293dd0172342c19bff6e9db779",
+    "itemCode": "117700",
+    "stockEndType": "etf",
+    "stockName": "KODEX 건설",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:22+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "117680": {
+    "source_url": "https://m.stock.naver.com/api/stock/117680/basic",
+    "retrieved_at": "2026-10-30T02:51:03.380971+00:00",
+    "response_sha256": "4bf8ccde538e273cf9b59504d11a906793663a4c74e9dbc5fe0151d52f1beaf9",
+    "itemCode": "117680",
+    "stockEndType": "etf",
+    "stockName": "KODEX 철강",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:22+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "117460": {
+    "source_url": "https://m.stock.naver.com/api/stock/117460/basic",
+    "retrieved_at": "2026-10-30T02:51:03.923295+00:00",
+    "response_sha256": "e012282fbc9e92a8114f675e059af2771901ce9945b6409c3f14b3e6d688b7fe",
+    "itemCode": "117460",
+    "stockEndType": "etf",
+    "stockName": "KODEX 에너지화학",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:24+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "140710": {
+    "source_url": "https://m.stock.naver.com/api/stock/140710/basic",
+    "retrieved_at": "2026-10-30T02:51:04.480986+00:00",
+    "response_sha256": "49560bd95327d936d2a58f3a5c30355a771f63481964836c039b6575b1b37b36",
+    "itemCode": "140710",
+    "stockEndType": "etf",
+    "stockName": "KODEX 운송",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:20+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "266410": {
+    "source_url": "https://m.stock.naver.com/api/stock/266410/basic",
+    "retrieved_at": "2026-10-30T02:51:05.044282+00:00",
+    "response_sha256": "98b74c5066279f4f447f7df2b034eded2a3fd6d8a544859466ee8d451edd131f",
+    "itemCode": "266410",
+    "stockEndType": "etf",
+    "stockName": "KODEX 필수소비재",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:03+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "266390": {
+    "source_url": "https://m.stock.naver.com/api/stock/266390/basic",
+    "retrieved_at": "2026-10-30T02:51:05.602317+00:00",
+    "response_sha256": "5b1cf8b34d9cd1ffe24e60b0a400aea8d25b4f7b13d33e38470212f11e0594a7",
+    "itemCode": "266390",
+    "stockEndType": "etf",
+    "stockName": "KODEX 경기소비재",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:23+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "143860": {
+    "source_url": "https://m.stock.naver.com/api/stock/143860/basic",
+    "retrieved_at": "2026-10-30T02:51:06.173078+00:00",
+    "response_sha256": "5cf05abcacb47d55a990fe03c592708fa632ae046fa2a1a20086f65a5d1649a4",
+    "itemCode": "143860",
+    "stockEndType": "etf",
+    "stockName": "TIGER 헬스케어",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:05+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "266360": {
+    "source_url": "https://m.stock.naver.com/api/stock/266360/basic",
+    "retrieved_at": "2026-10-30T02:51:06.722093+00:00",
+    "response_sha256": "aad4af4ea29239443ecd385a41677dcfa54d1bd7277b80107946e16b0e4f63d5",
+    "itemCode": "266360",
+    "stockEndType": "etf",
+    "stockName": "KODEX K콘텐츠",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:24+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "157490": {
+    "source_url": "https://m.stock.naver.com/api/stock/157490/basic",
+    "retrieved_at": "2026-10-30T02:51:07.257096+00:00",
+    "response_sha256": "efb6bda2ee053695f3d31afde17597993be24e3f0aac556e39ed013d7d51b88c",
+    "itemCode": "157490",
+    "stockEndType": "etf",
+    "stockName": "TIGER 소프트웨어",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:04+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "266370": {
+    "source_url": "https://m.stock.naver.com/api/stock/266370/basic",
+    "retrieved_at": "2026-10-30T02:51:07.810098+00:00",
+    "response_sha256": "525d7853e9e48a4daf952811cdfc5a921abec2dc9f839ef972c283b30efa2c5c",
+    "itemCode": "266370",
+    "stockEndType": "etf",
+    "stockName": "KODEX IT",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:06+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "315270": {
+    "source_url": "https://m.stock.naver.com/api/stock/315270/basic",
+    "retrieved_at": "2026-10-30T02:51:08.355955+00:00",
+    "response_sha256": "690c7097ae41fa523afb64cc3f73411d087592230b59cfab4ae656b9dc342c31",
+    "itemCode": "315270",
+    "stockEndType": "etf",
+    "stockName": "TIGER 200커뮤니케이션서비스",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:06+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "455850": {
+    "source_url": "https://m.stock.naver.com/api/stock/455850/basic",
+    "retrieved_at": "2026-10-30T02:51:08.890088+00:00",
+    "response_sha256": "fb20de44ecb3deeb4e452f895abc84771dfdc620c8774205b7eadcf2ec6aaf9c",
+    "itemCode": "455850",
+    "stockEndType": "etf",
+    "stockName": "SOL AI반도체소부장",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:07+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "305720": {
+    "source_url": "https://m.stock.naver.com/api/stock/305720/basic",
+    "retrieved_at": "2026-10-30T02:51:09.441772+00:00",
+    "response_sha256": "ea62f71ba3f4f9367ebd7be1fb6fbcc9f703c6d04bea20464b05746251a57847",
+    "itemCode": "305720",
+    "stockEndType": "etf",
+    "stockName": "KODEX 2차전지산업",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:23+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "462010": {
+    "source_url": "https://m.stock.naver.com/api/stock/462010/basic",
+    "retrieved_at": "2026-10-30T02:51:10.098035+00:00",
+    "response_sha256": "c09345f8caaaf4e6a8f2105eeabcabcba00d712f8a26511a1b5f55565540defa",
+    "itemCode": "462010",
+    "stockEndType": "etf",
+    "stockName": "TIGER 2차전지소재Fn",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:22+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "466920": {
+    "source_url": "https://m.stock.naver.com/api/stock/466920/basic",
+    "retrieved_at": "2026-10-30T02:51:10.631347+00:00",
+    "response_sha256": "d1d447f4ba1668eac8b25e608d8d05735f006619821cbfe855578499db9333ca",
+    "itemCode": "466920",
+    "stockEndType": "etf",
+    "stockName": "SOL 조선TOP3플러스",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:03+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "449450": {
+    "source_url": "https://m.stock.naver.com/api/stock/449450/basic",
+    "retrieved_at": "2026-10-30T02:51:11.170406+00:00",
+    "response_sha256": "2a85c627fcfc99e3941224b06491244b22a621916ffac92f84342fdb37e12fb5",
+    "itemCode": "449450",
+    "stockEndType": "etf",
+    "stockName": "PLUS K방산",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:10+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "491820": {
+    "source_url": "https://m.stock.naver.com/api/stock/491820/basic",
+    "retrieved_at": "2026-10-30T02:51:11.855078+00:00",
+    "response_sha256": "49d28037581a1cc068978d7a2eaebe19401ab41153b14815d24977987261d1b4",
+    "itemCode": "491820",
+    "stockEndType": "etf",
+    "stockName": "HANARO 전력설비투자",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:05+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "434730": {
+    "source_url": "https://m.stock.naver.com/api/stock/434730/basic",
+    "retrieved_at": "2026-10-30T02:51:12.485563+00:00",
+    "response_sha256": "2506b839eef4b6d634e2adfa2e004db50c30c2c28237c4c45b9575ff7ff9362d",
+    "itemCode": "434730",
+    "stockEndType": "etf",
+    "stockName": "HANARO 원자력iSelect",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:11+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "0148J0": {
+    "source_url": "https://m.stock.naver.com/api/stock/0148J0/basic",
+    "retrieved_at": "2026-10-30T02:51:13.136604+00:00",
+    "response_sha256": "2e24b9a45d6dfa37e27a228562fc362d64f77f15c3ad09569604910b14c1e89f",
+    "itemCode": "0148J0",
+    "stockEndType": "etf",
+    "stockName": "TIGER 코리아휴머노이드로봇산업",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:22+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "228790": {
+    "source_url": "https://m.stock.naver.com/api/stock/228790/basic",
+    "retrieved_at": "2026-10-30T02:51:13.665260+00:00",
+    "response_sha256": "066d02b2e6c6dff5dd87d55ce567a0cdcec2029b85e65fb9679acac05acf8915",
+    "itemCode": "228790",
+    "stockEndType": "etf",
+    "stockName": "TIGER 화장품",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:00+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "244580": {
+    "source_url": "https://m.stock.naver.com/api/stock/244580/basic",
+    "retrieved_at": "2026-10-30T02:51:14.250145+00:00",
+    "response_sha256": "590909844bc1cb4ad210ab936256cdc8b76d57239a9fff449e37ab40ec21432c",
+    "itemCode": "244580",
+    "stockEndType": "etf",
+    "stockName": "KODEX 바이오",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:23+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "307510": {
+    "source_url": "https://m.stock.naver.com/api/stock/307510/basic",
+    "retrieved_at": "2026-10-30T02:51:14.895979+00:00",
+    "response_sha256": "12ed74a37a7f91611bae0afd3938bafe2317feb04d1a6dd75bd3947f516ef80e",
+    "itemCode": "307510",
+    "stockEndType": "etf",
+    "stockName": "TIGER 의료기기",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:14+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "438900": {
+    "source_url": "https://m.stock.naver.com/api/stock/438900/basic",
+    "retrieved_at": "2026-10-30T02:51:15.442061+00:00",
+    "response_sha256": "3947574d5f31f96a9750535d8ec0aa0961bab5294cf6ad29255deef6f7d4ddec",
+    "itemCode": "438900",
+    "stockEndType": "etf",
+    "stockName": "HANARO Fn K-푸드",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:42:39+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "228800": {
+    "source_url": "https://m.stock.naver.com/api/stock/228800/basic",
+    "retrieved_at": "2026-10-30T02:51:16.045782+00:00",
+    "response_sha256": "5e5734b96e390024d74f4cfad76e1ff0d4dc0f78f00193b92445adca8e3db4ff",
+    "itemCode": "228800",
+    "stockEndType": "etf",
+    "stockName": "TIGER 여행레저",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:11+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "377990": {
+    "source_url": "https://m.stock.naver.com/api/stock/377990/basic",
+    "retrieved_at": "2026-10-30T02:51:16.675847+00:00",
+    "response_sha256": "a9ea67f80a24abd5b79d6544275653bb7f76bb7a4ace1c99984fdb2716677ab5",
+    "itemCode": "377990",
+    "stockEndType": "etf",
+    "stockName": "TIGER Fn신재생에너지",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:15+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "457990": {
+    "source_url": "https://m.stock.naver.com/api/stock/457990/basic",
+    "retrieved_at": "2026-10-30T02:51:17.297088+00:00",
+    "response_sha256": "735d06a832bb5a440ec0e37541b5f707ac676b62437a422fa4a877cf6737ec76",
+    "itemCode": "457990",
+    "stockEndType": "etf",
+    "stockName": "PLUS 태양광&ESS",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:16+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "367770": {
+    "source_url": "https://m.stock.naver.com/api/stock/367770/basic",
+    "retrieved_at": "2026-10-30T02:51:17.933625+00:00",
+    "response_sha256": "0e526f159ad7d119c97ad6dcc275e1f22448a39e30e32017d68a2138f8b4d52b",
+    "itemCode": "367770",
+    "stockEndType": "etf",
+    "stockName": "RISE 수소경제테마",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:49:25+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "421320": {
+    "source_url": "https://m.stock.naver.com/api/stock/421320/basic",
+    "retrieved_at": "2026-10-30T02:51:18.479088+00:00",
+    "response_sha256": "3c46dee86bede55001da7f0fc1b3a2fe6726a8223d556d9400d1b69600e60575",
+    "itemCode": "421320",
+    "stockEndType": "etf",
+    "stockName": "PLUS 우주항공",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:18+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "322400": {
+    "source_url": "https://m.stock.naver.com/api/stock/322400/basic",
+    "retrieved_at": "2026-10-30T02:51:19.057137+00:00",
+    "response_sha256": "7408646872dbcf2c3297b7ff8fe66f56351c41a2c55f7bcc610cf26d8076962c",
+    "itemCode": "322400",
+    "stockEndType": "etf",
+    "stockName": "HANARO e커머스",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:17+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "367760": {
+    "source_url": "https://m.stock.naver.com/api/stock/367760/basic",
+    "retrieved_at": "2026-10-30T02:51:19.594342+00:00",
+    "response_sha256": "ea9b4c5095128b8b219bfd25cf591e2060005f9423590885acbf85cf7b6672fa",
+    "itemCode": "367760",
+    "stockEndType": "etf",
+    "stockName": "RISE 네트워크인프라",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:50:55+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "314700": {
+    "source_url": "https://m.stock.naver.com/api/stock/314700/basic",
+    "retrieved_at": "2026-10-30T02:51:20.134732+00:00",
+    "response_sha256": "2fb8e175cf0bf84adc1792e5eb4bc32b93e85c5dd429d3bc97f9ca0ea624ffcd",
+    "itemCode": "314700",
+    "stockEndType": "etf",
+    "stockName": "HANARO 농업융복합산업",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T10:53:37+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  },
+  "300950": {
+    "source_url": "https://m.stock.naver.com/api/stock/300950/basic",
+    "retrieved_at": "2026-10-30T02:51:20.686145+00:00",
+    "response_sha256": "050fe8ad7556e8ee0b950590be30e551c3db7280924a3f7e6cc8b43819694cab",
+    "itemCode": "300950",
+    "stockEndType": "etf",
+    "stockName": "KODEX 게임산업",
+    "marketStatus": "OPEN",
+    "localTradedAt": "2026-10-30T11:51:15+09:00",
+    "tradeStopType": {
+      "code": "1",
+      "text": "운영.Trading",
+      "name": "TRADING"
+    },
+    "tradableStatus": "tradable",
+    "newlyListed": false
+  }
+}

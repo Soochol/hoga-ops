@@ -1,0 +1,21 @@
+{
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/test_market_breadth.py tests/unit/test_market_breadth_history.py",
+      "chunk_id": "ef7504",
+      "wall_time_seconds": 3.013752479,
+      "exit_code": 0,
+      "original_token_count": 162,
+      "output": "============================= test session starts ==============================\nplatform linux -- Python 3.14.7, pytest-9.0.3, pluggy-1.6.0\nrootdir: /home/dev/.codex/worktrees/bd18/hoga-ops\nconfigfile: pyproject.toml\nplugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0\nasyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 27 items\n\ntests/unit/test_market_breadth.py ..................                     [ 66%]\ntests/unit/test_market_breadth_history.py .........                      [100%]\n\n============================== 27 passed in 0.11s ==============================\n"
+    },
+    {
+      "command": "uv run --extra dev ruff check hoga/market_breadth.py hoga/market_breadth_history.py tests/unit/test_market_breadth.py tests/unit/test_market_breadth_history.py docs/research/2026-10-30-etf-breadth-history/*.py",
+      "chunk_id": "80834e",
+      "wall_time_seconds": 0.892463284,
+      "exit_code": 0,
+      "original_token_count": 5,
+      "output": "All checks passed!\n"
+    }
+  ],
+  "note": "Latest origin/main fetched; no differences in the breadth modules, their tests, pyproject.toml or uv.lock against this checkout. See validation.json for source and dependency input hashes."
+}

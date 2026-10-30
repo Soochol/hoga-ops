@@ -1,0 +1,76 @@
+{
+  "checks": {
+    "477_stocks_125_unique_sessions_59625_price_rows": "passed",
+    "all_confirmations_and_all_20_60_120_125_windows": "passed",
+    "both_protected_file_hash_sets_equal": "passed",
+    "prior_25_price_histories_preserved": "passed",
+    "1601_approved_records_unchanged": "passed",
+    "three_ma_engine_code_sets_equal_to_independent_calculation": "passed",
+    "fixed_snapshot_reaudit_all_seven_hashes_identical": "passed",
+    "rebind_guard_identical_record_accepted_and_five_changes_refused": "passed",
+    "raw_conflict_resolved_and_unresolved_counts_reconciled": "passed",
+    "final_job_all_495_confirmed_with_no_missing_prices": "passed",
+    "final_reviewed_job_status_refreshed": "passed"
+  },
+  "ruff": "All checks passed!",
+  "python": "3.14.7",
+  "polars": "1.41.0",
+  "snapshot_id": "38a10e636b4740e5fc550a02c2d08b1a6dbfa20cb43e608fb2e1884d47d54740",
+  "collector_revision": "5b9a68f1ab2eb68f8a90205fb7250f655292ca3831ccf7a900bc6ccf631c3c93",
+  "git_head": "5feb03bfea8f065af7a6e8565b14a72b03f39bfb",
+  "local_main": "d31eeb2396e7c669b2900c05f3f6330d4f953aa4",
+  "files": {
+    "README.md": "cf398aa387a7ca1f5ba8e9837a89e0ee486b4f10a684ff9fc79ea7e2e97eb138",
+    "after-health.json": "641caea1f2a77b3c07b15f068b898aba2e17977e71d8d3276d310a0ef5dc6ce9",
+    "after-snapshot.json": "b4eb64b0fd9bf475d2f3406aee1880c6017de796e853d6e65070a899a23a191d",
+    "before-snapshot.json": "b8d4f18c83e649356c611ee0ececd734b274d4726eb4944e46fecd46c87151f2",
+    "collection-job-before-review.json": "d40147234ce257ae884175da706365f230bcd03f31ed333cb1b71ddf39af4f2d",
+    "confirmed-adjusted.parquet": "3606072263905a974f8e026058ddb95c1467ce96da3c038417c24a02117cce41",
+    "confirmed-raw-candidates.parquet": "5f3a06021ae0976fd5ba4265b7b4922d011d5218e341a2b4c3f7eb43df677a71",
+    "early-review-preflight.json": "4204ceeaa0002b718e49a743d1364a4202fa1a6f9d86ca747b2a3f6e1053993c",
+    "existing-coverage.json": "c8db9ed12e689a0459962422585ebedd7db721c4b17af5565a34748d5214f940",
+    "existing-history-preservation.json": "6337d6f5caf58eee429c86e5cfbf8b9159575b57ecb2b526a8112926e3aca678",
+    "job-review-refresh.json": "c441c3e757e6728c53da91287f6e32fc6497289afe2e5e7ec009ca3b9814cbfb",
+    "job.json": "b112fb42f6804015d0233c54fd78c32e538bce5c149095becfe09b26b2ca0604",
+    "latest-job.json": "b112fb42f6804015d0233c54fd78c32e538bce5c149095becfe09b26b2ca0604",
+    "ma-verification.json": "76a0b87ed54a6dd2acba9119a551dcf9dec9deb8d330c5f5d2e4bf6a40a641e2",
+    "output-hashes.json": "04f92bf047e97f542a6897f0ee755e41882b72fba57ff2e12e38829bbc5e171a",
+    "plan.json": "71f05b461aa80cdc346474e9ee3daa90cdfd4e961b21967e5406a1dbb6a580e9",
+    "preserve_reviews.py": "66adca6ef9e0995c19eb90dcf2a9bfdd7d1e8375a252be13a1878a269a9c70a3",
+    "previous-approved-proof-requests.json": "c9156688712dadb46df55a1a0b18284e29c939b1012360249dd6e07803722cf7",
+    "protected-after.json": "d82e27ff0682ac98cae3f16e75311c745178414534c1e7209b4a2b6a3ba9fb9e",
+    "protected-before.json": "d82e27ff0682ac98cae3f16e75311c745178414534c1e7209b4a2b6a3ba9fb9e",
+    "raw-conflicts.json": "c6df2c61611b724b2fbfda849fefe6b3296c61db28ab6cfa94c5c0ba6eb3ce5b",
+    "recovery-spec.json": "7698aa0e26b159dea2e15786dc3e369208d7db5c25de1ce9119300070f54b6cb",
+    "replay-validation.json": "003a41bf8d2f2af70fff30f68515f3c7e752d69d81dede0d13cc412bff3203f3",
+    "resolved-raw.parquet": "db9d6987474a4ad87b52af1e2e1223bc3166e951ff3e0eef9c826f68f3af3040",
+    "review-preflight.json": "aa3508596b99ad77649713060d19f16bde03306dfc2cadfd0a91db68abeb171b",
+    "review-preservation.json": "6ea1314266ad62857a9886f15bcbfc370a653b8a1d17d37aa0ff368aecbc64a7",
+    "start-response.json": "fbd8d58eddaeb40fb9b1690de9498c95b2b91f11ac80c808b9c9f1ef511de204",
+    "stocks.json": "a610fd09efdd91d5d91bf8bfdfe0383e2ffe7b0a19c22c80b7877d74357a1ba7",
+    "summary.json": "48dd6925f4d42d978c31148ba500660e26e42da6a1ccad0843b02169efb2e38c",
+    "verify_observations.py": "595862ae9fc00a328599de98991244e94adf83b0ab8f3a876515efb796dedda8"
+  },
+  "commands": [
+    [
+      "/home/dev/code/hoga-ops/.venv/bin/python3",
+      "/home/dev/.codex/worktrees/bd18/hoga-ops/docs/research/2026-10-30-etf-confirmed-observations/preserve_reviews.py",
+      "--apply"
+    ],
+    [
+      "/home/dev/code/hoga-ops/.venv/bin/python3",
+      "/home/dev/.codex/worktrees/bd18/hoga-ops/docs/research/2026-10-30-etf-confirmed-observations/verify_observations.py",
+      "--snapshot-id",
+      "38a10e636b4740e5fc550a02c2d08b1a6dbfa20cb43e608fb2e1884d47d54740"
+    ],
+    [
+      "uv",
+      "run",
+      "--extra",
+      "dev",
+      "ruff",
+      "check",
+      "docs/research/2026-10-30-etf-confirmed-observations"
+    ]
+  ]
+}

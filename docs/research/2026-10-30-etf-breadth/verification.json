@@ -1,0 +1,41 @@
+{
+  "inputs": {
+    "2026-10-30-etf-constituent-validation/memberships.json": "c10a9cab01366ba71cb6ebab650fd263ce3c2ed05f053c91703cad8c820ea064",
+    "2026-10-30-etf-constituent-validation/universe.json": "79929f0eafa29ef9ef095b550aa53af87e71b903ac30000b3f5ae5c596ef2fed",
+    "2026-10-30-etf-constituent-validation/security-observations.json": "5babbf901ebaa04605bda979e806a5ca753a03747638ed62d83a1ef9d99bd15a",
+    "2026-10-30-etf-constituent-validation/daily-evidence/calendar.json": "9bb08da66fb1f4fb737375d4721f7a049f135c42e7ca127ee5b99268a03bbc1f",
+    "2026-10-30-etf-confirmed-observations/confirmed-adjusted.parquet": "3606072263905a974f8e026058ddb95c1467ce96da3c038417c24a02117cce41",
+    "2026-10-30-etf-confirmed-observations/summary.json": "48dd6925f4d42d978c31148ba500660e26e42da6a1ccad0843b02169efb2e38c",
+    "2026-10-30-etf-confirmed-observations/stocks.json": "a610fd09efdd91d5d91bf8bfdfe0383e2ffe7b0a19c22c80b7877d74357a1ba7",
+    "2026-10-30-etf-confirmed-observations/ma-verification.json": "76a0b87ed54a6dd2acba9119a551dcf9dec9deb8d330c5f5d2e4bf6a40a641e2",
+    "2026-10-30-etf-universe/selected.json": "8a6be0f192288fe14f324a3d01f685e1fce64e2c9e4213237cd4ea966ddd40d0"
+  },
+  "etf_count": 38,
+  "membership_count": 757,
+  "union_count": 477,
+  "calculation_available_count": 477,
+  "inclusive_engine_reconciliation": [
+    {
+      "period": 20,
+      "strict_above": 71,
+      "equal": 1,
+      "previous_inclusive": 72,
+      "code_sets_reconcile": true
+    },
+    {
+      "period": 60,
+      "strict_above": 79,
+      "equal": 1,
+      "previous_inclusive": 80,
+      "code_sets_reconcile": true
+    },
+    {
+      "period": 120,
+      "strict_above": 74,
+      "equal": 1,
+      "previous_inclusive": 75,
+      "code_sets_reconcile": true
+    }
+  ],
+  "score_is_equal_weight_period_mean": true
+}

@@ -1,0 +1,128 @@
+{
+  "content": [
+    {
+      "num": 1,
+      "wkdate": "20261030",
+      "jmCd": "012450",
+      "krJmCd": "KR7012450003",
+      "jmNm": "한화에어로스페이스",
+      "amount": 237.0,
+      "ratio": 25.1361
+    },
+    {
+      "num": 2,
+      "wkdate": "20261030",
+      "jmCd": "047810",
+      "krJmCd": "KR7047810007",
+      "jmNm": "한국항공우주",
+      "amount": 1191.0,
+      "ratio": 16.6871
+    },
+    {
+      "num": 3,
+      "wkdate": "20261030",
+      "jmCd": "042660",
+      "krJmCd": "KR7042660001",
+      "jmNm": "한화오션",
+      "amount": 2295.0,
+      "ratio": 16.1737
+    },
+    {
+      "num": 4,
+      "wkdate": "20261030",
+      "jmCd": "079550",
+      "krJmCd": "KR7079550000",
+      "jmNm": "LIG디펜스앤에어로스페이스",
+      "amount": 228.0,
+      "ratio": 13.6021
+    },
+    {
+      "num": 5,
+      "wkdate": "20261030",
+      "jmCd": "064350",
+      "krJmCd": "KR7064350002",
+      "jmNm": "현대로템",
+      "amount": 1222.0,
+      "ratio": 13.4721
+    },
+    {
+      "num": 6,
+      "wkdate": "20261030",
+      "jmCd": "272210",
+      "krJmCd": "KR7272210006",
+      "jmNm": "한화시스템",
+      "amount": 1218.0,
+      "ratio": 10.9803
+    },
+    {
+      "num": 7,
+      "wkdate": "20261030",
+      "jmCd": "103140",
+      "krJmCd": "KR7103140000",
+      "jmNm": "풍산",
+      "amount": 295.0,
+      "ratio": 2.4042
+    },
+    {
+      "num": 8,
+      "wkdate": "20261030",
+      "jmCd": "003570",
+      "krJmCd": "KR7003570009",
+      "jmNm": "SNT다이내믹스",
+      "amount": 164.0,
+      "ratio": 0.5848
+    },
+    {
+      "num": 9,
+      "wkdate": "20261030",
+      "jmCd": "077970",
+      "krJmCd": "KR7077970002",
+      "jmNm": "STX엔진",
+      "amount": 259.0,
+      "ratio": 0.57
+    },
+    {
+      "num": 10,
+      "wkdate": "20261030",
+      "jmCd": "484870",
+      "krJmCd": "KR7484870001",
+      "jmNm": "엠앤씨솔루션",
+      "amount": 117.0,
+      "ratio": 0.2227
+    },
+    {
+      "num": 11,
+      "wkdate": "20261030",
+      "jmCd": null,
+      "krJmCd": "KRD010010001",
+      "jmNm": "원화예금",
+      "amount": 1195742.0,
+      "ratio": 0.1669
+    }
+  ],
+  "pageable": {
+    "pageNumber": 0,
+    "pageSize": 100,
+    "sort": {
+      "sorted": false,
+      "empty": true,
+      "unsorted": true
+    },
+    "offset": 0,
+    "paged": true,
+    "unpaged": false
+  },
+  "last": true,
+  "totalElements": 11,
+  "totalPages": 1,
+  "first": true,
+  "size": 100,
+  "number": 0,
+  "sort": {
+    "sorted": false,
+    "empty": true,
+    "unsorted": true
+  },
+  "numberOfElements": 11,
+  "empty": false
+}

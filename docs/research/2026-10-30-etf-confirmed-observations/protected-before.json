@@ -1,0 +1,13 @@
+{
+  "daily_unadjusted.parquet": "3fec3f0d62818418dd350f9e775a0ab255ff5e3613258aa43b8e79e63496f0e4",
+  "daily_adjusted.parquet": "6d9b152d32d23b33bd4538d62aa06935ef1ca05120b42f06f01d37ce6fb90ff1",
+  "factors.parquet": "6d7df65617257a14d744183f5215cb9b101e4256d18dd8c8b70f639e4562a732",
+  "stocks.parquet": "03d617a09d01edb6fd0285d05f5c2b5f3b34c59573eb64974c1107dca78fa168",
+  "status.json": "0af31325539269be956ad048d602ee6a7dcf291652753e474bc538c87e6d9c3c",
+  "history_evidence.json": "c2ecb2db29c71337c6d4858c2222d43815228722a200586466fd9f2f2920fd14",
+  "saves.json": "bf45beb91ecd4101c2fbd77b758af6ca78b7a405f76cb16b4dbf3287c34b90c6",
+  "exclusions.json": null,
+  "saves.v2.json": null,
+  "exclusions.v2.json": null,
+  "refresh_report.json": "5ad37135d457fc28f84b28c56ad7432176f31704d1ba3a6af8b5c6c388bfcb80"
+}

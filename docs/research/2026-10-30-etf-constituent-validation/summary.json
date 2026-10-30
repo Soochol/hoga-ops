@@ -1,0 +1,56 @@
+{
+  "target": "2026-10-29",
+  "constituent_reference_date": "2026-10-30",
+  "etfs": 38,
+  "membership_rows": 757,
+  "unique_stocks": 477,
+  "excluded_cash_rows": 38,
+  "markets": {
+    "KOSPI": 258,
+    "KOSDAQ": 219
+  },
+  "snapshot_calendar_last": "2026-10-23",
+  "snapshot_adjusted_as_of": "2026-10-24",
+  "missing_snapshot_calendar_sessions": [
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28",
+    "2026-10-29"
+  ],
+  "complete_counts": {
+    "raw": {
+      "target_20": 477,
+      "target_60": 477,
+      "target_120": 477,
+      "target_125": 477,
+      "snapshot_20": 477,
+      "snapshot_60": 477,
+      "snapshot_120": 477,
+      "snapshot_125": 477
+    },
+    "adjusted": {
+      "target_20": 477,
+      "target_60": 477,
+      "target_120": 477,
+      "target_125": 477,
+      "snapshot_20": 477,
+      "snapshot_60": 477,
+      "snapshot_120": 477,
+      "snapshot_125": 477
+    },
+    "confirmed": {
+      "target_20": 0,
+      "target_60": 0,
+      "target_120": 0,
+      "target_125": 0,
+      "snapshot_20": 7,
+      "snapshot_60": 7,
+      "snapshot_120": 7,
+      "snapshot_125": 7
+    }
+  },
+  "action_counts": {
+    "confirm_existing_history_and_align_adjusted_anchor": 477
+  },
+  "physical_deficiencies": []
+}

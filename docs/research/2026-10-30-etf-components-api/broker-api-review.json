@@ -1,0 +1,1493 @@
+{
+  "checked_at": "2026-10-30T03:08:44.163214+00:00",
+  "kis": {
+    "documentation_url": "https://github.com/koreainvestment/open-trading-api/blob/main/examples_llm/etfetn/inquire_component_stock_price/inquire_component_stock_price.py",
+    "source_sha256": "91fc582ca462aed3f5352f39ea2ce21984cadb3570f2c43877d11ade00846e91",
+    "api_path": "/uapi/etfetn/v1/quotations/inquire-component-stock-price",
+    "tr_id": "FHKST121600C0",
+    "params": {
+      "FID_COND_MRKT_DIV_CODE": "J",
+      "FID_INPUT_ISCD": "ETF Code",
+      "FID_COND_SCR_DIV_CODE": "11216"
+    },
+    "response_blocks": [
+      "output1",
+      "output2"
+    ],
+    "live_called": false,
+    "reason": "Broker credentials are not used in development. ADR-0136 also limits KIS use; no new KIS runtime dependency was added."
+  },
+  "kiwoom": {
+    "documentation_url": "https://github.com/Kiwoom-Securities/Kiwoom-REST-API/blob/main/kiwoom/_data/kiwoom_api_spec.json",
+    "source_sha256": "1795188d8ac9d98c57beb422e2be0dc7a51fd981fb37cf33d394f3a04dabcb8e",
+    "source_hash_scope": "Reserialized JSON source downloaded for inspection",
+    "etf_api_count": 9,
+    "etf_apis": [
+      {
+        "api_id": "ka40001",
+        "name": "ETF수익율요청",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "etfprft_rt_lst",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF수익율",
+              "type": "LIST",
+              "required": "N",
+              "length": "",
+              "description": ""
+            },
+            {
+              "element": "etfprft_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "ETF수익률",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "cntr_prft_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "체결수익률",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "for_netprps_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "외인순매수수량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "orgn_netprps_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "기관순매수수량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            }
+          ]
+        }
+      },
+      {
+        "api_id": "ka40002",
+        "name": "ETF종목정보요청",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "stk_nm",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "종목명",
+              "type": "String",
+              "required": "N",
+              "length": "40",
+              "description": ""
+            },
+            {
+              "element": "etfobjt_idex_nm",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF대상지수명",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "wonju_pric",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "원주가격",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "etftxon_type",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF과세유형",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "etntxon_type",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETN과세유형",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            }
+          ]
+        }
+      },
+      {
+        "api_id": "ka40003",
+        "name": "ETF일별추이요청",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "etfdaly_trnsn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF일별추이",
+              "type": "LIST",
+              "required": "N",
+              "length": "",
+              "description": ""
+            },
+            {
+              "element": "cntr_dt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "체결일자",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "YYYYMMDD"
+            },
+            {
+              "element": "cur_prc",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "현재가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_sig",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대비기호",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            },
+            {
+              "element": "pred_pre",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대비율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "trde_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "거래량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주"
+            },
+            {
+              "element": "nav",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "부호 포함 소수점 둘째 자리까지 포맷된 숫자"
+            },
+            {
+              "element": "acc_trde_prica",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "누적거래대금",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주"
+            },
+            {
+              "element": "navidex_dispty_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV/지수괴리율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "navetfdispty_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV/ETF괴리율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "trace_eor_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적오차율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "소수점 제거 된 100배 값으로 제공\n \n예) \"2658\"값은 26.58을 의미합니다."
+            },
+            {
+              "element": "trace_cur_prc",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적현재가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "소수점 제거 된 100배 값으로 제공\n \n예) \"2658\"값은 26.58을 의미합니다."
+            },
+            {
+              "element": "trace_pred_pre",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "소수점 제거 된 100배 값으로 제공\n \n예) \"2658\"값은 26.58을 의미합니다."
+            },
+            {
+              "element": "trace_pre_sig",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적대비기호",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            }
+          ]
+        }
+      },
+      {
+        "api_id": "ka40004",
+        "name": "ETF전체시세요청",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "etfall_mrpr",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF전체시세",
+              "type": "LIST",
+              "required": "N",
+              "length": "",
+              "description": ""
+            },
+            {
+              "element": "stk_cd",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "종목코드",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "stk_cls",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "종목분류",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "stk_nm",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "종목명",
+              "type": "String",
+              "required": "N",
+              "length": "40",
+              "description": ""
+            },
+            {
+              "element": "close_pric",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "종가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_sig",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대비기호",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            },
+            {
+              "element": "pred_pre",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대비율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "trde_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "거래량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주"
+            },
+            {
+              "element": "nav",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "부호 포함 소수점 둘째 자리까지 포맷된 숫자"
+            },
+            {
+              "element": "trace_eor_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적오차율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "txbs",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "과표기준",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "dvid_bf_base",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "배당전기준",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "pred_dvida",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "전일배당금",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "trace_idex_nm",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적지수명",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "drng",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "배수",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "trace_idex_cd",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적지수코드",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "trace_idex",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적지수",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "trace_flu_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적등락율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            }
+          ]
+        }
+      },
+      {
+        "api_id": "ka40006",
+        "name": "ETF시간대별추이요청",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "stk_nm",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "종목명",
+              "type": "String",
+              "required": "N",
+              "length": "40",
+              "description": ""
+            },
+            {
+              "element": "etfobjt_idex_nm",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF대상지수명",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "wonju_pric",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "원주가격",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "etftxon_type",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF과세유형",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "etntxon_type",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETN과세유형",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "etftisl_trnsn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF시간대별추이",
+              "type": "LIST",
+              "required": "N",
+              "length": "",
+              "description": ""
+            },
+            {
+              "element": "tm",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "시간",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "HHmmss"
+            },
+            {
+              "element": "close_pric",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "종가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_sig",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대비기호",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            },
+            {
+              "element": "pred_pre",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "flu_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "등락율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "trde_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "거래량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주"
+            },
+            {
+              "element": "nav",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "부호 포함 소수점 둘째 자리까지 포맷된 숫자"
+            },
+            {
+              "element": "trde_prica",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "거래대금",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 백만원"
+            },
+            {
+              "element": "navidex",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV지수",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "navetf",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "괴리율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "trace",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적오차율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: %, 부호 포함 소수점 둘째 자리까지 포맷된 백분율"
+            },
+            {
+              "element": "trace_idex",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적지수",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "소수점 제거 된 100배 값으로 제공\n \n예) \"2658\"값은 26.58을 의미합니다."
+            },
+            {
+              "element": "trace_idex_pred_pre",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적지수전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "소수점 제거 된 100배 값으로 제공\n \n예) \"2658\"값은 26.58을 의미합니다."
+            },
+            {
+              "element": "trace_idex_pred_pre_sig",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적지수전일대비기호",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            }
+          ]
+        }
+      },
+      {
+        "api_id": "ka40007",
+        "name": "ETF시간대별체결요청",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "stk_cls",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "종목분류",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "stk_nm",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "종목명",
+              "type": "String",
+              "required": "N",
+              "length": "40",
+              "description": ""
+            },
+            {
+              "element": "etfobjt_idex_nm",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF대상지수명",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "etfobjt_idex_cd",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF대상지수코드",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "objt_idex_pre_rt",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "대상지수대비율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "소수점 둘째 자리까지 포맷된 숫자"
+            },
+            {
+              "element": "wonju_pric",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "원주가격",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "etftisl_cntr_array",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF시간대별체결배열",
+              "type": "LIST",
+              "required": "N",
+              "length": "",
+              "description": ""
+            },
+            {
+              "element": "cntr_tm",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "체결시간",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "HHmmss"
+            },
+            {
+              "element": "cur_prc",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "현재가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_sig",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대비기호",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            },
+            {
+              "element": "pred_pre",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "trde_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "거래량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주, 부호가 포함된 숫자"
+            },
+            {
+              "element": "stex_tp",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "거래소구분",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "KRX , NXT , 통합"
+            }
+          ]
+        }
+      },
+      {
+        "api_id": "ka40008",
+        "name": "ETF일자별체결요청",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "cntr_tm",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "체결시간",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "HHmmss"
+            },
+            {
+              "element": "cur_prc",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "현재가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_sig",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "대비기호",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            },
+            {
+              "element": "pred_pre",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "trde_qty",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "거래량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주, 부호가 포함된 숫자"
+            },
+            {
+              "element": "etfnetprps_qty_array",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF순매수수량배열",
+              "type": "LIST",
+              "required": "N",
+              "length": "",
+              "description": ""
+            },
+            {
+              "element": "dt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "일자",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "YYYYMMDD"
+            },
+            {
+              "element": "cur_prc_n",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "현재가n",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_sig_n",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대비기호n",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            },
+            {
+              "element": "pred_pre_n",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "전일대비n",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "acc_trde_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "누적거래량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주"
+            },
+            {
+              "element": "for_netprps_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "외인순매수수량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주, 부호가 포함된 숫자"
+            },
+            {
+              "element": "orgn_netprps_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "기관순매수수량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주, 부호가 포함된 숫자"
+            }
+          ]
+        }
+      },
+      {
+        "api_id": "ka40009",
+        "name": "ETF시간대별NAV현황",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "etfnavarray",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETFNAV배열",
+              "type": "LIST",
+              "required": "N",
+              "length": "",
+              "description": ""
+            },
+            {
+              "element": "nav",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "navpred_pre",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "navflu_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "NAV등락율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "trace_eor_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "추적오차율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "dispty_rt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "괴리율",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "stkcnt",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "주식수",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "base_pric",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "기준가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "for_rmnd_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "외인보유수량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "repl_pric",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대용가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "conv_pric",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "환산가격",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "drstk",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "DR/주",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            },
+            {
+              "element": "wonju_pric",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "원주가격",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": ""
+            }
+          ]
+        }
+      },
+      {
+        "api_id": "ka40010",
+        "name": "ETF시간대별수급현황",
+        "endpoint": "/api/dostk/etf",
+        "response": {
+          "header": [
+            {
+              "element": "api-id",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "TR명",
+              "type": "String",
+              "required": "Y",
+              "length": "10",
+              "description": "7자리 TR코드, ex) ka00001"
+            },
+            {
+              "element": "cont-yn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회여부",
+              "type": "String",
+              "required": "N",
+              "length": "1",
+              "description": "다음 데이터가 있을시 Y값 전달"
+            },
+            {
+              "element": "next-key",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "연속조회키",
+              "type": "String",
+              "required": "N",
+              "length": "50",
+              "description": "다음 데이터가 있을시 다음 키값 전달"
+            }
+          ],
+          "body": [
+            {
+              "element": "etftisl_trnsn",
+              "depth": 0,
+              "is_section": false,
+              "한글명": "ETF시간대별추이",
+              "type": "LIST",
+              "required": "N",
+              "length": "",
+              "description": ""
+            },
+            {
+              "element": "cur_prc",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "현재가",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "pre_sig",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "대비기호",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "1: 상한가, 2:상승, 3:보합, 4:하한가, 5:하락"
+            },
+            {
+              "element": "pred_pre",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "전일대비",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 원, 부호가 포함된 숫자"
+            },
+            {
+              "element": "trde_qty",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "거래량",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주"
+            },
+            {
+              "element": "for_netprps",
+              "depth": 1,
+              "is_section": false,
+              "한글명": "외인순매수",
+              "type": "String",
+              "required": "N",
+              "length": "20",
+              "description": "단위: 1주, 부호가 포함된 숫자"
+            }
+          ]
+        }
+      }
+    ],
+    "theme_api_is_not_etf_holdings": {
+      "api_id": "ka90002",
+      "name": "테마구성종목요청"
+    },
+    "live_called": false,
+    "finding": "No ETF constituent list operation was found among the current nine ka400 ETF operations. ka90002 is broker theme membership, not a specific ETF basket."
+  }
+}

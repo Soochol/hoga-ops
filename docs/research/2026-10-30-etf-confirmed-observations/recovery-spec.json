@@ -1,0 +1,2978 @@
+{
+  "adjusted_as_of": "2026-10-30",
+  "clock": "2026-10-30T12:56:15.154167+09:00",
+  "targets": [
+    {
+      "code": "000080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000100",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000120",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000150",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000210",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000240",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000250",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000270",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000370",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000400",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000660",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000720",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000990",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "0009K0",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "001040",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "001430",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "001440",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "001450",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "001500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "001680",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "001720",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "001800",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "002380",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "002790",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003030",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003230",
+      "first": "2018-08-28",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003240",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003280",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003380",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003470",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003530",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003540",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003570",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003620",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003670",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "003690",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "004000",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "004020",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "004170",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "004370",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "004490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005070",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005180",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005290",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005300",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005380",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005420",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005690",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005830",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005850",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005880",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005930",
+      "first": "2018-08-28",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "005940",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006040",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006110",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006120",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006260",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006280",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006340",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006360",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006400",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006650",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006730",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "006800",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "007070",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "007310",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "007340",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "007390",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "007660",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "007810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "008060",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "008770",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "0088M0",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "008930",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009150",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009240",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009420",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009450",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009520",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009540",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009830",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009900",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "009970",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "010060",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "010120",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "010130",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "010140",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "010170",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "010780",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "010950",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "011070",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "011170",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "011200",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "011210",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "011780",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "011790",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "0120G0",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "012330",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "012450",
+      "first": "2018-08-28",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "012630",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "0126Z0",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "014620",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "014680",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "015750",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "015760",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "016360",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "016380",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "016790",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "017670",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "017800",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "017810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "017960",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "018260",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "018290",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "018670",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "018880",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "020150",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "020560",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "021240",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "022100",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "023160",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "023530",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "024110",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "025320",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "025980",
+      "first": "2018-08-28",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "026960",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "028050",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "028300",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "028670",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "030000",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "030200",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "030520",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "030610",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "031210",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "031980",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "032350",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "032500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "032640",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "032820",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "032830",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "033100",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "033500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "033780",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "034020",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "034220",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "034230",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "035250",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "035420",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "035600",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "035720",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "035760",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "035810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "035900",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "036530",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "036570",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "036830",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "036890",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "036930",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "038390",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "038500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "039030",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "039130",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "039200",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "039490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "039560",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "039840",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "039860",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "041510",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "041830",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "041920",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "042000",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "042520",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "042660",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "042700",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "043150",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "044490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "045100",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "047040",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "047810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "048410",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "048870",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "050890",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "051500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "051600",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "051900",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "051910",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "052400",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "052690",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "053800",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "054950",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "055550",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "056080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "058470",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "058610",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "059090",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "060250",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "060280",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "060370",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "062040",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "064260",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "064350",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "064400",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "064760",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "064960",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "066570",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "066970",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "067160",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "067310",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "068270",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "068760",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "069080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "069260",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "069620",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "069960",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "071050",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "071970",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "072710",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "073240",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "073490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "075580",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "077500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "077970",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "078340",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "078600",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "079160",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "079550",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "079940",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "080160",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "080220",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "081660",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "082740",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "083650",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "084370",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "085620",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "085660",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "086280",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "086390",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "086450",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "086520",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "086790",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "087010",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "088350",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "089030",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "089590",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "089860",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "089980",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "090360",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "090430",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "090460",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "091700",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "091810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "093320",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "093370",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "094480",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "094820",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "095190",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "095340",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "095610",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "095660",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "096530",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "096770",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "097950",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "099190",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "099320",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "099430",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "100090",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "100120",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "100130",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "100590",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "103140",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "103590",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "105560",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "107640",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "108380",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "108490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "108860",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "111770",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "112040",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "112610",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "114090",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "114840",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "115180",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "115440",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "119610",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "119850",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "120110",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "121600",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "122870",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "122990",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "123330",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "124500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "126340",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "126880",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "127120",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "128940",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "130660",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "131290",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "131970",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "136490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "137310",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "137400",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "138080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "138610",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "138930",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "139130",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "139480",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "141080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "144510",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "145020",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "145720",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "156100",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "160190",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "161390",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "161890",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "174900",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "175330",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "178320",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "178920",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "180640",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "181710",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "185750",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "189300",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "192080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "192820",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "194480",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "195940",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "196170",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "201490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "204320",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "204610",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "206640",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "207940",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "211050",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "211270",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "214150",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "214320",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "214370",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "214420",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "214450",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "216080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "218410",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "222080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "222800",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "225570",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "226320",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "226950",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "228760",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "229640",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "230240",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "237690",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "237880",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "240810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "241560",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "241710",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "247540",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "249420",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "251270",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "251970",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "256840",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "257720",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "259960",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "263750",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "267250",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "267260",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "267270",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "271560",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "271940",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "272210",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "272450",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "274090",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "277810",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "278280",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "278470",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "279570",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "280360",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "281740",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "282330",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "285130",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "288620",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "290550",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "290650",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "293490",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "294870",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "295310",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "297090",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "298020",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "298040",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "298050",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "298380",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "298690",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "300720",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "302440",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "307950",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "310210",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "314930",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "316140",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "318060",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "319400",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "319660",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "322000",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "323410",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "326030",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "328130",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "329180",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "336260",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "336370",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "336570",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "338220",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "340570",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "347700",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "347850",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "348340",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "348370",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "352480",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "352820",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "353200",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "357780",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "358570",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "361390",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "361610",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "365340",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "368770",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "373220",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "375500",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "376270",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "376300",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "376900",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "377300",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "377740",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "380550",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "382900",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "383220",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "388050",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "388720",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "389260",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "389470",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "389650",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "393890",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "394420",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "394800",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "397030",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "403870",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "417200",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "437730",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "439090",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "439260",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "440110",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "443060",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "445680",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "450080",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "450950",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "451760",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "454910",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "455900",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "456040",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "456160",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "457190",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "458870",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "462350",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "462870",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "466100",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "468530",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "474170",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "475150",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "475830",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "475960",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "476060",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "476830",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "483650",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "484870",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "491000",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "499790",
+      "first": "2026-04-24",
+      "last": "2026-10-29",
+      "reason": "etf_union_477_confirmed_adjusted_prices"
+    },
+    {
+      "code": "000020",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "000520",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "013120",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "017650",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "900310",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "001000",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "020180",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "044480",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "900300",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "004770",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "013030",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "020400",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "027710",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "000650",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "001530",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "003060",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "900340",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    },
+    {
+      "code": "000430",
+      "first": "2021-11-26",
+      "last": "2026-10-29",
+      "reason": "preserve_existing_confirmed_history_on_shared_price_anchor"
+    }
+  ],
+  "comparisons": [],
+  "confirmation_policy": "historical_recheck_v1"
+}

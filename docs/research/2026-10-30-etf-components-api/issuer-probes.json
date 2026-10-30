@@ -1,0 +1,101 @@
+{
+  "verified_at": "2026-10-30T03:11:53.306347+00:00",
+  "issuer_json_samples": [
+    {
+      "issuer": "kodex",
+      "code": "091160",
+      "source_url": "https://m.samsungfund.com/api/v1/kodex/product/2ETF07.do",
+      "source_response_sha256": "169d44507f1e9e57541eec29197f5b22a99121ed27656106bb9c8ca729a1cd6d",
+      "evidence_file": "issuer-responses/kodex-091160.json",
+      "projection": true,
+      "rows": 22,
+      "dates": [
+        "20261030"
+      ],
+      "fields_verified": [
+        "itmNo",
+        "secNm",
+        "applyQ",
+        "ratio"
+      ],
+      "stock_code_count": 21,
+      "provider_stock_code_count": 21,
+      "codes_match": true,
+      "cu_quantities_match": true,
+      "issuer_only_codes": [],
+      "provider_only_codes": [],
+      "weight_note": "Issuer PDF ratios exclude cash; provider ratios include cash. Do not compare percentages directly."
+    },
+    {
+      "issuer": "sol",
+      "code": "466920",
+      "source_url": "https://www.soletf.com/api/fund/pdfList?fund_cd=211028&work_dt=20261030",
+      "source_response_sha256": "88764fd21c37c428135d82d88af7a2ac7e00d5373f004ce673b3375f815f997c",
+      "evidence_file": "issuer-responses/sol-466920.json",
+      "projection": false,
+      "rows": 14,
+      "dates": [
+        "20261030"
+      ],
+      "fields_verified": [
+        "ETF_CD6",
+        "WORK_DT",
+        "STOCK_CODE",
+        "SEC_NM",
+        "WT_DISP",
+        "QTY"
+      ],
+      "stock_code_count": 13,
+      "provider_stock_code_count": 13,
+      "codes_match": true,
+      "cu_quantities_match": true,
+      "issuer_only_codes": [],
+      "provider_only_codes": [],
+      "weight_note": "Some weights differ by 0.01 percentage point at display precision."
+    },
+    {
+      "issuer": "plus",
+      "code": "449450",
+      "source_url": "https://www.plusetf.co.kr/api/v1/product/pdf/list?n=006192&page=0&d=20261030&pageSize=100",
+      "source_response_sha256": "1edb86152d3da914b7902e5d7e8530229fcc1d0163fcda5a28acdab9d6ab1979",
+      "evidence_file": "issuer-responses/plus-449450.json",
+      "projection": false,
+      "rows": 11,
+      "dates": [
+        "20261030"
+      ],
+      "fields_verified": [
+        "wkdate",
+        "jmCd",
+        "krJmCd",
+        "jmNm",
+        "ratio",
+        "amount"
+      ],
+      "stock_code_count": 10,
+      "provider_stock_code_count": 10,
+      "codes_match": true,
+      "cu_quantities_match": true,
+      "issuer_only_codes": [],
+      "provider_only_codes": [],
+      "weight_note": "Issuer exposes four decimal places; provider exposes two. Preserve source precision."
+    }
+  ],
+  "not_live_verified_issuer_routes": [
+    {
+      "issuer": "HANARO",
+      "status": "composition page and download controls found; JSON route not tested",
+      "page_url": "https://www.hanaroetf.com/fund/24A384532ECE491A"
+    },
+    {
+      "issuer": "TIGER",
+      "status": "direct issuer API not tested"
+    },
+    {
+      "issuer": "RISE",
+      "status": "direct page request failed TLS hostname verification; TLS verification was not disabled",
+      "page_url": "https://www.riseetf.co.kr/prod/finderDetail/44A7"
+    }
+  ],
+  "full_38_issuer_crosscheck": false
+}

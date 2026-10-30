@@ -1,0 +1,1586 @@
+[
+  {
+    "code": "003240",
+    "previous_review": "c717b1f00ca6e14bddf2068924bb689e269308ccdf702704ad26cef38bf152f1",
+    "proofs": [
+      {
+        "date": "2026-09-14",
+        "reason": "intraday_prefix",
+        "evidence_id": "eca5c746fbe27a7bc25cbfabbc59e1f7ee8a91021a94d804b718d5f64db74832",
+        "prefix_end_ms": 1789370520000
+      },
+      {
+        "date": "2026-09-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "e84c5efbb2148e905ba64879d8c1ca3a659fc6ad3913b65e2dc6482e8f968b44",
+        "prefix_end_ms": 1789457100000
+      },
+      {
+        "date": "2026-09-18",
+        "reason": "intraday_prefix",
+        "evidence_id": "c92ca36582f23867c4782052cb6ea10685a4d3459f3c9e7a0e1d9e692f20b7fa",
+        "prefix_end_ms": 1789723680000
+      },
+      {
+        "date": "2026-09-21",
+        "reason": "intraday_prefix",
+        "evidence_id": "ef377acfc2e02f81fc48c0b982a2e6b223dd08aac1e70444faa0c15399a901e8",
+        "prefix_end_ms": 1789986240000
+      }
+    ]
+  },
+  {
+    "code": "038390",
+    "previous_review": "20dc531619d9b205852c3289fd64e68cf34251c6127c787128a79f1b607c6a12",
+    "proofs": [
+      {
+        "date": "2024-01-02",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-03",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-04",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-09",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-10",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-11",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-12",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-15",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-16",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-17",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-18",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-22",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-23",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-24",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-25",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-26",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-29",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-30",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-01-31",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-01",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-02",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-06",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-07",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-13",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-14",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-15",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-16",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-20",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-21",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-22",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-23",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-26",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-27",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-28",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-02-29",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-04",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-06",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-07",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-11",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-12",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-13",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-14",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-15",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-18",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-20",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-21",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-22",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-25",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-26",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-27",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-28",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-03-29",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-01",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-02",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-03",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-04",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-09",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-11",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-12",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-15",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-16",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-17",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-18",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-22",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-23",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-24",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-25",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-26",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-29",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-04-30",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-02",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-03",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-07",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-09",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-10",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-13",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-14",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-16",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-17",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-20",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-21",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-22",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-23",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-24",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-27",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-28",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-29",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-30",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-05-31",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-03",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-04",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-07",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-10",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-11",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-12",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-13",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-14",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-17",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-18",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-20",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-21",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-24",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-25",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-26",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-27",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-06-28",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-01",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-02",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-03",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-04",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-09",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-10",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-11",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-12",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-15",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-16",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-17",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-18",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-22",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-23",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-24",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-25",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-26",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-29",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-30",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-07-31",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-01",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-02",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-06",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-07",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-09",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-12",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-13",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-14",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-16",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-20",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-21",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-22",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-23",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-26",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-27",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-28",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-29",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-08-30",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-02",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-03",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-04",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-06",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-09",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-10",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-11",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-12",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-13",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-20",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-23",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-24",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-25",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-26",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-27",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-09-30",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-02",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-04",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-07",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-10",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-11",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-14",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-15",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-16",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-17",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-18",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-21",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-22",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-23",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-24",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-25",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-28",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-29",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-30",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-10-31",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-01",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-04",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-05",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-06",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-07",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-08",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-11",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-12",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-13",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-14",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-15",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-18",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-19",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-20",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2024-11-21",
+        "reason": "legacy_pre_event_adjusted_basis",
+        "evidence_id": "50002a65f2cfbb788daf6a6fa9804c89788ac5aea697ffad27ad284d0d7935d1",
+        "prefix_end_ms": null
+      },
+      {
+        "date": "2026-06-11",
+        "reason": "intraday_prefix",
+        "evidence_id": "3dead199e17806e90faaca884a62306cc9450d8add65a0012a68a7b5b4057ac2",
+        "prefix_end_ms": 1781159400000
+      },
+      {
+        "date": "2026-06-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "2aa7d76aa710198f4f338795708e625cc2d822646de890d607d288f4e214bf10",
+        "prefix_end_ms": 1781505000000
+      },
+      {
+        "date": "2026-07-29",
+        "reason": "intraday_prefix",
+        "evidence_id": "e75860296bfcc67310669e5b67951633e0d8a7475d9ba77a86c24f1a82779711",
+        "prefix_end_ms": 1785306900000
+      },
+      {
+        "date": "2026-08-11",
+        "reason": "intraday_prefix",
+        "evidence_id": "efe1fab8452f839a4b1ddbcffbc142869ef0d65b15769ff154f79ea2c2f401f9",
+        "prefix_end_ms": 1786430100000
+      },
+      {
+        "date": "2026-08-14",
+        "reason": "intraday_prefix",
+        "evidence_id": "b683e2dc02c13590b2f63b338a4ddbf71a54b0cffcd3235aa9b53991c666c7b5",
+        "prefix_end_ms": 1786689000000
+      },
+      {
+        "date": "2026-09-07",
+        "reason": "intraday_prefix",
+        "evidence_id": "1f481a796c7e1205bef76a92d1aaafdc66b3b003231ef983d1a9f51706959113",
+        "prefix_end_ms": 1788762900000
+      },
+      {
+        "date": "2026-09-10",
+        "reason": "intraday_prefix",
+        "evidence_id": "d942958e492a97ab6bc7968b91fd68e892c828977dccaba392cbcd661adf6d4c",
+        "prefix_end_ms": 1789021800000
+      },
+      {
+        "date": "2026-09-14",
+        "reason": "intraday_prefix",
+        "evidence_id": "760a41fa7525b0d761af2353fdec7da78208552b08e450d19311a9afcf6b5728",
+        "prefix_end_ms": 1789372920000
+      },
+      {
+        "date": "2026-09-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "a86c8dea0b2cc5cc492537ad9549b713be2fb5e49172a02f1893b81cd76c6a04",
+        "prefix_end_ms": 1789457280000
+      },
+      {
+        "date": "2026-09-18",
+        "reason": "intraday_prefix",
+        "evidence_id": "a445ae95f73b93c6676a0021a42dad840938ac8a6d45eb1e462448bfebeffd80",
+        "prefix_end_ms": 1789723200000
+      },
+      {
+        "date": "2026-09-21",
+        "reason": "intraday_prefix",
+        "evidence_id": "cbcfb177a0e7e9b149d0d21a8a3d76c6e38dd654b30e4e52ed55c1959d80f715",
+        "prefix_end_ms": 1789986120000
+      }
+    ]
+  },
+  {
+    "code": "025980",
+    "previous_review": "a086a20f867e6869609bb05ca87715164adc8f0393e9a51fe3f965141634eefc",
+    "proofs": [
+      {
+        "date": "2026-08-14",
+        "reason": "intraday_prefix",
+        "evidence_id": "665f65bdccf76f57188723f123fee7072d2e4e4b23c8473fccf9f1ff9491acf2",
+        "prefix_end_ms": 1786689300000
+      },
+      {
+        "date": "2026-09-04",
+        "reason": "intraday_prefix",
+        "evidence_id": "bc252fe8369d9d556c611da570f683f9fa74548759346068bd44eacf03f33699",
+        "prefix_end_ms": 1788503700000
+      },
+      {
+        "date": "2026-09-07",
+        "reason": "intraday_prefix",
+        "evidence_id": "e80cb41a9079ae436d810c12d7f4cebb86e72eac975200fef94ec0e0a61b7518",
+        "prefix_end_ms": 1788762900000
+      },
+      {
+        "date": "2026-09-11",
+        "reason": "intraday_prefix",
+        "evidence_id": "2fc0d5e55711d00e494f4e8653a124e665dc9c8e351e967d8363052d4a22bec3",
+        "prefix_end_ms": 1789108500000
+      },
+      {
+        "date": "2026-09-18",
+        "reason": "intraday_prefix",
+        "evidence_id": "1ca4af76ee59dd6f2978bf105c0fcd0fa0958cb7a9d39c15ccc7bae2e04dfd00",
+        "prefix_end_ms": 1789725120000
+      }
+    ]
+  },
+  {
+    "code": "003230",
+    "previous_review": "b2ece1d7e1d9c2472e9300d68fc6740ee8f89090f246e3660bdcce7db3b5d915",
+    "proofs": [
+      {
+        "date": "2026-09-14",
+        "reason": "intraday_prefix",
+        "evidence_id": "29b39f11cb96fc6f449235234629a0b0b06f90d3d26f931fae9a2b02c81ce196",
+        "prefix_end_ms": 1789372800000
+      },
+      {
+        "date": "2026-09-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "bdeb703db2d0f9df6680f8cbe0c8bf1be502d7a5b7bac789ac93274398e4562b",
+        "prefix_end_ms": 1789458840000
+      },
+      {
+        "date": "2026-09-21",
+        "reason": "intraday_prefix",
+        "evidence_id": "7864a17abc382af53a5d01b825b3009ae332deb39e04071c195df39f169f09f1",
+        "prefix_end_ms": 1789986360000
+      }
+    ]
+  },
+  {
+    "code": "012450",
+    "previous_review": "6502131dc8ab8a78145402f926520839823ba9cc9bdf6b04f1df2c81dedf563f",
+    "proofs": [
+      {
+        "date": "2026-06-08",
+        "reason": "intraday_prefix",
+        "evidence_id": "d06c23184a9f95661f8536be18200690010caa61736d8041297da0c2e5e17c77",
+        "prefix_end_ms": 1780900500000
+      },
+      {
+        "date": "2026-06-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "3ac30067d61eb62377eb0632f1b7df95becb043a16b7e1898e33d193085279cc",
+        "prefix_end_ms": 1781505300000
+      },
+      {
+        "date": "2026-07-10",
+        "reason": "intraday_prefix",
+        "evidence_id": "315275b8527e70d8308dfeedaa2013e82d4fddc12223e09d175deb1ae44bdf3d",
+        "prefix_end_ms": 1783665300000
+      },
+      {
+        "date": "2026-07-13",
+        "reason": "intraday_prefix",
+        "evidence_id": "626a259c9741fa5b9d482747f3e7e247361ec5783e8a21649ccc3381a04595df",
+        "prefix_end_ms": 1783924500000
+      },
+      {
+        "date": "2026-07-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "7a935afc43aa4b8d02553d8d89f0b39f01f14e3b696ab83c3f775bb570903272",
+        "prefix_end_ms": 1784097300000
+      },
+      {
+        "date": "2026-07-22",
+        "reason": "intraday_prefix",
+        "evidence_id": "4bf122ee7a6498cd343a98783308c58f45be06908a780652749d8d446dfbe3c5",
+        "prefix_end_ms": 1784702100000
+      },
+      {
+        "date": "2026-08-14",
+        "reason": "intraday_prefix",
+        "evidence_id": "dcc6b8f199fc2e782f733a69ed2a17fa3160d45b291c5dab202b56f029ae395a",
+        "prefix_end_ms": 1786689000000
+      },
+      {
+        "date": "2026-09-10",
+        "reason": "intraday_prefix",
+        "evidence_id": "ae24b0e02417d88e32cac580b91949748431ff0794ceb7fbed3f2e2078c4c31e",
+        "prefix_end_ms": 1789021800000
+      },
+      {
+        "date": "2026-09-11",
+        "reason": "intraday_prefix",
+        "evidence_id": "5be2e4e13206d8ad003ea455d1f280a52998ea617232da7dec814701b5112dca",
+        "prefix_end_ms": 1789108500000
+      },
+      {
+        "date": "2026-09-14",
+        "reason": "intraday_prefix",
+        "evidence_id": "f99bf6ce0777b4df923d39eceed5a47675bfaff676c0db944c826185a9518423",
+        "prefix_end_ms": 1789372920000
+      },
+      {
+        "date": "2026-09-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "3db43ce9e266a156ce0c11ca034082f51de65a9c7833e8d4240a3426db797bd0",
+        "prefix_end_ms": 1789458720000
+      },
+      {
+        "date": "2026-09-18",
+        "reason": "intraday_prefix",
+        "evidence_id": "ceb0024c1e7ef387a302fe2833596363c9d6b6af6df5c7e0c3b50980dd65b34a",
+        "prefix_end_ms": 1789725300000
+      },
+      {
+        "date": "2026-09-21",
+        "reason": "intraday_prefix",
+        "evidence_id": "27527d56c2fdd511fb3f56d7f77b13613df03d56712b7388d07cf1a05221d0a1",
+        "prefix_end_ms": 1789986360000
+      }
+    ]
+  },
+  {
+    "code": "000120",
+    "previous_review": "e3515ac12fe7e4a65df83d1a6c30f18a7cb5e9b0fa79cee8ab8448562d9731e7",
+    "proofs": [
+      {
+        "date": "2026-09-14",
+        "reason": "intraday_prefix",
+        "evidence_id": "02b5c1f132f8a7f6e3d9d818be5a15b5c06495bca3f8a5da45c813d9db65f30a",
+        "prefix_end_ms": 1789372440000
+      },
+      {
+        "date": "2026-09-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "9946c6dcc91b82f29d995f234368ecc3d0ba4553843f6dccbbfa8d4ce38506d8",
+        "prefix_end_ms": 1789457820000
+      },
+      {
+        "date": "2026-09-18",
+        "reason": "intraday_prefix",
+        "evidence_id": "ac2b44246d430921b831a389105103de5e6858dd6cb619063434ef3e6c32c02e",
+        "prefix_end_ms": 1789724340000
+      },
+      {
+        "date": "2026-09-21",
+        "reason": "intraday_prefix",
+        "evidence_id": "1b59d206d42d4801845b9a72d323d049a2d122d639320d8adddd7b8d4fdcfcb3",
+        "prefix_end_ms": 1789983600000
+      }
+    ]
+  }
+]

@@ -1,0 +1,10 @@
+# Frozen issuer responses are byte-for-byte evidence (including original CRLF and
+# whitespace). Preserve source hashes across checkouts and omit textual diffs.
+docs/research/2026-10-30-etf-constituent-validation/issuer-responses/*.html binary linguist-generated=true
+
+# Generated research payloads remain available, but collapse by default in PRs.
+docs/research/2026-10-30-etf-*/**/*.json linguist-generated=true
+docs/research/2026-10-30-etf-*/**/*.parquet linguist-generated=true
+docs/research/2026-10-30-etf-*/**/*.xls linguist-generated=true
+docs/research/2026-10-30-etf-*/**/*.xlsx linguist-generated=true
+frontend/public/market-breadth/snapshot.json linguist-generated=true

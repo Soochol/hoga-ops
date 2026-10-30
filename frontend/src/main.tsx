@@ -10,7 +10,7 @@ import AppErrorBoundary from './ui/AppErrorBoundary';
 import DesktopConfigGate from './ui/DesktopConfigGate';
 import { AppTooltipHost } from './ui/AppTooltipHost';
 import { liveCacheStats } from './api/liveCachePolicy';
-import { LandingPage, Heatmap, Inventory, Screener, Capture, Sentiment, Market, Whiteboard, StudyBookmarkRedirect } from './mainRoutes';
+import { LandingPage, Heatmap, Inventory, Screener, Capture, Sentiment, Market, Breadth, Whiteboard, StudyBookmarkRedirect } from './mainRoutes';
 
 // `/settings` **페이지는 없다** — 설정은 앱 전역 드로어 하나이고(`App` 소유), 트리거는
 // 전부 `requestSettingsModal()` 로 모인다. 페이지 사본이 있던 시절엔 같은 내용이 두
@@ -80,6 +80,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="screener" element={<Suspense fallback={null}><Screener /></Suspense>} />
             <Route path="capture" element={<Suspense fallback={null}><Capture /></Suspense>} />
             <Route path="sentiment" element={<Suspense fallback={null}><Sentiment /></Suspense>} />
+            <Route path="breadth" element={<Suspense fallback={null}><Breadth /></Suspense>} />
             <Route path="market" element={<Suspense fallback={null}><Market /></Suspense>} />
             <Route path="whiteboard" element={<Suspense fallback={null}><Whiteboard /></Suspense>} />
             {/* 옛 `/settings` 페이지 북마크를 받아 준다 — 설정이 드로어가 되면서 갈

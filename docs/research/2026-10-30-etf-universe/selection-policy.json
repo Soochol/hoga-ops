@@ -1,0 +1,516 @@
+{
+  "schema_version": 1,
+  "research_date": "2026-10-30",
+  "scope": "Korea-listed domestic-equity passive sector/theme ETFs; constituent collection is outside stages 1 and 2",
+  "selected": [
+    {
+      "group_id": "semiconductor",
+      "group_label": "반도체",
+      "tier": "base",
+      "code": "091160",
+      "selection_reason": "KRX 반도체의 산업 범위를 기본으로 선택. 같은 KRX 지수의 091230은 대체 후보, TOP2/TOP10은 집중형 대안으로 보존."
+    },
+    {
+      "group_id": "automobile",
+      "group_label": "자동차",
+      "tier": "base",
+      "code": "091180",
+      "selection_reason": "KRX 자동차 업종 대표. TOP3 중심 대안보다 업종 단위 관측을 우선."
+    },
+    {
+      "group_id": "bank",
+      "group_label": "은행",
+      "tier": "base",
+      "code": "091170",
+      "selection_reason": "KRX 은행 지수 대표. 같은 지수의 091220과 비교해 목록 시가총액이 큰 상품을 선택."
+    },
+    {
+      "group_id": "securities",
+      "group_label": "증권",
+      "tier": "base",
+      "code": "102970",
+      "selection_reason": "KRX 증권을 기본 업종 지수로 선택. 배당·TOP3 전략을 기본 표본과 분리."
+    },
+    {
+      "group_id": "insurance",
+      "group_label": "보험",
+      "tier": "base",
+      "code": "140700",
+      "selection_reason": "보험 업종 전용 패시브 표본. 은행·증권과는 별도 분석하되 금융 합산 시 종목 중복 제거."
+    },
+    {
+      "group_id": "machinery",
+      "group_label": "기계장비",
+      "tier": "base",
+      "code": "102960",
+      "selection_reason": "기계장비 업종 표본. ETF 거래대금이 작아도 편입 주식 목록을 얻는 목적에서는 자동 탈락시키지 않음."
+    },
+    {
+      "group_id": "construction",
+      "group_label": "건설",
+      "tier": "base",
+      "code": "117700",
+      "selection_reason": "KRX 건설 업종을 기본으로 선택. KOSPI200 건설은 대형주 중심 대체 후보."
+    },
+    {
+      "group_id": "steel",
+      "group_label": "철강",
+      "tier": "base",
+      "code": "117680",
+      "selection_reason": "철강 업종 전용 표본. 철강·소재 혼합 지수는 대체 후보로 구분."
+    },
+    {
+      "group_id": "energy_chemicals",
+      "group_label": "에너지화학",
+      "tier": "base",
+      "code": "117460",
+      "selection_reason": "KRX 에너지화학 대표. 같은 산업의 KOSPI200 한정 대안과 구분."
+    },
+    {
+      "group_id": "transport",
+      "group_label": "운송",
+      "tier": "base",
+      "code": "140710",
+      "selection_reason": "운송 업종을 조선 제조와 구분해 관측."
+    },
+    {
+      "group_id": "staples",
+      "group_label": "필수소비재",
+      "tier": "base",
+      "code": "266410",
+      "selection_reason": "KRX 필수소비재를 기본 범위로 선택. 식품 세부 표본도 별도 보존."
+    },
+    {
+      "group_id": "discretionary",
+      "group_label": "경기소비재",
+      "tier": "base",
+      "code": "266390",
+      "selection_reason": "KRX 경기소비재를 기본 범위로 선택. KOSPI200 한정 대안보다 범위 제약을 적게 둠."
+    },
+    {
+      "group_id": "healthcare",
+      "group_label": "헬스케어",
+      "tier": "base",
+      "code": "143860",
+      "selection_reason": "266420과 같은 KRX 헬스케어 지수. 목록 시가총액이 큰 143860을 대표로 선택. 실제 편입 목록의 동일성은 다음 단계 확인."
+    },
+    {
+      "group_id": "content",
+      "group_label": "콘텐츠",
+      "tier": "base",
+      "code": "266360",
+      "selection_reason": "KRX K콘텐츠를 상위 콘텐츠 표본으로 선택. 제공 설명의 구 IT소프트웨어 문구는 운용사 현재 지수 자료로 보완."
+    },
+    {
+      "group_id": "software",
+      "group_label": "소프트웨어",
+      "tier": "base",
+      "code": "157490",
+      "selection_reason": "소프트웨어 산업 지수를 기본으로 선택. 인터넷TOP10·AI소프트웨어는 하위 범위 대안."
+    },
+    {
+      "group_id": "information_technology",
+      "group_label": "정보기술 종합",
+      "tier": "base",
+      "code": "266370",
+      "selection_reason": "KRX 정보기술을 기본 범위로 선택. KOSPI200 IT·코스닥150 IT는 범위 제한 대안. 반도체와 종목 중복 가능."
+    },
+    {
+      "group_id": "communication",
+      "group_label": "커뮤니케이션서비스",
+      "tier": "base",
+      "code": "315270",
+      "selection_reason": "통신사업자를 제외하는 네트워크인프라와 구분하기 위한 상위 섹터 표본. KOSPI200 범위 제약과 플랫폼·콘텐츠 중첩을 명시."
+    },
+    {
+      "group_id": "semiconductor_supplies",
+      "group_label": "반도체 소부장",
+      "tier": "theme",
+      "code": "455850",
+      "selection_reason": "소재·부품·장비를 함께 다루는 지수. 전공정·후공정·핵심장비 단독 ETF는 세부 대안으로 보존."
+    },
+    {
+      "group_id": "battery",
+      "group_label": "2차전지 산업",
+      "tier": "theme",
+      "code": "305720",
+      "selection_reason": "원재료·장비·부품·제조를 포함하는 산업 밸류체인. TOP10 집중형보다 기본 산업 범위를 우선."
+    },
+    {
+      "group_id": "battery_materials",
+      "group_label": "2차전지 소재",
+      "tier": "theme",
+      "code": "462010",
+      "selection_reason": "양극재·음극재·전해질·분리막 등 소재 범위의 지수. 산업 전체와 별도 그룹으로 관측."
+    },
+    {
+      "group_id": "shipbuilding",
+      "group_label": "조선",
+      "tier": "theme",
+      "code": "466920",
+      "selection_reason": "설계상 조선 TOP3와 관련 밸류체인 10종목을 함께 고려. TOP3라는 이름만으로 편입 주식 범위가 좁다고 판단하지 않음."
+    },
+    {
+      "group_id": "defense",
+      "group_label": "방산",
+      "tier": "theme",
+      "code": "449450",
+      "selection_reason": "방위산업 패시브 지수 대표. 우주항공 혼합형·방산 소부장은 별도 대안으로 보존."
+    },
+    {
+      "group_id": "power_equipment",
+      "group_label": "전력설비",
+      "tier": "theme",
+      "code": "491820",
+      "selection_reason": "전력설비 산업 범위의 지수를 대표로 선택. AI전력핵심설비와 TOP3형은 비교 대안. 현재 종목 수 우월성을 확정한 선택은 아님."
+    },
+    {
+      "group_id": "nuclear",
+      "group_label": "원자력",
+      "tier": "theme",
+      "code": "434730",
+      "selection_reason": "원전 설비·시공 등 밸류체인을 포괄하는 기존 패시브 표본. SMR·TOP10은 세부 대안."
+    },
+    {
+      "group_id": "humanoid_robot",
+      "group_label": "휴머노이드로봇",
+      "tier": "theme",
+      "code": "0148J0",
+      "selection_reason": "한국 상장 휴머노이드 로봇 관련 패시브 지수. 로봇 전체를 대표한다고 표시하지 않음. 액티브 운용 선택 효과를 기본 표본에서 분리."
+    },
+    {
+      "group_id": "cosmetics",
+      "group_label": "화장품",
+      "tier": "theme",
+      "code": "228790",
+      "selection_reason": "화장품 산업 표본. TOP3 집중형·K뷰티 대안은 다음 단계 종목 범위 비교용으로 보존."
+    },
+    {
+      "group_id": "biotechnology",
+      "group_label": "바이오",
+      "tier": "theme",
+      "code": "244580",
+      "selection_reason": "국내 바이오 사업 기업을 선정하는 FnGuide 지수. TOP10 한정 대안과 구분."
+    },
+    {
+      "group_id": "medical_devices",
+      "group_label": "의료기기",
+      "tier": "theme",
+      "code": "307510",
+      "selection_reason": "의료장비 및 서비스 분류에 속하는 기업의 지수. 미용·치과 중심 소부장이나 의료AI보다 산업 분류를 우선."
+    },
+    {
+      "group_id": "food",
+      "group_label": "식품",
+      "tier": "theme",
+      "code": "438900",
+      "selection_reason": "국내 K푸드 관련 산업을 관측하는 패시브 표본. 필수소비재와 중복 가능."
+    },
+    {
+      "group_id": "travel",
+      "group_label": "여행레저",
+      "tier": "theme",
+      "code": "228800",
+      "selection_reason": "여행·레저를 함께 다루는 국내 산업 표본. 골프 단독·엔터 혼합형은 세부 대안."
+    },
+    {
+      "group_id": "renewable_energy",
+      "group_label": "신재생에너지",
+      "tier": "theme",
+      "code": "377990",
+      "selection_reason": "국내 상장 신재생에너지 관련 기업의 지수. 원자재 선물 가격을 추적하는 상품과 구분."
+    },
+    {
+      "group_id": "solar_ess",
+      "group_label": "태양광과 ESS",
+      "tier": "theme",
+      "code": "457990",
+      "selection_reason": "태양광·ESS 관련 국내 주식 표본. 신재생에너지 내부 차이를 관측하는 세부 그룹."
+    },
+    {
+      "group_id": "hydrogen",
+      "group_label": "수소경제",
+      "tier": "theme",
+      "code": "367770",
+      "selection_reason": "수소경제 국내 밸류체인 패시브 표본. 글로벌 수소 ETF와 구분."
+    },
+    {
+      "group_id": "aerospace",
+      "group_label": "우주항공",
+      "tier": "theme",
+      "code": "421320",
+      "selection_reason": "국내 우주항공·UAM 산업 표본. 우주 밸류체인 TOP10은 세부 대안."
+    },
+    {
+      "group_id": "ecommerce",
+      "group_label": "전자상거래",
+      "tier": "theme",
+      "code": "322400",
+      "selection_reason": "국내 온라인쇼핑·인터넷서비스 또는 전자상거래 연관 기업의 지수. 소프트웨어와 중복 가능."
+    },
+    {
+      "group_id": "network_infrastructure",
+      "group_label": "네트워크인프라",
+      "tier": "theme",
+      "code": "367760",
+      "selection_reason": "네트워크 장비·관련 하드웨어 관측. 운용사 설명상 통신사업자는 제외하므로 통신업 전체로 부르지 않음."
+    },
+    {
+      "group_id": "agriculture",
+      "group_label": "농업융복합",
+      "tier": "theme",
+      "code": "314700",
+      "selection_reason": "농업 관련 생산·장비·서비스 등 국내 산업 범위 보완. 작은 ETF 규모만으로 제외하지 않음."
+    },
+    {
+      "group_id": "gaming",
+      "group_label": "게임",
+      "tier": "theme",
+      "code": "300950",
+      "selection_reason": "국내 게임 산업 지수를 기본으로 선택. TOP10 한정 또는 다른 게임 지수는 대체 후보로 보존."
+    }
+  ],
+  "group_patterns": [
+    [
+      "battery_recycling",
+      "배터리 리사이클링"
+    ],
+    [
+      "solid_state_battery",
+      "전고체"
+    ],
+    [
+      "battery_materials",
+      "2차전지소재|2차전지핵심소재|2차전지양극재"
+    ],
+    [
+      "battery_supplies",
+      "2차전지소부장"
+    ],
+    [
+      "battery",
+      "2차전지"
+    ],
+    [
+      "semiconductor_supplies",
+      "반도체.*소부장|반도체.*장비|반도체.*공정"
+    ],
+    [
+      "semiconductor",
+      "반도체"
+    ],
+    [
+      "nuclear",
+      "원자력|원전"
+    ],
+    [
+      "power_equipment",
+      "전력"
+    ],
+    [
+      "ship_supplies",
+      "조선기자재"
+    ],
+    [
+      "shipbuilding",
+      "조선"
+    ],
+    [
+      "defense",
+      "방산"
+    ],
+    [
+      "aerospace",
+      "우주항공"
+    ],
+    [
+      "humanoid_robot",
+      "휴머노이드|로봇"
+    ],
+    [
+      "medical_ai",
+      "의료AI"
+    ],
+    [
+      "medical_devices",
+      "의료기기"
+    ],
+    [
+      "biotechnology",
+      "바이오"
+    ],
+    [
+      "healthcare",
+      "헬스케어"
+    ],
+    [
+      "cosmetics",
+      "화장품|뷰티"
+    ],
+    [
+      "food",
+      "푸드"
+    ],
+    [
+      "agriculture",
+      "농업"
+    ],
+    [
+      "ecommerce",
+      "e커머스"
+    ],
+    [
+      "solar_ess",
+      "태양광"
+    ],
+    [
+      "renewable_energy",
+      "신재생에너지|친환경에너지"
+    ],
+    [
+      "hydrogen",
+      "수소경제"
+    ],
+    [
+      "automobile_supplies",
+      "자동차소부장"
+    ],
+    [
+      "automobile",
+      "자동차|스마트카|전기&수소차"
+    ],
+    [
+      "bank",
+      "은행"
+    ],
+    [
+      "securities",
+      "증권"
+    ],
+    [
+      "insurance",
+      "보험"
+    ],
+    [
+      "construction",
+      "건설"
+    ],
+    [
+      "machinery",
+      "기계장비"
+    ],
+    [
+      "steel",
+      "철강"
+    ],
+    [
+      "energy_chemicals",
+      "에너지화학"
+    ],
+    [
+      "transport",
+      "운송"
+    ],
+    [
+      "communication",
+      "커뮤니케이션서비스"
+    ],
+    [
+      "network_infrastructure",
+      "네트워크인프라|5G"
+    ],
+    [
+      "software",
+      "소프트웨어|인터넷|AI플랫폼"
+    ],
+    [
+      "information_technology",
+      "\\bIT|200IT|150IT"
+    ],
+    [
+      "gaming",
+      "게임"
+    ],
+    [
+      "travel",
+      "여행|골프"
+    ],
+    [
+      "content",
+      "콘텐츠|컨텐츠|미디어|KPOP|웹툰"
+    ],
+    [
+      "staples",
+      "필수소비재|생활소비재"
+    ],
+    [
+      "discretionary",
+      "경기소비재|소비테마|성장소비"
+    ],
+    [
+      "financial_parent",
+      "금융|초대형IB"
+    ],
+    [
+      "industrial_parent",
+      "산업재|중공업|CAPEX"
+    ],
+    [
+      "defensive_parent",
+      "경기방어"
+    ],
+    [
+      "metaverse",
+      "메타버스"
+    ],
+    [
+      "cross_industry_technology",
+      "소버린AI|소버린|온디바이스AI|AI데이터센터|AI테크|코리아테크|BBIG|뉴딜디지털"
+    ]
+  ],
+  "style_pattern": "배당|ESG|탄소효율|기후변화|밸류(?!체인)|가치|모멘텀|퀄리티|우량|로우볼|저변동|최소변동|우선주|블루칩|멀티팩터|성장주|펀더멘탈|동일가중|코스피대형주|코스피중형주|코스닥TOP10|코리아TOP10|Top5Plus|200exTOP|동학개미|수출주|내수주|주도업종",
+  "reason_definitions": {
+    "excluded_leverage_inverse": "배수·역방향·단일종목 파생 구조를 기본 산업 표본에서 제외",
+    "excluded_option_strategy": "커버드콜 옵션 전략을 기본 산업 표본에서 제외",
+    "excluded_pair_strategy": "롱숏 상대가치 선물 전략을 산업 주식 표본에서 제외",
+    "excluded_bond_mixed": "채권·주식채권 혼합은 국내 주식 업종 표본 범위 밖",
+    "excluded_foreign": "해외 또는 국내외 혼합 노출은 국내 주식 업종 표본 범위 밖",
+    "excluded_real_estate": "리츠·부동산·인프라 투자기구는 이번 일반 기업 업종 표본과 분리",
+    "excluded_active": "액티브 운용의 재량 선택 효과를 기본 패시브 표본과 분리",
+    "excluded_issuer_group": "기업집단·고정 특정기업 중심 묶음을 산업 분류와 분리",
+    "excluded_style": "배당·팩터·ESG·규모·수급 스타일은 산업 대표 범위와 분리",
+    "excluded_broad_market": "시장대표 ETF는 업종 대표 선정 대상에서 제외",
+    "excluded_provider_scope": "공급자 분류와 상품명의 범위가 국내 주식 업종·테마 기본 대상 밖",
+    "reference_market": "비교용 시장대표 ETF이며 편입 종목 합산 집합에는 포함하지 않음",
+    "reserve_alternative": "같은 업종 또는 상하위 범위의 대안. 편입 종목 중복률을 확인한 제외는 아님",
+    "reserve_same_index": "선정 상품과 기초지수명이 동일한 대안. 실제 편입 목록까지 같다고 가정하지 않음",
+    "reserve_additional_scope": "추가 산업·하위 테마 후보. 편입 종목을 비교한 뒤 확대 여부 판단"
+  },
+  "selection_order": [
+    "domestic-equity and passive eligibility",
+    "industry scope and explicit index methodology",
+    "one representative per research group; same-index alternatives retained",
+    "listing snapshot market capitalisation only as a secondary same-index tie-breaker"
+  ],
+  "liquidity_policy": "ETF volume is informational, not an exclusion gate for constituent-list research. No trailing median liquidity has been measured.",
+  "performance_policy": "Returns and recent winners are not selection criteria.",
+  "overlap_policy": "No measured holdings overlap before stage 3. Same benchmark or theme is only a proxy for possible overlap.",
+  "reference_codes": [
+    "069500",
+    "229200"
+  ],
+  "held_back_subthemes": [
+    "battery_recycling",
+    "solid_state_battery",
+    "battery_supplies",
+    "ship_supplies",
+    "automobile_supplies",
+    "medical_ai",
+    "metaverse",
+    "cross_industry_technology",
+    "financial_parent",
+    "industrial_parent",
+    "defensive_parent"
+  ],
+  "selection_stage": "stage2_representatives_selected_stage3_holdings_not_collected"
+}

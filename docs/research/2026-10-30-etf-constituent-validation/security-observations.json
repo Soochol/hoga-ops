@@ -1,0 +1,62 @@
+[
+  {
+    "code": "000500",
+    "url": "https://m.stock.naver.com/api/stock/000500/basic",
+    "captured_at": "2026-10-30T03:38:22.022219+00:00",
+    "raw_sha256": "5797b043f4097cf6308817305ffa5f5311a2cf46b0a6826d9592ced7a2ccbe3f",
+    "observation": {
+      "itemCode": "000500",
+      "stockName": "가온전선",
+      "stockEndType": "stock",
+      "localTradedAt": "2026-10-30T12:37:20+09:00",
+      "tradeStopType": {
+        "code": "1",
+        "text": "운영.Trading",
+        "name": "TRADING"
+      },
+      "tradableStatus": "tradable",
+      "marketStatus": "OPEN",
+      "newlyListed": false
+    }
+  },
+  {
+    "code": "016790",
+    "url": "https://m.stock.naver.com/api/stock/016790/basic",
+    "captured_at": "2026-10-30T03:38:22.079547+00:00",
+    "raw_sha256": "b6e479c24b7787a21a4249cfb2bcc0f358ba89e84f3ef7c156d209cd84615053",
+    "observation": {
+      "itemCode": "016790",
+      "stockName": "현대사료",
+      "stockEndType": "stock",
+      "localTradedAt": "2026-10-30T12:38:20+09:00",
+      "tradeStopType": {
+        "code": "2",
+        "text": "정지.Halted",
+        "name": "HALTED"
+      },
+      "tradableStatus": "halt",
+      "marketStatus": "OPEN",
+      "newlyListed": false
+    }
+  },
+  {
+    "code": "091810",
+    "url": "https://m.stock.naver.com/api/stock/091810/basic",
+    "captured_at": "2026-10-30T03:38:22.143542+00:00",
+    "raw_sha256": "d4e6f3e04dc73406a108f7ef5c1b9688d81e60479027db6871d91918b82523f9",
+    "observation": {
+      "itemCode": "091810",
+      "stockName": "트리니티항공",
+      "stockEndType": "stock",
+      "localTradedAt": "2026-10-30T12:38:17+09:00",
+      "tradeStopType": {
+        "code": "1",
+        "text": "운영.Trading",
+        "name": "TRADING"
+      },
+      "tradableStatus": "tradable",
+      "marketStatus": "OPEN",
+      "newlyListed": false
+    }
+  }
+]

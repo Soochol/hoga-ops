@@ -1,0 +1,25 @@
+{
+  "id": "etf_ma_breadth_v1",
+  "periods": [
+    20,
+    60,
+    120
+  ],
+  "price_field": "confirmed vendor-adjusted close",
+  "average": "simple; includes the target close",
+  "comparison": "close > SMA; equality is separate",
+  "etf_breadth_pct": "100 * strictly_above_count / constituent_count",
+  "score": "arithmetic mean of the 20, 60, 120 breadth percentages; equal 1/3 weights",
+  "overall_population": "deduplicated union; one stock, one vote; not an average of ETF scores",
+  "holding_weight_usage": "none",
+  "cash": "excluded",
+  "missing_policy": "incomplete period => null percentage; any incomplete period => null score",
+  "halt_policy": "primary includes all 477 constituents; sampled current halt exclusion is sensitivity only",
+  "score_range": [
+    0,
+    100
+  ],
+  "interpretation": "low = weak upward price breadth; high = broad upward price breadth",
+  "calibration": "unfitted v1 definition; no historical quantile or investor-psychology calibration",
+  "history_scope": "one current constituent snapshot; not a historical point-in-time backtest"
+}

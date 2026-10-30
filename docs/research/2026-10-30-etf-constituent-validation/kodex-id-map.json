@@ -1,0 +1,88 @@
+{
+  "source_url_template": "https://m.samsungfund.com/api/v1/kodex/product.do?ordrColm=NAV&ordrSort=DESC&pageNo={page}",
+  "pages_read": 12,
+  "mapping": {
+    "091160": {
+      "id": "2ETF07",
+      "name": "KODEX 반도체"
+    },
+    "305720": {
+      "id": "2ETFB1",
+      "name": "KODEX 2차전지산업"
+    },
+    "102970": {
+      "id": "2ETF15",
+      "name": "KODEX 증권"
+    },
+    "091180": {
+      "id": "2ETF06",
+      "name": "KODEX 자동차"
+    },
+    "091170": {
+      "id": "2ETF08",
+      "name": "KODEX 은행"
+    },
+    "244580": {
+      "id": "2ETF63",
+      "name": "KODEX 바이오"
+    },
+    "117700": {
+      "id": "2ETF22",
+      "name": "KODEX 건설"
+    },
+    "266370": {
+      "id": "2ETF82",
+      "name": "KODEX IT"
+    },
+    "140700": {
+      "id": "2ETF31",
+      "name": "KODEX 보험"
+    },
+    "266360": {
+      "id": "2ETF81",
+      "name": "KODEX K콘텐츠"
+    },
+    "117460": {
+      "id": "2ETF21",
+      "name": "KODEX 에너지화학"
+    },
+    "117680": {
+      "id": "2ETF23",
+      "name": "KODEX 철강"
+    },
+    "300950": {
+      "id": "2ETFA8",
+      "name": "KODEX 게임산업"
+    },
+    "140710": {
+      "id": "2ETF30",
+      "name": "KODEX 운송"
+    },
+    "266410": {
+      "id": "2ETF80",
+      "name": "KODEX 필수소비재"
+    },
+    "102960": {
+      "id": "2ETF16",
+      "name": "KODEX 기계장비"
+    },
+    "266390": {
+      "id": "2ETF79",
+      "name": "KODEX 경기소비재"
+    }
+  },
+  "page_sha256": [
+    "bd3d996ba86caf34c71a344aeab52a97a96b1967d5bb8895978c8d3985501c1c",
+    "f133bb43c8faec38752ffdcb962b4ecacbd6e8c71c327defbafc3d8f70d6cd67",
+    "86486269327266f30a548d8908f9113fe903a9de9697aa82601accd05ccde751",
+    "42f66d3cd9451d784a032f04c217c8816edeece68ba359dddfa5092954762690",
+    "937d3e618e45090f3ef2028f9d1e59629d5d10ff0e6b2aec2447f43b532538ea",
+    "b877835b2fcb398c636aad7402beb188bce0bd7347258fda3c07278db5cb52c8",
+    "49f2ea51532db919786d54653820a7572ef6da255655380abd22d8cc1cb823d8",
+    "79e1de2b72bb9b0721be096e9eb03a53419d31fd499a6ae232097178c2f3e04d",
+    "07419e61c5579c0659c3153b7f0d4a8130f6f9262f6113bf4e191184f57be83c",
+    "5fb1c67e939d79289a02feabb4e6b9219941e38985edd422407cb8b600425318",
+    "0081a506d3f0850d26d80e1ea5776ae49b792a5400a97a9fb34603b02effccd1",
+    "f57b1e92eea855ec047cefa9d3e8efab68f6f45b2ab29d523c1cb00deebf51d5"
+  ]
+}

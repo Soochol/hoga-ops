@@ -1,0 +1,41 @@
+{
+  "snapshot_id": "6d84d827a8f6a13a882722f2df400bd29c827f78aa6bf5f1cf47ec1f5aee3853",
+  "rows": [
+    {
+      "code": "003240",
+      "accepted": 4,
+      "rejected": [],
+      "identical_prior_records": true
+    },
+    {
+      "code": "038390",
+      "accepted": 229,
+      "rejected": [],
+      "identical_prior_records": true
+    },
+    {
+      "code": "025980",
+      "accepted": 5,
+      "rejected": [],
+      "identical_prior_records": true
+    },
+    {
+      "code": "003230",
+      "accepted": 3,
+      "rejected": [],
+      "identical_prior_records": true
+    },
+    {
+      "code": "012450",
+      "accepted": 13,
+      "rejected": [],
+      "identical_prior_records": true
+    },
+    {
+      "code": "000120",
+      "accepted": 4,
+      "rejected": [],
+      "identical_prior_records": true
+    }
+  ]
+}

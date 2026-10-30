@@ -1,0 +1,38 @@
+{
+  "research_date": "2026-10-30",
+  "total_etfs": 1183,
+  "fnguide_etfs": 1183,
+  "fnguide_etns_excluded": 357,
+  "list_code_sets_equal": true,
+  "metadata_count": 234,
+  "decision_counts": {
+    "excluded_active": 82,
+    "excluded_bond_mixed": 146,
+    "excluded_broad_market": 69,
+    "excluded_foreign": 338,
+    "excluded_issuer_group": 18,
+    "excluded_leverage_inverse": 102,
+    "excluded_option_strategy": 62,
+    "excluded_pair_strategy": 2,
+    "excluded_provider_scope": 139,
+    "excluded_real_estate": 7,
+    "excluded_style": 71,
+    "reference_market": 2,
+    "reserve_additional_scope": 26,
+    "reserve_alternative": 78,
+    "reserve_same_index": 3,
+    "selected": 38
+  },
+  "selected_tiers": {
+    "base": 17,
+    "theme": 21
+  },
+  "unknown_decisions": 0,
+  "holdings_collected": false,
+  "input_sha256": {
+    "naver-etf-response.json": "07b8130b0b3fb19c845a9d4047115b127fb230f5ac9a3bd8cd1bc969e1c3c639",
+    "fnguide-lookup.json": "d0c3e3a44890b325ec05b1a7c31bb4b4de77453d5b1df1f7d39399b6ac7ce1f0",
+    "fund-metadata.json": "d1ed18dd88b64b65d5dbb7290a435eeddc11bdb561d7c05cc0aacb82bbb2fde9",
+    "selection-policy.json": "78e94a18ca62166c516f5a2a76c10931c4f19858e9dfa3eb0ed4da328b4b3b01"
+  }
+}

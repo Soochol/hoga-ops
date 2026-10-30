@@ -1,0 +1,75 @@
+{
+  "checks": {
+    "independent_polars_rolling_mean_for_all_477_stocks": "passed",
+    "all_38_etf_counts_and_scores": "passed",
+    "deduplicated_477_union_not_757_memberships": "passed",
+    "exact_ties_distinguished_from_strict_above": "passed",
+    "known_halt_sensitivity_divisor": "passed",
+    "all_six_outputs_identical_on_rebuild": "passed"
+  },
+  "python": "3.14.7",
+  "polars": "1.41.0",
+  "git_head": "5feb03bfea8f065af7a6e8565b14a72b03f39bfb",
+  "local_main": "31e3200e034ea4f89c38e741096dc47d6ee67044",
+  "commands": [
+    {
+      "command": [
+        "uv",
+        "run",
+        "--extra",
+        "dev",
+        "ruff",
+        "check",
+        "hoga/market_breadth.py",
+        "tests/unit/test_market_breadth.py",
+        "docs/research/2026-10-30-etf-breadth/calculate_breadth.py",
+        "docs/research/2026-10-30-etf-breadth/validate_breadth.py"
+      ],
+      "returncode": 0,
+      "stdout": "All checks passed!"
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "--extra",
+        "dev",
+        "pytest",
+        "-q",
+        "tests/unit/test_market_breadth.py"
+      ],
+      "returncode": 0,
+      "stdout": "============================= test session starts ==============================\nplatform linux -- Python 3.14.7, pytest-9.0.3, pluggy-1.6.0\nrootdir: /home/dev/.codex/worktrees/bd18/hoga-ops\nconfigfile: pyproject.toml\nplugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0\nasyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\ncollected 18 items\n\ntests/unit/test_market_breadth.py ..................                     [100%]\n\n============================== 18 passed in 0.04s =============================="
+    },
+    {
+      "command": [
+        "uv",
+        "run",
+        "--extra",
+        "dev",
+        "python",
+        "/home/dev/.codex/worktrees/bd18/hoga-ops/docs/research/2026-10-30-etf-breadth/calculate_breadth.py"
+      ],
+      "returncode": 0,
+      "stdout": "{\n  \"policy_id\": \"etf_ma_breadth_v1\",\n  \"etfs\": 38,\n  \"stocks\": 477,\n  \"price_date\": \"2026-10-29\",\n  \"score\": 15.65338924,\n  \"periods\": {\n    \"20\": {\n      \"above\": 71,\n      \"equal\": 1,\n      \"below\": 405,\n      \"unavailable\": 0,\n      \"denominator\": 477,\n      \"above_pct\": 14.88469602,\n      \"coverage_pct\": 100.0\n    },\n    \"60\": {\n      \"above\": 79,\n      \"equal\": 1,\n      \"below\": 397,\n      \"unavailable\": 0,\n      \"denominator\": 477,\n      \"above_pct\": 16.56184486,\n      \"coverage_pct\": 100.0\n    },\n    \"120\": {\n      \"above\": 74,\n      \"equal\": 1,\n      \"below\": 402,\n      \"unavailable\": 0,\n      \"denominator\": 477,\n      \"above_pct\": 15.51362683,\n      \"coverage_pct\": 100.0\n    }\n  },\n  \"known_halt_excluded_score\": 15.68627451\n}"
+    }
+  ],
+  "output_sha256": {
+    "overall.json": "01bd47efddee3c9fd0d107655a1e518db1a145195054a5481a5db247658409d7",
+    "etf-breadth.json": "597cc41102dfc3145aef57e06737a22b6fb61c7d5d5de735d1bf19870d85cbbf",
+    "stock-signals.json": "787ba5690d5f3b05e537847efadc35cc2a52a589326699295be64ce84d894ba4",
+    "policy.json": "229d9b2de5962cc78f1615b1c0b67c8211c432c4e915b18bbbed090c543cca35",
+    "verification.json": "2c5b13b1b29e75bc85066cecaf20d9e60ca626fdd6754cd5fa132d14df3a512f",
+    "README.md": "92982c6a5f2ceaa6cf00d50dc7be35b2f81b704822a1d4786d8991becb18bd16"
+  },
+  "calculation_inputs_sha256": {
+    "hoga/market_breadth.py": "f5fb9d74dbe74f37d399dfc61fab00dd4294fcb4ddef487fb653329fa1a3b772",
+    "tests/unit/test_market_breadth.py": "ff97e5f2747e356f9a6d9e3e02be1737d11ccbb99c355912b22c05214690b6ca",
+    "docs/research/2026-10-30-etf-breadth/calculate_breadth.py": "d0d0f70b34114722d39737267aeec389185142712b1e3556ca9d6c779b004ec4",
+    "docs/research/2026-10-30-etf-breadth/validate_breadth.py": "c7bad98cc0ade551504f6723acc950075d29ac27299bfe421273200ce41aa58d",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764",
+    "ruff.toml": "422277b5742ea124f25690201cb540117de803f74719052a6dbdc3bfa8aa7d07",
+    "CONTEXT.md": "a29a11c92a84f0512a46255e06835005f33bc6c221c497239599eb8efd70b6dd"
+  }
+}

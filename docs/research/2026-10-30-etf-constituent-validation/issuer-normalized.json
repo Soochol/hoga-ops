@@ -1,0 +1,4681 @@
+[
+  {
+    "etf_code": "091160",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "9839765"
+      },
+      {
+        "code": "005930",
+        "name": "삼성전자",
+        "quantity": "2346"
+      },
+      {
+        "code": "000660",
+        "name": "SK하이닉스",
+        "quantity": "341"
+      },
+      {
+        "code": "042700",
+        "name": "한미반도체",
+        "quantity": "1.49E+3"
+      },
+      {
+        "code": "036930",
+        "name": "주성엔지니어링",
+        "quantity": "1106"
+      },
+      {
+        "code": "039030",
+        "name": "이오테크닉스",
+        "quantity": "297"
+      },
+      {
+        "code": "240810",
+        "name": "원익IPS",
+        "quantity": "1168"
+      },
+      {
+        "code": "222800",
+        "name": "심텍",
+        "quantity": "8.9E+2"
+      },
+      {
+        "code": "058470",
+        "name": "리노공업",
+        "quantity": "1.76E+3"
+      },
+      {
+        "code": "000990",
+        "name": "DB하이텍",
+        "quantity": "1082"
+      },
+      {
+        "code": "403870",
+        "name": "HPSP",
+        "quantity": "2.31E+3"
+      },
+      {
+        "code": "319660",
+        "name": "피에스케이",
+        "quantity": "7E+2"
+      },
+      {
+        "code": "080220",
+        "name": "제주반도체",
+        "quantity": "1077"
+      },
+      {
+        "code": "440110",
+        "name": "파두",
+        "quantity": "1282"
+      },
+      {
+        "code": "067310",
+        "name": "하나마이크론",
+        "quantity": "1701"
+      },
+      {
+        "code": "095340",
+        "name": "ISC",
+        "quantity": "361"
+      },
+      {
+        "code": "084370",
+        "name": "유진테크",
+        "quantity": "488"
+      },
+      {
+        "code": "131290",
+        "name": "티에스이",
+        "quantity": "197"
+      },
+      {
+        "code": "031980",
+        "name": "피에스케이홀딩스",
+        "quantity": "253"
+      },
+      {
+        "code": "095610",
+        "name": "테스",
+        "quantity": "415"
+      },
+      {
+        "code": "064760",
+        "name": "티씨케이",
+        "quantity": "198"
+      },
+      {
+        "code": "131970",
+        "name": "두산테스나",
+        "quantity": "419"
+      }
+    ]
+  },
+  {
+    "etf_code": "091180",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "1127141"
+      },
+      {
+        "code": "000270",
+        "name": "기아",
+        "quantity": "2146"
+      },
+      {
+        "code": "012330",
+        "name": "현대모비스",
+        "quantity": "5.8E+2"
+      },
+      {
+        "code": "005380",
+        "name": "현대차",
+        "quantity": "6.4E+2"
+      },
+      {
+        "code": "161390",
+        "name": "한국타이어앤테크놀로지",
+        "quantity": "3132"
+      },
+      {
+        "code": "018880",
+        "name": "한온시스템",
+        "quantity": "15212"
+      },
+      {
+        "code": "204320",
+        "name": "HL만도",
+        "quantity": "1413"
+      },
+      {
+        "code": "007340",
+        "name": "DN오토모티브",
+        "quantity": "893"
+      },
+      {
+        "code": "005850",
+        "name": "에스엘",
+        "quantity": "689"
+      },
+      {
+        "code": "011210",
+        "name": "현대위아",
+        "quantity": "676"
+      },
+      {
+        "code": "073240",
+        "name": "금호타이어",
+        "quantity": "4884"
+      },
+      {
+        "code": "000240",
+        "name": "한국앤컴퍼니",
+        "quantity": "1035"
+      },
+      {
+        "code": "437730",
+        "name": "삼현",
+        "quantity": "498"
+      },
+      {
+        "code": "004490",
+        "name": "세방전지",
+        "quantity": "344"
+      },
+      {
+        "code": "064960",
+        "name": "SNT모티브",
+        "quantity": "463"
+      },
+      {
+        "code": "015750",
+        "name": "성우하이텍",
+        "quantity": "2023"
+      },
+      {
+        "code": "009900",
+        "name": "명신산업",
+        "quantity": "1.19E+3"
+      },
+      {
+        "code": "003620",
+        "name": "KG모빌리티",
+        "quantity": "3882"
+      },
+      {
+        "code": "036530",
+        "name": "SNT홀딩스",
+        "quantity": "199"
+      }
+    ]
+  },
+  {
+    "etf_code": "091170",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "-1466226"
+      },
+      {
+        "code": "086790",
+        "name": "하나금융지주",
+        "quantity": "1225"
+      },
+      {
+        "code": "105560",
+        "name": "KB금융",
+        "quantity": "934"
+      },
+      {
+        "code": "316140",
+        "name": "우리금융지주",
+        "quantity": "4484"
+      },
+      {
+        "code": "055550",
+        "name": "신한지주",
+        "quantity": "1503"
+      },
+      {
+        "code": "323410",
+        "name": "카카오뱅크",
+        "quantity": "2265"
+      },
+      {
+        "code": "024110",
+        "name": "기업은행",
+        "quantity": "1813"
+      },
+      {
+        "code": "175330",
+        "name": "JB금융지주",
+        "quantity": "1035"
+      },
+      {
+        "code": "138930",
+        "name": "BNK금융지주",
+        "quantity": "1785"
+      },
+      {
+        "code": "139130",
+        "name": "iM금융지주",
+        "quantity": "911"
+      },
+      {
+        "code": "279570",
+        "name": "케이뱅크",
+        "quantity": "1845"
+      }
+    ]
+  },
+  {
+    "etf_code": "102970",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "4145318"
+      },
+      {
+        "code": "016360",
+        "name": "삼성증권",
+        "quantity": "1982"
+      },
+      {
+        "code": "071050",
+        "name": "한국금융지주",
+        "quantity": "962"
+      },
+      {
+        "code": "006800",
+        "name": "미래에셋증권",
+        "quantity": "4877"
+      },
+      {
+        "code": "005940",
+        "name": "NH투자증권",
+        "quantity": "5241"
+      },
+      {
+        "code": "039490",
+        "name": "키움증권",
+        "quantity": "536"
+      },
+      {
+        "code": "003540",
+        "name": "대신증권",
+        "quantity": "846"
+      },
+      {
+        "code": "003530",
+        "name": "한화투자증권",
+        "quantity": "4.58E+3"
+      },
+      {
+        "code": "001720",
+        "name": "신영증권",
+        "quantity": "154"
+      },
+      {
+        "code": "003470",
+        "name": "유안타증권",
+        "quantity": "2535"
+      },
+      {
+        "code": "001500",
+        "name": "현대차증권",
+        "quantity": "1199"
+      },
+      {
+        "code": "030610",
+        "name": "교보증권",
+        "quantity": "592"
+      }
+    ]
+  },
+  {
+    "etf_code": "140700",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "11332682"
+      },
+      {
+        "code": "005830",
+        "name": "DB손해보험",
+        "quantity": "2485"
+      },
+      {
+        "code": "000810",
+        "name": "삼성화재",
+        "quantity": "603"
+      },
+      {
+        "code": "032830",
+        "name": "삼성생명",
+        "quantity": "1113"
+      },
+      {
+        "code": "001450",
+        "name": "현대해상",
+        "quantity": "6002"
+      },
+      {
+        "code": "003690",
+        "name": "코리안리",
+        "quantity": "14114"
+      },
+      {
+        "code": "088350",
+        "name": "한화생명",
+        "quantity": "34682"
+      },
+      {
+        "code": "031210",
+        "name": "서울보증보험",
+        "quantity": "1467"
+      },
+      {
+        "code": "085620",
+        "name": "미래에셋생명",
+        "quantity": "1989"
+      },
+      {
+        "code": "000370",
+        "name": "한화손해보험",
+        "quantity": "5398"
+      },
+      {
+        "code": "211050",
+        "name": "인카금융서비스",
+        "quantity": "2744"
+      },
+      {
+        "code": "000400",
+        "name": "롯데손해보험",
+        "quantity": "7174"
+      }
+    ]
+  },
+  {
+    "etf_code": "102960",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "1140355"
+      },
+      {
+        "code": "034020",
+        "isin": "KR7034020008",
+        "name": "두산에너빌리티",
+        "quantity": "508"
+      },
+      {
+        "code": "373220",
+        "isin": "KR7373220003",
+        "name": "LG에너지솔루션",
+        "quantity": "58"
+      },
+      {
+        "code": "010120",
+        "isin": "KR7010120004",
+        "name": "LS ELECTRIC",
+        "quantity": "92"
+      },
+      {
+        "code": "009540",
+        "isin": "KR7009540006",
+        "name": "HD한국조선해양",
+        "quantity": "55"
+      },
+      {
+        "code": "010140",
+        "isin": "KR7010140002",
+        "name": "삼성중공업",
+        "quantity": "781"
+      },
+      {
+        "code": "298040",
+        "isin": "KR7298040007",
+        "name": "효성중공업",
+        "quantity": "6"
+      },
+      {
+        "code": "267260",
+        "isin": "KR7267260008",
+        "name": "HD현대일렉트릭",
+        "quantity": "26"
+      },
+      {
+        "code": "329180",
+        "isin": "KR7329180004",
+        "name": "HD현대중공업",
+        "quantity": "38"
+      },
+      {
+        "code": "086520",
+        "isin": "KR7086520004",
+        "name": "에코프로",
+        "quantity": "116"
+      },
+      {
+        "code": "042660",
+        "isin": "KR7042660001",
+        "name": "한화오션",
+        "quantity": "156"
+      },
+      {
+        "code": "064350",
+        "isin": "KR7064350002",
+        "name": "현대로템",
+        "quantity": "87"
+      },
+      {
+        "code": "003670",
+        "isin": "KR7003670007",
+        "name": "포스코퓨처엠",
+        "quantity": "42"
+      },
+      {
+        "code": "247540",
+        "isin": "KR7247540008",
+        "name": "에코프로비엠",
+        "quantity": "7E+1"
+      },
+      {
+        "code": "006260",
+        "isin": "KR7006260004",
+        "name": "LS",
+        "quantity": "2E+1"
+      },
+      {
+        "code": "277810",
+        "isin": "KR7277810008",
+        "name": "레인보우로보틱스",
+        "quantity": "9"
+      },
+      {
+        "code": "062040",
+        "isin": "KR7062040001",
+        "name": "산일전기",
+        "quantity": "2E+1"
+      },
+      {
+        "code": "066970",
+        "isin": "KR7066970005",
+        "name": "엘앤에프",
+        "quantity": "36"
+      },
+      {
+        "code": "241560",
+        "isin": "KR7241560002",
+        "name": "두산밥캣",
+        "quantity": "61"
+      },
+      {
+        "code": "001440",
+        "isin": "KR7001440007",
+        "name": "대한전선",
+        "quantity": "139"
+      },
+      {
+        "code": "267270",
+        "isin": "KR7267270007",
+        "name": "HD건설기계",
+        "quantity": "33"
+      },
+      {
+        "code": "454910",
+        "isin": "KR7454910001",
+        "name": "두산로보틱스",
+        "quantity": "39"
+      },
+      {
+        "code": "017800",
+        "isin": "KR7017800004",
+        "name": "현대엘리베이터",
+        "quantity": "3E+1"
+      },
+      {
+        "code": "082740",
+        "isin": "KR7082740002",
+        "name": "한화엔진",
+        "quantity": "64"
+      },
+      {
+        "code": "103590",
+        "isin": "KR7103590006",
+        "name": "일진전기",
+        "quantity": "32"
+      },
+      {
+        "code": "000500",
+        "isin": "KR7000500009",
+        "name": "가온전선",
+        "quantity": "7"
+      },
+      {
+        "code": "336260",
+        "isin": "KR7336260005",
+        "name": "두산퓨얼셀",
+        "quantity": "47"
+      },
+      {
+        "code": "058610",
+        "isin": "KR7058610007",
+        "name": "에스피지",
+        "quantity": "16"
+      },
+      {
+        "code": "450080",
+        "isin": "KR7450080007",
+        "name": "에코프로머티",
+        "quantity": "45"
+      },
+      {
+        "code": "071970",
+        "isin": "KR7071970008",
+        "name": "HD현대마린엔진",
+        "quantity": "26"
+      },
+      {
+        "code": "439260",
+        "isin": "KR7439260001",
+        "name": "대한조선",
+        "quantity": "23"
+      }
+    ]
+  },
+  {
+    "etf_code": "117700",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "2731163"
+      },
+      {
+        "code": "028050",
+        "name": "삼성E&A",
+        "quantity": "2789"
+      },
+      {
+        "code": "000720",
+        "name": "현대건설",
+        "quantity": "1137"
+      },
+      {
+        "code": "047040",
+        "name": "대우건설",
+        "quantity": "5259"
+      },
+      {
+        "code": "006360",
+        "name": "GS건설",
+        "quantity": "1711"
+      },
+      {
+        "code": "375500",
+        "name": "DL이앤씨",
+        "quantity": "784"
+      },
+      {
+        "code": "052690",
+        "name": "한전기술",
+        "quantity": "499"
+      },
+      {
+        "code": "319400",
+        "name": "현대무벡스",
+        "quantity": "1485"
+      },
+      {
+        "code": "294870",
+        "name": "IPARK현대산업개발",
+        "quantity": "914"
+      },
+      {
+        "code": "012630",
+        "name": "HDC",
+        "quantity": "685"
+      },
+      {
+        "code": "014620",
+        "name": "성광벤드",
+        "quantity": "439"
+      },
+      {
+        "code": "060370",
+        "name": "LS마린솔루션",
+        "quantity": "418"
+      },
+      {
+        "code": "009450",
+        "name": "경동나비엔",
+        "quantity": "163"
+      },
+      {
+        "code": "300720",
+        "name": "한일시멘트",
+        "quantity": "569"
+      },
+      {
+        "code": "045100",
+        "name": "한양이엔지",
+        "quantity": "219"
+      },
+      {
+        "code": "038500",
+        "name": "삼표시멘트",
+        "quantity": "1007"
+      },
+      {
+        "code": "010780",
+        "name": "아이에스동서",
+        "quantity": "359"
+      }
+    ]
+  },
+  {
+    "etf_code": "117680",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "1190073"
+      },
+      {
+        "code": "004020",
+        "name": "현대제철",
+        "quantity": "5646"
+      },
+      {
+        "code": "005490",
+        "name": "POSCO홀딩스",
+        "quantity": "5E+2"
+      },
+      {
+        "code": "010130",
+        "name": "고려아연",
+        "quantity": "145"
+      },
+      {
+        "code": "103140",
+        "name": "풍산",
+        "quantity": "1637"
+      },
+      {
+        "code": "295310",
+        "name": "에이치브이엠",
+        "quantity": "779"
+      },
+      {
+        "code": "006110",
+        "name": "삼아알미늄",
+        "quantity": "825"
+      },
+      {
+        "code": "001430",
+        "name": "세아베스틸지주",
+        "quantity": "1187"
+      },
+      {
+        "code": "005810",
+        "name": "풍산홀딩스",
+        "quantity": "688"
+      },
+      {
+        "code": "009520",
+        "name": "포스코엠텍",
+        "quantity": "2027"
+      },
+      {
+        "code": "016380",
+        "name": "KG스틸",
+        "quantity": "3798"
+      },
+      {
+        "code": "003030",
+        "name": "세아제강지주",
+        "quantity": "133"
+      }
+    ]
+  },
+  {
+    "etf_code": "117460",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "1453277"
+      },
+      {
+        "code": "051910",
+        "isin": "KR7051910008",
+        "name": "LG화학",
+        "quantity": "651"
+      },
+      {
+        "code": "096770",
+        "isin": "KR7096770003",
+        "name": "SK이노베이션",
+        "quantity": "1056"
+      },
+      {
+        "code": "267250",
+        "isin": "KR7267250009",
+        "name": "HD현대",
+        "quantity": "639"
+      },
+      {
+        "code": "010950",
+        "isin": "KR7010950004",
+        "name": "S-Oil",
+        "quantity": "591"
+      },
+      {
+        "code": "009830",
+        "isin": "KR7009830001",
+        "name": "한화솔루션",
+        "quantity": "2011"
+      },
+      {
+        "code": "010060",
+        "isin": "KR7010060002",
+        "name": "OCI홀딩스",
+        "quantity": "188"
+      },
+      {
+        "code": "014680",
+        "isin": "KR7014680003",
+        "name": "한솔케미칼",
+        "quantity": "133"
+      },
+      {
+        "code": "011790",
+        "isin": "KR7011790003",
+        "name": "SKC",
+        "quantity": "366"
+      },
+      {
+        "code": "002380",
+        "isin": "KR7002380004",
+        "name": "KCC",
+        "quantity": "57"
+      },
+      {
+        "code": "011780",
+        "isin": "KR7011780004",
+        "name": "금호석유화학",
+        "quantity": "205"
+      },
+      {
+        "code": "457190",
+        "isin": "KR7457190007",
+        "name": "이수스페셜티케미컬",
+        "quantity": "287"
+      },
+      {
+        "code": "005290",
+        "isin": "KR7005290002",
+        "name": "동진쎄미켐",
+        "quantity": "478"
+      },
+      {
+        "code": "357780",
+        "isin": "KR7357780006",
+        "name": "솔브레인",
+        "quantity": "57"
+      },
+      {
+        "code": "011170",
+        "isin": "KR7011170008",
+        "name": "롯데케미칼",
+        "quantity": "255"
+      },
+      {
+        "code": "120110",
+        "isin": "KR7120110002",
+        "name": "코오롱인더",
+        "quantity": "281"
+      },
+      {
+        "code": "298020",
+        "isin": "KR7298020009",
+        "name": "효성티앤씨",
+        "quantity": "36"
+      },
+      {
+        "code": "018670",
+        "isin": "KR7018670000",
+        "name": "SK가스",
+        "quantity": "32"
+      },
+      {
+        "code": "093370",
+        "isin": "KR7093370005",
+        "name": "후성",
+        "quantity": "777"
+      },
+      {
+        "code": "121600",
+        "isin": "KR7121600001",
+        "name": "나노신소재",
+        "quantity": "127"
+      },
+      {
+        "code": "004000",
+        "isin": "KR7004000006",
+        "name": "롯데정밀화학",
+        "quantity": "205"
+      },
+      {
+        "code": "017960",
+        "isin": "KR7017960006",
+        "name": "한국카본",
+        "quantity": "455"
+      },
+      {
+        "code": "000210",
+        "isin": "KR7000210005",
+        "name": "DL",
+        "quantity": "152"
+      },
+      {
+        "code": "006120",
+        "isin": "KR7006120000",
+        "name": "SK디스커버리",
+        "quantity": "104"
+      },
+      {
+        "code": "281740",
+        "isin": "KR7281740001",
+        "name": "레이크머티리얼즈",
+        "quantity": "522"
+      },
+      {
+        "code": "285130",
+        "isin": "KR7285130001",
+        "name": "SK케미칼",
+        "quantity": "138"
+      },
+      {
+        "code": "069260",
+        "isin": "KR7069260008",
+        "name": "TKG휴켐스",
+        "quantity": "308"
+      },
+      {
+        "code": "298050",
+        "isin": "KR7298050006",
+        "name": "HS효성첨단소재",
+        "quantity": "3E+1"
+      },
+      {
+        "code": "456040",
+        "isin": "KR7456040005",
+        "name": "OCI",
+        "quantity": "67"
+      },
+      {
+        "code": "006650",
+        "isin": "KR7006650006",
+        "name": "대한유화",
+        "quantity": "49"
+      },
+      {
+        "code": "178920",
+        "isin": "KR7178920005",
+        "name": "PI첨단소재",
+        "quantity": "192"
+      },
+      {
+        "code": "036830",
+        "isin": "KR7036830008",
+        "name": "솔브레인홀딩스",
+        "quantity": "73"
+      },
+      {
+        "code": "003240",
+        "isin": "KR7003240009",
+        "name": "태광산업",
+        "quantity": "3"
+      }
+    ]
+  },
+  {
+    "etf_code": "140710",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "3593187"
+      },
+      {
+        "code": "011200",
+        "name": "HMM",
+        "quantity": "6043"
+      },
+      {
+        "code": "003490",
+        "name": "대한항공",
+        "quantity": "4.61E+3"
+      },
+      {
+        "code": "086280",
+        "name": "현대글로비스",
+        "quantity": "615"
+      },
+      {
+        "code": "028670",
+        "name": "팬오션",
+        "quantity": "14867"
+      },
+      {
+        "code": "000120",
+        "name": "CJ대한통운",
+        "quantity": "725"
+      },
+      {
+        "code": "089860",
+        "name": "롯데렌탈",
+        "quantity": "866"
+      },
+      {
+        "code": "020560",
+        "name": "아시아나항공",
+        "quantity": "5047"
+      },
+      {
+        "code": "005880",
+        "name": "대한해운",
+        "quantity": "11113"
+      },
+      {
+        "code": "272450",
+        "name": "진에어",
+        "quantity": "1521"
+      },
+      {
+        "code": "003280",
+        "name": "흥아해운",
+        "quantity": "4139"
+      },
+      {
+        "code": "091810",
+        "name": "트리니티항공",
+        "quantity": "2366"
+      }
+    ]
+  },
+  {
+    "etf_code": "266410",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "4254916"
+      },
+      {
+        "code": "033780",
+        "name": "KT&G",
+        "quantity": "2105"
+      },
+      {
+        "code": "278470",
+        "name": "에이피알",
+        "quantity": "925"
+      },
+      {
+        "code": "003230",
+        "name": "삼양식품",
+        "quantity": "149"
+      },
+      {
+        "code": "090430",
+        "name": "아모레퍼시픽",
+        "quantity": "1178"
+      },
+      {
+        "code": "271560",
+        "name": "오리온",
+        "quantity": "826"
+      },
+      {
+        "code": "051900",
+        "name": "LG생활건강",
+        "quantity": "342"
+      },
+      {
+        "code": "192820",
+        "name": "코스맥스",
+        "quantity": "311"
+      },
+      {
+        "code": "161890",
+        "name": "한국콜마",
+        "quantity": "646"
+      },
+      {
+        "code": "483650",
+        "name": "달바글로벌",
+        "quantity": "386"
+      },
+      {
+        "code": "139480",
+        "name": "이마트",
+        "quantity": "739"
+      },
+      {
+        "code": "097950",
+        "name": "CJ제일제당",
+        "quantity": "298"
+      },
+      {
+        "code": "004370",
+        "name": "농심",
+        "quantity": "116"
+      },
+      {
+        "code": "282330",
+        "name": "BGF리테일",
+        "quantity": "335"
+      },
+      {
+        "code": "026960",
+        "name": "동서",
+        "quantity": "1175"
+      },
+      {
+        "code": "007070",
+        "name": "GS리테일",
+        "quantity": "1271"
+      },
+      {
+        "code": "002790",
+        "name": "아모레퍼시픽홀딩스",
+        "quantity": "9.3E+2"
+      },
+      {
+        "code": "003380",
+        "name": "하림지주",
+        "quantity": "1.66E+3"
+      },
+      {
+        "code": "048410",
+        "name": "현대바이오",
+        "quantity": "3338"
+      },
+      {
+        "code": "000080",
+        "name": "하이트진로",
+        "quantity": "1173"
+      },
+      {
+        "code": "001800",
+        "name": "오리온홀딩스",
+        "quantity": "755"
+      },
+      {
+        "code": "005300",
+        "name": "롯데칠성",
+        "quantity": "134"
+      },
+      {
+        "code": "006040",
+        "name": "동원산업",
+        "quantity": "369"
+      },
+      {
+        "code": "280360",
+        "name": "롯데웰푸드",
+        "quantity": "94"
+      },
+      {
+        "code": "016790",
+        "name": "현대사료",
+        "quantity": "2869"
+      }
+    ]
+  },
+  {
+    "etf_code": "266390",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "3537707"
+      },
+      {
+        "code": "180640",
+        "name": "한진칼",
+        "quantity": "1961"
+      },
+      {
+        "code": "066570",
+        "name": "LG전자",
+        "quantity": "1516"
+      },
+      {
+        "code": "021240",
+        "name": "코웨이",
+        "quantity": "2256"
+      },
+      {
+        "code": "004170",
+        "name": "신세계",
+        "quantity": "262"
+      },
+      {
+        "code": "035250",
+        "name": "강원랜드",
+        "quantity": "4757"
+      },
+      {
+        "code": "111770",
+        "name": "영원무역",
+        "quantity": "911"
+      },
+      {
+        "code": "081660",
+        "name": "미스토홀딩스",
+        "quantity": "1.27E+3"
+      },
+      {
+        "code": "008770",
+        "name": "호텔신라",
+        "quantity": "1284"
+      },
+      {
+        "code": "257720",
+        "name": "실리콘투",
+        "quantity": "1486"
+      },
+      {
+        "code": "069960",
+        "name": "현대백화점",
+        "quantity": "489"
+      },
+      {
+        "code": "009970",
+        "name": "영원무역홀딩스",
+        "quantity": "212"
+      },
+      {
+        "code": "383220",
+        "name": "F&F",
+        "quantity": "579"
+      },
+      {
+        "code": "023530",
+        "name": "롯데쇼핑",
+        "quantity": "427"
+      },
+      {
+        "code": "192080",
+        "name": "더블유게임즈",
+        "quantity": "435"
+      },
+      {
+        "code": "032350",
+        "name": "롯데관광개발",
+        "quantity": "2141"
+      },
+      {
+        "code": "034230",
+        "name": "파라다이스",
+        "quantity": "1826"
+      },
+      {
+        "code": "006730",
+        "name": "서부T&D",
+        "quantity": "1321"
+      },
+      {
+        "code": "009240",
+        "name": "한샘",
+        "quantity": "346"
+      },
+      {
+        "code": "499790",
+        "name": "GS피앤엘",
+        "quantity": "333"
+      },
+      {
+        "code": "056080",
+        "name": "유진로봇",
+        "quantity": "786"
+      }
+    ]
+  },
+  {
+    "etf_code": "143860",
+    "rows": [
+      {
+        "code": "068270",
+        "isin": null,
+        "name": "셀트리온",
+        "quantity": "8.5E+2"
+      },
+      {
+        "code": "207940",
+        "isin": null,
+        "name": "삼성바이오로직스",
+        "quantity": "67"
+      },
+      {
+        "code": "196170",
+        "isin": null,
+        "name": "알테오젠",
+        "quantity": "337"
+      },
+      {
+        "code": "028300",
+        "isin": null,
+        "name": "HLB",
+        "quantity": "746"
+      },
+      {
+        "code": "000100",
+        "isin": null,
+        "name": "유한양행",
+        "quantity": "352"
+      },
+      {
+        "code": "326030",
+        "isin": null,
+        "name": "SK바이오팜",
+        "quantity": "249"
+      },
+      {
+        "code": "000250",
+        "isin": null,
+        "name": "삼천당제약",
+        "quantity": "88"
+      },
+      {
+        "code": "128940",
+        "isin": null,
+        "name": "한미약품",
+        "quantity": "4E+1"
+      },
+      {
+        "code": "087010",
+        "isin": null,
+        "name": "펩트론",
+        "quantity": "137"
+      },
+      {
+        "code": "298380",
+        "isin": null,
+        "name": "에이비엘바이오",
+        "quantity": "264"
+      },
+      {
+        "code": "0126Z0",
+        "isin": null,
+        "name": "삼성에피스홀딩스",
+        "quantity": "35"
+      },
+      {
+        "code": "141080",
+        "isin": null,
+        "name": "리가켐바이오",
+        "quantity": "165"
+      },
+      {
+        "code": "226950",
+        "isin": null,
+        "name": "올릭스",
+        "quantity": "107"
+      },
+      {
+        "code": "214450",
+        "isin": null,
+        "name": "파마리서치",
+        "quantity": "44"
+      },
+      {
+        "code": "347850",
+        "isin": null,
+        "name": "디앤디파마텍",
+        "quantity": "231"
+      },
+      {
+        "code": "009420",
+        "isin": null,
+        "name": "한올바이오파마",
+        "quantity": "226"
+      },
+      {
+        "code": "310210",
+        "isin": null,
+        "name": "보로노이",
+        "quantity": "68"
+      },
+      {
+        "code": "039200",
+        "isin": null,
+        "name": "오스코텍",
+        "quantity": "209"
+      },
+      {
+        "code": "008930",
+        "isin": null,
+        "name": "한미사이언스",
+        "quantity": "179"
+      },
+      {
+        "code": "007390",
+        "isin": null,
+        "name": "네이처셀",
+        "quantity": "324"
+      },
+      {
+        "code": "290650",
+        "isin": null,
+        "name": "엘앤씨바이오",
+        "quantity": "277"
+      },
+      {
+        "code": "145020",
+        "isin": null,
+        "name": "휴젤",
+        "quantity": "35"
+      },
+      {
+        "code": "328130",
+        "isin": null,
+        "name": "루닛",
+        "quantity": "408"
+      },
+      {
+        "code": "237690",
+        "isin": null,
+        "name": "에스티팜",
+        "quantity": "81"
+      },
+      {
+        "code": "096530",
+        "isin": null,
+        "name": "씨젠",
+        "quantity": "176"
+      },
+      {
+        "code": "445680",
+        "isin": null,
+        "name": "큐리옥스바이오시스템즈",
+        "quantity": "91"
+      },
+      {
+        "code": "302440",
+        "isin": null,
+        "name": "SK바이오사이언스",
+        "quantity": "165"
+      },
+      {
+        "code": "214150",
+        "isin": null,
+        "name": "클래시스",
+        "quantity": "183"
+      },
+      {
+        "code": "068760",
+        "isin": null,
+        "name": "셀트리온제약",
+        "quantity": "127"
+      },
+      {
+        "code": "347700",
+        "isin": null,
+        "name": "스피어",
+        "quantity": "223"
+      },
+      {
+        "code": "006280",
+        "isin": null,
+        "name": "녹십자",
+        "quantity": "34"
+      },
+      {
+        "code": "115180",
+        "isin": null,
+        "name": "큐리언트",
+        "quantity": "238"
+      },
+      {
+        "code": "458870",
+        "isin": null,
+        "name": "씨어스",
+        "quantity": "173"
+      },
+      {
+        "code": "491000",
+        "isin": null,
+        "name": "리브스메드",
+        "quantity": "98"
+      },
+      {
+        "code": "086450",
+        "isin": null,
+        "name": "동국제약",
+        "quantity": "153"
+      },
+      {
+        "code": "0009K0",
+        "isin": null,
+        "name": "에임드바이오",
+        "quantity": "177"
+      },
+      {
+        "code": "005690",
+        "isin": null,
+        "name": "파미셀",
+        "quantity": "348"
+      },
+      {
+        "code": "127120",
+        "isin": null,
+        "name": "제이에스링크",
+        "quantity": "177"
+      },
+      {
+        "code": "214370",
+        "isin": null,
+        "name": "케어젠",
+        "quantity": "99"
+      },
+      {
+        "code": "195940",
+        "isin": null,
+        "name": "HK이노엔",
+        "quantity": "92"
+      },
+      {
+        "code": "476830",
+        "isin": null,
+        "name": "알지노믹스",
+        "quantity": "141"
+      },
+      {
+        "code": "185750",
+        "isin": null,
+        "name": "종근당",
+        "quantity": "5E+1"
+      },
+      {
+        "code": "069620",
+        "isin": null,
+        "name": "대웅제약",
+        "quantity": "29"
+      },
+      {
+        "code": "085660",
+        "isin": null,
+        "name": "차바이오텍",
+        "quantity": "426"
+      },
+      {
+        "code": "456160",
+        "isin": null,
+        "name": "지투지바이오",
+        "quantity": "78"
+      },
+      {
+        "code": "475830",
+        "isin": null,
+        "name": "오름테라퓨틱",
+        "quantity": "116"
+      },
+      {
+        "code": "397030",
+        "isin": null,
+        "name": "에이프릴바이오",
+        "quantity": "1.4E+2"
+      },
+      {
+        "code": "376900",
+        "isin": null,
+        "name": "로킷헬스케어",
+        "quantity": "84"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "-1079402"
+      }
+    ]
+  },
+  {
+    "etf_code": "266360",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "5862755"
+      },
+      {
+        "code": "035720",
+        "name": "카카오",
+        "quantity": "5573"
+      },
+      {
+        "code": "035420",
+        "name": "NAVER",
+        "quantity": "9.3E+2"
+      },
+      {
+        "code": "259960",
+        "name": "크래프톤",
+        "quantity": "677"
+      },
+      {
+        "code": "352820",
+        "name": "하이브",
+        "quantity": "604"
+      },
+      {
+        "code": "036570",
+        "name": "NC",
+        "quantity": "411"
+      },
+      {
+        "code": "263750",
+        "name": "펄어비스",
+        "quantity": "896"
+      },
+      {
+        "code": "030000",
+        "name": "제일기획",
+        "quantity": "1476"
+      },
+      {
+        "code": "041510",
+        "name": "에스엠",
+        "quantity": "326"
+      },
+      {
+        "code": "251270",
+        "name": "넷마블",
+        "quantity": "743"
+      },
+      {
+        "code": "035900",
+        "name": "JYP Ent.",
+        "quantity": "644"
+      },
+      {
+        "code": "181710",
+        "name": "NHN",
+        "quantity": "297"
+      },
+      {
+        "code": "122870",
+        "name": "와이지엔터테인먼트",
+        "quantity": "343"
+      },
+      {
+        "code": "293490",
+        "name": "카카오게임즈",
+        "quantity": "1109"
+      },
+      {
+        "code": "214320",
+        "name": "이노션",
+        "quantity": "676"
+      },
+      {
+        "code": "035760",
+        "name": "CJ ENM",
+        "quantity": "275"
+      },
+      {
+        "code": "079160",
+        "name": "CJ CGV",
+        "quantity": "2E+3"
+      },
+      {
+        "code": "462870",
+        "name": "시프트업",
+        "quantity": "312"
+      },
+      {
+        "code": "067160",
+        "name": "SOOP",
+        "quantity": "181"
+      },
+      {
+        "code": "112040",
+        "name": "위메이드",
+        "quantity": "467"
+      }
+    ]
+  },
+  {
+    "etf_code": "157490",
+    "rows": [
+      {
+        "code": "035420",
+        "isin": null,
+        "name": "NAVER",
+        "quantity": "208"
+      },
+      {
+        "code": "035720",
+        "isin": null,
+        "name": "카카오",
+        "quantity": "901"
+      },
+      {
+        "code": "018260",
+        "isin": null,
+        "name": "삼성에스디에스",
+        "quantity": "106"
+      },
+      {
+        "code": "259960",
+        "isin": null,
+        "name": "크래프톤",
+        "quantity": "76"
+      },
+      {
+        "code": "064400",
+        "isin": null,
+        "name": "LG씨엔에스",
+        "quantity": "135"
+      },
+      {
+        "code": "036570",
+        "isin": null,
+        "name": "NC",
+        "quantity": "49"
+      },
+      {
+        "code": "307950",
+        "isin": null,
+        "name": "현대오토에버",
+        "quantity": "17"
+      },
+      {
+        "code": "263750",
+        "isin": null,
+        "name": "펄어비스",
+        "quantity": "104"
+      },
+      {
+        "code": "251270",
+        "isin": null,
+        "name": "넷마블",
+        "quantity": "85"
+      },
+      {
+        "code": "022100",
+        "isin": null,
+        "name": "포스코DX",
+        "quantity": "1.4E+2"
+      },
+      {
+        "code": "192080",
+        "isin": null,
+        "name": "더블유게임즈",
+        "quantity": "29"
+      },
+      {
+        "code": "093320",
+        "isin": null,
+        "name": "케이아이엔엑스",
+        "quantity": "8"
+      },
+      {
+        "code": "053800",
+        "isin": null,
+        "name": "안랩",
+        "quantity": "14"
+      },
+      {
+        "code": "079940",
+        "isin": null,
+        "name": "가비아",
+        "quantity": "27"
+      },
+      {
+        "code": "124500",
+        "isin": null,
+        "name": "아이티센글로벌",
+        "quantity": "48"
+      },
+      {
+        "code": "042000",
+        "isin": null,
+        "name": "카페24",
+        "quantity": "49"
+      },
+      {
+        "code": "067160",
+        "isin": null,
+        "name": "SOOP",
+        "quantity": "22"
+      },
+      {
+        "code": "052400",
+        "isin": null,
+        "name": "코나아이",
+        "quantity": "36"
+      },
+      {
+        "code": "060250",
+        "isin": null,
+        "name": "NHN KCP",
+        "quantity": "59"
+      },
+      {
+        "code": "030520",
+        "isin": null,
+        "name": "한컴",
+        "quantity": "43"
+      },
+      {
+        "code": "376300",
+        "isin": null,
+        "name": "디어유",
+        "quantity": "33"
+      },
+      {
+        "code": "225570",
+        "isin": null,
+        "name": "넥슨게임즈",
+        "quantity": "64"
+      },
+      {
+        "code": "095660",
+        "isin": null,
+        "name": "네오위즈",
+        "quantity": "31"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "100526"
+      }
+    ]
+  },
+  {
+    "etf_code": "266370",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "2.634751E+7"
+      },
+      {
+        "code": "009150",
+        "name": "삼성전기",
+        "quantity": "461"
+      },
+      {
+        "code": "005930",
+        "name": "삼성전자",
+        "quantity": "2557"
+      },
+      {
+        "code": "000660",
+        "name": "SK하이닉스",
+        "quantity": "372"
+      },
+      {
+        "code": "006400",
+        "name": "삼성SDI",
+        "quantity": "818"
+      },
+      {
+        "code": "042700",
+        "name": "한미반도체",
+        "quantity": "568"
+      },
+      {
+        "code": "018260",
+        "name": "삼성에스디에스",
+        "quantity": "514"
+      },
+      {
+        "code": "036930",
+        "name": "주성엔지니어링",
+        "quantity": "422"
+      },
+      {
+        "code": "007660",
+        "name": "이수페타시스",
+        "quantity": "736"
+      },
+      {
+        "code": "011070",
+        "name": "LG이노텍",
+        "quantity": "192"
+      },
+      {
+        "code": "353200",
+        "name": "대덕전자",
+        "quantity": "435"
+      },
+      {
+        "code": "064400",
+        "name": "LG씨엔에스",
+        "quantity": "643"
+      },
+      {
+        "code": "039030",
+        "name": "이오테크닉스",
+        "quantity": "114"
+      },
+      {
+        "code": "240810",
+        "name": "원익IPS",
+        "quantity": "445"
+      },
+      {
+        "code": "222800",
+        "name": "심텍",
+        "quantity": "3.4E+2"
+      },
+      {
+        "code": "058470",
+        "name": "리노공업",
+        "quantity": "671"
+      },
+      {
+        "code": "000990",
+        "name": "DB하이텍",
+        "quantity": "413"
+      },
+      {
+        "code": "319660",
+        "name": "피에스케이",
+        "quantity": "267"
+      },
+      {
+        "code": "034220",
+        "name": "LG디스플레이",
+        "quantity": "4265"
+      },
+      {
+        "code": "307950",
+        "name": "현대오토에버",
+        "quantity": "86"
+      },
+      {
+        "code": "440110",
+        "name": "파두",
+        "quantity": "489"
+      }
+    ]
+  },
+  {
+    "etf_code": "315270",
+    "rows": [
+      {
+        "code": "035420",
+        "isin": null,
+        "name": "NAVER",
+        "quantity": "412"
+      },
+      {
+        "code": "017670",
+        "isin": null,
+        "name": "SK텔레콤",
+        "quantity": "783"
+      },
+      {
+        "code": "030200",
+        "isin": null,
+        "name": "KT",
+        "quantity": "1158"
+      },
+      {
+        "code": "035720",
+        "isin": null,
+        "name": "카카오",
+        "quantity": "1778"
+      },
+      {
+        "code": "259960",
+        "isin": null,
+        "name": "크래프톤",
+        "quantity": "148"
+      },
+      {
+        "code": "352820",
+        "isin": null,
+        "name": "하이브",
+        "quantity": "132"
+      },
+      {
+        "code": "032640",
+        "isin": null,
+        "name": "LG유플러스",
+        "quantity": "1435"
+      },
+      {
+        "code": "036570",
+        "isin": null,
+        "name": "NC",
+        "quantity": "9E+1"
+      },
+      {
+        "code": "030000",
+        "isin": null,
+        "name": "제일기획",
+        "quantity": "321"
+      },
+      {
+        "code": "251270",
+        "isin": null,
+        "name": "넷마블",
+        "quantity": "163"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "1944025"
+      }
+    ]
+  },
+  {
+    "etf_code": "455850",
+    "rows": [
+      {
+        "code": "042700",
+        "name": "한미반도체",
+        "quantity": "892"
+      },
+      {
+        "code": "036930",
+        "name": "주성엔지니어링",
+        "quantity": "702"
+      },
+      {
+        "code": "007660",
+        "name": "이수페타시스",
+        "quantity": "1155"
+      },
+      {
+        "code": "353200",
+        "name": "대덕전자",
+        "quantity": "704"
+      },
+      {
+        "code": "240810",
+        "name": "원익IPS",
+        "quantity": "678"
+      },
+      {
+        "code": "058470",
+        "name": "리노공업",
+        "quantity": "1053"
+      },
+      {
+        "code": "222800",
+        "name": "심텍",
+        "quantity": "518"
+      },
+      {
+        "code": "403870",
+        "name": "HPSP",
+        "quantity": "1365"
+      },
+      {
+        "code": "319660",
+        "name": "피에스케이",
+        "quantity": "413"
+      },
+      {
+        "code": "014680",
+        "name": "한솔케미칼",
+        "quantity": "189"
+      },
+      {
+        "code": "011790",
+        "name": "SKC",
+        "quantity": "517"
+      },
+      {
+        "code": "067310",
+        "name": "하나마이크론",
+        "quantity": "1017"
+      },
+      {
+        "code": "095340",
+        "name": "ISC",
+        "quantity": "216"
+      },
+      {
+        "code": "084370",
+        "name": "유진테크",
+        "quantity": "292"
+      },
+      {
+        "code": "031980",
+        "name": "피에스케이홀딩스",
+        "quantity": "151"
+      },
+      {
+        "code": "095610",
+        "name": "테스",
+        "quantity": "243"
+      },
+      {
+        "code": "357780",
+        "name": "솔브레인",
+        "quantity": "89"
+      },
+      {
+        "code": "064760",
+        "name": "티씨케이",
+        "quantity": "107"
+      },
+      {
+        "code": "089030",
+        "name": "테크윙",
+        "quantity": "567"
+      },
+      {
+        "code": "007810",
+        "name": "코리아써키트",
+        "quantity": "245"
+      },
+      {
+        "code": "KRD010010001",
+        "name": "현금성자산",
+        "quantity": "4926135"
+      }
+    ]
+  },
+  {
+    "etf_code": "305720",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "2028725"
+      },
+      {
+        "code": "373220",
+        "name": "LG에너지솔루션",
+        "quantity": "841"
+      },
+      {
+        "code": "006400",
+        "name": "삼성SDI",
+        "quantity": "411"
+      },
+      {
+        "code": "005490",
+        "name": "POSCO홀딩스",
+        "quantity": "672"
+      },
+      {
+        "code": "051910",
+        "name": "LG화학",
+        "quantity": "609"
+      },
+      {
+        "code": "086520",
+        "name": "에코프로",
+        "quantity": "1.3E+3"
+      },
+      {
+        "code": "096770",
+        "name": "SK이노베이션",
+        "quantity": "677"
+      },
+      {
+        "code": "247540",
+        "name": "에코프로비엠",
+        "quantity": "898"
+      },
+      {
+        "code": "003670",
+        "name": "포스코퓨처엠",
+        "quantity": "4.2E+2"
+      },
+      {
+        "code": "066970",
+        "name": "엘앤에프",
+        "quantity": "351"
+      },
+      {
+        "code": "011790",
+        "name": "SKC",
+        "quantity": "263"
+      },
+      {
+        "code": "178320",
+        "name": "서진시스템",
+        "quantity": "512"
+      },
+      {
+        "code": "121600",
+        "name": "나노신소재",
+        "quantity": "253"
+      },
+      {
+        "code": "020150",
+        "name": "롯데에너지머티리얼즈",
+        "quantity": "331"
+      },
+      {
+        "code": "450080",
+        "name": "에코프로머티",
+        "quantity": "3.9E+2"
+      },
+      {
+        "code": "005070",
+        "name": "코스모신소재",
+        "quantity": "288"
+      },
+      {
+        "code": "078600",
+        "name": "대주전자재료",
+        "quantity": "117"
+      },
+      {
+        "code": "348370",
+        "name": "엔켐",
+        "quantity": "406"
+      },
+      {
+        "code": "093370",
+        "name": "후성",
+        "quantity": "584"
+      },
+      {
+        "code": "361610",
+        "name": "SK아이이테크놀로지",
+        "quantity": "378"
+      },
+      {
+        "code": "137400",
+        "name": "피엔티",
+        "quantity": "209"
+      },
+      {
+        "code": "222080",
+        "name": "SFA넥셀",
+        "quantity": "562"
+      },
+      {
+        "code": "107640",
+        "name": "한중엔시에스",
+        "quantity": "64"
+      },
+      {
+        "code": "005420",
+        "name": "코스모화학",
+        "quantity": "292"
+      },
+      {
+        "code": "336370",
+        "name": "솔루스첨단소재",
+        "quantity": "361"
+      },
+      {
+        "code": "036830",
+        "name": "솔브레인홀딩스",
+        "quantity": "44"
+      }
+    ]
+  },
+  {
+    "etf_code": "462010",
+    "rows": [
+      {
+        "code": "003670",
+        "isin": null,
+        "name": "포스코퓨처엠",
+        "quantity": "269"
+      },
+      {
+        "code": "086520",
+        "isin": null,
+        "name": "에코프로",
+        "quantity": "566"
+      },
+      {
+        "code": "005490",
+        "isin": null,
+        "name": "POSCO홀딩스",
+        "quantity": "1.4E+2"
+      },
+      {
+        "code": "247540",
+        "isin": null,
+        "name": "에코프로비엠",
+        "quantity": "404"
+      },
+      {
+        "code": "051910",
+        "isin": null,
+        "name": "LG화학",
+        "quantity": "102"
+      },
+      {
+        "code": "066970",
+        "isin": null,
+        "name": "엘앤에프",
+        "quantity": "61"
+      },
+      {
+        "code": "011790",
+        "isin": null,
+        "name": "SKC",
+        "quantity": "53"
+      },
+      {
+        "code": "020150",
+        "isin": null,
+        "name": "롯데에너지머티리얼즈",
+        "quantity": "61"
+      },
+      {
+        "code": "078600",
+        "isin": null,
+        "name": "대주전자재료",
+        "quantity": "24"
+      },
+      {
+        "code": "450080",
+        "isin": null,
+        "name": "에코프로머티",
+        "quantity": "76"
+      },
+      {
+        "code": "005070",
+        "isin": null,
+        "name": "코스모신소재",
+        "quantity": "51"
+      },
+      {
+        "code": "093370",
+        "isin": null,
+        "name": "후성",
+        "quantity": "117"
+      },
+      {
+        "code": "121600",
+        "isin": null,
+        "name": "나노신소재",
+        "quantity": "2E+1"
+      },
+      {
+        "code": "361610",
+        "isin": null,
+        "name": "SK아이이테크놀로지",
+        "quantity": "75"
+      },
+      {
+        "code": "348370",
+        "isin": null,
+        "name": "엔켐",
+        "quantity": "44"
+      },
+      {
+        "code": "336370",
+        "isin": null,
+        "name": "솔루스첨단소재",
+        "quantity": "72"
+      },
+      {
+        "code": "365340",
+        "isin": null,
+        "name": "성일하이텍",
+        "quantity": "18"
+      },
+      {
+        "code": "278280",
+        "isin": null,
+        "name": "천보",
+        "quantity": "14"
+      },
+      {
+        "code": "393890",
+        "isin": null,
+        "name": "더블유씨피",
+        "quantity": "47"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "842069"
+      }
+    ]
+  },
+  {
+    "etf_code": "466920",
+    "rows": [
+      {
+        "code": "010140",
+        "name": "삼성중공업",
+        "quantity": "16702"
+      },
+      {
+        "code": "042660",
+        "name": "한화오션",
+        "quantity": "4032"
+      },
+      {
+        "code": "329180",
+        "name": "HD현대중공업",
+        "quantity": "732"
+      },
+      {
+        "code": "009540",
+        "name": "HD한국조선해양",
+        "quantity": "586"
+      },
+      {
+        "code": "443060",
+        "name": "HD현대마린솔루션",
+        "quantity": "2.5E+2"
+      },
+      {
+        "code": "082740",
+        "name": "한화엔진",
+        "quantity": "713"
+      },
+      {
+        "code": "KRD010010001",
+        "name": "현금성자산",
+        "quantity": "10579118"
+      },
+      {
+        "code": "071970",
+        "name": "HD현대마린엔진",
+        "quantity": "285"
+      },
+      {
+        "code": "439260",
+        "name": "대한조선",
+        "quantity": "251"
+      },
+      {
+        "code": "017960",
+        "name": "한국카본",
+        "quantity": "408"
+      },
+      {
+        "code": "014620",
+        "name": "성광벤드",
+        "quantity": "2.2E+2"
+      },
+      {
+        "code": "023160",
+        "name": "태광",
+        "quantity": "174"
+      },
+      {
+        "code": "077970",
+        "name": "STX엔진",
+        "quantity": "197"
+      },
+      {
+        "code": "075580",
+        "name": "세진중공업",
+        "quantity": "272"
+      }
+    ]
+  },
+  {
+    "etf_code": "449450",
+    "rows": [
+      {
+        "code": "012450",
+        "isin": "KR7012450003",
+        "name": "한화에어로스페이스",
+        "quantity": "237"
+      },
+      {
+        "code": "047810",
+        "isin": "KR7047810007",
+        "name": "한국항공우주",
+        "quantity": "1191"
+      },
+      {
+        "code": "042660",
+        "isin": "KR7042660001",
+        "name": "한화오션",
+        "quantity": "2295"
+      },
+      {
+        "code": "079550",
+        "isin": "KR7079550000",
+        "name": "LIG디펜스앤에어로스페이스",
+        "quantity": "228"
+      },
+      {
+        "code": "064350",
+        "isin": "KR7064350002",
+        "name": "현대로템",
+        "quantity": "1222"
+      },
+      {
+        "code": "272210",
+        "isin": "KR7272210006",
+        "name": "한화시스템",
+        "quantity": "1218"
+      },
+      {
+        "code": "103140",
+        "isin": "KR7103140000",
+        "name": "풍산",
+        "quantity": "295"
+      },
+      {
+        "code": "003570",
+        "isin": "KR7003570009",
+        "name": "SNT다이내믹스",
+        "quantity": "164"
+      },
+      {
+        "code": "077970",
+        "isin": "KR7077970002",
+        "name": "STX엔진",
+        "quantity": "259"
+      },
+      {
+        "code": "484870",
+        "isin": "KR7484870001",
+        "name": "엠앤씨솔루션",
+        "quantity": "117"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "1195742"
+      }
+    ]
+  },
+  {
+    "etf_code": "491820",
+    "rows": [
+      {
+        "code": "010120",
+        "isin": "KR7010120004",
+        "name": "LS ELECTRIC",
+        "quantity": "2187"
+      },
+      {
+        "code": "298040",
+        "isin": "KR7298040007",
+        "name": "효성중공업",
+        "quantity": "155"
+      },
+      {
+        "code": "267260",
+        "isin": "KR7267260008",
+        "name": "HD현대일렉트릭",
+        "quantity": "486"
+      },
+      {
+        "code": "006260",
+        "isin": "KR7006260004",
+        "name": "LS",
+        "quantity": "891"
+      },
+      {
+        "code": "001440",
+        "isin": "KR7001440007",
+        "name": "대한전선",
+        "quantity": "6008"
+      },
+      {
+        "code": "062040",
+        "isin": "KR7062040001",
+        "name": "산일전기",
+        "quantity": "696"
+      },
+      {
+        "code": "000500",
+        "isin": "KR7000500009",
+        "name": "가온전선",
+        "quantity": "299"
+      },
+      {
+        "code": "103590",
+        "isin": "KR7103590006",
+        "name": "일진전기",
+        "quantity": "1.26E+3"
+      },
+      {
+        "code": "229640",
+        "isin": "KR7229640008",
+        "name": "LS에코에너지",
+        "quantity": "583"
+      },
+      {
+        "code": "006340",
+        "isin": "KR7006340004",
+        "name": "대원전선",
+        "quantity": "2901"
+      },
+      {
+        "code": "417200",
+        "isin": "KR7417200003",
+        "name": "LS머트리얼즈",
+        "quantity": "2038"
+      },
+      {
+        "code": "060370",
+        "isin": "KR7060370004",
+        "name": "LS마린솔루션",
+        "quantity": "828"
+      },
+      {
+        "code": "033100",
+        "isin": "KR7033100009",
+        "name": "제룡전기",
+        "quantity": "569"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "14419019"
+      }
+    ]
+  },
+  {
+    "etf_code": "434730",
+    "rows": [
+      {
+        "code": "034020",
+        "isin": "KR7034020008",
+        "name": "두산에너빌리티",
+        "quantity": "9522"
+      },
+      {
+        "code": "010120",
+        "isin": "KR7010120004",
+        "name": "LS ELECTRIC",
+        "quantity": "2022"
+      },
+      {
+        "code": "267260",
+        "isin": "KR7267260008",
+        "name": "HD현대일렉트릭",
+        "quantity": "6E+2"
+      },
+      {
+        "code": "298040",
+        "isin": "KR7298040007",
+        "name": "효성중공업",
+        "quantity": "138"
+      },
+      {
+        "code": "015760",
+        "isin": "KR7015760002",
+        "name": "한국전력",
+        "quantity": "8147"
+      },
+      {
+        "code": "000720",
+        "isin": "KR7000720003",
+        "name": "현대건설",
+        "quantity": "1943"
+      },
+      {
+        "code": "047040",
+        "isin": "KR7047040001",
+        "name": "대우건설",
+        "quantity": "5214"
+      },
+      {
+        "code": "062040",
+        "isin": "KR7062040001",
+        "name": "산일전기",
+        "quantity": "348"
+      },
+      {
+        "code": "052690",
+        "isin": "KR7052690005",
+        "name": "한전기술",
+        "quantity": "475"
+      },
+      {
+        "code": "032820",
+        "isin": "KR7032820003",
+        "name": "우리기술",
+        "quantity": "4174"
+      },
+      {
+        "code": "103590",
+        "isin": "KR7103590006",
+        "name": "일진전기",
+        "quantity": "6.3E+2"
+      },
+      {
+        "code": "051600",
+        "isin": "KR7051600005",
+        "name": "한전KPS",
+        "quantity": "571"
+      },
+      {
+        "code": "083650",
+        "isin": "KR7083650002",
+        "name": "비에이치아이",
+        "quantity": "491"
+      },
+      {
+        "code": "014620",
+        "isin": "KR7014620009",
+        "name": "성광벤드",
+        "quantity": "449"
+      },
+      {
+        "code": "130660",
+        "isin": "KR7130660004",
+        "name": "한전산업",
+        "quantity": "595"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "10894322"
+      }
+    ]
+  },
+  {
+    "etf_code": "0148J0",
+    "rows": [
+      {
+        "code": "108490",
+        "isin": null,
+        "name": "로보티즈",
+        "quantity": "2.2E+2"
+      },
+      {
+        "code": "277810",
+        "isin": null,
+        "name": "레인보우로보틱스",
+        "quantity": "148"
+      },
+      {
+        "code": "454910",
+        "isin": null,
+        "name": "두산로보틱스",
+        "quantity": "798"
+      },
+      {
+        "code": "064400",
+        "isin": null,
+        "name": "LG씨엔에스",
+        "quantity": "427"
+      },
+      {
+        "code": "058610",
+        "isin": null,
+        "name": "에스피지",
+        "quantity": "349"
+      },
+      {
+        "code": "160190",
+        "isin": null,
+        "name": "하이젠알앤엠",
+        "quantity": "1522"
+      },
+      {
+        "code": "307950",
+        "isin": null,
+        "name": "현대오토에버",
+        "quantity": "79"
+      },
+      {
+        "code": "319400",
+        "isin": null,
+        "name": "현대무벡스",
+        "quantity": "1549"
+      },
+      {
+        "code": "348340",
+        "isin": null,
+        "name": "뉴로메카",
+        "quantity": "1373"
+      },
+      {
+        "code": "056080",
+        "isin": null,
+        "name": "유진로봇",
+        "quantity": "1908"
+      },
+      {
+        "code": "090360",
+        "isin": null,
+        "name": "로보스타",
+        "quantity": "293"
+      },
+      {
+        "code": "437730",
+        "isin": null,
+        "name": "삼현",
+        "quantity": "321"
+      },
+      {
+        "code": "388720",
+        "isin": null,
+        "name": "유일로보틱스",
+        "quantity": "199"
+      },
+      {
+        "code": "466100",
+        "isin": null,
+        "name": "클로봇",
+        "quantity": "479"
+      },
+      {
+        "code": "455900",
+        "isin": null,
+        "name": "엔젤로보틱스",
+        "quantity": "4.8E+2"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "238105"
+      }
+    ]
+  },
+  {
+    "etf_code": "228790",
+    "rows": [
+      {
+        "code": "051900",
+        "isin": null,
+        "name": "LG생활건강",
+        "quantity": "47"
+      },
+      {
+        "code": "090430",
+        "isin": null,
+        "name": "아모레퍼시픽",
+        "quantity": "93"
+      },
+      {
+        "code": "192820",
+        "isin": null,
+        "name": "코스맥스",
+        "quantity": "42"
+      },
+      {
+        "code": "161890",
+        "isin": null,
+        "name": "한국콜마",
+        "quantity": "88"
+      },
+      {
+        "code": "483650",
+        "isin": null,
+        "name": "달바글로벌",
+        "quantity": "7E+1"
+      },
+      {
+        "code": "257720",
+        "isin": null,
+        "name": "실리콘투",
+        "quantity": "342"
+      },
+      {
+        "code": "278470",
+        "isin": null,
+        "name": "에이피알",
+        "quantity": "34"
+      },
+      {
+        "code": "214450",
+        "isin": null,
+        "name": "파마리서치",
+        "quantity": "42"
+      },
+      {
+        "code": "241710",
+        "isin": null,
+        "name": "코스메카코리아",
+        "quantity": "86"
+      },
+      {
+        "code": "251970",
+        "isin": null,
+        "name": "펌텍코리아",
+        "quantity": "61"
+      },
+      {
+        "code": "018290",
+        "isin": null,
+        "name": "브이티",
+        "quantity": "277"
+      },
+      {
+        "code": "439090",
+        "isin": null,
+        "name": "마녀공장",
+        "quantity": "103"
+      },
+      {
+        "code": "114840",
+        "isin": null,
+        "name": "아이패밀리에스씨",
+        "quantity": "121"
+      },
+      {
+        "code": "123330",
+        "isin": null,
+        "name": "제닉",
+        "quantity": "7E+1"
+      },
+      {
+        "code": "237880",
+        "isin": null,
+        "name": "클리오",
+        "quantity": "87"
+      },
+      {
+        "code": "352480",
+        "isin": null,
+        "name": "씨앤씨인터내셔널",
+        "quantity": "47"
+      },
+      {
+        "code": "214420",
+        "isin": null,
+        "name": "토니모리",
+        "quantity": "151"
+      },
+      {
+        "code": "226320",
+        "isin": null,
+        "name": "잇츠한불",
+        "quantity": "57"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "161059"
+      }
+    ]
+  },
+  {
+    "etf_code": "244580",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "2351253"
+      },
+      {
+        "code": "468530",
+        "isin": "KR7468530001",
+        "name": "프로티나",
+        "quantity": "448"
+      },
+      {
+        "code": "328130",
+        "isin": "KR7328130000",
+        "name": "루닛",
+        "quantity": "1506"
+      },
+      {
+        "code": "028300",
+        "isin": "KR7028300002",
+        "name": "HLB",
+        "quantity": "404"
+      },
+      {
+        "code": "445680",
+        "isin": "KR7445680002",
+        "name": "큐리옥스바이오시스템즈",
+        "quantity": "263"
+      },
+      {
+        "code": "086450",
+        "isin": "KR7086450004",
+        "name": "동국제약",
+        "quantity": "651"
+      },
+      {
+        "code": "491000",
+        "isin": "KR7491000006",
+        "name": "리브스메드",
+        "quantity": "3.8E+2"
+      },
+      {
+        "code": "000250",
+        "isin": "KR7000250001",
+        "name": "삼천당제약",
+        "quantity": "76"
+      },
+      {
+        "code": "456160",
+        "isin": "KR7456160001",
+        "name": "지투지바이오",
+        "quantity": "373"
+      },
+      {
+        "code": "096530",
+        "isin": "KR7096530001",
+        "name": "씨젠",
+        "quantity": "405"
+      },
+      {
+        "code": "068270",
+        "isin": "KR7068270008",
+        "name": "셀트리온",
+        "quantity": "71"
+      },
+      {
+        "code": "039200",
+        "isin": "KR7039200001",
+        "name": "오스코텍",
+        "quantity": "3.6E+2"
+      },
+      {
+        "code": "290650",
+        "isin": "KR7290650001",
+        "name": "엘앤씨바이오",
+        "quantity": "5.2E+2"
+      },
+      {
+        "code": "458870",
+        "isin": "KR7458870003",
+        "name": "씨어스",
+        "quantity": "548"
+      },
+      {
+        "code": "226950",
+        "isin": "KR7226950004",
+        "name": "올릭스",
+        "quantity": "128"
+      },
+      {
+        "code": "207940",
+        "isin": "KR7207940008",
+        "name": "삼성바이오로직스",
+        "quantity": "9"
+      },
+      {
+        "code": "389650",
+        "isin": "KR7389650003",
+        "name": "넥스트바이오메디컬",
+        "quantity": "432"
+      },
+      {
+        "code": "000100",
+        "isin": "KR7000100008",
+        "name": "유한양행",
+        "quantity": "162"
+      },
+      {
+        "code": "174900",
+        "isin": "KR7174900001",
+        "name": "앱클론",
+        "quantity": "613"
+      },
+      {
+        "code": "326030",
+        "isin": "KR7326030004",
+        "name": "SK바이오팜",
+        "quantity": "153"
+      },
+      {
+        "code": "068760",
+        "isin": "KR7068760008",
+        "name": "셀트리온제약",
+        "quantity": "319"
+      },
+      {
+        "code": "005690",
+        "isin": "KR7005690003",
+        "name": "파미셀",
+        "quantity": "1195"
+      },
+      {
+        "code": "389470",
+        "isin": "KR7389470006",
+        "name": "인벤티지랩",
+        "quantity": "502"
+      },
+      {
+        "code": "0126Z0",
+        "isin": "KR70126Z0002",
+        "name": "삼성에피스홀딩스",
+        "quantity": "37"
+      },
+      {
+        "code": "007390",
+        "isin": "KR7007390008",
+        "name": "네이처셀",
+        "quantity": "501"
+      },
+      {
+        "code": "214150",
+        "isin": "KR7214150005",
+        "name": "클래시스",
+        "quantity": "412"
+      },
+      {
+        "code": "195940",
+        "isin": "KR7195940002",
+        "name": "HK이노엔",
+        "quantity": "317"
+      },
+      {
+        "code": "347850",
+        "isin": "KR7347850000",
+        "name": "디앤디파마텍",
+        "quantity": "262"
+      },
+      {
+        "code": "302440",
+        "isin": "KR7302440003",
+        "name": "SK바이오사이언스",
+        "quantity": "336"
+      },
+      {
+        "code": "358570",
+        "isin": "KR7358570000",
+        "name": "지아이이노베이션",
+        "quantity": "1548"
+      },
+      {
+        "code": "108860",
+        "isin": "KR7108860008",
+        "name": "셀바스AI",
+        "quantity": "1.4E+3"
+      },
+      {
+        "code": "0009K0",
+        "isin": "KR70009K0001",
+        "name": "에임드바이오",
+        "quantity": "539"
+      },
+      {
+        "code": "085660",
+        "isin": "KR7085660009",
+        "name": "차바이오텍",
+        "quantity": "1567"
+      },
+      {
+        "code": "128940",
+        "isin": "KR7128940004",
+        "name": "한미약품",
+        "quantity": "27"
+      },
+      {
+        "code": "476830",
+        "isin": "KR7476830005",
+        "name": "알지노믹스",
+        "quantity": "461"
+      },
+      {
+        "code": "249420",
+        "isin": "KR7249420001",
+        "name": "일동제약",
+        "quantity": "823"
+      },
+      {
+        "code": "476060",
+        "isin": "KR7476060009",
+        "name": "온코닉테라퓨틱스",
+        "quantity": "818"
+      },
+      {
+        "code": "237690",
+        "isin": "KR7237690003",
+        "name": "에스티팜",
+        "quantity": "139"
+      },
+      {
+        "code": "196170",
+        "isin": "KR7196170005",
+        "name": "알테오젠",
+        "quantity": "46"
+      },
+      {
+        "code": "336570",
+        "isin": "KR7336570007",
+        "name": "원텍",
+        "quantity": "2628"
+      },
+      {
+        "code": "310210",
+        "isin": "KR7310210000",
+        "name": "보로노이",
+        "quantity": "87"
+      },
+      {
+        "code": "145020",
+        "isin": "KR7145020004",
+        "name": "휴젤",
+        "quantity": "54"
+      },
+      {
+        "code": "008930",
+        "isin": "KR7008930000",
+        "name": "한미사이언스",
+        "quantity": "232"
+      },
+      {
+        "code": "141080",
+        "isin": "KR7141080002",
+        "name": "리가켐바이오",
+        "quantity": "146"
+      },
+      {
+        "code": "009420",
+        "isin": "KR7009420001",
+        "name": "한올바이오파마",
+        "quantity": "243"
+      },
+      {
+        "code": "397030",
+        "isin": "KR7397030008",
+        "name": "에이프릴바이오",
+        "quantity": "7.4E+2"
+      },
+      {
+        "code": "376900",
+        "isin": "KR7376900007",
+        "name": "로킷헬스케어",
+        "quantity": "456"
+      },
+      {
+        "code": "214450",
+        "isin": "KR7214450009",
+        "name": "파마리서치",
+        "quantity": "37"
+      },
+      {
+        "code": "087010",
+        "isin": "KR7087010005",
+        "name": "펩트론",
+        "quantity": "84"
+      },
+      {
+        "code": "298380",
+        "isin": "KR7298380007",
+        "name": "에이비엘바이오",
+        "quantity": "188"
+      },
+      {
+        "code": "475830",
+        "isin": "KR7475830006",
+        "name": "오름테라퓨틱",
+        "quantity": "241"
+      }
+    ]
+  },
+  {
+    "etf_code": "307510",
+    "rows": [
+      {
+        "code": "214450",
+        "isin": null,
+        "name": "파마리서치",
+        "quantity": "271"
+      },
+      {
+        "code": "096530",
+        "isin": null,
+        "name": "씨젠",
+        "quantity": "1295"
+      },
+      {
+        "code": "328130",
+        "isin": null,
+        "name": "루닛",
+        "quantity": "2829"
+      },
+      {
+        "code": "290650",
+        "isin": null,
+        "name": "엘앤씨바이오",
+        "quantity": "1522"
+      },
+      {
+        "code": "445680",
+        "isin": null,
+        "name": "큐리옥스바이오시스템즈",
+        "quantity": "583"
+      },
+      {
+        "code": "214150",
+        "isin": null,
+        "name": "클래시스",
+        "quantity": "1079"
+      },
+      {
+        "code": "458870",
+        "isin": null,
+        "name": "씨어스",
+        "quantity": "1133"
+      },
+      {
+        "code": "491000",
+        "isin": null,
+        "name": "리브스메드",
+        "quantity": "6E+2"
+      },
+      {
+        "code": "041830",
+        "isin": null,
+        "name": "인바디",
+        "quantity": "368"
+      },
+      {
+        "code": "085660",
+        "isin": null,
+        "name": "차바이오텍",
+        "quantity": "2422"
+      },
+      {
+        "code": "099190",
+        "isin": null,
+        "name": "아이센스",
+        "quantity": "8.8E+2"
+      },
+      {
+        "code": "475960",
+        "isin": null,
+        "name": "토모큐브",
+        "quantity": "404"
+      },
+      {
+        "code": "145720",
+        "isin": null,
+        "name": "덴티움",
+        "quantity": "264"
+      },
+      {
+        "code": "376900",
+        "isin": null,
+        "name": "로킷헬스케어",
+        "quantity": "486"
+      },
+      {
+        "code": "340570",
+        "isin": null,
+        "name": "티앤엘",
+        "quantity": "3.7E+2"
+      },
+      {
+        "code": "137310",
+        "isin": null,
+        "name": "에스디바이오센서",
+        "quantity": "1398"
+      },
+      {
+        "code": "060280",
+        "isin": null,
+        "name": "큐렉소",
+        "quantity": "1177"
+      },
+      {
+        "code": "228760",
+        "isin": null,
+        "name": "지노믹트리",
+        "quantity": "822"
+      },
+      {
+        "code": "455900",
+        "isin": null,
+        "name": "엔젤로보틱스",
+        "quantity": "437"
+      },
+      {
+        "code": "042520",
+        "isin": null,
+        "name": "한스바이오메드",
+        "quantity": "4.3E+2"
+      },
+      {
+        "code": "108860",
+        "isin": null,
+        "name": "셀바스AI",
+        "quantity": "957"
+      },
+      {
+        "code": "389650",
+        "isin": null,
+        "name": "넥스트바이오메디컬",
+        "quantity": "236"
+      },
+      {
+        "code": "336570",
+        "isin": null,
+        "name": "원텍",
+        "quantity": "1741"
+      },
+      {
+        "code": "100120",
+        "isin": null,
+        "name": "뷰웍스",
+        "quantity": "234"
+      },
+      {
+        "code": "216080",
+        "isin": null,
+        "name": "제테마",
+        "quantity": "1064"
+      },
+      {
+        "code": "054950",
+        "isin": null,
+        "name": "제이브이엠",
+        "quantity": "275"
+      },
+      {
+        "code": "394800",
+        "isin": null,
+        "name": "쓰리빌리언",
+        "quantity": "987"
+      },
+      {
+        "code": "0120G0",
+        "isin": null,
+        "name": "삼양바이오팜",
+        "quantity": "148"
+      },
+      {
+        "code": "099430",
+        "isin": null,
+        "name": "바이오플러스",
+        "quantity": "1707"
+      },
+      {
+        "code": "206640",
+        "isin": null,
+        "name": "바디텍메드",
+        "quantity": "6.7E+2"
+      },
+      {
+        "code": "256840",
+        "isin": null,
+        "name": "한국비엔씨",
+        "quantity": "2149"
+      },
+      {
+        "code": "138610",
+        "isin": null,
+        "name": "나이벡",
+        "quantity": "367"
+      },
+      {
+        "code": "156100",
+        "isin": null,
+        "name": "엘앤케이바이오",
+        "quantity": "813"
+      },
+      {
+        "code": "377740",
+        "isin": null,
+        "name": "바이오노트",
+        "quantity": "1095"
+      },
+      {
+        "code": "376270",
+        "isin": null,
+        "name": "HEM파마",
+        "quantity": "188"
+      },
+      {
+        "code": "043150",
+        "isin": null,
+        "name": "바텍",
+        "quantity": "282"
+      },
+      {
+        "code": "039860",
+        "isin": null,
+        "name": "나노엔텍",
+        "quantity": "929"
+      },
+      {
+        "code": "450950",
+        "isin": null,
+        "name": "아스테라시스",
+        "quantity": "824"
+      },
+      {
+        "code": "119610",
+        "isin": null,
+        "name": "인터로조",
+        "quantity": "283"
+      },
+      {
+        "code": "314930",
+        "isin": null,
+        "name": "바이오다인",
+        "quantity": "701"
+      },
+      {
+        "code": "041920",
+        "isin": null,
+        "name": "메디아나",
+        "quantity": "469"
+      },
+      {
+        "code": "338220",
+        "isin": null,
+        "name": "뷰노",
+        "quantity": "475"
+      },
+      {
+        "code": "0088M0",
+        "isin": null,
+        "name": "메쥬",
+        "quantity": "229"
+      },
+      {
+        "code": "039840",
+        "isin": null,
+        "name": "디오",
+        "quantity": "349"
+      },
+      {
+        "code": "318060",
+        "isin": null,
+        "name": "그래피",
+        "quantity": "319"
+      },
+      {
+        "code": "144510",
+        "isin": null,
+        "name": "지씨셀",
+        "quantity": "3.2E+2"
+      },
+      {
+        "code": "048870",
+        "isin": null,
+        "name": "시너지이노베이션",
+        "quantity": "2186"
+      },
+      {
+        "code": "380550",
+        "isin": null,
+        "name": "뉴로핏",
+        "quantity": "373"
+      },
+      {
+        "code": "394420",
+        "isin": null,
+        "name": "리센스메디컬",
+        "quantity": "339"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "1762435"
+      }
+    ]
+  },
+  {
+    "etf_code": "438900",
+    "rows": [
+      {
+        "code": "004370",
+        "isin": "KR7004370003",
+        "name": "농심",
+        "quantity": "2.2E+2"
+      },
+      {
+        "code": "003230",
+        "isin": "KR7003230000",
+        "name": "삼양식품",
+        "quantity": "73"
+      },
+      {
+        "code": "097950",
+        "isin": "KR7097950000",
+        "name": "CJ제일제당",
+        "quantity": "411"
+      },
+      {
+        "code": "271560",
+        "isin": "KR7271560005",
+        "name": "오리온",
+        "quantity": "6.2E+2"
+      },
+      {
+        "code": "007310",
+        "isin": "KR7007310006",
+        "name": "오뚜기",
+        "quantity": "114"
+      },
+      {
+        "code": "005300",
+        "isin": "KR7005300009",
+        "name": "롯데칠성",
+        "quantity": "293"
+      },
+      {
+        "code": "005180",
+        "isin": "KR7005180005",
+        "name": "빙그레",
+        "quantity": "359"
+      },
+      {
+        "code": "001680",
+        "isin": "KR7001680008",
+        "name": "대상",
+        "quantity": "1532"
+      },
+      {
+        "code": "006040",
+        "isin": "KR7006040000",
+        "name": "동원산업",
+        "quantity": "732"
+      },
+      {
+        "code": "280360",
+        "isin": "KR7280360009",
+        "name": "롯데웰푸드",
+        "quantity": "167"
+      },
+      {
+        "code": "035810",
+        "isin": "KR7035810001",
+        "name": "이지홀딩스",
+        "quantity": "2496"
+      },
+      {
+        "code": "072710",
+        "isin": "KR7072710007",
+        "name": "농심홀딩스",
+        "quantity": "121"
+      },
+      {
+        "code": "051500",
+        "isin": "KR7051500007",
+        "name": "CJ프레시웨이",
+        "quantity": "487"
+      },
+      {
+        "code": "136490",
+        "isin": "KR7136490000",
+        "name": "선진",
+        "quantity": "939"
+      },
+      {
+        "code": "017810",
+        "isin": "KR7017810003",
+        "name": "풀무원",
+        "quantity": "1083"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "1660872"
+      }
+    ]
+  },
+  {
+    "etf_code": "228800",
+    "rows": [
+      {
+        "code": "035250",
+        "isin": null,
+        "name": "강원랜드",
+        "quantity": "551"
+      },
+      {
+        "code": "008770",
+        "isin": null,
+        "name": "호텔신라",
+        "quantity": "2E+2"
+      },
+      {
+        "code": "032350",
+        "isin": null,
+        "name": "롯데관광개발",
+        "quantity": "6.8E+2"
+      },
+      {
+        "code": "034230",
+        "isin": null,
+        "name": "파라다이스",
+        "quantity": "688"
+      },
+      {
+        "code": "020560",
+        "isin": null,
+        "name": "아시아나항공",
+        "quantity": "922"
+      },
+      {
+        "code": "003490",
+        "isin": null,
+        "name": "대한항공",
+        "quantity": "245"
+      },
+      {
+        "code": "006730",
+        "isin": null,
+        "name": "서부T&D",
+        "quantity": "477"
+      },
+      {
+        "code": "039130",
+        "isin": null,
+        "name": "하나투어",
+        "quantity": "163"
+      },
+      {
+        "code": "499790",
+        "isin": null,
+        "name": "GS피앤엘",
+        "quantity": "123"
+      },
+      {
+        "code": "025980",
+        "isin": null,
+        "name": "아난티",
+        "quantity": "1024"
+      },
+      {
+        "code": "114090",
+        "isin": null,
+        "name": "GKL",
+        "quantity": "469"
+      },
+      {
+        "code": "089590",
+        "isin": null,
+        "name": "제주항공",
+        "quantity": "574"
+      },
+      {
+        "code": "080160",
+        "isin": null,
+        "name": "모두투어",
+        "quantity": "228"
+      },
+      {
+        "code": "298690",
+        "isin": null,
+        "name": "에어부산",
+        "quantity": "1387"
+      },
+      {
+        "code": "272450",
+        "isin": null,
+        "name": "진에어",
+        "quantity": "323"
+      },
+      {
+        "code": "038390",
+        "isin": null,
+        "name": "레드캡투어",
+        "quantity": "54"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "1.2835E+5"
+      }
+    ]
+  },
+  {
+    "etf_code": "377990",
+    "rows": [
+      {
+        "code": "009830",
+        "isin": null,
+        "name": "한화솔루션",
+        "quantity": "5087"
+      },
+      {
+        "code": "062040",
+        "isin": null,
+        "name": "산일전기",
+        "quantity": "659"
+      },
+      {
+        "code": "010120",
+        "isin": null,
+        "name": "LS ELECTRIC",
+        "quantity": "628"
+      },
+      {
+        "code": "034020",
+        "isin": null,
+        "name": "두산에너빌리티",
+        "quantity": "1.62E+3"
+      },
+      {
+        "code": "010060",
+        "isin": null,
+        "name": "OCI홀딩스",
+        "quantity": "508"
+      },
+      {
+        "code": "298040",
+        "isin": null,
+        "name": "효성중공업",
+        "quantity": "44"
+      },
+      {
+        "code": "267260",
+        "isin": null,
+        "name": "HD현대일렉트릭",
+        "quantity": "139"
+      },
+      {
+        "code": "178320",
+        "isin": null,
+        "name": "서진시스템",
+        "quantity": "1821"
+      },
+      {
+        "code": "336260",
+        "isin": null,
+        "name": "두산퓨얼셀",
+        "quantity": "1593"
+      },
+      {
+        "code": "112610",
+        "isin": null,
+        "name": "씨에스윈드",
+        "quantity": "939"
+      },
+      {
+        "code": "475150",
+        "isin": null,
+        "name": "SK이터닉스",
+        "quantity": "758"
+      },
+      {
+        "code": "126340",
+        "isin": null,
+        "name": "비나텍",
+        "quantity": "188"
+      },
+      {
+        "code": "322000",
+        "isin": null,
+        "name": "HD현대에너지솔루션",
+        "quantity": "2E+2"
+      },
+      {
+        "code": "100090",
+        "isin": null,
+        "name": "SK오션플랜트",
+        "quantity": "1.54E+3"
+      },
+      {
+        "code": "044490",
+        "isin": null,
+        "name": "태웅",
+        "quantity": "366"
+      },
+      {
+        "code": "086390",
+        "isin": null,
+        "name": "유니테스트",
+        "quantity": "638"
+      },
+      {
+        "code": "388050",
+        "isin": null,
+        "name": "지투파워",
+        "quantity": "483"
+      },
+      {
+        "code": "382900",
+        "isin": null,
+        "name": "범한퓨얼셀",
+        "quantity": "164"
+      },
+      {
+        "code": "297090",
+        "isin": null,
+        "name": "씨에스베어링",
+        "quantity": "455"
+      },
+      {
+        "code": "389260",
+        "isin": null,
+        "name": "대명에너지",
+        "quantity": "171"
+      },
+      {
+        "code": "100130",
+        "isin": null,
+        "name": "동국S&C",
+        "quantity": "1.09E+3"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": null,
+        "name": "원화예금",
+        "quantity": "857693"
+      }
+    ]
+  },
+  {
+    "etf_code": "457990",
+    "rows": [
+      {
+        "code": "009830",
+        "isin": "KR7009830001",
+        "name": "한화솔루션",
+        "quantity": "13576"
+      },
+      {
+        "code": "010060",
+        "isin": "KR7010060002",
+        "name": "OCI홀딩스",
+        "quantity": "1356"
+      },
+      {
+        "code": "006400",
+        "isin": "KR7006400006",
+        "name": "삼성SDI",
+        "quantity": "386"
+      },
+      {
+        "code": "373220",
+        "isin": "KR7373220003",
+        "name": "LG에너지솔루션",
+        "quantity": "448"
+      },
+      {
+        "code": "322000",
+        "isin": "KR7322000001",
+        "name": "HD현대에너지솔루션",
+        "quantity": "1885"
+      },
+      {
+        "code": "010120",
+        "isin": "KR7010120004",
+        "name": "LS ELECTRIC",
+        "quantity": "659"
+      },
+      {
+        "code": "475150",
+        "isin": "KR7475150009",
+        "name": "SK이터닉스",
+        "quantity": "2.37E+3"
+      },
+      {
+        "code": "281740",
+        "isin": "KR7281740001",
+        "name": "레이크머티리얼즈",
+        "quantity": "6122"
+      },
+      {
+        "code": "003670",
+        "isin": "KR7003670007",
+        "name": "포스코퓨처엠",
+        "quantity": "351"
+      },
+      {
+        "code": "247540",
+        "isin": "KR7247540008",
+        "name": "에코프로비엠",
+        "quantity": "612"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "-9.2953E+5"
+      }
+    ]
+  },
+  {
+    "etf_code": "367770",
+    "rows": [
+      {
+        "code": "012450",
+        "isin": "KR7012450003",
+        "name": "HANWHA AEROSPACE",
+        "quantity": "1.9E+2"
+      },
+      {
+        "code": "034020",
+        "isin": "KR7034020008",
+        "name": "Doosan Enerbility",
+        "quantity": "2191"
+      },
+      {
+        "code": "012330",
+        "isin": "KR7012330007",
+        "name": "Mobis",
+        "quantity": "329"
+      },
+      {
+        "code": "005490",
+        "isin": "KR7005490008",
+        "name": "POSCO Holdings",
+        "quantity": "358"
+      },
+      {
+        "code": "005380",
+        "isin": "KR7005380001",
+        "name": "HyundaiMtr",
+        "quantity": "325"
+      },
+      {
+        "code": "010120",
+        "isin": "KR7010120004",
+        "name": "LS ELECTRIC",
+        "quantity": "435"
+      },
+      {
+        "code": "298040",
+        "isin": "KR7298040007",
+        "name": "HYOSUNG HEAVY",
+        "quantity": "29"
+      },
+      {
+        "code": "000150",
+        "isin": "KR7000150003",
+        "name": "DOOSAN",
+        "quantity": "39"
+      },
+      {
+        "code": "003670",
+        "isin": "KR7003670007",
+        "name": "POSCO FUTURE M",
+        "quantity": "184"
+      },
+      {
+        "code": "009830",
+        "isin": "KR7009830001",
+        "name": "HANWHA SOLUTIONS",
+        "quantity": "753"
+      },
+      {
+        "code": "004020",
+        "isin": "KR7004020004",
+        "name": "HYUNDAI STEEL",
+        "quantity": "469"
+      },
+      {
+        "code": "018880",
+        "isin": "KR7018880005",
+        "name": "Hanon Systems",
+        "quantity": "2748"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "8637779"
+      },
+      {
+        "code": "336260",
+        "isin": "KR7336260005",
+        "name": "Doosanfc",
+        "quantity": "223"
+      },
+      {
+        "code": "120110",
+        "isin": "KR7120110002",
+        "name": "KOLON IND",
+        "quantity": "114"
+      },
+      {
+        "code": "011210",
+        "isin": "KR7011210002",
+        "name": "HYUNDAI WIA",
+        "quantity": "86"
+      },
+      {
+        "code": "475150",
+        "isin": "KR7475150009",
+        "name": "SK eternix",
+        "quantity": "106"
+      },
+      {
+        "code": "059090",
+        "isin": "KR7059090001",
+        "name": "MiCo",
+        "quantity": "134"
+      },
+      {
+        "code": "018670",
+        "isin": "KR7018670000",
+        "name": "SKGas",
+        "quantity": "12"
+      },
+      {
+        "code": "126340",
+        "isin": "KR7126340009",
+        "name": "VINATECH",
+        "quantity": "26"
+      },
+      {
+        "code": "119850",
+        "isin": "KR7119850006",
+        "name": "GNCENERGY",
+        "quantity": "59"
+      },
+      {
+        "code": "298050",
+        "isin": "KR7298050006",
+        "name": "HS HYOSUNG ADVANCED",
+        "quantity": "12"
+      },
+      {
+        "code": "025320",
+        "isin": "KR7025320003",
+        "name": "Synopex",
+        "quantity": "458"
+      },
+      {
+        "code": "033500",
+        "isin": "KR7033500000",
+        "name": "DONGSUNG FINETEC",
+        "quantity": "97"
+      },
+      {
+        "code": "089980",
+        "isin": "KR7089980007",
+        "name": "SFTC",
+        "quantity": "48"
+      },
+      {
+        "code": "271940",
+        "isin": "KR7271940009",
+        "name": "ILJIN HYSOLUS",
+        "quantity": "59"
+      },
+      {
+        "code": "036890",
+        "isin": "KR7036890002",
+        "name": "JINSUNG",
+        "quantity": "65"
+      },
+      {
+        "code": "094820",
+        "isin": "KR7094820008",
+        "name": "ILJIN POWER",
+        "quantity": "54"
+      },
+      {
+        "code": "382900",
+        "isin": "KR7382900009",
+        "name": "BHF",
+        "quantity": "23"
+      },
+      {
+        "code": "095190",
+        "isin": "KR7095190005",
+        "name": "SHINHWAPRITECH",
+        "quantity": "207"
+      },
+      {
+        "code": "108380",
+        "isin": "KR7108380007",
+        "name": "DAYANG",
+        "quantity": "19"
+      },
+      {
+        "code": "126880",
+        "isin": "KR7126880004",
+        "name": "JNK Global",
+        "quantity": "107"
+      },
+      {
+        "code": "288620",
+        "isin": "KR7288620008",
+        "name": "S-Prism",
+        "quantity": "25"
+      }
+    ]
+  },
+  {
+    "etf_code": "421320",
+    "rows": [
+      {
+        "code": "295310",
+        "isin": "KR7295310007",
+        "name": "에이치브이엠",
+        "quantity": "2252"
+      },
+      {
+        "code": "047810",
+        "isin": "KR7047810007",
+        "name": "한국항공우주",
+        "quantity": "1415"
+      },
+      {
+        "code": "272210",
+        "isin": "KR7272210006",
+        "name": "한화시스템",
+        "quantity": "1992"
+      },
+      {
+        "code": "012450",
+        "isin": "KR7012450003",
+        "name": "한화에어로스페이스",
+        "quantity": "166"
+      },
+      {
+        "code": "347700",
+        "isin": "KR7347700007",
+        "name": "스피어",
+        "quantity": "5797"
+      },
+      {
+        "code": "079550",
+        "isin": "KR7079550000",
+        "name": "LIG디펜스앤에어로스페이스",
+        "quantity": "243"
+      },
+      {
+        "code": "189300",
+        "isin": "KR7189300007",
+        "name": "인텔리안테크",
+        "quantity": "1714"
+      },
+      {
+        "code": "099320",
+        "isin": "KR7099320004",
+        "name": "쎄트렉아이",
+        "quantity": "1316"
+      },
+      {
+        "code": "368770",
+        "isin": "KR7368770004",
+        "name": "파이버프로",
+        "quantity": "5775"
+      },
+      {
+        "code": "462350",
+        "isin": "KR7462350000",
+        "name": "이노스페이스",
+        "quantity": "7.12E+3"
+      },
+      {
+        "code": "451760",
+        "isin": "KR7451760003",
+        "name": "컨텍",
+        "quantity": "3054"
+      },
+      {
+        "code": "274090",
+        "isin": "KR7274090000",
+        "name": "켄코아에어로스페이스",
+        "quantity": "2886"
+      },
+      {
+        "code": "211270",
+        "isin": "KR7211270004",
+        "name": "AP위성",
+        "quantity": "3043"
+      },
+      {
+        "code": "361390",
+        "isin": "KR7361390008",
+        "name": "제노코",
+        "quantity": "1371"
+      },
+      {
+        "code": "474170",
+        "isin": "KR7474170008",
+        "name": "루미르",
+        "quantity": "2619"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "736882"
+      }
+    ]
+  },
+  {
+    "etf_code": "322400",
+    "rows": [
+      {
+        "code": "035720",
+        "isin": "KR7035720002",
+        "name": "카카오",
+        "quantity": "2958"
+      },
+      {
+        "code": "035420",
+        "isin": "KR7035420009",
+        "name": "NAVER",
+        "quantity": "486"
+      },
+      {
+        "code": "139480",
+        "isin": "KR7139480008",
+        "name": "이마트",
+        "quantity": "588"
+      },
+      {
+        "code": "030000",
+        "isin": "KR7030000004",
+        "name": "제일기획",
+        "quantity": "2039"
+      },
+      {
+        "code": "377300",
+        "isin": "KR7377300009",
+        "name": "카카오페이",
+        "quantity": "1097"
+      },
+      {
+        "code": "257720",
+        "isin": "KR7257720003",
+        "name": "실리콘투",
+        "quantity": "1083"
+      },
+      {
+        "code": "069960",
+        "isin": "KR7069960003",
+        "name": "현대백화점",
+        "quantity": "369"
+      },
+      {
+        "code": "000120",
+        "isin": "KR7000120006",
+        "name": "CJ대한통운",
+        "quantity": "322"
+      },
+      {
+        "code": "093320",
+        "isin": "KR7093320000",
+        "name": "케이아이엔엑스",
+        "quantity": "88"
+      },
+      {
+        "code": "042000",
+        "isin": "KR7042000000",
+        "name": "카페24",
+        "quantity": "5.3E+2"
+      },
+      {
+        "code": "067160",
+        "isin": "KR7067160002",
+        "name": "SOOP",
+        "quantity": "242"
+      },
+      {
+        "code": "060250",
+        "isin": "KR7060250008",
+        "name": "NHN KCP",
+        "quantity": "639"
+      },
+      {
+        "code": "064260",
+        "isin": "KR7064260003",
+        "name": "다날",
+        "quantity": "1908"
+      },
+      {
+        "code": "376300",
+        "isin": "KR7376300000",
+        "name": "디어유",
+        "quantity": "349"
+      },
+      {
+        "code": "035600",
+        "isin": "KR7035600006",
+        "name": "KG이니시스",
+        "quantity": "447"
+      },
+      {
+        "code": "094480",
+        "isin": "KR7094480001",
+        "name": "갤럭시아머니트리",
+        "quantity": "5.3E+2"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "1350056"
+      }
+    ]
+  },
+  {
+    "etf_code": "367760",
+    "rows": [
+      {
+        "code": "005930",
+        "isin": "KR7005930003",
+        "name": "SamsungElec",
+        "quantity": "2535"
+      },
+      {
+        "code": "000660",
+        "isin": "KR7000660001",
+        "name": "SK hynix",
+        "quantity": "361"
+      },
+      {
+        "code": "009150",
+        "isin": "KR7009150004",
+        "name": "SamsungElecMech",
+        "quantity": "419"
+      },
+      {
+        "code": "007660",
+        "isin": "KR7007660004",
+        "name": "ISUPETASYS",
+        "quantity": "2243"
+      },
+      {
+        "code": "011070",
+        "isin": "KR7011070000",
+        "name": "LG Innotek",
+        "quantity": "577"
+      },
+      {
+        "code": "058470",
+        "isin": "KR7058470006",
+        "name": "LEENO",
+        "quantity": "2045"
+      },
+      {
+        "code": "080220",
+        "isin": "KR7080220007",
+        "name": "JSC",
+        "quantity": "1209"
+      },
+      {
+        "code": "010170",
+        "isin": "KR7010170009",
+        "name": "TaihanFiberoptics",
+        "quantity": "5328"
+      },
+      {
+        "code": "218410",
+        "isin": "KR7218410009",
+        "name": "RFHIC",
+        "quantity": "6.8E+2"
+      },
+      {
+        "code": "032500",
+        "isin": "KR7032500001",
+        "name": "KMW",
+        "quantity": "1185"
+      },
+      {
+        "code": "050890",
+        "isin": "KR7050890003",
+        "name": "Solid",
+        "quantity": "2232"
+      },
+      {
+        "code": "090460",
+        "isin": "KR7090460007",
+        "name": "BH",
+        "quantity": "974"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "11138707"
+      },
+      {
+        "code": "008060",
+        "isin": "KR7008060006",
+        "name": "DAEDUCK",
+        "quantity": "672"
+      },
+      {
+        "code": "290550",
+        "isin": "KR7290550003",
+        "name": "DKT",
+        "quantity": "396"
+      },
+      {
+        "code": "138080",
+        "isin": "KR7138080007",
+        "name": "OE Solutions",
+        "quantity": "358"
+      },
+      {
+        "code": "091700",
+        "isin": "KR7091700005",
+        "name": "PARTRON",
+        "quantity": "1239"
+      },
+      {
+        "code": "073490",
+        "isin": "KR7073490005",
+        "name": "LIG Accuver",
+        "quantity": "2.2E+2"
+      },
+      {
+        "code": "077500",
+        "isin": "KR7077500007",
+        "name": "Uniquest",
+        "quantity": "473"
+      },
+      {
+        "code": "122990",
+        "isin": "KR7122990005",
+        "name": "WiSoL",
+        "quantity": "682"
+      },
+      {
+        "code": "230240",
+        "isin": "KR7230240004",
+        "name": "HFR",
+        "quantity": "374"
+      },
+      {
+        "code": "039560",
+        "isin": "KR7039560008",
+        "name": "DASANNetwork",
+        "quantity": "1239"
+      },
+      {
+        "code": "115440",
+        "isin": "KR7115440000",
+        "name": "WooriNet",
+        "quantity": "312"
+      },
+      {
+        "code": "100590",
+        "isin": "KR7100590009",
+        "name": "Mercury",
+        "quantity": "354"
+      }
+    ]
+  },
+  {
+    "etf_code": "314700",
+    "rows": [
+      {
+        "code": "033780",
+        "isin": "KR7033780008",
+        "name": "KT&G",
+        "quantity": "648"
+      },
+      {
+        "code": "051910",
+        "isin": "KR7051910008",
+        "name": "LG화학",
+        "quantity": "339"
+      },
+      {
+        "code": "006040",
+        "isin": "KR7006040000",
+        "name": "동원산업",
+        "quantity": "2328"
+      },
+      {
+        "code": "001040",
+        "isin": "KR7001040005",
+        "name": "CJ",
+        "quantity": "505"
+      },
+      {
+        "code": "003380",
+        "isin": "KR7003380003",
+        "name": "하림지주",
+        "quantity": "4381"
+      },
+      {
+        "code": "006260",
+        "isin": "KR7006260004",
+        "name": "LS",
+        "quantity": "154"
+      },
+      {
+        "code": "097950",
+        "isin": "KR7097950000",
+        "name": "CJ제일제당",
+        "quantity": "178"
+      },
+      {
+        "code": "035810",
+        "isin": "KR7035810001",
+        "name": "이지홀딩스",
+        "quantity": "4449"
+      },
+      {
+        "code": "007310",
+        "isin": "KR7007310006",
+        "name": "오뚜기",
+        "quantity": "35"
+      },
+      {
+        "code": "004000",
+        "isin": "KR7004000006",
+        "name": "롯데정밀화학",
+        "quantity": "197"
+      },
+      {
+        "code": "005690",
+        "isin": "KR7005690003",
+        "name": "파미셀",
+        "quantity": "412"
+      },
+      {
+        "code": "069260",
+        "isin": "KR7069260008",
+        "name": "TKG휴켐스",
+        "quantity": "174"
+      },
+      {
+        "code": "KRD010010001",
+        "isin": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "1066359"
+      }
+    ]
+  },
+  {
+    "etf_code": "300950",
+    "rows": [
+      {
+        "code": "KRD010010001",
+        "name": "원화예금",
+        "quantity": "2477179"
+      },
+      {
+        "code": "259960",
+        "name": "크래프톤",
+        "quantity": "643"
+      },
+      {
+        "code": "036570",
+        "name": "NC",
+        "quantity": "461"
+      },
+      {
+        "code": "263750",
+        "name": "펄어비스",
+        "quantity": "1923"
+      },
+      {
+        "code": "251270",
+        "name": "넷마블",
+        "quantity": "1564"
+      },
+      {
+        "code": "462870",
+        "name": "시프트업",
+        "quantity": "1725"
+      },
+      {
+        "code": "192080",
+        "name": "더블유게임즈",
+        "quantity": "535"
+      },
+      {
+        "code": "293490",
+        "name": "카카오게임즈",
+        "quantity": "1992"
+      },
+      {
+        "code": "112040",
+        "name": "위메이드",
+        "quantity": "1034"
+      },
+      {
+        "code": "078340",
+        "name": "컴투스",
+        "quantity": "393"
+      },
+      {
+        "code": "225570",
+        "name": "넥슨게임즈",
+        "quantity": "1189"
+      },
+      {
+        "code": "069080",
+        "name": "웹젠",
+        "quantity": "927"
+      },
+      {
+        "code": "095660",
+        "name": "네오위즈",
+        "quantity": "581"
+      },
+      {
+        "code": "194480",
+        "name": "데브시스터즈",
+        "quantity": "401"
+      },
+      {
+        "code": "204610",
+        "name": "티쓰리",
+        "quantity": "1432"
+      },
+      {
+        "code": "201490",
+        "name": "미투온",
+        "quantity": "1295"
+      }
+    ]
+  }
+]

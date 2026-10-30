@@ -1,0 +1,1301 @@
+{
+  "selection_sha256": "8a6be0f192288fe14f324a3d01f685e1fce64e2c9e4213237cd4ea966ddd40d0",
+  "endpoint_template": "https://stock.naver.com/api/domestic/detail/{code}/ETFComponent",
+  "authentication_used": false,
+  "selected_count": 38,
+  "success_count": 38,
+  "results": [
+    {
+      "code": "091160",
+      "name": "KODEX 반도체",
+      "group_label": "반도체",
+      "url": "https://stock.naver.com/api/domestic/detail/091160/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:21.722961+00:00",
+      "response_sha256": "098fde03b27a508e3498ee7e92ddc05fc818ef635641143329162dcdb56c4735",
+      "response_bytes": 8287,
+      "row_count": 22,
+      "declared_counts": [
+        22
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 21,
+      "stock_like_unique_codes": 21,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.34"
+        }
+      ],
+      "weight_sum_pct": "99.93",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "091180",
+      "name": "KODEX 자동차",
+      "group_label": "자동차",
+      "url": "https://stock.naver.com/api/domestic/detail/091180/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:22.222695+00:00",
+      "response_sha256": "056369fe9a80101a677b84e480cfe757afcf5ee52189f2163617981a2782819d",
+      "response_bytes": 7164,
+      "row_count": 19,
+      "declared_counts": [
+        19
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 18,
+      "stock_like_unique_codes": 18,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.09"
+        }
+      ],
+      "weight_sum_pct": "99.90",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "091170",
+      "name": "KODEX 은행",
+      "group_label": "은행",
+      "url": "https://stock.naver.com/api/domestic/detail/091170/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:22.718404+00:00",
+      "response_sha256": "a138e86a43801ea1d339a9fe9e849433d974ea06620a5524795005d5055f3cb2",
+      "response_bytes": 4164,
+      "row_count": 11,
+      "declared_counts": [
+        11
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 10,
+      "stock_like_unique_codes": 10,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "-0.20"
+        }
+      ],
+      "weight_sum_pct": "99.96",
+      "nonnegative_weights": false,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "102970",
+      "name": "KODEX 증권",
+      "group_label": "증권",
+      "url": "https://stock.naver.com/api/domestic/detail/102970/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:23.224389+00:00",
+      "response_sha256": "25b5385cba1cac1b3862d91c53d6bf8483b931485773ee0536578d825a530d6e",
+      "response_bytes": 4540,
+      "row_count": 12,
+      "declared_counts": [
+        12
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 11,
+      "stock_like_unique_codes": 11,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.52"
+        }
+      ],
+      "weight_sum_pct": "99.95",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "140700",
+      "name": "KODEX 보험",
+      "group_label": "보험",
+      "url": "https://stock.naver.com/api/domestic/detail/140700/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:23.731778+00:00",
+      "response_sha256": "7ee029550e73eab05c28fb54e32e7456f6e416aafe0eb3f4243317ca7840e786",
+      "response_bytes": 4560,
+      "row_count": 12,
+      "declared_counts": [
+        12
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 11,
+      "stock_like_unique_codes": 11,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.58"
+        }
+      ],
+      "weight_sum_pct": "99.94",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "102960",
+      "name": "KODEX 기계장비",
+      "group_label": "기계장비",
+      "url": "https://stock.naver.com/api/domestic/detail/102960/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:24.218551+00:00",
+      "response_sha256": "4885ef5104f0db0910ee641a8b1917f2ad2bdb2ff4697a84e87e36a94d986c2d",
+      "response_bytes": 11675,
+      "row_count": 31,
+      "declared_counts": [
+        31
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 30,
+      "stock_like_unique_codes": 30,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.57"
+        }
+      ],
+      "weight_sum_pct": "99.83",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "117700",
+      "name": "KODEX 건설",
+      "group_label": "건설",
+      "url": "https://stock.naver.com/api/domestic/detail/117700/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:24.710463+00:00",
+      "response_sha256": "e11410ffb988fa096864a59d081aa8a6508b2ad200a717a4d6c0525bc9bedf28",
+      "response_bytes": 6401,
+      "row_count": 17,
+      "declared_counts": [
+        17
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 16,
+      "stock_like_unique_codes": 16,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.45"
+        }
+      ],
+      "weight_sum_pct": "99.92",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "117680",
+      "name": "KODEX 철강",
+      "group_label": "철강",
+      "url": "https://stock.naver.com/api/domestic/detail/117680/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:25.214542+00:00",
+      "response_sha256": "d39ea4485d4f87f58cb73e6aecbacc12ca20e68aa294c464bd12895d8e40ba91",
+      "response_bytes": 4534,
+      "row_count": 12,
+      "declared_counts": [
+        12
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 11,
+      "stock_like_unique_codes": 11,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.16"
+        }
+      ],
+      "weight_sum_pct": "99.96",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "117460",
+      "name": "KODEX 에너지화학",
+      "group_label": "에너지화학",
+      "url": "https://stock.naver.com/api/domestic/detail/117460/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:25.720424+00:00",
+      "response_sha256": "26fff332d70336e24f4c9be739aa1060f4a438a470dedfc1a3590a590918378c",
+      "response_bytes": 12384,
+      "row_count": 33,
+      "declared_counts": [
+        33
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 32,
+      "stock_like_unique_codes": 32,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.17"
+        }
+      ],
+      "weight_sum_pct": "99.83",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "140710",
+      "name": "KODEX 운송",
+      "group_label": "운송",
+      "url": "https://stock.naver.com/api/domestic/detail/140710/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:26.233916+00:00",
+      "response_sha256": "f17188fecd18faa48096aaf8b2c49aa5122d8b988599665dc85188c07d0d574c",
+      "response_bytes": 4522,
+      "row_count": 12,
+      "declared_counts": [
+        12
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 11,
+      "stock_like_unique_codes": 11,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.57"
+        }
+      ],
+      "weight_sum_pct": "99.96",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "266410",
+      "name": "KODEX 필수소비재",
+      "group_label": "필수소비재",
+      "url": "https://stock.naver.com/api/domestic/detail/266410/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:26.727903+00:00",
+      "response_sha256": "5ae31677cfc48574c7b6d7999ff4f60610d32b4a9c9969d6797ea360c6ab2531",
+      "response_bytes": 9406,
+      "row_count": 25,
+      "declared_counts": [
+        25
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 24,
+      "stock_like_unique_codes": 24,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.24"
+        }
+      ],
+      "weight_sum_pct": "99.88",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "266390",
+      "name": "KODEX 경기소비재",
+      "group_label": "경기소비재",
+      "url": "https://stock.naver.com/api/domestic/detail/266390/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:27.225473+00:00",
+      "response_sha256": "7f89a69cdb7690b0d19b9ba7838580d36654cca8a76cd38306dc1d852cf49ea8",
+      "response_bytes": 7891,
+      "row_count": 21,
+      "declared_counts": [
+        21
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 20,
+      "stock_like_unique_codes": 20,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.27"
+        }
+      ],
+      "weight_sum_pct": "99.89",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "143860",
+      "name": "TIGER 헬스케어",
+      "group_label": "헬스케어",
+      "url": "https://stock.naver.com/api/domestic/detail/143860/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:27.737322+00:00",
+      "response_sha256": "d977c4ec2415366bb78c34c0a751c84b6ad236edba60baee8fc53c5c9a0e3d61",
+      "response_bytes": 18420,
+      "row_count": 49,
+      "declared_counts": [
+        49
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 48,
+      "stock_like_unique_codes": 48,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "-0.16"
+        }
+      ],
+      "weight_sum_pct": "99.78",
+      "nonnegative_weights": false,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "266360",
+      "name": "KODEX K콘텐츠",
+      "group_label": "콘텐츠",
+      "url": "https://stock.naver.com/api/domestic/detail/266360/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:28.207344+00:00",
+      "response_sha256": "bad36f1378a8afa7795599effc05e57f4b1696714372db86c95aab39e650cea6",
+      "response_bytes": 7470,
+      "row_count": 20,
+      "declared_counts": [
+        20
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 19,
+      "stock_like_unique_codes": 19,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.68"
+        }
+      ],
+      "weight_sum_pct": "99.91",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "157490",
+      "name": "TIGER 소프트웨어",
+      "group_label": "소프트웨어",
+      "url": "https://stock.naver.com/api/domestic/detail/157490/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:28.727047+00:00",
+      "response_sha256": "386891756aeafe8cfb9c132d165529150f06920dc52838361458a3ffe3ef634c",
+      "response_bytes": 8929,
+      "row_count": 24,
+      "declared_counts": [
+        24
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 23,
+      "stock_like_unique_codes": 23,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.06"
+        }
+      ],
+      "weight_sum_pct": "99.90",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "266370",
+      "name": "KODEX IT",
+      "group_label": "정보기술 종합",
+      "url": "https://stock.naver.com/api/domestic/detail/266370/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:29.214586+00:00",
+      "response_sha256": "b17b1d9a6ffbe1d3c9bec3ca25402281d56b54cba34f7d2ba6a247b35128ba76",
+      "response_bytes": 7928,
+      "row_count": 21,
+      "declared_counts": [
+        21
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 20,
+      "stock_like_unique_codes": 20,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.85"
+        }
+      ],
+      "weight_sum_pct": "99.89",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "315270",
+      "name": "TIGER 200커뮤니케이션서비스",
+      "group_label": "커뮤니케이션서비스",
+      "url": "https://stock.naver.com/api/domestic/detail/315270/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:29.710674+00:00",
+      "response_sha256": "3bacb5cfbf6c1c205b2165fefe2a662ec5cad3e4aeb247f056ec688f412250d3",
+      "response_bytes": 4083,
+      "row_count": 11,
+      "declared_counts": [
+        11
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 10,
+      "stock_like_unique_codes": 10,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.57"
+        }
+      ],
+      "weight_sum_pct": "99.95",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "455850",
+      "name": "SOL AI반도체소부장",
+      "group_label": "반도체 소부장",
+      "url": "https://stock.naver.com/api/domestic/detail/455850/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:30.205315+00:00",
+      "response_sha256": "0fdc00befd3c35244d81f4dcce6468919caafc67c699c6808a8436e431eb5f6c",
+      "response_bytes": 7903,
+      "row_count": 21,
+      "declared_counts": [
+        21
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 20,
+      "stock_like_unique_codes": 20,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.42"
+        }
+      ],
+      "weight_sum_pct": "99.91",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "305720",
+      "name": "KODEX 2차전지산업",
+      "group_label": "2차전지 산업",
+      "url": "https://stock.naver.com/api/domestic/detail/305720/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:30.726353+00:00",
+      "response_sha256": "ffd23d8ce906109d060bbf92388d1e6c9ca6d5210790cebdb0da29e0a18e97f2",
+      "response_bytes": 9830,
+      "row_count": 26,
+      "declared_counts": [
+        26
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 25,
+      "stock_like_unique_codes": 25,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.15"
+        }
+      ],
+      "weight_sum_pct": "99.86",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "462010",
+      "name": "TIGER 2차전지소재Fn",
+      "group_label": "2차전지 소재",
+      "url": "https://stock.naver.com/api/domestic/detail/462010/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:31.212474+00:00",
+      "response_sha256": "4ac9a9d62e514b708f78d9de53f8eebf98fb2ede847d101353ef18788ab20e4d",
+      "response_bytes": 7508,
+      "row_count": 20,
+      "declared_counts": [
+        20
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 19,
+      "stock_like_unique_codes": 19,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.40"
+        }
+      ],
+      "weight_sum_pct": "99.90",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "466920",
+      "name": "SOL 조선TOP3플러스",
+      "group_label": "조선",
+      "url": "https://stock.naver.com/api/domestic/detail/466920/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:31.705907+00:00",
+      "response_sha256": "9d623f4a9ac95d959e1977c4372d5aa12479967b2d82ba7194cf1e0fff92cdcb",
+      "response_bytes": 5296,
+      "row_count": 14,
+      "declared_counts": [
+        14
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 13,
+      "stock_like_unique_codes": 13,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "1.15"
+        }
+      ],
+      "weight_sum_pct": "99.92",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "449450",
+      "name": "PLUS K방산",
+      "group_label": "방산",
+      "url": "https://stock.naver.com/api/domestic/detail/449450/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:32.228540+00:00",
+      "response_sha256": "66fbdd1b6e615ddfb1aa4a42fe4fde150ad055ee578e1a06ca858b6bac35f0a0",
+      "response_bytes": 4175,
+      "row_count": 11,
+      "declared_counts": [
+        11
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 10,
+      "stock_like_unique_codes": 10,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.16"
+        }
+      ],
+      "weight_sum_pct": "99.95",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "491820",
+      "name": "HANARO 전력설비투자",
+      "group_label": "전력설비",
+      "url": "https://stock.naver.com/api/domestic/detail/491820/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:32.741370+00:00",
+      "response_sha256": "16d0d66246484735650e22342916bc0a91284657abb3babd6dd6c2ed240f3871",
+      "response_bytes": 5271,
+      "row_count": 14,
+      "declared_counts": [
+        14
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 13,
+      "stock_like_unique_codes": 13,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.92"
+        }
+      ],
+      "weight_sum_pct": "99.92",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "434730",
+      "name": "HANARO 원자력iSelect",
+      "group_label": "원자력",
+      "url": "https://stock.naver.com/api/domestic/detail/434730/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:33.224663+00:00",
+      "response_sha256": "d18d1589be6b97d83bc89ade30aceffb89a7cf233450141e17bcbdd11fbf6d87",
+      "response_bytes": 6027,
+      "row_count": 16,
+      "declared_counts": [
+        16
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 15,
+      "stock_like_unique_codes": 15,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.51"
+        }
+      ],
+      "weight_sum_pct": "99.91",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "0148J0",
+      "name": "TIGER 코리아휴머노이드로봇산업",
+      "group_label": "휴머노이드로봇",
+      "url": "https://stock.naver.com/api/domestic/detail/0148J0/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:33.723745+00:00",
+      "response_sha256": "f6b86139b7ecc39269b5f214feeb7cb53292901957e17aa0c6f659176891cc67",
+      "response_bytes": 6056,
+      "row_count": 16,
+      "declared_counts": [
+        16
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 15,
+      "stock_like_unique_codes": 15,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.05"
+        }
+      ],
+      "weight_sum_pct": "99.90",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "228790",
+      "name": "TIGER 화장품",
+      "group_label": "화장품",
+      "url": "https://stock.naver.com/api/domestic/detail/228790/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:34.215536+00:00",
+      "response_sha256": "2e012d209357319bcf1d97ab08cbce15ed047cd7af0e1e77a22e48b841bce783",
+      "response_bytes": 7114,
+      "row_count": 19,
+      "declared_counts": [
+        19
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 18,
+      "stock_like_unique_codes": 18,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.15"
+        }
+      ],
+      "weight_sum_pct": "99.90",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "244580",
+      "name": "KODEX 바이오",
+      "group_label": "바이오",
+      "url": "https://stock.naver.com/api/domestic/detail/244580/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:34.742773+00:00",
+      "response_sha256": "7d3cc19a622ca869be3bc4c2586d549926fa0a48bb0229d27b52ba17b218e353",
+      "response_bytes": 19294,
+      "row_count": 51,
+      "declared_counts": [
+        51
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 50,
+      "stock_like_unique_codes": 50,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.39"
+        }
+      ],
+      "weight_sum_pct": "99.70",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "307510",
+      "name": "TIGER 의료기기",
+      "group_label": "의료기기",
+      "url": "https://stock.naver.com/api/domestic/detail/307510/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:35.230395+00:00",
+      "response_sha256": "f718964d4f0b4848044fdb6ed1f65981cf251374a08b904c2b595e33438fd24a",
+      "response_bytes": 18785,
+      "row_count": 50,
+      "declared_counts": [
+        50
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 49,
+      "stock_like_unique_codes": 49,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.30"
+        }
+      ],
+      "weight_sum_pct": "99.74",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "438900",
+      "name": "HANARO Fn K-푸드",
+      "group_label": "식품",
+      "url": "https://stock.naver.com/api/domestic/detail/438900/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:35.727843+00:00",
+      "response_sha256": "b88dc5df18f73757eb31d4a9918aca9255d7f67e8f4632c9516e419a16a4bbfb",
+      "response_bytes": 5982,
+      "row_count": 16,
+      "declared_counts": [
+        16
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 15,
+      "stock_like_unique_codes": 15,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.31"
+        }
+      ],
+      "weight_sum_pct": "99.92",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "228800",
+      "name": "TIGER 여행레저",
+      "group_label": "여행레저",
+      "url": "https://stock.naver.com/api/domestic/detail/228800/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:36.216147+00:00",
+      "response_sha256": "63b02fc23795a4aa94cd8e39b27f00f28a6be99b88ea3743792214fd51ab6ef0",
+      "response_bytes": 6346,
+      "row_count": 17,
+      "declared_counts": [
+        17
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 16,
+      "stock_like_unique_codes": 16,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.17"
+        }
+      ],
+      "weight_sum_pct": "99.92",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "377990",
+      "name": "TIGER Fn신재생에너지",
+      "group_label": "신재생에너지",
+      "url": "https://stock.naver.com/api/domestic/detail/377990/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:36.745937+00:00",
+      "response_sha256": "7488b863c28c15fc1500e162202df781aa093d834fbdd062c28ee5d04b1bf5f5",
+      "response_bytes": 8291,
+      "row_count": 22,
+      "declared_counts": [
+        22
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 21,
+      "stock_like_unique_codes": 21,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.09"
+        }
+      ],
+      "weight_sum_pct": "99.87",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "457990",
+      "name": "PLUS 태양광&ESS",
+      "group_label": "태양광과 ESS",
+      "url": "https://stock.naver.com/api/domestic/detail/457990/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:37.212823+00:00",
+      "response_sha256": "9e9db6e6a3954e9d169853717dc71e553c2113ee13ed00947f94998471a336cb",
+      "response_bytes": 4192,
+      "row_count": 11,
+      "declared_counts": [
+        11
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 10,
+      "stock_like_unique_codes": 10,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "-0.06"
+        }
+      ],
+      "weight_sum_pct": "99.94",
+      "nonnegative_weights": false,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "367770",
+      "name": "RISE 수소경제테마",
+      "group_label": "수소경제",
+      "url": "https://stock.naver.com/api/domestic/detail/367770/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:37.714823+00:00",
+      "response_sha256": "1575ffbe3922eacde172976e816311bc7433b996a01de9a2602780fffff374c9",
+      "response_bytes": 12402,
+      "row_count": 33,
+      "declared_counts": [
+        33
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 32,
+      "stock_like_unique_codes": 32,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "1.00"
+        }
+      ],
+      "weight_sum_pct": "99.84",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "421320",
+      "name": "PLUS 우주항공",
+      "group_label": "우주항공",
+      "url": "https://stock.naver.com/api/domestic/detail/421320/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:38.225516+00:00",
+      "response_sha256": "2025785d17f480f516518935f8b16bff3a314848b8d829a44a270246226f90ef",
+      "response_bytes": 6085,
+      "row_count": 16,
+      "declared_counts": [
+        16
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 15,
+      "stock_like_unique_codes": 15,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.06"
+        }
+      ],
+      "weight_sum_pct": "99.91",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "322400",
+      "name": "HANARO e커머스",
+      "group_label": "전자상거래",
+      "url": "https://stock.naver.com/api/domestic/detail/322400/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:38.720992+00:00",
+      "response_sha256": "276000a1954f6b98452cfb0cd498114d6709a75d774b882200d8bee57825511b",
+      "response_bytes": 6356,
+      "row_count": 17,
+      "declared_counts": [
+        17
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 16,
+      "stock_like_unique_codes": 16,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.31"
+        }
+      ],
+      "weight_sum_pct": "99.93",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "367760",
+      "name": "RISE 네트워크인프라",
+      "group_label": "네트워크인프라",
+      "url": "https://stock.naver.com/api/domestic/detail/367760/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:39.217830+00:00",
+      "response_sha256": "10016ae0d1476663bcb9472007c308f1b78e055f8087c03ee84c8da4348c1403",
+      "response_bytes": 8995,
+      "row_count": 24,
+      "declared_counts": [
+        24
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 23,
+      "stock_like_unique_codes": 23,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.43"
+        }
+      ],
+      "weight_sum_pct": "99.86",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "314700",
+      "name": "HANARO 농업융복합산업",
+      "group_label": "농업융복합",
+      "url": "https://stock.naver.com/api/domestic/detail/314700/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:39.850040+00:00",
+      "response_sha256": "7bfeaa5febfabddd03543a41a1978dd704c3cb4b00692f52a7ce0d2491d39722",
+      "response_bytes": 4846,
+      "row_count": 13,
+      "declared_counts": [
+        13
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 12,
+      "stock_like_unique_codes": 12,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.21"
+        }
+      ],
+      "weight_sum_pct": "99.93",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    },
+    {
+      "code": "300950",
+      "name": "KODEX 게임산업",
+      "group_label": "게임",
+      "url": "https://stock.naver.com/api/domestic/detail/300950/ETFComponent",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "retrieved_at": "2026-10-30T03:06:40.336628+00:00",
+      "response_sha256": "67a2947b5df2fb40ea25f21b00feda89acc0aa5db8080dbd5c5b7a8eeb92c5ab",
+      "response_bytes": 6011,
+      "row_count": 16,
+      "declared_counts": [
+        16
+      ],
+      "declared_count_matches_rows": true,
+      "reference_dates": [
+        "2026-10-30"
+      ],
+      "single_reference_date": true,
+      "stock_like_rows": 15,
+      "stock_like_unique_codes": 15,
+      "other_rows": [
+        {
+          "componentName": "원화현금",
+          "componentItemCode": null,
+          "componentIsinCode": "KRD010010001",
+          "weight": "0.49"
+        }
+      ],
+      "weight_sum_pct": "99.92",
+      "nonnegative_weights": true,
+      "full_constituent_coverage_certified": false,
+      "status": "json_response_verified"
+    }
+  ]
+}
