@@ -9,7 +9,7 @@ import { PanelContextMenu } from '../../ui/PanelContextMenu';
 import { GripIcon } from '../../ui/RailActionIcons';
 import { useTextTooltip } from '../../ui/useTextTooltip';
 import { TextTooltip } from '../../ui/TextTooltip';
-import { BookPriceAmount } from './BookPriceAmount';
+import { BookAmountTooltip, BookPriceAmount } from './BookPriceAmount';
 import { useBookPriceLayout } from './useBookPriceLayout';
 import { useOrderColumnLayout } from './useOrderColumnLayout';
 import { priceDirClass } from '../../ui/priceDir';
@@ -735,7 +735,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     const key = `full-${price}`;
     const depth = (side: 'ask' | 'bid', level: typeof ask) => <div className={`order-depth order-${side}`}
       style={{ '--order-depth': (level?.qty ?? 0) / maxQty } as React.CSSProperties}>
-      {level && level.qty > 0 && <span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`${side === 'ask' ? 'a' : 'b'}:${price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span>}
+      {level && level.qty > 0 && <span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`${side === 'ask' ? 'a' : 'b'}:${price}`) ?? null} /><BookAmountTooltip price={price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span>}
     </div>;
     const knownQuantity = ask?.qty ?? bid?.qty;
     return <div className={`order-row ${dragTarget === price ? 'order-target' : ''}`} data-order-price={price} key={key}>
@@ -932,13 +932,13 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
           return <div className={`order-row ${firstBid ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}>
             {orderCell('SELL', level.price, key)}
-            {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
+            {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div>
               : info}
             <div className={`order-price book-price-line ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value book-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
               {index === averageMarkerIndex && <TextTooltip text={averageMarkerLabel}><span className="order-average-marker" role="img" aria-label={averageMarkerLabel} /></TextTooltip>}
               <BookPriceAmount price={level.price} qty={level.qty} /></span>{preferences.showPriceChangePercent && <small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small>}</div>
             {isAsk ? <div className="order-summary-slot" />
-              : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}
+              : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div>}
             {orderCell('BUY', level.price, key)}
           </div>;
         })}

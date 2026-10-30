@@ -54,11 +54,13 @@ describe('호가 잔량 금액 툴팁', () => {
   afterEach(() => vi.useRealTimers());
 
   it.each([
-    ['256,000', '0.28억'],
-    ['246,500', '0.52억'],
-  ])('가격 %s에 해당 방향의 잔량 금액을 표시하고 이탈·Escape로 닫는다', (price, text) => {
+    ['.book-price-amount', '256,000', '0.28억'],
+    ['.book-price-amount', '246,500', '0.52억'],
+    ['.book-qty-amount', '109', '0.28억'],
+    ['.book-qty-amount', '209', '0.52억'],
+  ])('%s의 %s에 해당 방향의 잔량 금액을 표시하고 이탈·Escape로 닫는다', (selector, label, text) => {
     renderPanel();
-    const value = screen.getByText(price, { selector: '.book-price-amount' });
+    const value = screen.getByText(label, { selector });
     vi.spyOn(value, 'matches').mockImplementation(selector => selector === ':hover');
     fireEvent.mouseEnter(value);
     act(() => vi.advanceTimersByTime(499));

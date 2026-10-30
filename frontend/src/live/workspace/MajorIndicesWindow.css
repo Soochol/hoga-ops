@@ -4,7 +4,6 @@
   gap: 3px;
 }
 .major-indices-header { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; font-size: var(--text-xs); }
-.major-indices-title { flex-shrink: 0; font-weight: 500; white-space: nowrap; }
 .major-indices-legend { display: flex; flex: 1; min-width: 0; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
 .major-indices-quote { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
 .major-indices-name { display: inline-flex; align-items: center; gap: 3px; }
@@ -25,7 +24,6 @@
 .major-indices-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--fg-dim); font-size: var(--text-xs); pointer-events: none; }
 @container (max-width: 38.75rem) {
   .major-indices-header { flex-wrap: wrap; gap: 2px 6px; }
-  .major-indices-title { flex: 1; }
   .major-indices-status { order: 1; }
   .major-indices-legend { order: 2; flex-basis: 100%; gap:0.25rem; overflow-x:auto; }
   .major-indices-quote { gap:0.125rem; flex-shrink:0; }

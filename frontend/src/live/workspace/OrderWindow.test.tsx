@@ -456,14 +456,16 @@ describe('호가 주문', () => {
   });
 
   it.each([
-    ['67,300', '0.07억'],
-    ['67,200', '0.13억'],
-  ])('주문창 가격 %s의 툴팁은 공통 주문수량 대신 시장 잔량 금액을 표시한다', (price, text) => {
+    ['.order-price .book-price-amount', '67,300', '0.07억'],
+    ['.order-price .book-price-amount', '67,200', '0.13억'],
+    ['.order-depth-qty', '100', '0.07억'],
+    ['.order-depth-qty', '200', '0.13억'],
+  ])('주문창 %s의 %s 툴팁은 공통 주문수량 대신 시장 잔량 금액을 표시한다', (selector, label, text) => {
     vi.useFakeTimers();
     try {
       show();
       fireEvent.change(screen.getByRole('spinbutton', { name: '신규 주문 수량' }), { target: { value: '3' } });
-      const value = screen.getByText(price, { selector: '.order-price .book-price-amount' });
+      const value = screen.getByText(label, { selector });
       vi.spyOn(value, 'matches').mockImplementation(selector => selector === ':hover');
       fireEvent.mouseEnter(value);
       act(() => vi.advanceTimersByTime(500));

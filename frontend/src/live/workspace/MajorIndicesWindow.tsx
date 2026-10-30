@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { WindowFrame, type WindowFrameProps } from './WindowFrame';
 import { useMajorIndices } from './useMajorIndices';
 import { indexPercentAt, type IndexPercentPoint } from './majorIndicesModel';
-import { regularSessionOpenMs, regularSessionCloseMs } from '../liveDateTime';
+import { majorIndicesTimeAxis } from './majorIndicesTimeAxis';
 import { unixMsToKSTHhmm } from '../../util/time';
 import './MajorIndicesWindow.css';
 
@@ -21,7 +21,6 @@ export function MajorIndicesWindow({ frameProps }: { frameProps: Omit<WindowFram
   const description = `${model.date} · 전일 종가 대비 등락률 · ${model.label}`;
   return <WindowFrame {...frameProps} headerContent={
     <div className="major-indices-header" data-testid="major-indices-header">
-      <span className="major-indices-title">주요 지수</span>
       <div className="major-indices-legend" aria-label="주요 지수 시세">
         {model.series.map(s => <span key={s.id} className="major-indices-quote">
           <span className="major-indices-name"><i aria-hidden style={{ background: s.color }} />{s.label}</span>
@@ -31,7 +30,7 @@ export function MajorIndicesWindow({ frameProps }: { frameProps: Omit<WindowFram
       </div>
       <span className="major-indices-status" role="status" aria-label={description}>{model.label}</span>
     </div>
-  }><MajorIndicesChart model={model} /></WindowFrame>;
+  }><MajorIndicesChart key={model.date} model={model} /></WindowFrame>;
 }
 
 function linePath(points: readonly IndexPercentPoint[], x: (t: number) => number, y: (v: number) => number) {
@@ -46,10 +45,11 @@ function MajorIndicesChart({ model }: { model: Overview }) {
   const axisLabels = useRef<SVGGElement>(null);
   const [axisWidth, setAxisWidth] = useState(52);
   const [size, setSize] = useState({ width: 600, height: 174 });
-  // Fraction of the full regular session. Pointer movement only rerenders this
-  // small SVG, not the query observers or the rest of the workspace.
+  // Live hover follows the pointer's fraction; a pinned cursor keeps its actual
+  // timestamp when the time axis grows. The date key resets both on a new day.
   const [hover, setHover] = useState<number | null>(null);
-  const [pinned, setPinned] = useState(false);
+  const [pinnedTime, setPinnedTime] = useState<number | null>(null);
+  const pinned = pinnedTime !== null;
   const clipId = useId().replaceAll(':', '');
   useEffect(() => {
     const node = container.current;
@@ -63,14 +63,16 @@ function MajorIndicesChart({ model }: { model: Overview }) {
   }, []);
   const { width, height } = size;
   const left = 5, right = Math.max(left + 10, width - axisWidth), top = 20, bottom = Math.max(top + 15, height - 21);
-  const open = regularSessionOpenMs(model.date), close = regularSessionCloseMs(model.date);
+  const { start: open, end, ticks: timeTicks } = majorIndicesTimeAxis(model.date, model.now, right - left, Math.max(64, axisWidth));
+  const timeSpan = end - open;
   const values = model.series.flatMap(s => s.points.map(p => p.percent));
-  const low = Math.min(0, ...values), high = Math.max(0, ...values);
+  const low = values.length ? Math.min(...values) : 0;
+  const high = values.length ? Math.max(...values) : 0;
   const step = Math.max(0.1, 10 ** Math.floor(Math.log10(Math.max(high - low, 0.2) / 4)));
   const tickStep = [1, 2, 5, 10].map(n => n * step).find(n => (high - low) / n <= 5) ?? step * 10;
   const min = Math.floor((low - tickStep * .15) / tickStep) * tickStep;
   const max = Math.ceil((high + tickStep * .15) / tickStep) * tickStep;
-  const x = (t: number) => left + (t - open) / (close - open) * (right - left);
+  const x = (t: number) => left + (t - open) / Math.max(1, timeSpan) * (right - left);
   const y = (v: number) => bottom - (v - min) / (max - min) * (bottom - top);
   const ticks: number[] = [];
   for (let value = min; value <= max + tickStep / 100; value += tickStep) ticks.push(Math.abs(value) < tickStep / 100 ? 0 : value);
@@ -93,18 +95,23 @@ function MajorIndicesChart({ model }: { model: Overview }) {
     labels.forEach(label => observer.observe(label));
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [min, max, tickStep, decimals]);
-  const cursorTime = hover === null ? null : open + hover * (close - open);
+  const cursorTime = pinnedTime ?? (hover === null ? null : open + hover * timeSpan);
   const hovered = model.series.map(s => ({ ...s, at: cursorTime === null ? null : indexPercentAt(s.points, cursorTime) }));
   const hasData = values.length > 0;
-  const move = (event: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>) => {
+  const pointerFraction = (event: React.PointerEvent<SVGSVGElement> | React.MouseEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
-    setHover(Math.max(0, Math.min(1, (event.clientX - bounds.left - left) / (right - left))));
+    return Math.max(0, Math.min(1, (event.clientX - bounds.left - left) / (right - left)));
   };
-  const tooltipX = hover === null ? 0 : Math.max(2, Math.min(width - 132, x(open + hover * (close - open)) + (hover > .6 ? -132 : 10)));
+  const cursorX = cursorTime === null ? left : x(cursorTime);
+  const tooltipX = Math.max(2, Math.min(width - 132, cursorX + (cursorX > left + (right - left) * .6 ? -132 : 10)));
   return <div ref={container} className="major-indices-chart" data-testid="major-indices-chart">
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${model.date} 코스피·코스닥·K200 당일 등락률 비교 · 오른쪽 Y축 등락률 %`}
-      onPointerMove={event => { if (!pinned) move(event); }} onPointerLeave={() => { if (!pinned) setHover(null); }}
-      onClick={event => { if (pinned) { setPinned(false); setHover(null); } else { move(event); setPinned(true); } }}>
+      onPointerMove={event => { if (!pinned) setHover(pointerFraction(event)); }}
+      onPointerLeave={() => { if (!pinned) setHover(null); }}
+      onClick={event => {
+        if (pinned) { setPinnedTime(null); setHover(null); }
+        else setPinnedTime(open + pointerFraction(event) * timeSpan);
+      }}>
       <defs><clipPath id={clipId}><rect x={left} y={top - 3} width={right - left + 3} height={bottom - top + 6} /></clipPath></defs>
       <text x={width - 5} y={12} textAnchor="end">등락률 %</text>
       <g ref={axisLabels} data-testid="major-indices-axis-labels">{ticks.map((value, i) => <g key={i}>
@@ -112,9 +119,10 @@ function MajorIndicesChart({ model }: { model: Overview }) {
         <text x={right + 7} y={y(value) + 3.5}>{value > 0 ? '+' : ''}{value.toFixed(decimals)}%</text>
       </g>)}</g>
       <line x1={right} x2={right} y1={top} y2={bottom} className="major-indices-grid" />
-      <text x={left} y={height - 5}>09:00</text>
-      {width >= 300 && <text x={x(open + 3 * 3600_000)} y={height - 5} textAnchor="middle">12:00</text>}
-      <text x={right} y={height - 5} textAnchor="end">15:30</text>
+      <g data-testid="major-indices-time-axis">{timeTicks.map(time =>
+        <text key={time} x={time === end && time !== open ? right : x(time)} y={height - 5}
+          textAnchor={time === open ? 'start' : time === end ? 'end' : 'middle'}>{timeLabel(time)}</text>
+      )}</g>
       <g clipPath={`url(#${clipId})`}>
         {model.series.map(s => <g key={s.id} data-index-series={s.id}>
           <path d={linePath(s.points, x, y)} fill="none" stroke={s.color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />

@@ -106,3 +106,76 @@ for (const fontSize of [16,20]) for (const kind of ['sector','indices','volume',
     expect(errors).toEqual([]);
   });
 }
+
+test('indices: current-minute axis, pinned time and non-overlapping ticks survive clock and width changes', async ({ page }, info) => {
+  await page.evaluate(async () => {
+    const path = '/tests/e2e/helpers/remainingPanelHarness.tsx';
+    const { mount } = await import(path);
+    (window as unknown as HarnessWindow).panels = mount('indices', 900, 20);
+    await document.fonts.ready;
+  });
+  const host = page.getByTestId('panel-host');
+  const axis = host.getByTestId('major-indices-time-axis');
+  const svg = host.getByRole('img');
+  await expect(axis.getByText('10:00', { exact: true })).toBeVisible();
+  await expect(axis.getByText('15:30', { exact: true })).toHaveCount(0);
+  const clickPoint = await svg.evaluate(node => {
+    const svg = node as SVGSVGElement;
+    const bounds = svg.getBoundingClientRect();
+    const labels = svg.querySelector('[data-testid="major-indices-time-axis"]')!.querySelectorAll('text');
+    const start = Number(labels[0].getAttribute('x'));
+    const end = Number(labels[labels.length - 1].getAttribute('x'));
+    // Stay inside 09:30 despite subpixel mouse coordinates being rounded by Chrome.
+    return { x: (start + end) / 2 / svg.viewBox.baseVal.width * bounds.width + 2, y: bounds.height / 2 };
+  });
+  await svg.click({ position: clickPoint });
+  const tooltip = host.getByRole('tooltip');
+  await expect(tooltip).toContainText('09:30');
+  await page.mouse.move(1100, 700);
+  await page.clock.fastForward(60_000);
+  await expect(axis.getByText('10:01', { exact: true })).toBeVisible();
+  await expect(tooltip).toContainText('09:30');
+  for (const width of [900, 360, 240]) {
+    await page.evaluate(width => (window as unknown as HarnessWindow).panels.resize(width), width);
+    await expect(tooltip).toContainText('09:30');
+    await expect.poll(() => axis.evaluate(group => {
+      const svg = group.closest('svg')!.getBoundingClientRect();
+      const labels = Array.from(group.querySelectorAll('text'), label => label.getBoundingClientRect());
+      return labels.every((label, i) => label.left >= svg.left - 1 && label.right <= svg.right + 1
+        && (i === 0 || label.left >= labels[i - 1].right + 2));
+    })).toBe(true);
+  }
+  await host.screenshot({ path: info.outputPath('indices-current-axis-narrow.png') });
+  await page.clock.fastForward('05:30:00');
+  await expect(axis.getByText('15:30', { exact: true })).toBeVisible();
+  await expect(tooltip).toContainText('09:30');
+});
+
+for (const change of [10, -10]) {
+  test(`indices: Y axis follows actual changes without forcing zero (${change})`, async ({ page }, info) => {
+    await page.route(apiExact('live/index-candles'), route => {
+      const params = new URL(route.request().url()).searchParams;
+      return route.fulfill({ json: { index_id: params.get('index_id'), timeframe: params.get('timeframe'),
+        from: params.get('from'), to: params.get('to'), data_warnings: [],
+        candles: [{ t_ms: 1792368000000, open: 100, high: 100, low: 100, close: 100, volume: 100 }],
+      } });
+    });
+    await page.route(apiExact('live/index-quotes'), route => route.fulfill({ json: {
+      quotes: ['KOSPI', 'KOSDAQ', 'KOSPI200'].map(id => ({ id, label: id, value: 100, change, change_rate: change, t_ms: 1792368400000 })),
+    } }));
+    await page.evaluate(async () => {
+      const path = '/tests/e2e/helpers/remainingPanelHarness.tsx';
+      const { mount } = await import(path);
+      (window as unknown as HarnessWindow).panels = mount('indices', 900, 16);
+      await document.fonts.ready;
+    });
+    const host = page.getByTestId('panel-host');
+    await expect(host.locator('.major-indices-value').first()).toHaveText('100.00');
+    await expect.poll(() => host.getByTestId('major-indices-axis-labels').evaluate((group, change) => {
+      const values = Array.from(group.querySelectorAll('text'), label => parseFloat(label.textContent!));
+      return values.length > 1 && values.every(value => change > 0 ? value > 0 : value < 0);
+    }, change)).toBe(true);
+    await expect(host.locator('.major-indices-zero')).toHaveCount(0);
+    await host.screenshot({ path: info.outputPath(`indices-y-axis-${change}.png`) });
+  });
+}

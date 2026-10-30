@@ -1839,7 +1839,7 @@ test('메뉴와 호가주문은 소프트 컴팩트 툴팁·키보드·화면 �
   expect(commands).toHaveLength(0);
 });
 
-test('두 호가창의 가격 호버는 매수·매도 잔량 금액을 주문창 툴팁으로 표시한다', async ({ page }, testInfo) => {
+test('두 호가창의 가격·잔량 호버는 매수·매도 잔량 금액을 주문창 툴팁으로 표시한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, false, false);
   const book = page.locator('.book-panel');
   const tooltip = page.getByRole('tooltip');
@@ -1864,6 +1864,19 @@ test('두 호가창의 가격 호버는 매수·매도 잔량 금액을 주문�
       await expect(tooltip).toHaveText(text);
       await page.mouse.move(0, 0);
       await expect(tooltip).toHaveCount(0);
+    }
+    for (const full of index === 0 ? [false, true] : [false]) {
+      if (full) await window.getByRole('button', { name: '전체 호가', exact: true }).click();
+      for (const [qty, text] of [['100', '0.07억'], ['200', '0.13억']]) {
+        const target = panel.locator(index === 0 ? '.order-depth-qty' : '.book-qty-amount')
+          .filter({ hasText: new RegExp(`^${qty}$`) });
+        await target.hover();
+        await expect(tooltip).toHaveText(text);
+        await expect(tooltip).toHaveClass(/order-tooltip/);
+        await page.mouse.move(0, 0);
+        await expect(tooltip).toHaveCount(0);
+      }
+      if (full) await window.getByRole('button', { name: '전체 호가', exact: true }).click();
     }
     await frame.getByRole('button', { name: '원래 크기로 복원', exact: true }).click();
   }
