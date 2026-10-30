@@ -1519,7 +1519,11 @@ describe('호가 주문', () => {
     expect(summaryContent.getByText('184.55%')).toBeInTheDocument();
     expect(summaryContent.getByText('12조 2,908억')).toBeInTheDocument();
     fireEvent.click(summaryContent.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
-    for (const label of ['상한가', '하한가', '상승VI', '하강VI']) expect(summaryContent.getByText(label)).toBeInTheDocument();
+    for (const label of ['상한가', '하한가']) expect(summaryContent.getByText(label)).toBeInTheDocument();
+    expect(summaryContent.queryByText('상승VI')).not.toBeInTheDocument();
+    fireEvent.click(summaryContent.getByRole('button', { name: /다음 정보 페이지로 전환/ }));
+    fireEvent.click(summaryContent.getByRole('button', { name: '예상 체결가 예상체결·VI 전환' }));
+    for (const label of ['상승VI', '하강VI']) expect(summaryContent.getByText(label)).toBeInTheDocument();
     expect(summaryContent.queryByText('250일')).not.toBeInTheDocument();
     expect(summaryContent.queryByText('70,000/50,000')).not.toBeInTheDocument();
   });

@@ -173,8 +173,10 @@ export default function BookPanel({
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoPage, setInfoPage] = useState<0 | 1>(0);
   const [infoChangePct, setInfoChangePct] = useState(false);
+  const [infoVi, setInfoVi] = useState(false);
   const nextInfoPage = () => setInfoPage(page => page === 0 ? 1 : 0);
   const toggleInfoChangePct = () => setInfoChangePct(show => !show);
+  const toggleInfoVi = () => setInfoVi(show => !show);
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const infoId = useId();
   const closeInfo = useCallback(() => {
@@ -220,7 +222,8 @@ export default function BookPanel({
               {showEmptySummary && <BookSummary summary={summary} baselinePrice={baselinePrice}
                 limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={ROW_H * SUMMARY_ROWS}
                 page={infoPage} onNextPage={nextInfoPage}
-                showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct} expectedFill={null} />}
+                showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct}
+                showVi={infoVi} onToggleVi={toggleInfoVi} expectedFill={null} />}
             </div>
           </div>
           <SessionOnlyStrip
@@ -380,6 +383,7 @@ export default function BookPanel({
                   limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={summaryHeight}
                   page={infoPage} onNextPage={nextInfoPage}
                   showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct}
+                  showVi={infoVi} onToggleVi={toggleInfoVi}
                   expectedFill={summaryExpectedFill}
                   expectedDimClass={staleDim} />
               </div>
@@ -411,6 +415,7 @@ export default function BookPanel({
           limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={264}
           page={infoPage} onNextPage={nextInfoPage}
           showChangePct={infoChangePct} onToggleChangePct={toggleInfoChangePct}
+          showVi={infoVi} onToggleVi={toggleInfoVi}
           expectedFill={summaryExpectedFill}
           expectedDimClass={staleDim} />
       </div>, document.body)}
@@ -437,8 +442,8 @@ export function BookSummary({
   height = ROW_H * SUMMARY_ROWS,
   page, onNextPage, expectedFill = null, expectedDimClass = '', headingLabel = '',
   showChangePct, onToggleChangePct,
+  showVi, onToggleVi,
   expectedFillPosition = 'bottom',
-  separateVi = true,
 }: {
   summary: LiveTradeSummary;
   baselinePrice: number | null;
@@ -451,14 +456,20 @@ export function BookSummary({
   onNextPage: () => void;
   showChangePct: boolean;
   onToggleChangePct: () => void;
+  showVi: boolean;
+  onToggleVi: () => void;
   expectedFill?: { price: number; qty: number | null } | null;
   expectedDimClass?: string;
   headingLabel?: string;
   expectedFillPosition?: 'top' | 'bottom';
-  separateVi?: boolean;
 }) {
-  const expectedRows = <ExpectedFillRows price={expectedFill?.price ?? 0} qty={expectedFill?.qty ?? null}
-    baselinePrice={baselinePrice} dimClass={expectedDimClass} divider={expectedFillPosition === 'bottom'} />;
+  const priceToggle = { label: '가격·등락률 전환', pressed: showChangePct, onToggle: onToggleChangePct };
+  const viToggle = { label: '예상체결·VI 전환', pressed: showVi, onToggle: onToggleVi };
+  const detailRows = showVi ? <div data-testid="book-vi-prices">
+    <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} divider={expectedFillPosition === 'bottom'} toggle={viToggle} />
+    <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} toggle={viToggle} />
+  </div> : <ExpectedFillRows price={expectedFill?.price ?? 0} qty={expectedFill?.qty ?? null}
+    baselinePrice={baselinePrice} dimClass={expectedDimClass} divider={expectedFillPosition === 'bottom'} toggle={viToggle} />;
   return (
     <div className="book-summary flex flex-col" data-testid="book-summary" data-page={page + 1}
       style={{ height, '--book-summary-row-height': `${height / SUMMARY_ROWS}px` } as React.CSSProperties}>
@@ -470,20 +481,20 @@ export function BookSummary({
         </button>
       </div>
       {page === 0 ? <div className={`book-summary-page${expectedFillPosition === 'bottom' ? ' flex flex-col' : ''}`}>
-        {expectedFillPosition === 'top' ? expectedRows : null}
+        {expectedFillPosition === 'top' ? detailRows : null}
         <SummaryRow
           label="시작"
           value={fmtOr(summary.dayOpen)}
           tooltipPrice={summary.dayOpen}
           tooltipBaseline={krxPreviousClose}
-          showChangePct={showChangePct} onToggleChangePct={onToggleChangePct}
+          showChangePct={showChangePct} toggle={priceToggle}
         />
         <SummaryRow
           label="최고"
           value={fmtOr(summary.dayHigh)}
           tooltipPrice={summary.dayHigh}
           tooltipBaseline={krxPreviousClose}
-          showChangePct={showChangePct} onToggleChangePct={onToggleChangePct}
+          showChangePct={showChangePct} toggle={priceToggle}
           color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
         />
         <SummaryRow
@@ -491,7 +502,7 @@ export function BookSummary({
           value={fmtOr(summary.dayLow)}
           tooltipPrice={summary.dayLow}
           tooltipBaseline={krxPreviousClose}
-          showChangePct={showChangePct} onToggleChangePct={onToggleChangePct}
+          showChangePct={showChangePct} toggle={priceToggle}
           color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
         />
         <SummaryRow label="KRX종가" value={fmtOr(krxClose)} divider />
@@ -506,7 +517,7 @@ export function BookSummary({
           value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
         />
         <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
-        {expectedFillPosition === 'bottom' ? <div className="mt-auto">{expectedRows}</div> : null}
+        {expectedFillPosition === 'bottom' ? <div className="mt-auto">{detailRows}</div> : null}
       </div> : <div className="book-summary-page">
         {/* 상한가·하한가 = ka10001(stock-limits). */}
         <SummaryRow
@@ -523,8 +534,6 @@ export function BookSummary({
             limits?.lower_limit != null ? dirClass(limits.lower_limit, baselinePrice) : undefined
           }
         />
-        <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} divider={separateVi} />
-        <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
       </div>}
     </div>
   );
@@ -545,6 +554,7 @@ function ExpectedFillRows({
   baselinePrice,
   dimClass = '',
   divider = false,
+  toggle,
 }: {
   price: number;
   qty: number | null;
@@ -552,6 +562,7 @@ function ExpectedFillRows({
   /** stale 딤 — `exp_price`/`exp_qty` 는 스냅샷 필드라 사다리와 함께 흐려진다. */
   dimClass?: string;
   divider?: boolean;
+  toggle: SummaryRowToggle;
 }) {
   const valid = Number.isFinite(price) && price > 0
     && (qty === null || (Number.isFinite(qty) && qty > 0));
@@ -561,8 +572,8 @@ function ExpectedFillRows({
       className={dimClass}
       data-testid="book-expected-fill"
     >
-      <SummaryRow label="예상 체결가" value={valid ? `${price.toLocaleString('ko-KR')}원` : ''} color={color} divider={divider} />
-      <SummaryRow label="예상 체결량" value={valid && qty !== null ? qty.toLocaleString('ko-KR') : ''} />
+      <SummaryRow label="예상 체결가" value={valid ? `${price.toLocaleString('ko-KR')}원` : ''} color={color} divider={divider} toggle={toggle} />
+      <SummaryRow label="예상 체결량" value={valid && qty !== null ? qty.toLocaleString('ko-KR') : ''} toggle={toggle} />
     </div>
   );
 }
@@ -746,11 +757,13 @@ function ViRow({
   vi,
   base,
   divider = false,
+  toggle,
 }: {
   dir: 'up' | 'down';
   vi: LiveViEvent | null;
   base: number | null;
   divider?: boolean;
+  toggle: SummaryRowToggle;
 }) {
   const active = vi?.active === true && vi.direction === dir;
   const dirColor = dir === 'up' ? 'text-price-up' : 'text-price-down';
@@ -762,6 +775,7 @@ function ViRow({
         color={dirColor}
         divider={divider}
         highlight
+        toggle={toggle}
       />
     );
   }
@@ -773,9 +787,12 @@ function ViRow({
       value={fmtOr(expected)}
       color={expected !== null ? 'text-fg-dim' : undefined}
       divider={divider}
+      toggle={toggle}
     />
   );
 }
+
+type SummaryRowToggle = { label: string; pressed: boolean; onToggle: () => void };
 
 /** divider=그룹 시작. border-box 라 border-t 가 행 높이를 늘리지 않는다(정렬 유지).
  *  대시(미수신/미제공)는 실데이터와 같은 대비로 찍히면 "깨진 값"처럼 읽혀 dim.
@@ -789,7 +806,7 @@ function SummaryRow({
   tooltipPrice = null,
   tooltipBaseline = null,
   showChangePct = false,
-  onToggleChangePct,
+  toggle,
 }: {
   label: string;
   value: string;
@@ -799,7 +816,7 @@ function SummaryRow({
   tooltipPrice?: number | null;
   tooltipBaseline?: number | null;
   showChangePct?: boolean;
-  onToggleChangePct?: () => void;
+  toggle?: SummaryRowToggle;
 }) {
   const pct = tooltipPrice != null && Number.isFinite(tooltipPrice) && tooltipPrice > 0
     && tooltipBaseline != null && Number.isFinite(tooltipBaseline) && tooltipBaseline > 0
@@ -812,20 +829,20 @@ function SummaryRow({
   const displayColor = showChangePct ? (roundedPct == null ? 'text-fg-dimmer' : priceDirClass(roundedPct)) : color;
   const tooltipText = roundedPct == null ? '' : `${showChangePct ? `${label} 가격 ${fmtOr(tooltipPrice)}원 · ` : ''}전일 KRX 종가 대비 ${pctText}`;
   const tip = useTextTooltip(tooltipText, 500, `book-price-tooltip ${priceDirClass(pct ?? 0)}`);
-  const Row = onToggleChangePct ? 'button' : 'div';
+  const Row = toggle ? 'button' : 'div';
   return (
     <Row
-      type={onToggleChangePct ? 'button' : undefined}
-      onClick={onToggleChangePct ? () => { tip.hide(); onToggleChangePct(); } : undefined}
-      aria-label={onToggleChangePct ? `${label} 가격·등락률 전환` : undefined}
-      aria-pressed={onToggleChangePct ? showChangePct : undefined}
-      aria-describedby={onToggleChangePct ? tip.id : undefined}
-      onMouseEnter={onToggleChangePct ? e => tip.show(e.currentTarget) : undefined}
-      onMouseLeave={onToggleChangePct ? tip.hide : undefined}
-      onFocus={onToggleChangePct ? e => tip.showOnFocus(e.target as HTMLElement) : undefined}
-      onBlur={onToggleChangePct ? tip.hide : undefined}
-      onKeyDown={onToggleChangePct ? e => { if (e.key === 'Escape') { e.stopPropagation(); tip.hide(); } } : undefined}
-      className={`book-summary-row ${onToggleChangePct ? 'book-summary-toggle ' : ''}flex items-center justify-between gap-3 px-2 ${
+      type={toggle ? 'button' : undefined}
+      onClick={toggle ? () => { tip.hide(); toggle.onToggle(); } : undefined}
+      aria-label={toggle ? `${label} ${toggle.label}` : undefined}
+      aria-pressed={toggle?.pressed}
+      aria-describedby={toggle ? tip.id : undefined}
+      onMouseEnter={toggle ? e => tip.show(e.currentTarget) : undefined}
+      onMouseLeave={toggle ? tip.hide : undefined}
+      onFocus={toggle ? e => tip.showOnFocus(e.target as HTMLElement) : undefined}
+      onBlur={toggle ? tip.hide : undefined}
+      onKeyDown={toggle && tooltipText ? e => { if (e.key === 'Escape') { e.stopPropagation(); tip.hide(); } } : undefined}
+      className={`book-summary-row ${toggle ? 'book-summary-toggle ' : ''}flex items-center justify-between gap-3 px-2 ${
         divider ? 'border-t border-border' : ''
       } ${highlight ? 'bg-bg-subtle' : ''}`}
       style={{ height: 'var(--book-summary-row-height, 22px)' }}
@@ -836,9 +853,9 @@ function SummaryRow({
       <span
         aria-label={tooltipText ? (showChangePct ? `${label} 등락률 ${displayValue}` : `${label} 가격 ${value}원`) : undefined}
         aria-describedby={tip.id}
-        tabIndex={tooltipText && !onToggleChangePct ? 0 : undefined}
-        onMouseEnter={!onToggleChangePct ? e => tip.show(e.currentTarget) : undefined} onMouseLeave={!onToggleChangePct ? tip.hide : undefined}
-        onFocus={!onToggleChangePct ? e => tip.showOnFocus(e.currentTarget) : undefined} onBlur={!onToggleChangePct ? tip.hide : undefined}
+        tabIndex={tooltipText && !toggle ? 0 : undefined}
+        onMouseEnter={!toggle ? e => tip.show(e.currentTarget) : undefined} onMouseLeave={!toggle ? tip.hide : undefined}
+        onFocus={!toggle ? e => tip.showOnFocus(e.currentTarget) : undefined} onBlur={!toggle ? tip.hide : undefined}
         onKeyDown={e => { if (e.key === 'Escape' && tooltipText) { e.stopPropagation(); tip.hide(); } }}
         className={`flex items-center whitespace-nowrap font-data text-sm tabular-nums ${
           displayColor ?? (empty ? 'text-fg-dimmer' : 'text-fg')
