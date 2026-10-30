@@ -52,6 +52,7 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
     await expect(frame.locator('[data-handle="move"]')).not.toContainText('⠿');
     if (kind === 'market-indices') {
       await expect(frame.getByTestId('major-indices-chart')).toBeVisible();
+      await expect(frame.locator('[data-handle="move"]')).toContainText('주요 지수');
       await expect(frame.locator('[data-handle="move"]')).not.toContainText(/코스피|코스닥|K200|장중|%/);
     }
     const before = (await frame.boundingBox())!;
