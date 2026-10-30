@@ -15,6 +15,7 @@ from hoga.api import (
     screener_depth,
     screener_exclusions,
     screener_intraday,
+    screener_rankings,
     screener_series_eval as evaluation,
     screener_series_store as store,
     screener_series_values as values,
@@ -51,7 +52,8 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
     selected = [
         leaf
         for leaf in active_conditions(req.conditions, req.expression)
-        if not getattr(leaf.params, "timeframe", "D").endswith("m") and leaf.type not in screener_depth.DEPTH_TYPES
+        if not getattr(leaf.params, "timeframe", "D").endswith("m")
+        and leaf.type not in screener_depth.DEPTH_TYPES and leaf.type not in screener_rankings.RANK_TYPES
     ]
     plans = {leaf.id: evaluation._windows(leaf, days, clock) for leaf in selected}
     fallback_plans = (
@@ -174,7 +176,9 @@ async def _inputs(data_dir, req, manifest, now, replay):
 
 async def _overlay(data_dir, req, inputs, now):
     warnings = list(inputs["warnings"])
-    if inputs["basis"] != "intraday" or req.snapshot_id is not None:
+    if (inputs["basis"] != "intraday" or req.snapshot_id is not None
+            or all(leaf.type in screener_rankings.RANK_TYPES
+                   for leaf in active_conditions(req.conditions, req.expression)) and req.conditions):
         return None, warnings, None, None
     if screener_intraday.intraday_overlay_bypassed(data_dir):
         return None, [*warnings, "rest_bypassed_intraday_overlay_skipped", "intraday_fallback_eod"], None, None
@@ -292,6 +296,7 @@ async def run_scan(
         )
     identity, manifest = pinned
     inputs = await _inputs(data_dir, req, manifest, now, replay)
+    rank_eval = await screener_rankings.evaluate(data_dir, req, now, inputs["codes"])
     clock = dt.datetime.fromisoformat(inputs["clock"])
     overlay, warnings, overlay_at, intraday_failure = await _overlay(data_dir, req, inputs, now)
     fallback_clock = _eod_clock(now, inputs["confirmed_at"]) if inputs["basis"] == "intraday" else None
@@ -299,6 +304,7 @@ async def run_scan(
         calendar_evaluate, data_dir, req, pinned, inputs["codes"], clock, overlay, fallback_clock
     )
     depth = await _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failures)
+    events.update(rank_eval.events if rank_eval else {})
     days = [dt.datetime.strptime(day, "%Y%m%d").date() for day in store.snapshot_calendar(data_dir, manifest)]
     rows = await asyncio.to_thread(_rows, req, inputs, series, events, failures, days, clock)
     if failures:
@@ -341,4 +347,4 @@ async def run_scan(
         from hoga.api.screener_series_execution import archive  # noqa: PLC0415 — optional explicit archive
 
         await asyncio.to_thread(archive, data_dir, req, inputs, response)
-    return response
+    return screener_rankings.with_basis(response, req, rank_eval)

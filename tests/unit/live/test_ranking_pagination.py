@@ -141,6 +141,19 @@ async def test_expanded_polling_refreshes_entire_range_and_single_flight(make_fe
     assert len(updated.rows) == 200 and requests == ["", "100", "", "100"]
 
 
+async def test_previous_day_rank_cache_is_not_relabelled_as_today(make_fetcher, monkeypatch):
+    clock = datetime(2026, 10, 29, 23, 59, 59, tzinfo=KST)
+    monkeypatch.setattr(kiwoom_rankings.time, "time", lambda: clock.timestamp())
+    fetcher, scheduler = make_fetcher(lambda _r: response("value", 1, 100))
+    fetcher._now = lambda: clock
+    previous = await fetcher.get("value", "all", "up")
+    clock = datetime(2026, 10, 30, 0, 0, 1, tzinfo=KST)
+    current = await fetcher.get("value", "all", "up")
+    assert len(scheduler.calls) == 2  # The eight-second TTL cannot cross a date boundary.
+    assert current is not previous
+    assert current.fetched_at_ms == int(clock.timestamp() * 1000)
+
+
 @pytest.mark.parametrize("bad_key", ["", "same"])
 async def test_missing_or_repeated_cursor_rejects_incomplete_result(make_fetcher, bad_key):
     fetcher, _ = make_fetcher(lambda _r: response("value", 0, 100, cont="Y", key=bad_key))

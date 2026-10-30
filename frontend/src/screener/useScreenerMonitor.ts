@@ -1,3 +1,4 @@
+import { isRankCondition } from './rankConditions';
 import { useEffect, useRef } from 'react';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -9,6 +10,9 @@ import type { ConditionLeaf } from '../api/screener';
  *  비용이 작아 짧은 주기가 실용적이다. */
 export const MONITOR_PERIOD_SCOPED_MS = 15_000;
 export const MONITOR_PERIOD_FULL_MS = 30_000;
+export const monitorPeriod = (conditions: ConditionLeaf[], scoped: boolean) =>
+  conditions.some(isRankCondition) ? 10_000
+    : scoped ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS;
 /** 에러 백오프 상한 + 자동 종료 임계(연속 실패 횟수). */
 export const MONITOR_MAX_BACKOFF_MS = 300_000;
 export const MONITOR_FAIL_LIMIT = 5;

@@ -1,3 +1,4 @@
+import { MarketRankEvidence } from './MarketRankEvidence';
 import { useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
@@ -172,7 +173,9 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       className="cursor-pointer outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
       <span className="font-data tabular-nums text-fg-dim">{r.code}</span>
       <span className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0"><span className="block truncate">{r.name}</span></span>
+        <span className="min-w-0"><span className="block truncate">{r.name}</span>
+          <MarketRankEvidence row={r} />
+        </span>
         {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
         {depthValues?.[r.code] && depthSides && (depthSides.askRenewal || depthSides.bidRenewal)
           && <DepthRenewalBadge v={depthValues[r.code]} sides={depthSides} />}

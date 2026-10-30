@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 
 from hoga.api import screener_series_store as store
 from hoga.api.models import ScanRequest, ScreenerResponse
+from hoga.api.screener_bar_policy import RANK_TYPES
 from hoga.api.screener_depth import DEPTH_TYPES
 from hoga.api.screener_expression import active_conditions
 from hoga.util.timeenc import KST
@@ -41,7 +42,8 @@ def validate_archivable(req):
     if (
         req.calculation_policy != "separate_bases_v2"
         or req.basis != "eod"
-        or any(leaf.type in DEPTH_TYPES or getattr(leaf.params, "timeframe", "D").endswith("m") for leaf in selected)
+        or any(leaf.type in RANK_TYPES or leaf.type in DEPTH_TYPES
+               or getattr(leaf.params, "timeframe", "D").endswith("m") for leaf in selected)
     ):
         raise ValueError("정확 재실행 보존은 새 기준의 확정 일/주/월봉 조회만 지원합니다")
 

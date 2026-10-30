@@ -1,3 +1,4 @@
+import { isRankCondition } from '../screener/rankConditions';
 import { CalculationNotice } from "../screener/CalculationNotice";
 import { useScreenerJump } from "../screener/useScreenerJump";
 import { calculationLabel } from '../screener/calculationPolicy';
@@ -9,7 +10,8 @@ import { HistoryCollection } from '../screener/HistoryCollection';
 import { useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
 import { useScreener } from '../screener/useScreener';
-import { useScreenerMonitor, MONITOR_PERIOD_FULL_MS, MONITOR_PERIOD_SCOPED_MS } from '../screener/useScreenerMonitor';
+import { useScreenerMonitor, monitorPeriod } from '../screener/useScreenerMonitor';
+import { useLiveVenueStore } from '../state/liveVenue';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
 import { useScreenerUpdate } from '../screener/useScreenerUpdate';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from '../screener/useScreenerUpdateSync';
@@ -128,6 +130,7 @@ function SavedActionsMenu({ save, onRename, onDuplicate, onDelete }: {
 interface StatusFlag { key: string; text: string }
 
 export function Screener() {
+  const venue = useLiveVenueStore(s => s.venue);
   const editor = useSavedScreenerEditor();
   const numericValidation = useNumericInputValidation();
   const [formRevision, setFormRevision] = useState(0);
@@ -184,9 +187,10 @@ export function Screener() {
   const invalidEditor = invalidExpression || invalidInput;
   const scanBody = useMemo(
     () => ({ conditions: editor.conditions, universe: editor.universe, basis: 'auto' as const,
+      ...(editor.conditions.some(isRankCondition) ? { venue } : {}),
       ...(editor.calculationPolicy === 'separate_bases_v2' ? { calculation_policy: editor.calculationPolicy } : {}),
       ...(editor.expression != null ? { expression: editor.expression } : {}) }),
-    [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe],
+    [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe, venue],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
   const screener = useScreener({ continuous: !volumeRefreshStopped && !invalidEditor, anchor: scanKey });
@@ -250,7 +254,8 @@ export function Screener() {
       return false;
     }
   };
-  const liveVolume = !!editor.universe.scopes?.length && editor.conditions.some(leaf =>
+  const liveVolume = editor.conditions.some(isRankCondition)
+    || !!editor.universe.scopes?.length && editor.conditions.some(leaf =>
     (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
     && 'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m'));
   useScreenerMonitor({
@@ -258,7 +263,7 @@ export function Screener() {
     active: liveVolume && lastScan?.scanKey === scanKey && !volumeRefreshStopped,
     selectedId: scanKey,
     disabled: notSeeded || !!invalidEditor,
-    periodMs: editor.universe.scopes?.length ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS,
+    periodMs: monitorPeriod(editor.conditions, !!editor.universe.scopes?.length),
     resultCodes: rows.map(row => row.code),
     hasResults: lastScan !== null,
     conditions: editor.conditions,
