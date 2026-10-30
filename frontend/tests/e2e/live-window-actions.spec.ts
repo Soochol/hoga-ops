@@ -21,14 +21,14 @@ async function expectHeaderFits(frame: Locator) {
     const titleBounds = title?.getBoundingClientRect();
     const headerBounds = header.getBoundingClientRect();
     const actions = header.querySelector('.live-window-direct-actions')!.getBoundingClientRect();
-    const closeButton = header.querySelector(':scope > button')!;
+    const closeButton = header.querySelector(':scope > button[aria-label$="창 닫기"]')!;
     const close = closeButton.getBoundingClientRect();
     const maximize = header.querySelector('.live-window-maximize')!;
     const maximizeBounds = maximize.getBoundingClientRect();
     const buttons = Array.from(header.querySelectorAll('button')).filter(button => button.getBoundingClientRect().width > 0);
     const bounds = buttons.map(button => button.getBoundingClientRect()).sort((a, b) => a.left - b.left);
-    return closeButton.nextElementSibling === maximize && maximize.nextElementSibling === null
-      && maximizeBounds.left >= close.right && close.left - actions.right <= 4.1 && bounds.every((box, index) => box.width >= 20 && box.left >= headerBounds.left && box.right <= headerBounds.right
+    return maximize.nextElementSibling === closeButton && closeButton.nextElementSibling === null
+      && close.left >= maximizeBounds.right && maximizeBounds.left - actions.right <= 4.1 && bounds.every((box, index) => box.width >= 20 && box.left >= headerBounds.left && box.right <= headerBounds.right
       && (index === 0 || box.left >= bounds[index - 1].right - 1)
       && (!titleBounds || box.right <= titleBounds.left + 1 || box.left >= titleBounds.right - 1))
       && buttons.every(button => {

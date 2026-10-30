@@ -1,0 +1,54 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "8c4a58bfa5dbbed681f3daf1dfeaf5da1309be5b",
+  "origin_main_sha": "52e8c9e95b11cff18ee7fcd407ec158e01c2cc0e",
+  "branch": "codex/window-close-right",
+  "working_tree": "Saved uncommitted implementation; fingerprints include source/test/config and dependency lockfile inputs.",
+  "scope": "Shared WindowFrame renders header actions before the terminal close button. All 14 LivePage window kinds retain maximize/restore immediately left of X, icon sizing, controls and layout behavior.",
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E projects; clean retry after the initial invocation was interrupted with exit 143"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowFrame.pin.test.tsx src/workspace/WorkspaceCanvas.test.tsx",
+      "result": "3 files, 33 passed (1.98s)"
+    },
+    {
+      "cwd": "frontend",
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-close-right npx playwright test tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts --reporter=line",
+      "result": "20 passed (56.4s); all window kinds at widths 420/280/200/160, close is terminal and right of maximize, controls clickable and non-overlapping; drag/resize/top/pin/settings/close/maximize/Escape restore"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed; existing large-chunk advisory"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "fingerprint_method": "Sorted frontend and root pyproject.toml/uv.lock/.python-version/VERSION/ruff.toml regular tracked/nonignored paths; UTF-8 path + NUL + raw SHA256(file bytes). Exclude ignored build output and documentation.",
+  "frontend_inputs": {
+    "file_count": 2019,
+    "sha256": "f6684683689b959ea40a15153c37e322eea43c014794faadf495b76ca242a520"
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "workers": 1,
+    "backend_port": 20439,
+    "frontend_port": 21439,
+    "credentials": "Blank per existing Playwright configuration. Isolated worktree ports/data; user servers and permanent launchers unchanged.",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0"
+  },
+  "visual_qa": "Inspected the existing E2E 160px trade-window screenshot: settings/top/pin/maximize/X fit, X at far right.",
+  "limits": "Scoped frontend checks; backend and desktop runtime source unchanged. No production installation, main checkout changes, or user-server restart."
+}
