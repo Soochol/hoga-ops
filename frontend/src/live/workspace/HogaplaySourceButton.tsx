@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 /**
  * 「hogaplay 저장 데이터」 토글 — 차트 창 헤더 액션 행 맨 왼쪽(관심 하트 왼쪽).
  *
@@ -68,37 +69,7 @@ export function HogaplaySourceButton({
         onToggle(!enabled);
       }}
       style={compact ? { paddingInline: COMPACT_PADDING_INLINE } : undefined}
-      icon={<DiskStackIcon filled={enabled} className={`h-3 w-3${enabled ? ' text-fg' : ''}`} />}
+      icon={<AppIcon name="database" filled={enabled} className={enabled ? 'text-fg' : ''} />}
     >{showLabel && 'hogaplay'}</IconToolbarButton>
-  );
-}
-
-/**
- * 디스크 스택 글리프 — "저장된 것을 읽는다".
- *
- * 색은 **아이콘에** 건다(하트와 같은 이유): 버튼 클래스 `text-fg-dim` 을 뒤 클래스로
- * 덮으려 하면 Tailwind 유틸 충돌이 문자열 순서가 아니라 CSS 순서로 갈려 조용히
- * 죽는다. 자식이 자기 color 를 가지면 상속을 확실히 이기고, 꺼져 있을 때는 클래스가
- * 없어 부모의 `hover:text-fg` 를 그대로 상속받는다.
- *
- * 채움은 **맨 위 타원만** 칠한다 — 원통 전체를 칠하면 12px 에서 아래 두 줄이 뭉개져
- * 하트처럼 실루엣으로 읽히지 않는다(꺼짐/켜짐이 둘 다 "덩어리" 가 된다).
- */
-function DiskStackIcon({ filled, className }: { filled: boolean; className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <ellipse cx="12" cy="5" rx="8" ry="3" fill={filled ? 'currentColor' : 'none'} />
-      <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
-      <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
-    </svg>
   );
 }

@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { QuoteColumnsHeader } from '../rightrail/QuoteColumnsHeader';
 import { panelFlowRevision, usePanelFlow, type PanelStockFlow } from '../api/panelFlow';
 import { PanelFlowNotice } from '../rightrail/PanelFlowSparkline';
@@ -106,8 +107,8 @@ function readFolderSortModeMapFromStorage(): FolderSortModeMap {
  *  근거: 폰트별 렌더 불일치 회피). 1em 스케일이라 텍스트 크기를 따른다. */
 function MenuGlyph({ children }: { children: React.ReactNode }) {
   return (
-    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg data-ui-icon="" width="0.875rem" height="0.875rem" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
     </svg>
   );
@@ -1603,7 +1604,7 @@ export function WatchlistDrawer() {
             disabled={catchupAllM.isPending || (data?.entries.length ?? 0) === 0}
             className="px-2 py-0.5 rounded border border-border hover:text-accent hover:border-accent disabled:opacity-40">
             {/* spin only the glyph, not the text label (DESIGN.md motion) */}
-            <span className={`inline-block ${catchupAllM.isPending ? 'animate-spin' : ''}`}>↻</span> 전체 수집
+            <span className={`inline-block ${catchupAllM.isPending ? 'animate-spin' : ''}`}><AppIcon name="refresh" /></span> 전체 수집
           </button>
         </div>
       </RailDrawerSection>

@@ -12,6 +12,7 @@
 .ui-primary:disabled { opacity: .45; cursor: not-allowed; }
 .ui-icon-button, .live-icon-button { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--fg-dim); }
 .ui-icon-button:hover, .live-icon-button:hover { background: var(--bg-input-hover); color: var(--fg); }
+.window-close-button:hover { background: var(--tint-error); color: var(--error); }
 .ui-popover, .live-popover { border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg-card); color: var(--fg); box-shadow: var(--shadow-overlay); font-size: var(--text-sm); }
 .ui-menu-item, .live-menu-item { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.375rem 0.5rem; border-radius: var(--radius-md); color: var(--fg); text-align: left; }
 .ui-menu-item:hover:not(:disabled), .live-menu-item:hover:not(:disabled) { background: var(--bg-input-hover); }
@@ -30,3 +31,8 @@
 
 .ui-color-swatch { position: relative; }
 .ui-color-swatch[aria-pressed='true']::after { content: '✓'; position: absolute; bottom: -2px; right: -2px; display: grid; place-items: center; width: 0.75rem; height: 0.75rem; border-radius: var(--radius-full); background: var(--bg-card); color: var(--fg); font-size: var(--text-xs); box-shadow: 0 0 0 1px var(--border-strong); }
+
+/* Approved refined-line roles; scope to icon primitives, never all SVGs. */
+[data-ui-icon] { display: inline-block; vertical-align: middle; flex-shrink: 0; }
+.rail-navigation-icon { width: 1.125rem; height: 1.125rem; }
+.ui-rail-header [data-ui-icon], .ui-rail-header .ui-line-icon { width: 1rem; height: 1rem; }

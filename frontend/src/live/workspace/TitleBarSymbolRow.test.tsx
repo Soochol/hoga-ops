@@ -166,7 +166,8 @@ describe('TitleBarSymbolRow', () => {
       publishWindowWarnings('w1', { backfillEarliestDate: '20260527' });
     });
     const progress = screen.getByTestId('past-backfill-progress-chip');
-    expect(progress).toHaveTextContent('↻05/27');
+    expect(progress).toHaveTextContent('05/27');
+    expect(progress.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     expect(progress).not.toHaveAttribute('title');
     act(() => clearWindowWarnings('w1'));
     expect(screen.getByTestId('past-backfill-progress-chip')).toBe(progress);

@@ -64,7 +64,7 @@ export function WatchlistHeartActionButton({
           // 하면 Tailwind 유틸 충돌은 문자열 순서가 아니라 CSS 순서로 갈려 조용히
           // 죽는다. 자식이 자기 color 를 가지면 상속을 확실히 이기고, 미등록일 때는
           // 클래스가 없어 부모의 hover:text-fg 를 그대로 상속받는다.
-          <HeartIcon filled={isMember} className={`h-3 w-3${isMember ? ' text-fg' : ''}`} />
+          <HeartIcon filled={isMember} className={`h-3.5 w-3.5${isMember ? ' text-fg' : ''}`} />
         )}
       >{showLabel && '관심 그룹'}</IconToolbarButton>
       {picker && code != null && (

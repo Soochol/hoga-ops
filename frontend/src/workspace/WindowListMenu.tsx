@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 /**
  * WindowListMenu — 열린 창 목록 드롭다운 (페이지 공용 프리젠테이션).
  *
@@ -187,9 +188,7 @@ export function WindowListMenu({
                       onClick={() => onClose(row.id)}
                       className="mr-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-dimmer opacity-0 hover:bg-bg-input-hover hover:text-fg focus-visible:opacity-100 group-hover/row:opacity-100"
                     >
-                      <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <path d="M6 6l12 12M18 6 6 18" />
-                      </svg>
+                      <AppIcon name="close" />
                     </button>
                   )}
                 </div>
@@ -211,12 +210,7 @@ export function WindowListMenu({
         aria-expanded={open}
         className={open ? 'bg-bg-input-hover text-fg' : undefined}
         icon={(
-          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
+          <AppIcon name="layout" />
         )}
       >
         <span>창 목록</span>

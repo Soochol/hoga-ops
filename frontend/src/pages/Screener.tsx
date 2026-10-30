@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { isRankCondition } from '../screener/rankConditions';
 import { CalculationNotice } from "../screener/CalculationNotice";
 import { useScreenerJump } from "../screener/useScreenerJump";
@@ -111,7 +112,7 @@ function SavedActionsMenu({ save, onRename, onDuplicate, onDelete }: {
   return (
     <div ref={wrapRef} className="relative shrink-0">
       <button ref={btnRef} type="button" aria-label="저장 조건 메뉴" aria-expanded={open} onClick={toggle}
-        className="px-1.5 py-1 rounded-md text-fg-dim hover:text-fg hover:bg-bg-input-hover">⋯</button>
+        className="px-1.5 py-1 rounded-md text-fg-dim hover:text-fg hover:bg-bg-input-hover"><AppIcon name="more" /></button>
       {open && anchorRect && (
         <div ref={menuRef} role="menu"
           className="z-50 min-w-[104px] overflow-hidden rounded-md border border-border-strong bg-bg-card shadow-overlay"
@@ -323,7 +324,7 @@ export function Screener() {
             <span className="text-2xs font-semibold uppercase text-fg-dim">조건검색</span>
             <button type="button" aria-label="새 조건검색" data-tooltip="새 조건검색"
               disabled={editor.isSaving || !status?.calculation_policies?.includes('separate_bases_v2')} onClick={() => switchEditor(null)}
-              className="ml-auto rounded-md border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:text-fg disabled:opacity-50">＋ 새 조건</button>
+              className="ml-auto rounded-md border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:text-fg disabled:opacity-50"><AppIcon name="plus" /> 새 조건</button>
           </div>
           <div className="flex items-center gap-1.5">
             <SavedConditionSelect saves={saves} selectedId={editor.anchorId}

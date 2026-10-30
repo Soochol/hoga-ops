@@ -1,0 +1,1227 @@
+{
+  "svg_count": 83,
+  "svg_file_count": 62,
+  "stroke_widths": {
+    "\"1.8\"": 6,
+    "\"2\"": 30,
+    "\"2.5\"": 4,
+    "\"1.65\"": 1,
+    "\"1.9\"": 1,
+    "\"1.6\"": 2
+  },
+  "unicode_buttons": [
+    {
+      "file": "capture/CaptureQueueRow.tsx",
+      "line": 126,
+      "text": "✕"
+    },
+    {
+      "file": "capture/CaptureQueueRow.tsx",
+      "line": 134,
+      "text": "↻"
+    },
+    {
+      "file": "chart/DrawingPropertyPanel.tsx",
+      "line": 633,
+      "text": "→"
+    },
+    {
+      "file": "chart/DrawingPropertyPanel.tsx",
+      "line": 1038,
+      "text": "→"
+    },
+    {
+      "file": "inventory/StockDateGroupDetail.tsx",
+      "line": 355,
+      "text": "↻"
+    },
+    {
+      "file": "inventory/StockDateGroupList.tsx",
+      "line": 60,
+      "text": "×"
+    },
+    {
+      "file": "live/SettingsSections.tsx",
+      "line": 302,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/BrokerLateEntryConfig.tsx",
+      "line": 52,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/IndicatorInstanceLegend.tsx",
+      "line": 68,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/IndicatorPanel.tsx",
+      "line": 131,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/IndicatorPanel.tsx",
+      "line": 511,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/IndicatorPanelMenu.tsx",
+      "line": 119,
+      "text": "⋯"
+    },
+    {
+      "file": "live/indicators/MovingAverageRow.tsx",
+      "line": 73,
+      "text": "✕"
+    },
+    {
+      "file": "live/settings/DesktopSection.tsx",
+      "line": 45,
+      "text": "−"
+    },
+    {
+      "file": "live/settings/DesktopSection.tsx",
+      "line": 47,
+      "text": "+"
+    },
+    {
+      "file": "live/settings/SettingsEditor.tsx",
+      "line": 23,
+      "text": "✕"
+    },
+    {
+      "file": "live/workspace/HogaplaySourceChip.tsx",
+      "line": 32,
+      "text": "×"
+    },
+    {
+      "file": "live/workspace/MinuteJumpChip.tsx",
+      "line": 81,
+      "text": "×"
+    },
+    {
+      "file": "live/workspace/SavedRangeChip.tsx",
+      "line": 80,
+      "text": "×"
+    },
+    {
+      "file": "live/workspace/SecondChartWindow.tsx",
+      "line": 137,
+      "text": "×"
+    },
+    {
+      "file": "live/workspace/ViewedDateChip.tsx",
+      "line": 37,
+      "text": "×"
+    },
+    {
+      "file": "pages/Screener.tsx",
+      "line": 113,
+      "text": "⋯"
+    },
+    {
+      "file": "pattern/PatternDrawer.tsx",
+      "line": 928,
+      "text": "✕"
+    },
+    {
+      "file": "pattern/PatternDrawer.tsx",
+      "line": 944,
+      "text": "−"
+    },
+    {
+      "file": "pattern/PatternDrawer.tsx",
+      "line": 956,
+      "text": "+"
+    },
+    {
+      "file": "pattern/PatternSavesView.tsx",
+      "line": 125,
+      "text": "✕"
+    },
+    {
+      "file": "screener/ConditionRow.tsx",
+      "line": 60,
+      "text": "×"
+    },
+    {
+      "file": "serviceStatus/ServiceStatusButton.tsx",
+      "line": 93,
+      "text": "×"
+    },
+    {
+      "file": "ui/ModalShell.tsx",
+      "line": 116,
+      "text": "✕"
+    },
+    {
+      "file": "ui/ResponsiveDataControls.tsx",
+      "line": 24,
+      "text": "×"
+    },
+    {
+      "file": "ui/toast/ToastCard.tsx",
+      "line": 45,
+      "text": "×"
+    }
+  ],
+  "svgs": [
+    {
+      "file": "chart/ChartCaptureActions.tsx",
+      "line": 74,
+      "width": "\"14\"",
+      "height": "\"14\"",
+      "stroke": "\"1.8\"",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "chart/ChartCaptureActions.tsx",
+      "line": 83,
+      "width": "\"14\"",
+      "height": "\"14\"",
+      "stroke": "\"1.8\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "chart/ChartCaptureActions.tsx",
+      "line": 89,
+      "width": "\"14\"",
+      "height": "\"14\"",
+      "stroke": "\"1.8\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "chart/DrawingPanelFrame.tsx",
+      "line": 142,
+      "width": "\"8\"",
+      "height": "\"16\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "heatmap/CandleGlyph.tsx",
+      "line": 38,
+      "width": "{width}",
+      "height": "{height}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "heatmap/CollectDialog.tsx",
+      "line": 143,
+      "width": "\"13\"",
+      "height": "\"13\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "heatmap/GroupFlowSparkline.tsx",
+      "line": 29,
+      "width": "{W}",
+      "height": "{15}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "heatmap/GroupFlowSparkline.tsx",
+      "line": 43,
+      "width": "{W}",
+      "height": "{H}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "heatmap/HeatmapDrawer.tsx",
+      "line": 74,
+      "width": "\"1em\"",
+      "height": "\"1em\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "heatmap/HeatmapFlowChart.tsx",
+      "line": 65,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "heatmap/HeatmapRowMenu.tsx",
+      "line": 28,
+      "width": "\"1em\"",
+      "height": "\"1em\"",
+      "stroke": "\"2\"",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "heatmap/HeatmapSearchInput.tsx",
+      "line": 7,
+      "width": "\"14\"",
+      "height": "\"14\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "home/LandingPage.tsx",
+      "line": 16,
+      "width": "\"18\"",
+      "height": "\"18\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "home/LandingPage.tsx",
+      "line": 20,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "home/LandingPage.tsx",
+      "line": 24,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "home/LandingPage.tsx",
+      "line": 36,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "home/LandingPage.tsx",
+      "line": 93,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/EyeGlyph.tsx",
+      "line": 12,
+      "width": "\"14\"",
+      "height": "\"14\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/LiveSymbolSearch.tsx",
+      "line": 235,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "live/LiveSymbolSearch.tsx",
+      "line": 342,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "live/LiveToolbar.tsx",
+      "line": 37,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "\"2.5\"",
+      "cap": "\"round\"",
+      "join": "default"
+    },
+    {
+      "file": "live/PaneLegendOverlay.tsx",
+      "line": 282,
+      "width": "\"8\"",
+      "height": "\"12\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/PaneLegendOverlay.tsx",
+      "line": 389,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/SettingsSections.tsx",
+      "line": 280,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/indicators/IndicatorPanel.tsx",
+      "line": 443,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/indicators/IndicatorStylePreview.tsx",
+      "line": 112,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/indicators/PeakWallRelationSchema.tsx",
+      "line": 49,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/indicators/indicatorGlyphs.tsx",
+      "line": 33,
+      "width": "\"16\"",
+      "height": "\"16\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/presets/LayoutPresetPreview.tsx",
+      "line": 16,
+      "width": "\"40\"",
+      "height": "\"26\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/workspace/CollectButton.tsx",
+      "line": 46,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "\"2.5\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "live/workspace/HogaplaySourceButton.tsx",
+      "line": 89,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "live/workspace/JumpToMinuteButton.tsx",
+      "line": 94,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "\"2.5\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "live/workspace/MajorIndicesWindow.tsx",
+      "line": 126,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/workspace/RegularSessionAction.tsx",
+      "line": 13,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "\"2\"",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "live/workspace/WindowAddMenu.tsx",
+      "line": 173,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "\"2.5\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "live/workspace/windowKindIcons.tsx",
+      "line": 18,
+      "width": "\"13\"",
+      "height": "\"13\"",
+      "stroke": "\"1.8\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "market/TradeValueCard.tsx",
+      "line": 40,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "market/marketBits.tsx",
+      "line": 83,
+      "width": "\"100%\"",
+      "height": "{height}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "market/marketBits.tsx",
+      "line": 161,
+      "width": "\"100%\"",
+      "height": "{height}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "market/marketBits.tsx",
+      "line": 276,
+      "width": "{width}",
+      "height": "{height}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "market/marketBits.tsx",
+      "line": 316,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "pattern/CandleThumb.tsx",
+      "line": 79,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "pattern/PatternMatchRowMenu.tsx",
+      "line": 20,
+      "width": "\"1em\"",
+      "height": "\"1em\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "rightrail/PanelFlowSparkline.tsx",
+      "line": 43,
+      "width": "{W}",
+      "height": "{H}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "sentiment/SentimentPanels.tsx",
+      "line": 257,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "sentiment/SentimentPanels.tsx",
+      "line": 328,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "sentiment/SentimentPanels.tsx",
+      "line": 409,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "sentiment/SentimentPanels.tsx",
+      "line": 502,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "sidebar/BrokerTrajectoryTable.tsx",
+      "line": 330,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "sidebar/ProgramTradeSummaryCard.tsx",
+      "line": 545,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "sidebar/VolumeDistributionCard.tsx",
+      "line": 166,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "studyViews/StudyViewRowMenu.tsx",
+      "line": 22,
+      "width": "\"1em\"",
+      "height": "\"1em\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/BellIcon.tsx",
+      "line": 3,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/BookmarkIcon.tsx",
+      "line": 3,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "ui/CheckIcon.tsx",
+      "line": 11,
+      "width": "{size}",
+      "height": "{size}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "ui/CheckIcon.tsx",
+      "line": 25,
+      "width": "{size}",
+      "height": "{size}",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "ui/ChevronIcon.tsx",
+      "line": 9,
+      "width": "{size}",
+      "height": "{size}",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/ChevronIcon.tsx",
+      "line": 38,
+      "width": "{size}",
+      "height": "{size}",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/ClearSearchIcon.tsx",
+      "line": 3,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/FunnelIcon.tsx",
+      "line": 8,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/GroupToggleButton.tsx",
+      "line": 20,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"1.65\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/HeartIcon.tsx",
+      "line": 8,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "ui/HeatmapIcon.tsx",
+      "line": 9,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"1.8\"",
+      "cap": "default",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/MoveIcon.tsx",
+      "line": 7,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/PatternIcon.tsx",
+      "line": 8,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/PencilIcon.tsx",
+      "line": 8,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/RailActionIcons.tsx",
+      "line": 3,
+      "width": "\"1em\"",
+      "height": "\"1em\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "default"
+    },
+    {
+      "file": "ui/RailActionIcons.tsx",
+      "line": 6,
+      "width": "\"14\"",
+      "height": "\"14\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "ui/RailActionIcons.tsx",
+      "line": 9,
+      "width": "\"12\"",
+      "height": "\"14\"",
+      "stroke": "path/inherited",
+      "cap": "default",
+      "join": "default"
+    },
+    {
+      "file": "ui/RankingIcon.tsx",
+      "line": 8,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/RefreshIcon.tsx",
+      "line": 10,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/SettingsIcon.tsx",
+      "line": 2,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/SortDirectionIcon.tsx",
+      "line": 23,
+      "width": "\"16\"",
+      "height": "\"16\"",
+      "stroke": "\"1.9\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "ui/TrashIcon.tsx",
+      "line": 8,
+      "width": "class/inherited",
+      "height": "class/inherited",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "watchlist/WatchlistDrawer.tsx",
+      "line": 109,
+      "width": "\"1em\"",
+      "height": "\"1em\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "watchlist/WatchlistGroupPicker.tsx",
+      "line": 123,
+      "width": "\"14\"",
+      "height": "\"14\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "default"
+    },
+    {
+      "file": "watchlist/WatchlistRowMenu.tsx",
+      "line": 12,
+      "width": "\"1em\"",
+      "height": "\"1em\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "default"
+    },
+    {
+      "file": "whiteboard/BoardIcon.tsx",
+      "line": 20,
+      "width": "{size}",
+      "height": "{size}",
+      "stroke": "\"1.6\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "workspace/WindowHeaderIcon.tsx",
+      "line": 20,
+      "width": "\"14\"",
+      "height": "\"14\"",
+      "stroke": "\"1.6\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "workspace/WindowListMenu.tsx",
+      "line": 190,
+      "width": "\"13\"",
+      "height": "\"13\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "default"
+    },
+    {
+      "file": "workspace/WindowListMenu.tsx",
+      "line": 214,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    },
+    {
+      "file": "workspace/presets/PresetMenu.tsx",
+      "line": 215,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "\"1.8\"",
+      "cap": "\"round\"",
+      "join": "default"
+    },
+    {
+      "file": "workspace/presets/PresetMenu.tsx",
+      "line": 289,
+      "width": "\"12\"",
+      "height": "\"12\"",
+      "stroke": "\"2\"",
+      "cap": "\"round\"",
+      "join": "\"round\""
+    }
+  ],
+  "all_stroke_widths": {
+    "\"1.8\"": 8,
+    "\"2\"": 37,
+    "{1}": 20,
+    "{1.2}": 4,
+    "{highlighted === s.id ? 2.5 : 1.5}": 1,
+    "{1.5}": 8,
+    "\"1.6\"": 8,
+    "\"2.5\"": 8,
+    "\"1.5\"": 9,
+    "{line.width}": 1,
+    "\"1\"": 4,
+    "\"0.8\"": 3,
+    "\"1.4\"": 7,
+    "\"1.2\"": 2,
+    "{1.6}": 1,
+    "{2}": 1,
+    "{1.1}": 1,
+    "{1.3}": 1,
+    "{3}": 1,
+    "\"1.25\"": 1,
+    "\"1.65\"": 1,
+    "\"1.9\"": 1
+  },
+  "text_action_candidates": [
+    {
+      "file": "capture/CaptureQueueRow.tsx",
+      "line": 131,
+      "text": "✕"
+    },
+    {
+      "file": "capture/CaptureQueueRow.tsx",
+      "line": 139,
+      "text": "↻"
+    },
+    {
+      "file": "chart/DrawingPropertyPanel.tsx",
+      "line": 549,
+      "text": "✎"
+    },
+    {
+      "file": "chart/DrawingPropertyPanel.tsx",
+      "line": 661,
+      "text": "→"
+    },
+    {
+      "file": "chart/DrawingPropertyPanel.tsx",
+      "line": 915,
+      "text": "✎"
+    },
+    {
+      "file": "chart/DrawingPropertyPanel.tsx",
+      "line": 1062,
+      "text": "→"
+    },
+    {
+      "file": "heatmap/HeatmapFlowComparison.tsx",
+      "line": 90,
+      "text": "×"
+    },
+    {
+      "file": "inventory/StockDateGroupDetail.tsx",
+      "line": 368,
+      "text": "↻"
+    },
+    {
+      "file": "inventory/StockDateGroupList.tsx",
+      "line": 66,
+      "text": "×"
+    },
+    {
+      "file": "live/DrawingMenu.tsx",
+      "line": 179,
+      "text": "✕"
+    },
+    {
+      "file": "live/SettingsSections.tsx",
+      "line": 308,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/BrokerLateEntryConfig.tsx",
+      "line": 58,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/IndicatorInstanceLegend.tsx",
+      "line": 68,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/IndicatorPanel.tsx",
+      "line": 140,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/IndicatorPanel.tsx",
+      "line": 511,
+      "text": "✕"
+    },
+    {
+      "file": "live/indicators/IndicatorPanelMenu.tsx",
+      "line": 129,
+      "text": "⋯"
+    },
+    {
+      "file": "live/indicators/MovingAverageRow.tsx",
+      "line": 74,
+      "text": "✕"
+    },
+    {
+      "file": "live/settings/DesktopSection.tsx",
+      "line": 45,
+      "text": "−"
+    },
+    {
+      "file": "live/settings/DesktopSection.tsx",
+      "line": 47,
+      "text": "+"
+    },
+    {
+      "file": "live/settings/SettingsEditor.tsx",
+      "line": 23,
+      "text": "✕"
+    },
+    {
+      "file": "live/workspace/ChartWindow.tsx",
+      "line": 903,
+      "text": "↘"
+    },
+    {
+      "file": "live/workspace/HogaplaySourceChip.tsx",
+      "line": 39,
+      "text": "×"
+    },
+    {
+      "file": "live/workspace/MinuteJumpChip.tsx",
+      "line": 88,
+      "text": "×"
+    },
+    {
+      "file": "live/workspace/OrderSurface.tsx",
+      "line": 10,
+      "text": "✕"
+    },
+    {
+      "file": "live/workspace/SavedRangeChip.tsx",
+      "line": 87,
+      "text": "×"
+    },
+    {
+      "file": "live/workspace/SecondChartWindow.tsx",
+      "line": 137,
+      "text": "×"
+    },
+    {
+      "file": "live/workspace/ViewedDateChip.tsx",
+      "line": 44,
+      "text": "×"
+    },
+    {
+      "file": "pages/Screener.tsx",
+      "line": 114,
+      "text": "⋯"
+    },
+    {
+      "file": "pattern/PatternDrawer.tsx",
+      "line": 934,
+      "text": "✕"
+    },
+    {
+      "file": "pattern/PatternDrawer.tsx",
+      "line": 951,
+      "text": "−"
+    },
+    {
+      "file": "pattern/PatternDrawer.tsx",
+      "line": 963,
+      "text": "+"
+    },
+    {
+      "file": "pattern/PatternSavesView.tsx",
+      "line": 131,
+      "text": "✕"
+    },
+    {
+      "file": "screener/ConditionRow.tsx",
+      "line": 61,
+      "text": "×"
+    },
+    {
+      "file": "serviceStatus/ServiceStatusButton.tsx",
+      "line": 93,
+      "text": "×"
+    },
+    {
+      "file": "ui/ModalShell.tsx",
+      "line": 117,
+      "text": "✕"
+    },
+    {
+      "file": "ui/ResponsiveDataControls.tsx",
+      "line": 24,
+      "text": "×"
+    },
+    {
+      "file": "ui/toast/ToastCard.tsx",
+      "line": 46,
+      "text": "×"
+    },
+    {
+      "file": "watchlist/WatchlistDrawer.tsx",
+      "line": 1606,
+      "text": "↻"
+    }
+  ],
+  "scope": "Static review of runtime frontend TSX sources and the drawing-tool glyph registry. SVG counts are declaration/use sites, including non-icon graphics, not unique UI icon totals. Literal text-action detection is a candidate list, not a complete Unicode inventory.",
+  "base_sha": "51732d1b0182cc00077967e16e0c30934874c635",
+  "findings": [
+    {
+      "area": "Candle toolbar",
+      "priority": "first",
+      "sources": [
+        "frontend/src/live/LiveToolbar.tsx:37",
+        "frontend/src/chart/ChartCaptureActions.tsx:75",
+        "frontend/src/live/EyeGlyph.tsx:20",
+        "frontend/src/live/workspace/ChartWindow.tsx:903",
+        "frontend/src/live/workspace/CursorLinkAction.tsx:11",
+        "frontend/src/studyViews/LiveStudyViewSaveButton.tsx:94"
+      ],
+      "observed": "Plus/jump/collect use 12px and 2.5 stroke; capture uses 14px and 1.8; eye uses 14px and 1.6 with a 1.8 hidden slash. Seconds inspection, cursor link and saved view use font glyphs. IconToolbarButton has no shared glyph sizing contract.",
+      "recommendation": "Shared 14px/1.6/round action glyphs; preserve current tooltips, disabled guards and wrapping/folding behavior."
+    },
+    {
+      "area": "Drawing tools",
+      "priority": "first",
+      "sources": [
+        "frontend/src/chart/drawing/tools.ts:407",
+        "frontend/src/live/DrawingMenu.tsx:122",
+        "frontend/src/live/DrawingMenu.tsx:211"
+      ],
+      "observed": "Tool registry carries character glyphs such as select arrow, thick line, rect, measurement arrow, pencil and eraser; trigger and menu render them as text.",
+      "recommendation": "Keep the pure interaction registry and DrawingTool identity; render SVG glyphs from a UI-side mapping keyed by tool. Preserve active-tool shape changes, labels, shortcuts and drawing geometry."
+    },
+    {
+      "area": "Right navigation rail",
+      "priority": "second",
+      "sources": [
+        "frontend/src/rightrail/RightRail.tsx:50",
+        "frontend/src/ui/HeatmapIcon.tsx:15",
+        "frontend/src/ui/BookmarkIcon.tsx:9",
+        "frontend/src/ui/SettingsIcon.tsx:2",
+        "frontend/src/ui/RailShell.tsx:174"
+      ],
+      "observed": "Icons mix 1.8 and 2 strokes. The 1.125em sizing inherits 13px body text at default settings (~14.625px), not an explicit 18px navigation size. General settings and refined window settings use different gear geometry.",
+      "recommendation": "Use a deliberate 18px (1.125rem) navigation role with 1.6/round strokes, retaining 48px rail, visible labels, current selected bar/tint and meaningful filled states."
+    },
+    {
+      "area": "Panel/menu actions",
+      "priority": "second",
+      "sources": [
+        "frontend/src/ui/RailActionIcons.tsx:3",
+        "frontend/src/ui/SortDirectionIcon.tsx:32",
+        "frontend/src/ui/ChevronIcon.tsx:18",
+        "frontend/src/ui/RailShell.tsx:106",
+        "frontend/src/live/workspace/windowKindIcons.tsx:25"
+      ],
+      "observed": "Action geometry uses 1em/12/13/14/16px and strokes 1.8/1.9/2. Some controls use persistent borders while neighboring actions are ghost buttons.",
+      "recommendation": "Panel headers use 16px glyphs in their existing 28px targets; compact row/menu controls use 14px. Share line/hover/focus rules without flattening selection state or changing narrow-layout budgets."
+    },
+    {
+      "area": "Modal/toast/indicator controls",
+      "priority": "third",
+      "sources": [
+        "frontend/src/ui/ModalShell.tsx:117",
+        "frontend/src/ui/toast/ToastCard.tsx:46",
+        "frontend/src/capture/CaptureQueueRow.tsx:131",
+        "frontend/src/live/indicators/IndicatorPanelMenu.tsx:129"
+      ],
+      "observed": "Close/retry/more controls still mix text glyphs (x variants, rotating arrow and ellipsis) with existing SVG components.",
+      "recommendation": "Consolidate close, refresh and more SVG primitives. Keep accessible names, undo/dismiss meanings, loading animation and focus return."
+    }
+  ],
+  "exceptions": [
+    "Do not apply a global SVG stroke/size override: SVG data charts, canvas drawings and line-width previews are not UI icons.",
+    "Retain meaningful filled hearts/checks, market direction/status semantics, loading indicators and brand/logo graphics.",
+    "Sizes should vary by control role; existing 20px compressed window targets and 28px panel targets have separate layout contracts."
+  ],
+  "proposed_roles": {
+    "window_and_chart_controls": {
+      "size_px": 14,
+      "stroke": 1.6
+    },
+    "panel_header_actions": {
+      "size_px": 16,
+      "stroke": 1.6
+    },
+    "right_navigation": {
+      "size_px": 18,
+      "stroke": 1.6
+    },
+    "corners": "round"
+  },
+  "implementation_status": "Audit only for areas outside the previously approved window-header work; no additional application-source edits in this review.",
+  "frontend_inputs": {
+    "file_count": 2022,
+    "sha256": "f92e78fe2e38dffe59bcc461686110223586ed4bc951e566b16debbb7a1019a9"
+  },
+  "prior_header_validation": "Unchanged from the passing refined-header-icons verification; no tests rerun for static audit."
+}

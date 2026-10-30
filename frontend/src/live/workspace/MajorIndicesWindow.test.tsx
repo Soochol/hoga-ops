@@ -31,7 +31,7 @@ describe('major indices window', () => {
     expect(within(screen.getByRole('list', { name: '표시 항목' })).getByText('삼성전자')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '주요 지수 설정' })).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/별도\s?배율|독립\s?배율/);
-    expect(container.querySelector('[data-handle="move"]')).toHaveTextContent('×');
+    expect(within(container.querySelector('[data-handle="move"]') as HTMLElement).getByRole('button', { name: '주요 지수 창 닫기' }).querySelector('svg')).not.toBeNull();
     expect(container.querySelector('[data-handle="move"]')).toHaveTextContent('주요 지수');
     expect(container.querySelector('[data-handle="move"]')!.textContent).not.toMatch(/코스피|코스닥|K200|장중|%|⠿/);
     expect(container.querySelector('footer')).toBeNull();

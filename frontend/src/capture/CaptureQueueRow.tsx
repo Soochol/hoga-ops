@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useState } from 'react';
 import { CaptureRowDetail } from './CaptureRowDetail';
 import { getPhase } from './phase';
@@ -128,7 +129,7 @@ export function CaptureQueueRow({
               aria-label="취소" data-tooltip="취소"
               onClick={(e) => { e.stopPropagation(); onCancel(item.item_id); }}
               className="bg-transparent border-none text-fg-dim cursor-pointer text-sm p-1 -m-1"
-            >✕</button>
+            ><AppIcon name="close" /></button>
           )}
           {showRetry && (
             <button
@@ -136,7 +137,7 @@ export function CaptureQueueRow({
               aria-label="재시도" data-tooltip="재시도"
               onClick={(e) => { e.stopPropagation(); onRetry(item); }}
               className="bg-transparent border-none text-accent cursor-pointer text-sm p-1 -m-1"
-            >↻</button>
+            ><AppIcon name="refresh" /></button>
           )}
         </span>
       </div>

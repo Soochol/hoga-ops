@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useId, useLayoutEffect, useMemo, useState } from 'react';
 import type { HeatmapFolder } from '../api/heatmap';
 import type { useHeatmapGroupFlowData } from '../api/heatmapGroupFlow';
@@ -87,7 +88,7 @@ export function HeatmapFlowComparison({ folders, venue, flow, onClose }: Props) 
       <div className="heatmap-flow-selection">
         <span className="text-sm text-fg-dim">비교 그룹 {selected.length}/{MAX_FLOW_GROUPS}</span>
         {selected.map((folder) => <button key={folder.id} type="button" className="heatmap-flow-chip" aria-label={`${folder.name} 비교에서 제외`} onClick={() => toggle(folder.id)}>
-          <span className="heatmap-flow-dot" style={{ background: colorById.get(folder.id) }} />{folder.name}<span aria-hidden="true">×</span>
+          <span className="heatmap-flow-dot" style={{ background: colorById.get(folder.id) }} />{folder.name}<span aria-hidden="true"><AppIcon name="close" /></span>
         </button>)}
         <ToolbarButton aria-expanded={pickerOpen} aria-controls={pickerId} onClick={() => setPickerOpen(!pickerOpen)}>그룹 선택</ToolbarButton>
       </div>

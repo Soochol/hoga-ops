@@ -459,7 +459,7 @@ describe('IndicatorPanel', () => {
     renderPanel();
     const rowsWithGlyph = () => screen
       .getByRole('navigation')
-      .querySelectorAll('[data-kbd-index] svg[aria-hidden="true"]').length;
+      .querySelectorAll('[data-kbd-index] > button:first-child svg[aria-hidden="true"]').length;
     const rowCount = () => screen
       .getByRole('navigation')
       .querySelectorAll('[data-kbd-index]').length;

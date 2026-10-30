@@ -82,8 +82,8 @@ test('right selection supports bulk style, move, delete and one-step undo withou
   await page.screenshot({ path: info.outputPath('right-selection.png') });
 
   await page.getByTestId('drawing-color-trigger').click();
-  await page.getByTestId('drawing-color-swatch-#F59E0B').click();
-  await expect.poll(async () => (await read(page)).items.slice(0, 2).map(d => d.color)).toEqual(['#F59E0B', '#F59E0B']);
+  await page.getByTestId('drawing-color-swatch-#FBBF24').click();
+  await expect.poll(async () => (await read(page)).items.slice(0, 2).map(d => d.color)).toEqual(['#FBBF24', '#FBBF24']);
   expect((await read(page)).items[2]).toEqual(before.items[2]);
 
   // Grab a member away from the toolbar; both unlocked members must move.

@@ -1,0 +1,91 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "a40f128156c5fe13e34f600fa5e83c39034813fa",
+  "origin_main_sha": "a40f128156c5fe13e34f600fa5e83c39034813fa",
+  "branch": "codex/refined-ui-icons",
+  "state": "Uncommitted implementation; input hashes identify the reviewed working tree, including retained header work.",
+  "scope": [
+    "Shared refined line actions: 24 viewBox, 1.6 stroke, rounded caps/joins, currentColor. Header/chart actions 14px, panel controls 16px, right rail 18px via rem.",
+    "Replace text action glyphs and local duplicates in chart, drawing, panels, menus, search, inventory, modals and toast controls. Retain selected fills, hidden slashes, lock shapes, rail selection bar, labels, disabled states and callbacks.",
+    "Drawing geometry, data/candle charts, indicator style previews, loading indicators and branding retain their semantic rendering.",
+    "Restore chart-heart trigger focus on Escape even when a pending checkbox action previously moved focus to the body. Outside-click dismissal is unchanged."
+  ],
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E TypeScript projects"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run --maxWorkers=8",
+      "result": "9515 passed, 3 failed in 745 files (100.31s). All 3 failures reproduced unchanged at baseline; see baseline-failures.txt."
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/util/useDismissablePopover.test.tsx src/watchlist/WatchlistGroupPicker.test.tsx src/watchlist/WatchlistHeartButton.test.tsx src/live/workspace/WatchlistHeartActionButton.test.tsx src/heatmap/CollectDialog.test.tsx src/screener/ConditionBuilder.test.tsx --maxWorkers=4",
+      "result": "36 passed in 6 files (2.49s), after final popover/collect-icon edits"
+    },
+    {
+      "cwd": "frontend",
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-refined-ui-final npx playwright test tests/e2e/{live-window-actions,live-window-ux,chart-legend-toggle,chart-toolbar-chips,index-chart-header,chart-watchlist-header,panel-quick-add,saved-views-panel,live-modal-dimming,drawing-panel-position,drawing-right-selection,watchlist-collapse-layout,indicator-instances}.spec.ts --reporter=line",
+      "result": "60 passed, 1 failed (2.5m). Failure exposed the chart-heart Escape focus issue; fixed and rechecked below."
+    },
+    {
+      "cwd": "frontend",
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-refined-ui-focus npx playwright test tests/e2e/chart-watchlist-header.spec.ts tests/e2e/live-modal-dimming.spec.ts --reporter=line",
+      "result": "7 passed (28.5s). Together with unchanged prior successes, all 61 selected browser cases pass; latest collect icon, focus restoration, narrow heart/toolbar and modal dimming rechecked."
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build (latest Playwright webServer startup)",
+      "result": "passed; existing bundle-size advisory"
+    },
+    {
+      "cwd": "frontend",
+      "command": "ESLint on all changed TS/TSX files and the three new icon components",
+      "result": "0 errors; 43 hook warnings in existing component logic"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "baseline": {
+    "sha": "a40f128156c5fe13e34f600fa5e83c39034813fa",
+    "method": "git archive HEAD frontend into a temporary source snapshot; run the same two unit files with this worktree’s installed lockfile dependencies. No working-tree changes included.",
+    "command": "vitest run src/state/persistencePolicy.test.ts src/screener/ConditionRow.test.tsx --maxWorkers=2",
+    "result": "53 passed, 3 failed (4.05s): rank-condition test expectations use lookback for rank fields (2); storage-listener count is 10 versus 9 declared policies (1). Production behavior/policy for these failures is unchanged by the icon task."
+  },
+  "fingerprint_method": "Sorted tracked and nonignored regular paths: UTF-8 relative path + NUL + raw SHA256(file bytes), then SHA256 aggregate. Excludes ignored build output and docs.",
+  "frontend_inputs": {
+    "file_count": 2019,
+    "sha256": "6de99c39428ae36dc9bb49ebe994e489f1b07de86d7d09e6339aff4b478b05e3"
+  },
+  "browser_and_backend_inputs": {
+    "file_count": 2876,
+    "sha256": "5f6b3fda62cd5cfde04a450cb27bab3568c2ec3998e9d0022dd7e7086cab96e8"
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0",
+    "browser": "System Chrome, repository Playwright configuration",
+    "e2e_workers": 1,
+    "backend_port": 20439,
+    "frontend_port": 21439,
+    "credentials": "Blank vendor credentials from existing Playwright config; isolated data directories."
+  },
+  "visual_qa": [
+    "workspace-icons.png: chart action row, all frame controls, right rail and active heart/bar inspected; thin neutral lines remain legible.",
+    "chart-toolbar-narrow.png: toolbar wraps in a narrow chart, filled heart and group check state remain readable; Escape returns focus to the trigger."
+  ],
+  "limits": [
+    "Frontend implementation only. No backend/desktop source, dependency, user server, permanent app launcher or primary checkout changed.",
+    "No PR, commit, merge, deployment or install requested in this turn."
+  ]
+}

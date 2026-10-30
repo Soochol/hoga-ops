@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import type { DragEvent } from 'react';
 import type { CalculationPolicy, ConditionLeaf, VolumeBasis } from '../api/screener';
 import { useTextTooltip } from '../ui/useTextTooltip';
@@ -58,7 +59,7 @@ export function ConditionRow({
           onFocus={e => help.showOnFocus(e.currentTarget)} onBlur={help.hide}
           onClick={e => help.show(e.currentTarget)}>ⓘ</button>}
         <button type="button" aria-label="조건 제거" disabled={structureDisabled} onClick={onRemove}
-          className="condition-icon-button">×</button>
+          className="condition-icon-button"><AppIcon name="close" /></button>
       </div>
       <div className="condition-editor-body">
         <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => {

@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { useEffect, useState } from 'react';
 import type { DesktopState } from '../../desktop';
 import { SettingsRow } from './SettingsRow';
@@ -42,9 +43,9 @@ export default function DesktopSection() {
     </SettingsRow>
     <SettingsRow label="화면 배율" description="같은 서버의 작업 창에 함께 적용하고 기억합니다.">
       <div className="flex flex-wrap items-center gap-1">
-        <button type="button" className="ui-choice" aria-label="화면 배율 축소" disabled={busy || !state || state.zoomFactor <= .5} onClick={() => void zoom('out')}>−</button>
+        <button type="button" className="ui-choice" aria-label="화면 배율 축소" disabled={busy || !state || state.zoomFactor <= .5} onClick={() => void zoom('out')}><AppIcon name="minus" /></button>
         <output className="text-sm tabular-nums" aria-label="현재 화면 배율">{state ? `${Math.round(state.zoomFactor * 100)}%` : '—'}</output>
-        <button type="button" className="ui-choice" aria-label="화면 배율 확대" disabled={busy || !state || state.zoomFactor >= 3} onClick={() => void zoom('in')}>+</button>
+        <button type="button" className="ui-choice" aria-label="화면 배율 확대" disabled={busy || !state || state.zoomFactor >= 3} onClick={() => void zoom('in')}><AppIcon name="plus" /></button>
         <button type="button" className="ui-choice" disabled={busy || !state} onClick={() => void zoom('reset')}>100% 복원</button>
       </div>
     </SettingsRow>

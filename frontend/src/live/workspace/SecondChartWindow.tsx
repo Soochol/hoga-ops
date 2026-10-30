@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 /** Seconds keep their observed-trade source and paging; chart tools, series,
  * overlays and pane layout are shared with minute charts. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -134,7 +135,7 @@ function SecondChartContent({ win, symbol, timeframe, code, venue, today, saved 
       {saved && <SavedRangeChip label={saved.label} fromDate={saved.fromDate} toDate={saved.toDate} krxPinned notice={null} onClear={returnToLive} />}
       {!saved && navigation && <span className="live-chart-state-chip text-xs text-fg-dim" role="status">
         초봉 구간 {query.isError ? '조회 실패' : query.isPending || initialPending ? '불러오는 중' : bars.length ? '표시 중' : '관측 데이터 없음'}
-        <button type="button" aria-label="초봉 구간 해제" onClick={returnToLive}>×</button>
+        <button type="button" aria-label="초봉 구간 해제" onClick={returnToLive}><AppIcon name="close" /></button>
       </span>}
       {!focusedRange && (viewedDate.date || pastTransfer) && <ViewedDateChip date={viewedDate.date ?? date}
         onReturn={transfer ? () => setTransfer(null) : viewedDate.returnToLive} />}

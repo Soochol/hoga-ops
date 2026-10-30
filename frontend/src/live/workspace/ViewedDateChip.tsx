@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 /**
  * 분봉 창 헤더의 **날짜 칩** — 이 창이 지금 어느 날을 보고 있는지, 그리고 돌아갈 문.
  *
@@ -41,7 +42,7 @@ export function ViewedDateChip({
         className="live-chart-chip-dismiss shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
         style={{ color: 'var(--fg-muted)' }}
       >
-        ×
+        <AppIcon name="close" />
       </button>
     </div>
   );

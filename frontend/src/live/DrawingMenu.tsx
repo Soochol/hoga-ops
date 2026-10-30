@@ -1,3 +1,5 @@
+import { AppIcon } from '../ui/AppIcon';
+import { DrawingToolIcon } from './DrawingToolIcon';
 /**
  * DrawingMenu — 그리기 도구 진입로 (지도 #758 / 티켓 #760·#761).
  *
@@ -119,7 +121,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
             onClick={() => pickTool(tool)}
             className={itemClass(active)}
           >
-            <span aria-hidden="true" className="w-4 text-center font-data">{spec.glyph}</span>
+            <DrawingToolIcon tool={tool} size={16} />
             <span>{spec.label}</span>
             {spec.shortcut && (
               <span className="ml-auto font-data text-2xs text-fg-dim">
@@ -145,7 +147,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
         }}
         className={`${itemClass(false)} disabled:cursor-not-allowed disabled:opacity-40`}
       >
-        <span aria-hidden="true" className="w-4 text-center">{allLocked ? '🔓' : '🔒'}</span>
+        <AppIcon name={allLocked ? 'unlock' : 'lock'} size={16} />
         <span>{allLocked ? '모두 잠금 해제' : '모두 잠금'}</span>
         {/* 부분 잠금일 때만 개수를 붙인다 — 0/N 과 N/N 은 라벨이 이미 말한다. */}
         {lockedCount > 0 && !allLocked && (
@@ -176,7 +178,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
         }}
         className={`${itemClass(false)} disabled:cursor-not-allowed disabled:opacity-40`}
       >
-        <span aria-hidden="true" className="w-4 text-center">✕</span>
+        <AppIcon name="close" size={16} />
         <span>모두 지우기</span>
         <span className="ml-auto font-data text-2xs text-fg-dim">⌥C</span>
       </button>
@@ -208,7 +210,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
           paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE,
         }}
       >
-        <span aria-hidden="true" className="font-data">{drawing ? activeSpec.glyph : '✎'}</span>
+        <DrawingToolIcon tool={drawing ? activeTool : 'pencil'} />
         {showLabel && <span className="live-action-label">{drawing ? activeSpec.label : '그리기'}</span>}
       </TooltipButton>
       {menu && createPortal(menu, document.body)}

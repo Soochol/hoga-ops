@@ -1,3 +1,4 @@
+import { SortDirectionIcon } from '../ui/SortDirectionIcon';
 /** 업종 등락과 수급을 코드로 결합한다. 수급이 없는 지수는 순매수를 0으로 채우지 않는다. */
 import { useState } from 'react';
 import {
@@ -130,7 +131,7 @@ export function SectorFlowCard() {
                       className={`inline-flex w-full items-center gap-xs whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${key === 'name' ? 'justify-start' : 'justify-end'} ${sort?.key === key ? 'text-fg' : 'text-fg-dim hover:text-fg'}`}
                     >
                       {label}
-                      {sort?.key === key && <span aria-hidden="true" className="text-accent">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
+                      {sort?.key === key && <SortDirectionIcon direction={sort.direction} className="h-3.5 w-3.5 text-accent" />}
                     </button>
                   </th>
                 ))}

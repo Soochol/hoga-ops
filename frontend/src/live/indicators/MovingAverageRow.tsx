@@ -1,3 +1,4 @@
+import { AppIcon } from '../../ui/AppIcon';
 import { useState } from 'react';
 import { useThemePrefsStore } from '../../state/themePrefs';
 import { resolveMaColor } from '../../util/maColor';
@@ -71,7 +72,7 @@ export default function MovingAverageRow({
     aria-label={`${label} 길이`}
     className={`${editorLayout ? 'ma-config-period' : 'w-[72px]'} text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums`} />;
   const remove = canRemove ? <button type="button" aria-label="슬롯 삭제" onClick={onRemove}
-    className={`${editorLayout ? 'ma-config-remove' : ''} text-fg-dim hover:text-fg text-base leading-none`}>✕</button> : <span aria-hidden="true" />;
+    className={`${editorLayout ? 'ma-config-remove' : ''} text-fg-dim hover:text-fg text-base leading-none`}><AppIcon name="close" /></button> : <span aria-hidden="true" />;
   return editorLayout ? <div className="ma-config-grid ma-config-row">
       <ToggleSwitch className="ma-config-visibility" size="sm" label={`${label} 표시`}
         checked={config.enabled && !config.hidden}

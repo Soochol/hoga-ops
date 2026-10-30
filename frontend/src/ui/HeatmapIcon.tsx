@@ -6,12 +6,12 @@
  */
 export function HeatmapIcon({ filled, className }: { filled?: boolean; className?: string }) {
   return (
-    <svg
+    <svg data-ui-icon="" width="0.875rem" height="0.875rem"
       className={className}
-      viewBox="0 0 24 24"
+      viewBox="0 0 24 24" strokeLinecap="round"
       fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.6"
       strokeLinejoin="round"
       aria-hidden="true"
     >

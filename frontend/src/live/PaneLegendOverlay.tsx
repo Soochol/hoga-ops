@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { formatInstrumentPrice, instrumentPriceUnit } from './instrumentPriceFormat';
 import { IndicatorInstanceLegend } from './indicators/IndicatorInstanceLegend';
 import { useThemePrefsStore } from '../state/themePrefs';
@@ -386,14 +387,7 @@ function PaneChip({
 
 function CloseGlyph() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M6 6l12 12M18 6L6 18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
+    <AppIcon name="close" />
   );
 }
 

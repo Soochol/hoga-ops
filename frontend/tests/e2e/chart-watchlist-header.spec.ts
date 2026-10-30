@@ -4,7 +4,7 @@ import type { WorkspaceWindow } from '../../src/state/workspace';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
 
-test('chart title heart adds the local stock, supports undo and stays usable in narrow windows', async ({ page }, testInfo) => {
+test('chart toolbar heart adds the local stock, supports undo and stays usable in narrow windows', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await installLiveMocks(page);
   await page.routeWebSocket(/\/api\/ws/, () => {});
@@ -55,10 +55,12 @@ test('chart title heart adds the local stock, supports undo and stays usable in 
   });
   const first = page.locator(`[data-win="${ids[0]}"]`);
   const second = page.locator(`[data-win="${ids[1]}"]`);
-  const firstHeart = first.getByTestId('titlebar-watchlist-button');
-  const secondHeart = second.getByTestId('titlebar-watchlist-button');
-  await expect(firstHeart).toHaveAttribute('aria-label', '고영 관심종목 추가');
-  await expect(secondHeart).toHaveAttribute('aria-label', '삼성전자 관심종목 추가');
+  const firstHeart = first.getByTestId('live-watchlist-heart-button');
+  const secondHeart = second.getByTestId('live-watchlist-heart-button');
+  await expect(firstHeart).toHaveAttribute('aria-pressed', 'false');
+  await expect(secondHeart).toHaveAttribute('aria-pressed', 'false');
+  await expect(firstHeart).toHaveAttribute('aria-label', '관심 그룹 편집');
+  await expect(firstHeart.locator('svg')).toHaveAttribute('fill', 'none');
   const frameBefore = (await first.boundingBox())!;
   const buttonBox = (await firstHeart.boundingBox())!;
   await page.mouse.move(buttonBox.x + buttonBox.width / 2, buttonBox.y + buttonBox.height / 2);
@@ -72,16 +74,16 @@ test('chart title heart adds the local stock, supports undo and stays usable in 
   expect(frameAfter.y).toBe(frameBefore.y);
   await expect(picker).toContainText('고영 098460');
   await picker.getByRole('checkbox', { name: '관찰', exact: true }).click();
-  await expect(firstHeart).toHaveAttribute('aria-label', '고영 관심 그룹 관리 · 1개 그룹');
-  await expect(secondHeart).toHaveAttribute('aria-label', '삼성전자 관심종목 추가');
+  await expect(firstHeart).toHaveAttribute('aria-pressed', 'true');
+  await expect(secondHeart).toHaveAttribute('aria-pressed', 'false');
   await expect(picker.getByRole('button', { name: '실행 취소' })).toBeEnabled();
   expect(writes[0]).toEqual({ method: 'POST', folderId: 'f_a', code: '098460' });
 
   await picker.getByRole('checkbox', { name: '장기', exact: true }).click();
-  await expect(firstHeart).toHaveAttribute('aria-label', '고영 관심 그룹 관리 · 2개 그룹');
+  await expect(firstHeart).toHaveAttribute('aria-pressed', 'true');
   await expect(picker.getByRole('button', { name: '실행 취소' })).toBeEnabled();
   await picker.getByRole('button', { name: '실행 취소' }).click();
-  await expect(firstHeart).toHaveAttribute('aria-label', '고영 관심 그룹 관리 · 1개 그룹');
+  await expect(firstHeart).toHaveAttribute('aria-pressed', 'true');
   await expect(picker.getByRole('checkbox', { name: '관찰', exact: true })).toBeChecked();
   await expect(picker.getByRole('checkbox', { name: '장기', exact: true })).not.toBeChecked();
 
@@ -89,7 +91,7 @@ test('chart title heart adds the local stock, supports undo and stays usable in 
   await picker.getByRole('checkbox', { name: '장기', exact: true }).click();
   await expect(picker).toContainText('저장하지 못했습니다. 다시 시도해 주세요.');
   await expect(picker.getByRole('checkbox', { name: '장기', exact: true })).not.toBeChecked();
-  await expect(firstHeart).toHaveAttribute('aria-label', '고영 관심 그룹 관리 · 1개 그룹');
+  await expect(firstHeart).toHaveAttribute('aria-pressed', 'true');
 
   // Keep the dialog target local, even if a stock changes while it is open.
   await page.evaluate(async id => {
@@ -98,11 +100,11 @@ test('chart title heart adds the local stock, supports undo and stays usable in 
     store.getState().setWindowSymbol(id, { code: '000660', name: 'SK하이닉스', kind: 'stock' });
   }, ids[0]);
   await expect(picker).toBeHidden();
-  await expect(firstHeart).toHaveAttribute('aria-label', 'SK하이닉스 관심종목 추가');
+  await expect(firstHeart).toHaveAttribute('aria-pressed', 'false');
   await secondHeart.click();
   await expect(picker).toContainText('삼성전자 005930');
   await picker.getByRole('checkbox', { name: '관찰', exact: true }).click();
-  await expect(secondHeart).toHaveAttribute('aria-label', '삼성전자 관심 그룹 관리 · 1개 그룹');
+  await expect(secondHeart).toHaveAttribute('aria-pressed', 'true');
   await expect(picker.getByRole('button', { name: '실행 취소' })).toBeEnabled();
   await page.keyboard.press('Escape');
   await expect(picker).toBeHidden();
@@ -115,7 +117,7 @@ test('chart title heart adds the local stock, supports undo and stays usable in 
       ? { ...w, rect: { ...w.rect, w: .24 } } : w) });
   }, ids[1]);
   await expect(secondHeart).toBeVisible();
-  await expect(secondHeart.locator('.live-watchlist-group-count')).toBeHidden();
+  await expect(secondHeart.locator('svg')).toHaveAttribute('fill', 'currentColor');
   const narrow = (await second.boundingBox())!;
   const heart = (await secondHeart.boundingBox())!;
   expect(heart.x).toBeGreaterThan(narrow.x);

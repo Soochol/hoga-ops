@@ -1,3 +1,4 @@
+import { AppIcon } from '../ui/AppIcon';
 import { useMemo, useState } from 'react';
 import type { PatternSave } from '../api/screener';
 import { RailState } from '../ui/RailShell';
@@ -128,7 +129,7 @@ function SaveRow({
         onClick={(e) => { e.stopPropagation(); onDelete(save); }}
         className="shrink-0 px-1 text-2xs text-fg-dimmer hover:text-error"
       >
-        ✕
+        <AppIcon name="close" />
       </button>
     </div>
   );

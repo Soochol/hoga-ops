@@ -1,0 +1,92 @@
+
+ RUN  v4.1.7 /tmp/hoga-refined-icons-baseline.zVkMKR/frontend
+
+ ❯ src/screener/ConditionRow.test.tsx (27 tests | 2 failed) 409ms
+     × trade_value_rank keeps all parameters visible and preserves saved values when edited 12ms
+     × change_pct_rank keeps all parameters visible and preserves saved values when edited 6ms
+ ❯ src/state/persistencePolicy.test.ts (29 tests | 1 failed) 53ms
+     × storage 리스너 수 == 크로스탭을 선언한 키 수 9ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/screener/ConditionRow.test.tsx > ConditionRow > trade_value_rank keeps all parameters visible and preserves saved values when edited
+AssertionError: expected last "vi.fn()" call to have been called with [ { id: 'at9bEe4-', …(2) } ]
+
+- Expected
++ Received
+
+  [
+    {
+      "id": "at9bEe4-",
+      "params": {
+-       "lookback": 17,
+-       "top_n": 100,
++       "top_n": 17,
+      },
+      "type": "trade_value_rank",
+    },
+  ]
+
+ ❯ src/screener/ConditionRow.test.tsx:32:22
+     30|     const input = within(card).getAllByRole('textbox')[0];
+     31|     fireEvent.change(input, { target: { value: '17' } });
+     32|     expect(onChange).toHaveBeenLastCalledWith({ ...initial,
+       |                      ^
+     33|       params: { ...initial.params, [type === 'price_range' ? 'min'
+     34|         : type === 'trade_value' ? 'min_eok'
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/screener/ConditionRow.test.tsx > ConditionRow > change_pct_rank keeps all parameters visible and preserves saved values when edited
+AssertionError: expected last "vi.fn()" call to have been called with [ { id: 'RncJQcGp', …(2) } ]
+
+- Expected
++ Received
+
+  [
+    {
+      "id": "RncJQcGp",
+      "params": {
+-       "lookback": 17,
+-       "top_n": 100,
++       "top_n": 17,
+      },
+      "type": "change_pct_rank",
+    },
+  ]
+
+ ❯ src/screener/ConditionRow.test.tsx:32:22
+     30|     const input = within(card).getAllByRole('textbox')[0];
+     31|     fireEvent.change(input, { target: { value: '17' } });
+     32|     expect(onChange).toHaveBeenLastCalledWith({ ...initial,
+       |                      ^
+     33|       params: { ...initial.params, [type === 'price_range' ? 'min'
+     34|         : type === 'trade_value' ? 'min_eok'
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/state/persistencePolicy.test.ts > persistencePolicy — 소스 → 선언 > storage 리스너 수 == 크로스탭을 선언한 키 수
+AssertionError: expected 10 to be 9 // Object.is equality
+
+- Expected
++ Received
+
+- 9
++ 10
+
+ ❯ src/state/persistencePolicy.test.ts:111:54
+    109|       (d) => d.policy === 'shared-synced' || d.policy === 'signal',
+    110|     );
+    111|     expect(countMatches(STORAGE_LISTENER, ALL_TEXT)).toBe(crossTab.len…
+       |                                                      ^
+    112|   });
+    113|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  3 failed | 53 passed (56)
+   Start at  20:41:05
+   Duration  4.05s (transform 2.99s, setup 188ms, import 3.81s, tests 462ms, environment 938ms)
+

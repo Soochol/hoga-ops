@@ -1,0 +1,68 @@
+{
+  "date_kst": "2026-10-30",
+  "base_sha": "51732d1b0182cc00077967e16e0c30934874c635",
+  "origin_main_sha": "51732d1b0182cc00077967e16e0c30934874c635",
+  "branch": "codex/refined-header-icons",
+  "working_tree": "Saved uncommitted implementation; fingerprints cover current source/test/config and dependency lockfile inputs.",
+  "scope": [
+    "Apply the approved refined-line design to shared settings, top, pin, maximize, restore and close glyphs. 0.875rem glyphs, 1.6 stroke and rounded ends; 1.5rem hit areas.",
+    "Keep X last and maximize immediately left; reuse existing theme/spacing tokens, unframed resting controls, selected/open tint, filled pin and error-tinted close hover.",
+    "Use the same settings and close glyphs in window settings popovers; preserve labels, disabled safeguards, focus return and existing window operations."
+  ],
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E projects"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowFrame.pin.test.tsx src/live/workspace/WindowSettingsPopover.test.tsx src/workspace/WorkspaceCanvas.test.tsx",
+      "result": "4 files, 36 passed (2.13s)"
+    },
+    {
+      "cwd": "frontend",
+      "command": "E2E_DATA_DIR=/tmp/hoga-e2e-data-439-refined-icons npx playwright test tests/e2e/live-window-actions.spec.ts tests/e2e/live-window-ux.spec.ts --reporter=line",
+      "result": "20 passed (55.8s); all 14 window kinds at 420/280/200/160px, icon fit/click/order, drag/resize, top/pin/settings, close and maximize/Escape restore"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed; existing large-chunk advisory"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx eslint src/workspace/WindowHeaderIcon.tsx src/workspace/WindowFrame.tsx src/live/workspace/WindowFrame.tsx src/live/workspace/WindowSettingsPopover.tsx",
+      "result": "passed, no warnings or errors"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "fingerprint_method": "Sorted frontend and root pyproject.toml/uv.lock/.python-version/VERSION/ruff.toml regular tracked/nonignored paths; UTF-8 path + NUL + raw SHA256(file bytes). Exclude ignored build output and documentation.",
+  "frontend_inputs": {
+    "file_count": 2022,
+    "sha256": "f92e78fe2e38dffe59bcc461686110223586ed4bc951e566b16debbb7a1019a9"
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "workers": 1,
+    "backend_port": 20439,
+    "frontend_port": 21439,
+    "credentials": "Blank per existing Playwright configuration; isolated worktree data. User servers and permanent launchers unchanged.",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0"
+  },
+  "visual_qa": [
+    "Inspected refined-trade-header.png from the existing E2E: 160px trade frame retains group/settings/top/pin/maximize/X without overlap, all glyphs use the approved thin-line family."
+  ],
+  "limits": [
+    "Frontend presentation only; backend and desktop runtime source unchanged.",
+    "No dependency added, installation/deployment, main checkout edit, or user-server restart."
+  ]
+}
