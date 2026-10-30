@@ -135,6 +135,10 @@ class TossTradingAdapter:
         if action != "create":
             native, date, _ = self.registry.resolve_order(order_ref, command.account_ref)
         if isinstance(command, CreateBrokerOrder):
+            if command.order_type != "LIMIT":
+                raise TradingError(
+                    422, "unsupported-order-type", "토스 OpenAPI는 장전 시간외 종가 주문을 지원하지 않습니다."
+                )
             if command.route != "SOR":
                 raise TradingError(422, "unsupported-route", "토스증권 주문은 통합(SOR) 경로를 사용합니다.")
             legacy = CreateTradingOrder(

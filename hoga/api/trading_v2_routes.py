@@ -22,6 +22,7 @@ from hoga.trading.contracts import (
     ExecutionHistoryPage,
     ExecutionHistoryRangePage,
     ModifyBrokerOrder,
+    PreopenCloseQuote,
     ReviewBrokerCommand,
 )
 from hoga.trading.executions import execution_history
@@ -76,6 +77,12 @@ def build_router(service: BrokerTradingService) -> APIRouter:
     @router.get("/holdings")
     async def holdings(account_ref: AccountRef) -> BrokerHoldings:
         return await invoke(service.holdings(account_ref))
+
+    @router.get("/preopen-close")
+    async def preopen_close(
+        account_ref: AccountRef, code: str = Query(pattern=r"^[A-Za-z0-9]{6}$"),
+    ) -> PreopenCloseQuote:
+        return await invoke(service.preopen_close(account_ref, code))
 
     @router.get("/execution-history")
     async def account_execution_history(

@@ -28,7 +28,18 @@ class AccountRegistry:
                 "CREATE TABLE IF NOT EXISTS lineage (ref TEXT PRIMARY KEY, parent_ref TEXT, "
                 "root_native TEXT NOT NULL, action TEXT NOT NULL)"
             )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS order_terms (ref TEXT PRIMARY KEY, order_type TEXT NOT NULL, price TEXT)"
+            )
             yield db
+
+    def remember_terms(self, ref: str, order_type: str, price: str | None) -> None:
+        with self.connect() as db:
+            db.execute("INSERT OR IGNORE INTO order_terms VALUES (?, ?, ?)", (ref, order_type, price))
+
+    def terms(self, ref: str) -> tuple[str, str | None] | None:
+        with self.connect() as db:
+            return db.execute("SELECT order_type, price FROM order_terms WHERE ref=?", (ref,)).fetchone()
 
     def bind(self, credential: str, broker: str, environment: str, account_no: str) -> str:
         digest = hashlib.sha256(f"{broker}:{environment}:{account_no}".encode()).hexdigest()[:32]

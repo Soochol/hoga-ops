@@ -1,5 +1,16 @@
 # hoga-ops
 
+장전 시간외 종가 주문(2026-10-30): 호가주문창 맨 아래 좌우 총잔량 숫자의
+더블클릭은 키움 실전 계좌와 당일 NXT 미지원이 확인된 종목의 장전 종가 주문을 접수한다. 주문 유형은 `PREOPEN_CLOSE`,
+경로는 KRX, 키움 신규 주문 코드는 61이다. 적용 가격은 ka10001의 당일 기준가이며
+ka10100의 종목·NXT 여부·전일종가를 확인한다. 실제 호가 신선도 대신 서버의 당일
+가격·시간·계좌·주문 여력 검증을 사용한다. 기준가가 바뀌면 기존 입력 가격을 거절한다.
+유형을 영속 보존해 지정가 가격정정·사다리 합계에 섞지 않으며, 총잔량 우클릭에서 장전
+미체결 개별 취소를 제공한다. 사다리·기존 수량·프리셋은 유지하고 별도 모드 화면은 없다.
+토스 OpenAPI는 해당 유형의 신규·조회가 미지원이다. 지원 여부를 지정가나 OPG로 대체하지 않는다.
+거래일 미확인은 신규 주문을 차단하며, 특별 개장일은 `calendar/preopen_sessions.json`에
+확인한 날짜별 시작·종료를 설정한다. 상세 운영 조건은 docs/kiwoom-trading.md 참조.
+
 Single-user local tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis.
 
 ## Language

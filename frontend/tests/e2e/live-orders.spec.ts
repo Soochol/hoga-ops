@@ -9,7 +9,7 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed' } = {}) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { preopen?: boolean; time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed' } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   const subject = market.lastBook ? { code: '456160', name: '지투지바이오' } : { code: '005930', name: '삼성전자' };
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
@@ -19,7 +19,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   await page.route('**/api/trading/v2/accounts', route => route.fulfill({ status: 404, json: { detail: 'legacy fixture' } }));
   const ws = await installLiveWs(page);
   await page.route(/^https?:\/\/[^/]+\/api\/symbols\/all$/, route => route.fulfill({ json: {
-    symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', nxt_enabled: market.nxtEnabled }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI' }, { code: '456160', name: '지투지바이오', market: 'KOSDAQ', nxt_enabled: true }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
+    symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', nxt_enabled: market.preopen ? false : market.nxtEnabled }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI' }, { code: '456160', name: '지투지바이오', market: 'KOSDAQ', nxt_enabled: true }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/quotes\?/, route => route.fulfill({ json: {
     phase: market.lastBook ? 'closed' : 'open', quotes: [{ code: new URL(route.request().url()).searchParams.get('codes')?.split(',')[0] ?? '005930', price: 67200 + priceOffset, baseline_price: 66000 + priceOffset, change_pct: 1200 / (66000 + priceOffset) * 100, change_won: 1200,
@@ -28,8 +28,8 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => route.fulfill({ json: {
     code: new URL(route.request().url()).searchParams.get('code') ?? '005930', date: new URL(route.request().url()).searchParams.get('date'), session_open_ms: Date.now(), session_close_ms: null, is_open: true,
-    snapshots: market.lastBook ? [] : [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: market.time ?? Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
-    trades: [], brokers: [], programs: [], after_hours: [], expected: [], today_ask_peak: null, today_bid_peak: null,
+    snapshots: market.lastBook ? [] : [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: market.preopen ? Date.parse('2026-10-30T08:25:00+09:00') : market.time ?? Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
+    trades: [], brokers: [], programs: [], after_hours: market.preopen ? [{ venue: 'KRX', t_ms: new Date('2026-10-30T08:35:00+09:00').getTime(), total_ask_qty: 1234, total_bid_qty: 5678 }] : [], expected: [], today_ask_peak: null, today_bid_peak: null,
   } }));
   if (market.lastBook) {
     await page.route('**/api/live/status', route => route.fulfill({ json: {
@@ -96,6 +96,29 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
       results: canceled.map(order => ({ order_id: order.orderId, accepted: true, operation_id: `cancel-${order.orderId}`, code: null, message: null })),
     } });
   });
+  if (market.preopen) {
+    const ref = 'acc_' + 'a'.repeat(32), toss = 'acc_' + 'b'.repeat(32);
+    const at = new Date('2026-10-30T08:35:00+09:00').getTime();
+    await page.clock.setFixedTime(at);
+    await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: true, accounts: [
+      { account_ref: ref, label: '키움증권 · 실전 · ****1234', broker: 'kiwoom', routes: ['SOR', 'KRX', 'NXT'], order_enabled: true },
+      { account_ref: toss, label: '토스증권 · 실전 · ****5678', broker: 'toss', routes: ['SOR'], order_enabled: true },
+    ] } }));
+    await page.route('**/api/trading/v2/state?*', route => route.fulfill({ json: {
+      account_ref: new URL(route.request().url()).searchParams.get('account_ref'), code: '005930',
+      orders: [], recent_orders: [], unresolved_commands: [], fetched_at_ms: at, events_connected: true,
+      buying_power: '20000000', sellable_quantity: '100', holding_quantity: '100', average_purchase_price: '66000',
+    } }));
+    await page.route('**/api/trading/v2/preopen-close?*', route => route.fulfill({ json: {
+      account_ref: ref, code: '005930', trading_date: '20261030', supported: true, price: 66000,
+      starts_at_ms: at - 300_000, ends_at_ms: at + 300_000, can_order: true, reason: null, fetched_at_ms: at,
+    } }));
+    await page.route('**/api/trading/v2/orders', async route => {
+      const body = route.request().postDataJSON(); commands.push(body);
+      expect(route.request().headers()['x-hoga-order']).toBe('1');
+      await route.fulfill({ json: { command_id: body.command_id, order_ref: 'ord_morning', status: 'accepted' } });
+    });
+  }
   await page.goto('/live');
   await page.getByRole('button', { name: '종목 검색 열기' }).click();
   const dialog = page.getByRole('dialog', { name: '종목 검색' });
@@ -107,7 +130,8 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   if (maximize) await page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '창 최대화', exact: true }).click();
   const initialSide = orders[0]?.side === 'SELL' ? '매도' : '매수';
   const initialPrice = (initialSide === '매도' ? 67300 : 67200) + priceOffset;
-  if (market.lastBook === 'ready') await expect(window.getByRole('button', { name: /매수 49,500원 주문 추가/ })).toBeVisible();
+  if (market.preopen) await expect(window.getByTestId('preopen-strip-label')).toBeVisible();
+  else if (market.lastBook === 'ready') await expect(window.getByRole('button', { name: /매수 49,500원 주문 추가/ })).toBeVisible();
   else if (market.lastBook) await expect(window.getByTestId('order-empty-book')).toBeVisible();
   else if (market.staleBook) await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'true');
   else await expect(window.getByRole('button', { name: new RegExp(`${initialSide} ${initialPrice.toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
@@ -4279,4 +4303,33 @@ test('내 체결내역은 이전 조회·부분체결 갱신을 중복 없이 �
   await expect(history.getByRole('alert')).toContainText('체결내역 조회 실패 · 수신된 내역 표시 중');
   await expect(history.locator('[data-execution-order="partial"]')).toContainText('50주');
   await history.screenshot({ path: info.outputPath('executions-error-retains-rows.png') });
+});
+
+test('장전 종가: 기존 하단 총잔량 숫자의 KRX 주문과 토스 미지원', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page, false, true, false, 0, 1, { preopen: true });
+  const strip = window.getByTestId('book-total-strip');
+  await expect(strip).toContainText('66,000원');
+  await expect(window.getByRole('group', { name: '주문 방식' })).toHaveCount(0);
+  await expect(window.getByRole('region', { name: '실시간 호가 주문 사다리' })).toBeVisible();
+  await expect(strip.getByRole('button', { name: '장전 종가 매수 총잔량', exact: true })).toHaveText('5,678');
+  await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('10');
+  await strip.getByRole('button', { name: '장전 종가 매수 총잔량', exact: true }).dblclick();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0]).toMatchObject({ route: 'KRX', order_type: 'PREOPEN_CLOSE', price: 66000, quantity: 10 });
+  await window.screenshot({ path: testInfo.outputPath('preopen-kiwoom.png') });
+  await window.getByRole('combobox', { name: '주문 계좌' }).selectOption('acc_' + 'b'.repeat(32));
+  await expect(strip).toContainText('토스 미지원');
+  await expect(strip.getByRole('button', { name: '장전 종가 매수 총잔량', exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await window.screenshot({ path: testInfo.outputPath('preopen-toss.png') });
+  expect(commands).toHaveLength(1);
+});
+
+test('장전 종가: 하단 총잔량은 종료 후 지정가 주문으로 바뀌지 않는다', async ({ page }) => {
+  const { window, commands } = await setup(page, false, true, false, 0, 1, { preopen: true });
+  const strip = window.getByTestId('book-total-strip');
+  await expect(strip).toContainText('66,000원');
+  await page.clock.setFixedTime(new Date('2026-10-30T08:40:00+09:00'));
+  await expect(strip.getByRole('button', { name: '장전 종가 매수 총잔량', exact: true })).toHaveCount(0);
+  await strip.dblclick();
+  expect(commands).toHaveLength(0);
 });
