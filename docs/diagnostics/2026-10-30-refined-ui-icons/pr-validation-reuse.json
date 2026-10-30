@@ -1,0 +1,18 @@
+{
+  "checked_at_utc": "2026-10-30T11:46:53.080823+00:00",
+  "implementation_head_sha": "1f07068bdbc54a199585322b0f5e1a77af46b560",
+  "base_sha": "a40f128156c5fe13e34f600fa5e83c39034813fa",
+  "origin_main_sha": "a40f128156c5fe13e34f600fa5e83c39034813fa",
+  "reused_record": "verification.json",
+  "reason": "Both recorded aggregate fingerprints match the committed implementation and current tree exactly; same dependencies, configuration and runtime. This follow-up commit changes documentation only. Full unit failures remain baseline failures, not passing checks.",
+  "frontend_inputs": {
+    "file_count": 2019,
+    "sha256": "6de99c39428ae36dc9bb49ebe994e489f1b07de86d7d09e6339aff4b478b05e3"
+  },
+  "browser_and_backend_inputs": {
+    "file_count": 2876,
+    "sha256": "5f6b3fda62cd5cfde04a450cb27bab3568c2ec3998e9d0022dd7e7086cab96e8"
+  },
+  "open_pr_overlap": "No overlap with the two open PRs (#1927 and #1726).",
+  "diff_check": "passed after normalizing a trailing blank line in the new diagnostic log."
+}
