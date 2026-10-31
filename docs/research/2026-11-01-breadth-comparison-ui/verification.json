@@ -1,0 +1,65 @@
+{
+  "baseCommit": "4ab899cc09f31e0050ed03e511f7bf0e6abe9914",
+  "branch": "codex/breadth-overlay-sort",
+  "sourceState": "working tree; fingerprint covers final implementation",
+  "environment": {
+    "node": "24.13.1",
+    "python": "3.14.7",
+    "workers": 1,
+    "browser": "system Chrome"
+  },
+  "fingerprint": {
+    "scopes": [
+      "frontend",
+      "hoga",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ],
+    "fileCount": 2390,
+    "format": "sorted JSON array of [relative path, SHA256(file)] pairs, UTF-8 compact JSON",
+    "sha256": "1b5f8be5a6ac4bf1bd60047c9949d46eceb2a1e9a401a7759b384a925d751ab0"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed",
+      "log": "/tmp/hoga-breadth-overlay-typecheck.log"
+    },
+    {
+      "command": "npx tsc -p tsconfig.e2e.json --noEmit",
+      "result": "passed on final test file after screenshot addition",
+      "log": "/tmp/hoga-breadth-overlay-e2e-typecheck.log"
+    },
+    {
+      "command": "npx eslint src/breadth tests/e2e/breadth-page.spec.ts",
+      "result": "0 errors; 1 pre-existing set-state-in-effect warning",
+      "log": "/tmp/hoga-breadth-overlay-eslint.log"
+    },
+    {
+      "command": "npx vitest run src/breadth/report.test.ts src/breadth/comparison.test.ts",
+      "result": "9 passed",
+      "log": "/tmp/hoga-breadth-overlay-unit.log"
+    },
+    {
+      "command": "npx playwright test tests/e2e/breadth-page.spec.ts --reporter=list",
+      "result": "5 passed; includes Vite production build",
+      "log": "/tmp/hoga-breadth-overlay-e2e.log"
+    },
+    {
+      "command": "npx playwright test tests/e2e/breadth-page.spec.ts --grep 'recovery headers' --reporter=list",
+      "result": "1 passed after screenshot-only test addition; other 4 test bodies and application unchanged",
+      "log": "/tmp/hoga-breadth-overlay-focus-e2e.log"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "manual": {
+    "url": "http://127.0.0.1:20382/breadth#etfs",
+    "result": "actual compiled project: 42 ETF overlay and 5-day ascending header verified",
+    "credentials": "all Playwright-config credential keys blank; own data dir; test endpoints disabled"
+  },
+  "screenshotSha256": "dbd024df91801d97218283a7a98a1edf36a6358f7e46ac5cb5257f31ea1d1e9c"
+}

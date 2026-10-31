@@ -21,10 +21,15 @@ test('native navigation, vertical analysis sections, and bulk ETF selection surv
   await expect(page.getByRole('heading', { name: 'ETF 비교', exact: true })).toBeInViewport();
   await page.getByRole('button', { name: '전체 선택', exact: true }).click();
   await expect(page.getByRole('heading', { name: '선택한 ETF 42개' })).toBeVisible();
-  await expect(page.getByTestId('breadth-small-multiples').getByRole('img')).toHaveCount(42);
+  const comparison = page.getByRole('img', { name: '선택 ETF 겹쳐 보기', exact: true });
+  await expect(comparison).toHaveCount(1);
+  await expect(comparison.locator('path[data-line-id]')).toHaveCount(43);
   await expect(page.getByRole('group', { name: 'ETF 선택 목록' }).getByRole('checkbox', { checked: true })).toHaveCount(42);
   await page.reload();
   await expect(page.getByRole('heading', { name: '선택한 ETF 42개' })).toHaveCount(1);
+  await expect(comparison.locator('path[data-line-id]')).toHaveCount(43);
+  await page.getByRole('checkbox', { name: '전체 원점수 비교', exact: true }).uncheck();
+  await expect(comparison.locator('path[data-line-id]')).toHaveCount(42);
   await page.getByRole('button', { name: '전체 해제', exact: true }).click();
   await expect(page.getByRole('heading', { name: '선택한 ETF 0개' })).toBeVisible();
   await page.getByRole('link', { name: '기본 그래프 ↑' }).nth(1).click();
@@ -32,6 +37,54 @@ test('native navigation, vertical analysis sections, and bulk ETF selection surv
   await page.reload();
   await expect(page.getByRole('heading', { name: '선택한 ETF 0개' })).toHaveCount(1);
   expect(errors).toEqual([]);
+});
+
+test('recovery headers cycle sorting and legend/table focus emphasizes a stable ETF line', async ({ page }) => {
+  const comparison = page.getByRole('img', { name: '선택 ETF 겹쳐 보기', exact: true });
+  const path = comparison.locator('path[data-line-id="0221Z0"]');
+  await expect(path).toHaveCount(1);
+  const originalStroke = await path.getAttribute('stroke');
+  const originalDash = await path.getAttribute('stroke-dasharray');
+  await page.getByRole('button', { name: '전체 선택', exact: true }).click();
+  await expect(path).toHaveAttribute('stroke', originalStroke!);
+  expect(await path.getAttribute('stroke-dasharray')).toBe(originalDash);
+  const table = page.getByRole('table', { name: '회복 지속성' });
+  const defaultOrder = await table.locator('tbody tr').evaluateAll(rows => rows.map(row => row.getAttribute('data-fund-code')));
+  for (const name of ['ETF', '원점수', '5일 변화', '20일 변화', '연속 개선', '최근 5일 개선']) {
+    const header = table.getByRole('columnheader', { name, exact: true });
+    const button = header.getByRole('button');
+    await button.click();
+    await expect(header).toHaveAttribute('aria-sort', 'ascending');
+    await button.press('Enter');
+    await expect(header).toHaveAttribute('aria-sort', 'descending');
+    await button.press('Space');
+    await expect(header).toHaveAttribute('aria-sort', 'none');
+    await expect(table.locator('caption')).toContainText('기본 순서 · 연속 개선 내림차순');
+    expect(await table.locator('tbody tr').evaluateAll(rows => rows.map(row => row.getAttribute('data-fund-code')))).toEqual(defaultOrder);
+  }
+  await table.getByRole('button', { name: '5일 변화', exact: true }).click();
+  const values = await table.locator('tbody tr td:nth-child(3)').allTextContents();
+  const numeric = values.map(Number);
+  expect(numeric).toEqual([...numeric].sort((a, b) => a - b));
+  await expect(path).toHaveAttribute('stroke', originalStroke!);
+  expect(await path.getAttribute('stroke-dasharray')).toBe(originalDash);
+  const legend = page.getByRole('button', { name: 'ACE K바이오코스닥액티브 그래프 강조', exact: true }).first();
+  await legend.hover();
+  await expect(path).toHaveAttribute('stroke-width', '3');
+  await expect(comparison.locator('path[data-line-id="baseline"]')).toHaveAttribute('opacity', '0.18');
+  await comparison.locator('..').screenshot({ path: test.info().outputPath('breadth-all-etfs-highlight.png') });
+  await page.getByRole('heading', { name: '선택한 ETF 42개' }).hover();
+  await expect(path).toHaveAttribute('stroke-width', '2');
+  const rowButton = table.getByRole('button', { name: 'ACE K바이오코스닥액티브 그래프 강조', exact: true });
+  await rowButton.focus();
+  await expect(path).toHaveAttribute('stroke-width', '3');
+  await table.getByRole('button', { name: 'ETF', exact: true }).focus();
+  await expect(path).toHaveAttribute('stroke-width', '2');
+  await page.getByRole('group', { name: 'ETF 선택 목록' }).getByRole('checkbox', { name: /0221Z0/ }).uncheck();
+  await expect(path).toHaveCount(0);
+  await page.getByRole('group', { name: 'ETF 선택 목록' }).getByRole('checkbox', { name: /0221Z0/ }).check();
+  await expect(path).toHaveAttribute('stroke', originalStroke!);
+  expect(await path.getAttribute('stroke-dasharray')).toBe(originalDash);
 });
 
 test('spread and attribution share the selected endpoint horizon with searchable stock contributions', async ({ page }) => {
@@ -65,7 +118,8 @@ test('charts and analysis fit the project content area in both dark and light th
     await page.evaluate(value => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: value })), theme);
     await page.reload();
     await expect(page.getByRole('heading', { name: '공탐지수', exact: true })).toBeVisible();
-    for (const width of [1440, 960]) {
+    await page.getByRole('button', { name: '전체 선택', exact: true }).click();
+    for (const width of [1440, 960, 600]) {
       await page.setViewportSize({ width, height: 1000 });
       const content = page.getByTestId('breadth-page');
       await expect.poll(() => content.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
