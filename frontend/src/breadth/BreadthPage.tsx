@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { PanelCard, PageState, SegmentedControl, ToolbarButton } from '../ui/PageShell';
 import { persistJson, readJsonObject } from '../state/persist';
-import { BreadthChart, CHART_COLORS } from './BreadthChart';
+import { BreadthChart } from './BreadthChart';
+import { CHART_COLORS, fundStroke } from './chartGeometry';
+import { FUND_COLUMNS, nextFundSort, sortFunds, type FundSort } from './comparison';
 import { etfImprovementCounts, loadReport, number, selectedCodes, SELECTION_KEY, signed, type BreadthReport, type Fund, type Value } from './report';
 import './breadth.css';
 
@@ -45,7 +47,9 @@ function BreadthContent({ report: r }: { report: BreadthReport }) {
   const [stockSearch, setStockSearch] = useState('');
   const [stockFilter, setStockFilter] = useState('changed');
   const [stockLimit, setStockLimit] = useState(12);
-  const [fundSort, setFundSort] = useState('streak');
+  const [fundSort, setFundSort] = useState<FundSort>(null);
+  const [hoveredFund, setHoveredFund] = useState<string | null>(null);
+  const [focusedFund, setFocusedFund] = useState<string | null>(null);
   const [showBase, setShowBase] = useState(true);
   const mainChart = useRef<HTMLElement>(null);
   useEffect(() => persistJson(SELECTION_KEY, { codes: selection }), [selection]);
@@ -54,17 +58,21 @@ function BreadthContent({ report: r }: { report: BreadthReport }) {
   const etfSpread = useMemo(() => [5, 20].map(h => etfImprovementCounts(r.funds, h)), [r]);
   const selected = useMemo(() => ready.filter(f => selection.includes(f.code)), [ready, selection]);
   const visibleFunds = useMemo(() => r.funds.filter(f => `${f.name} ${f.code}`.toLowerCase().includes(fundSearch.toLowerCase())), [r, fundSearch]);
-  const sortedFunds = useMemo(() => [...selected].sort((a, b) => {
-    const field = (f: Fund) => fundSort === 'streak' ? f.persistence.streak : fundSort === 'score' ? f.score : fundSort === 'd5' ? f.d5 : f.d20;
-    return (field(b) ?? -Infinity) - (field(a) ?? -Infinity) || a.code.localeCompare(b.code);
-  }), [selected, fundSort]);
+  const sortedFunds = useMemo(() => sortFunds(selected, fundSort), [selected, fundSort]);
+  const fundStyles = useMemo(() => new Map([...ready].sort((a, b) => a.code.localeCompare(b.code)).map((f, i) => [f.code, fundStroke(i)])), [ready]);
   const change = r.changes[horizon];
   const stockRows = useMemo(() => change.stocks.filter(s => {
     const matches = `${s.name} ${s.code}`.toLowerCase().includes(stockSearch.toLowerCase());
     return matches && (stockFilter === 'all' || (stockFilter === 'positive' ? s.contribution > 0 : stockFilter === 'negative' ? s.contribution < 0 : stockFilter === 'unchanged' ? s.contribution === 0 : s.contribution !== 0));
   }).sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution) || a.code.localeCompare(b.code)), [change, stockSearch, stockFilter]);
   const dates = r.dates.slice(-windowSize);
-  const baseLine = { label: '전체 477종목', values: r.baseline.line.slice(-windowSize), color: 'var(--ma-5)', dashed: true };
+  const baseLine = useMemo(() => ({ id: 'baseline', label: '전체 477종목', values: r.baseline.line.slice(-windowSize), color: 'var(--ma-5)', dashed: true }), [r, windowSize]);
+  const comparisonLines = useMemo(() => [
+    ...selected.map(f => ({ id: f.code, label: f.name, values: f.line.slice(-windowSize), ...fundStyles.get(f.code)! })),
+    ...(showBase ? [baseLine] : []),
+  ], [selected, windowSize, fundStyles, showBase, baseLine]);
+  const highlightCandidate = hoveredFund ?? focusedFund;
+  const highlightedFund = comparisonLines.some(line => line.id === highlightCandidate) ? highlightCandidate : null;
   const focusedDate = dates.includes(cursor) ? cursor : r.asOf;
   const setRange = (size: number) => { setWindowSize(size); setCursor(r.asOf); };
   const toggle = (code: string) => setSelection(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
@@ -153,16 +161,22 @@ function BreadthContent({ report: r }: { report: BreadthReport }) {
         <p className="breadth-note">액티브 81개를 포함한 119개 후보 중 현재는 패시브 38개·액티브 4개를 비교합니다. 대기 종목의 저장 일봉은 존재하며, 수정 기준일과 확정 관측 검증을 마쳐야 반영할 수 있습니다.</p>
       </PanelCard>
       <PanelCard className="breadth-panel">
-        <div className="breadth-bar"><div><h3>선택한 ETF {selected.length}개</h3><p>3개까지 겹쳐 보기 · 4개부터 같은 0–100점 축으로 나눠 보기</p></div><label className="breadth-check"><input type="checkbox" checked={showBase} onChange={e => setShowBase(e.target.checked)} />전체 원점수 비교</label></div>
-        {selected.length === 0 ? <PageState>위 목록에서 비교할 ETF를 선택하세요. 기본 그래프는 계속 표시됩니다.</PageState> : selected.length <= 3
-          ? <BreadthChart dates={dates} label="선택 ETF 겹쳐 보기" cursor={focusedDate} onCursor={setCursor} lines={[
-            ...selected.map((f, i) => ({ label: f.name, values: f.line.slice(-windowSize), color: CHART_COLORS[i] })), ...(showBase ? [baseLine] : []),
-          ]} />
-          : <div className="breadth-small-multiples" data-testid="breadth-small-multiples">{selected.map(f => <article key={f.code} className="breadth-mini"><div className="breadth-bar"><h4>{f.name}</h4><b>{number(f.score)}점</b></div><p>{f.style === 'active' ? '액티브 · ' : ''}5일 {signed(f.d5)}점 · 20일 {signed(f.d20)}점 · 연속 개선 {streak(f)}</p>
-            <BreadthChart dates={dates} label={`${f.name} 비교 그래프`} height={160} cursor={focusedDate} onCursor={setCursor} compact lines={[{ label: f.name, values: f.line.slice(-windowSize), color: CHART_COLORS[0] }, ...(showBase ? [baseLine] : [])]} />
-          </article>)}</div>}
-        <div className="breadth-bar breadth-table-heading"><div><h3>회복 지속성</h3><p>선택한 ETF의 수준·변화·지속성을 함께 비교합니다.</p></div><label>정렬 <select aria-label="ETF 비교 정렬" value={fundSort} onChange={e => setFundSort(e.target.value)}><option value="streak">연속 개선</option><option value="score">원점수</option><option value="d5">5일 변화</option><option value="d20">20일 변화</option></select></label></div>
-        {selected.length > 0 && <div className="breadth-table-wrap"><table><thead><tr><th>ETF</th><th>원점수</th><th>5일 변화</th><th>20일 변화</th><th>연속 개선</th><th>최근 5일 개선</th></tr></thead><tbody>{sortedFunds.map(f => <tr key={f.code}><th>{f.name}<small>{f.style === 'active' ? '액티브' : '패시브'} · {f.stockCount}종목</small></th><td>{number(f.score)}</td><td className={direction(f.d5)}>{signed(f.d5)}</td><td className={direction(f.d20)}>{signed(f.d20)}</td><td>{streak(f)}</td><td>{number(f.persistence.up5, 0)} / 5일</td></tr>)}</tbody></table></div>}
+        <div className="breadth-bar"><div><h3>선택한 ETF {selected.length}개</h3><p>선택한 ETF를 하나의 0–100점 그래프로 비교합니다. 범례나 표의 ETF에 마우스를 올리거나 키보드로 이동하면 해당 선을 강조합니다.</p></div><label className="breadth-check"><input type="checkbox" checked={showBase} onChange={e => setShowBase(e.target.checked)} />전체 원점수 비교</label></div>
+        {selected.length === 0 ? <PageState>위 목록에서 비교할 ETF를 선택하세요. 기본 그래프는 계속 표시됩니다.</PageState>
+          : <BreadthChart dates={dates} label="선택 ETF 겹쳐 보기" cursor={focusedDate} onCursor={setCursor} lines={comparisonLines}
+            highlightedLine={highlightedFund} onLineHover={setHoveredFund} onLineFocus={setFocusedFund} />}
+        <div className="breadth-bar breadth-table-heading"><div><h3 id="breadth-recovery-title">회복 지속성</h3><p>선택한 ETF의 수준·변화·지속성을 함께 비교합니다. 헤더 클릭: 오름차순 → 내림차순 → 기본 순서.</p></div></div>
+        {selected.length > 0 && <div className="breadth-table-wrap"><table aria-labelledby="breadth-recovery-title">
+          <caption aria-live="polite">{fundSort ? `${FUND_COLUMNS.find(c => c.key === fundSort.key)!.label} ${fundSort.direction === 'ascending' ? '오름차순' : '내림차순'}` : '기본 순서 · 연속 개선 내림차순'} · 동점은 ETF 코드순 · 자료 부족은 마지막</caption>
+          <thead><tr>{FUND_COLUMNS.map(column => {
+            const order = fundSort?.key === column.key ? fundSort.direction : 'none';
+            return <th key={column.key} scope="col" aria-sort={order}><button type="button" className="breadth-sort-header"
+              onClick={() => setFundSort(current => nextFundSort(current, column.key))}>{column.label}<span aria-hidden="true">{order === 'ascending' ? '↑' : order === 'descending' ? '↓' : '↕'}</span></button></th>;
+          })}</tr></thead><tbody>{sortedFunds.map(f => <tr key={f.code} data-fund-code={f.code} data-highlighted={highlightedFund === f.code}
+            onPointerEnter={() => setHoveredFund(f.code)} onPointerLeave={() => setHoveredFund(null)}>
+            <th scope="row"><button type="button" className="breadth-fund-focus" onFocus={() => setFocusedFund(f.code)} onBlur={() => setFocusedFund(null)} aria-label={`${f.name} 그래프 강조`}>
+              <svg className="breadth-line-swatch" width="24" height="12" viewBox="0 0 24 12" aria-hidden="true"><line x1="0" x2="24" y1="6" y2="6" stroke={fundStyles.get(f.code)!.color} strokeWidth="2" strokeDasharray={fundStyles.get(f.code)!.dash} /></svg>{f.name}</button><small>{f.style === 'active' ? '액티브' : '패시브'} · {f.stockCount}종목</small></th>
+            <td>{number(f.score)}</td><td className={direction(f.d5)}>{signed(f.d5)}</td><td className={direction(f.d20)}>{signed(f.d20)}</td><td>{streak(f)}</td><td>{number(f.persistence.up5, 0)} / 5일</td></tr>)}</tbody></table></div>}
         <p className="breadth-note">점수 변화의 단위는 ‘점’이며 ETF 수익률이 아닙니다. 연속 개선은 원점수가 직전 거래일보다 높아진 횟수로, 보합이면 끊깁니다. 이력이 상승 도중 시작되면 ‘최소 N일’로 표시합니다. 회복 확률이나 매수 신호로 해석하지 않습니다.</p>
       </PanelCard>
     </Section>

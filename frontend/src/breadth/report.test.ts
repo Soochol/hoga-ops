@@ -1,6 +1,6 @@
 import snapshotText from '../../public/market-breadth/snapshot.json?raw';
 import { describe, expect, it } from 'vitest';
-import { chartPath } from './BreadthChart';
+import { chartPath } from './chartGeometry';
 import { etfImprovementCounts, parseReport, selectedCodes, type BreadthReport } from './report';
 
 const snapshot = JSON.parse(snapshotText) as BreadthReport;

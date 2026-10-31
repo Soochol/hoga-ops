@@ -1,0 +1,68 @@
+{
+  "validatedCodeCommit": "898e4f97b43aebe44ffd701ff24bb77e34cc75e5",
+  "latestMain": "4ab899cc09f31e0050ed03e511f7bf0e6abe9914",
+  "reusedValidation": "verification.json",
+  "inputFingerprint": {
+    "scopes": [
+      "frontend",
+      "hoga",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ],
+    "fileCount": 2390,
+    "format": "sorted JSON array of [relative path, SHA256(file)] pairs, UTF-8 compact JSON",
+    "sha256": "eb2ebdfd4f5e3d6a57260da8ffcaf4dfd4c8416bb242e5fae30a31f4863575ca"
+  },
+  "reuseReason": "Latest main unchanged. All inputs match the passing record except removal of one trailing blank line from chartGeometry.ts. Exact old.rstrip()+newline == current bytes verified; runtime syntax and behavior unchanged. Unit tests rerun on final source: 9 passed. Final screenshot-only E2E test addition already covered by focused passing E2E and E2E typecheck.",
+  "openPrOverlap": [],
+  "logs": {
+    "typecheck": {
+      "sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+      "bytes": 113
+    },
+    "e2e-typecheck": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "eslint": {
+      "sha256": "a883804a24f5e6e74c4ebf2dc926c1b409a54e018eee03de46012ce3a899fb8d",
+      "bytes": 1551
+    },
+    "unit": {
+      "sha256": "1de00a310782fcb953009277d9a9c2173f6b578af1b1f9a6e128a579c0bf59a9",
+      "bytes": 233
+    },
+    "e2e": {
+      "sha256": "0b853489ffdf2261a731b98d4a85d99c2ee6ac39e50576d85203806fb27077b1",
+      "bytes": 112534
+    },
+    "focus-e2e": {
+      "sha256": "0152f12eaa3daf91c325401a9fab64708f96759565a185c45b079ba2f65002e2",
+      "bytes": 108407
+    },
+    "finalUnit": {
+      "sha256": "325a8b6e34b00baded417eae04e7d36386968cc15a68d0dd01488159904cc568",
+      "bytes": 233,
+      "result": "9 passed"
+    }
+  },
+  "originalPassingInputFingerprint": {
+    "scopes": [
+      "frontend",
+      "hoga",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ],
+    "fileCount": 2390,
+    "format": "sorted JSON array of [relative path, SHA256(file)] pairs, UTF-8 compact JSON",
+    "sha256": "1b5f8be5a6ac4bf1bd60047c9949d46eceb2a1e9a401a7759b384a925d751ab0"
+  },
+  "whitespaceOnlyChange": {
+    "file": "frontend/src/breadth/chartGeometry.ts",
+    "beforeSha256": "68c2c72d621c0a123a3f25817c327d6e299cb8e3f303f185391b778030c6f6ee",
+    "afterSha256": "30a022d02a3e4c498576350e9f9d9946da4aca644db575902ece17ddb28c8155",
+    "proof": "old.rstrip() + b\"\\n\" == current; reconstructed 2390-file fingerprint equals original passing record"
+  }
+}
