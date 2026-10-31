@@ -1,0 +1,45 @@
+{
+  "validatedCodeCommit": "898e4f97b43aebe44ffd701ff24bb77e34cc75e5",
+  "latestMain": "4ab899cc09f31e0050ed03e511f7bf0e6abe9914",
+  "reusedValidation": "verification.json",
+  "inputFingerprint": {
+    "scopes": [
+      "frontend",
+      "hoga",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ],
+    "fileCount": 2390,
+    "format": "sorted JSON array of [relative path, SHA256(file)] pairs, UTF-8 compact JSON",
+    "sha256": "1b5f8be5a6ac4bf1bd60047c9949d46eceb2a1e9a401a7759b384a925d751ab0"
+  },
+  "reuseReason": "All 2390 recorded source/dependency/config/fixture inputs match; latest main is unchanged. Only this documentation record is added after the validated code commit. Final E2E test screenshot addition was rechecked by the focused passing E2E and E2E typecheck; other four test bodies and application inputs are unchanged.",
+  "openPrOverlap": [],
+  "logs": {
+    "typecheck": {
+      "sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+      "bytes": 113
+    },
+    "e2e-typecheck": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "eslint": {
+      "sha256": "a883804a24f5e6e74c4ebf2dc926c1b409a54e018eee03de46012ce3a899fb8d",
+      "bytes": 1551
+    },
+    "unit": {
+      "sha256": "1de00a310782fcb953009277d9a9c2173f6b578af1b1f9a6e128a579c0bf59a9",
+      "bytes": 233
+    },
+    "e2e": {
+      "sha256": "0b853489ffdf2261a731b98d4a85d99c2ee6ac39e50576d85203806fb27077b1",
+      "bytes": 112534
+    },
+    "focus-e2e": {
+      "sha256": "0152f12eaa3daf91c325401a9fab64708f96759565a185c45b079ba2f65002e2",
+      "bytes": 108407
+    }
+  }
+}
