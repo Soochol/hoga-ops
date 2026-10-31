@@ -17,4 +17,3 @@ export function chartPath(values: Value[], x: (i: number) => number, y: (v: numb
   });
   return path.trim();
 }
-
