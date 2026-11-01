@@ -146,11 +146,11 @@ describe('LiveSymbolSearch', () => {
     expect(screen.queryByRole('button', { name: '검색어 지우기' })).toBeNull();
     expect(useLivePageStore.getState().activeCode).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '관심 그룹 편집' }));
-    expect(screen.getByRole('dialog', { name: '내 관심 그룹' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '종목 등록 그룹' })).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem('hoga.liveSymbolSearch.recent')!)).toHaveLength(1);
     fireEvent.keyDown(screen.getByRole('textbox', { name: '새 그룹 만들기' }), { key: 'Escape' });
-    expect(screen.queryByRole('dialog', { name: '내 관심 그룹' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '종목 등록 그룹' })).toBeNull();
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '관심 그룹 편집' })).toHaveFocus();
   });
@@ -323,7 +323,7 @@ describe('LiveSymbolSearch', () => {
     const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
     fireEvent.click(screen.getByRole('button', { name: '관심 그룹 편집' }));
-    expect(screen.getByRole('dialog', { name: '내 관심 그룹' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '종목 등록 그룹' })).toBeInTheDocument();
     const newGroup = screen.getByRole('textbox', { name: '새 그룹 만들기' });
     fireEvent.mouseDown(newGroup);
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();

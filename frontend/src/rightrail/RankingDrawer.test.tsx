@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router';
 import * as client from '../api/client';
 import * as liveNavigate from '../live/liveNavigate';
 import * as watchlistApi from '../api/watchlist';
+import * as heatmapApi from '../api/heatmap';
 import { useEntryDragStore } from '../state/entryDrag';
 import { RankingDrawer } from './RankingDrawer';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -74,6 +75,7 @@ function renderDrawer() {
 }
 
 beforeEach(() => {
+  vi.spyOn(heatmapApi, 'getHeatmap').mockResolvedValue({ folders: [], entries: [], capture_markers: {}, next_run_at_ms: 0 });
   useLiveVenueStore.setState({ venue: 'KRX' });
   vi.spyOn(liveNavigate, 'activateLiveCode').mockImplementation(() => {});
 });

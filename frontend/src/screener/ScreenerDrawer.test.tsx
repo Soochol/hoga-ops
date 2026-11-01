@@ -12,6 +12,7 @@ import * as savesApi from '../api/savedScreeners';
 import * as screenerApi from '../api/screener';
 import * as client from '../api/client';
 import * as watchlistApi from '../api/watchlist';
+import * as heatmapApi from '../api/heatmap';
 import * as ws from '../api/ws';
 import { seedSymbolMaster } from '../live/seedSymbolMaster';
 
@@ -157,6 +158,7 @@ describe('ScreenerDrawer', () => {
     });
     useScreenerUpdateFeedback.setState({ feedback: null });
     vi.restoreAllMocks();
+    vi.spyOn(heatmapApi, 'getHeatmap').mockResolvedValue({ folders: [], entries: [], capture_markers: {}, next_run_at_ms: 0 });
     vi.spyOn(screenerApi, 'listScreenerExclusions').mockResolvedValue({ schema_version: 1, exclusions: [] });
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
