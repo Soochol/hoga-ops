@@ -2039,6 +2039,14 @@ class ChangePctParams(CandleParams):
                 raise ValueError("lo must be <= hi")
         return self
 
+class ChangePctPeriodParams(ChangePctParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class ChangePctRangeParams(ChangePctParams, HistoryDateRangeParams):
+    pass
+
+
 class PriceRangeParams(BaseModel):
     min: int | None = None                             # 원
     max: int | None = None
@@ -2190,6 +2198,11 @@ class ChangePctLeaf(BaseModel):
     id: str
     params: ChangePctParams
 
+class ChangePctPeriodLeaf(BaseModel):
+    type: Literal["change_pct_period"] = "change_pct_period"
+    id: str
+    params: ChangePctRangeParams | ChangePctPeriodParams
+
 class PriceRangeLeaf(BaseModel):
     type: Literal["price_range"] = "price_range"
     id: str
@@ -2260,7 +2273,7 @@ class BidDepthRenewalLeaf(BaseModel):
     params: DepthRenewalParams
 
 ConditionLeaf = Annotated[
-    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | ChangePctPeriodLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -2525,7 +2538,8 @@ class ScreenerExclusionWrite(BaseModel):
             if day != self.date:
                 raise ValueError("봉 시작 시각과 발생 날짜가 다릅니다")
             if self.condition.type not in {"new_high_vol", "new_high_vol_today", "new_high", "new_high_today",
-                                           "high_off_peak", "ma", "trade_value", "trade_value_period", "change_pct",
+                                           "high_off_peak", "ma", "trade_value", "trade_value_period",
+                                           "change_pct", "change_pct_period",
                                            "bollinger_breakout_today", "bollinger_breakout",
                                            "bollinger_position_today", "bollinger_position"}:
                 raise ValueError("봉 시각은 주기별 가격·거래량 조건에서만 사용합니다")

@@ -111,6 +111,9 @@ export type ChangePctOp = 'gte' | 'lte' | 'between';
 export type ChangeReference = 'previous_day' | 'previous_bar' | 'bar_open';
 export type TradeValueMethod = 'ohlcv_estimate' | 'daily_estimate_sum';
 export interface ChangePctParams extends CandleOptions { change_reference?: ChangeReference; op: ChangePctOp; pct?: number; lo?: number; hi?: number }
+export interface ChangePctPeriodParams extends ChangePctParams { lookback: number }
+export interface ChangePctRangeParams extends ChangePctParams { mode: 'date_range'; start_date: string; end_date: string }
+export type ChangePctPeriodOptions = ChangePctPeriodParams | ChangePctRangeParams;
 export interface PriceRangeParams { min?: number; max?: number }
 // 최근 period일 고가 peak 대비 현재 고가 위치. within=고점 −pct% 이내 / outside=이외.
 export type HighOffPeakSide = 'within' | 'outside';
@@ -146,6 +149,7 @@ export type ConditionLeaf =
   | { id: string; type: 'new_high_vol'; params: VolumeParams }
   | { id: string; type: 'high_off_peak'; params: HighOffPeakParams }
   | { id: string; type: 'change_pct'; params: ChangePctParams }
+  | { id: string; type: 'change_pct_period'; params: ChangePctPeriodOptions }
   | { id: string; type: 'price_range'; params: PriceRangeParams }
   | { id: string; type: 'ma'; params: MaParams }
   | { id: string; type: 'bollinger_breakout_today'; params: BollingerBreakoutParams }

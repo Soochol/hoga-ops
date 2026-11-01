@@ -17,7 +17,7 @@ function conditionParams(leaf: ConditionLeaf) {
     case 'trade_value_period':
       return 'mode' in leaf.params ? ('timeframe' in leaf.params
         ? { ...candleDefaults(leaf.params), timeframe: leaf.params.timeframe } : leaf.params) : candleDefaults(leaf.params);
-    case 'change_pct': {
+    case 'change_pct': case 'change_pct_period': {
       const { change_reference, ...params } = leaf.params;
       return candleDefaults({ ...params, ...(change_reference && change_reference !== 'previous_day' ? { change_reference } : {}) });
     }

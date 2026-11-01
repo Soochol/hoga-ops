@@ -13,7 +13,7 @@ from hoga.api.models import (
     ScreenerOccurrence,
     ScreenerVolumeEvidence,
 )
-from hoga.api.screener_bar_policy import TRADE_VALUE_TYPES, VOLUME_TYPES, comparison_period, lookback
+from hoga.api.screener_bar_policy import CHANGE_TYPES, TRADE_VALUE_TYPES, VOLUME_TYPES, comparison_period, lookback
 from hoga.api.screener_exclusions import condition_key
 
 POLICY = "separate_bases_v2"
@@ -110,12 +110,15 @@ def _price(leaf, series, window, expected, days, clock):
     }
     # previous_day is the previous trading day, including for W/M.
     previous = days.index(anchor) - 1
-    if leaf.type == "change_pct" and previous >= 0 and (day := days[previous]) not in daily and day in series.prices:
+    if leaf.type in CHANGE_TYPES and previous >= 0 and (day := days[previous]) not in daily and day in series.prices:
         daily[day] = bars.VolumeBar(
             bars._stamp(day), 0, **{key: series.prices[day][key] for key in ("open", "high", "low", "close")}
         )
     grouped = bars.calendar_bars(daily, days, timeframe=leaf.params.timeframe, as_of=clock, windows=window)
     p = leaf.params.model_copy(update={"lookback": 1}) if hasattr(leaf.params, "lookback") else leaf.params
+    if leaf.type in CHANGE_TYPES and isinstance(p, HistoryDateRangeParams):
+        candidate_date = window[-1][0][0].isoformat()
+        p = p.model_copy(update={"start_date": candidate_date, "end_date": candidate_date})
     candidate = leaf.model_copy(update={"params": p})
     found, complete = bars.records(candidate, grouped, fetched_at_ms=int(clock.timestamp() * 1000))
     for event in found:

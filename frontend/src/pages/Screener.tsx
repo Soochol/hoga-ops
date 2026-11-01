@@ -489,6 +489,7 @@ export function Screener() {
                   <ScreenerResults
                     key={`${lastScan.interactionStartedAtMs ?? lastScan.scannedAtMs}:${lastScan.requestJson ?? lastScan.scanKey ?? ''}`}
                     scan={lastScan}
+                    occurrenceController={occurrenceController}
                     liveRows={liveRows}
                     onActivate={openLive}
                     sortMode={sortMode}

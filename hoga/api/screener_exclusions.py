@@ -40,6 +40,7 @@ def condition_key(leaf: ConditionLeaf, *, calculation_policy: str = "legacy_v1")
         "new_high",
         "new_high_vol",
         "trade_value_period",
+        "change_pct_period",
         "ask_depth_new_high_period",
         "bid_depth_new_high_period",
     }:
@@ -52,7 +53,7 @@ def condition_key(leaf: ConditionLeaf, *, calculation_policy: str = "legacy_v1")
         params.pop("timeframe")
     if params.get("include_open_bar") is True:
         params.pop("include_open_bar")
-    if leaf.type == "change_pct" and params.get("change_reference") == "previous_day":
+    if leaf.type in {"change_pct", "change_pct_period"} and params.get("change_reference") == "previous_day":
         params.pop("change_reference")
     value = json.dumps({"type": leaf.type, "params": params}, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(value.encode()).hexdigest()
