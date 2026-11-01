@@ -20,7 +20,7 @@ describe('useSaveAnchor', () => {
     act(() => result.current.loadSave({ ...SAVE, conditions, expression: 'A AND (B OR C)' }));
     expect(result.current.expression).toBe('A AND (B OR C)');
     act(() => result.current.editConditions([conditions[2], conditions[0], conditions[1]]));
-    expect(result.current.expression).toBe('(B AND (C OR A))');
+    expect(result.current.expression).toBe('B AND (C OR A)');
     act(() => result.current.beginSave());
     act(() => result.current.editExpression('B OR C'));
     act(() => result.current.settleAnchor('s1', SAVE.name));

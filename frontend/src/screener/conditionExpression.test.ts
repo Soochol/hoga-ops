@@ -19,6 +19,7 @@ describe('condition expressions', () => {
   it('retains the same leaf meaning after reorder and removal', () => {
     const reordered = [leaves[2], leaves[0], leaves[1]];
     const expression = reconcileExpression('A AND (B OR C)', leaves, reordered)!;
+    expect(expression).toBe('B AND (C OR A)');
     expect(parseExpression(expression, 3)).toEqual([1, 2, 0, 'OR', 'AND']);
     expect(parseExpression(reconcileExpression('A AND (B OR C)', leaves, [leaves[0], leaves[2]])!, 2))
       .toEqual([0, 1, 'AND']);
@@ -27,8 +28,17 @@ describe('condition expressions', () => {
   });
   it('ANDs newly added conditions and retains the implicit AND default', () => {
     const more = [...leaves, { ...leaves[0], id: 'd' }];
-    expect(parseExpression(reconcileExpression('A OR B', leaves, more), 4)).toEqual([0, 1, 'OR', 3, 'AND']);
+    expect(reconcileExpression('A OR B', leaves, more)).toBe('A OR B AND D');
+    expect(parseExpression(reconcileExpression('A OR B', leaves, more), 4)).toEqual([0, 1, 3, 'AND', 'OR']);
     expect(reconcileExpression(null, leaves, more)).toBeNull();
+  });
+  it('preserves handwritten brackets, whitespace and operator spelling on structural changes', () => {
+    const reordered = [leaves[2], leaves[0], leaves[1]];
+    expect(reconcileExpression('  a  그리고 ((b 또는 c))  ', leaves, reordered)).toBe('  b  그리고 ((c 또는 a))  ');
+    expect(reconcileExpression('A AND (B OR C)', leaves, [leaves[0], leaves[2]])).toBe('A AND (B)');
+    const deep = '('.repeat(2000) + 'A' + ')'.repeat(2000);
+    expect(reconcileExpression(deep, leaves, reordered)).toBe('('.repeat(2000) + 'B' + ')'.repeat(2000));
+    expect(reconcileExpression('A AND (', leaves, [...leaves])).toBe('A AND (');
   });
   it('evaluates all truth combinations with AND precedence and parentheses', () => {
     for (let mask = 0; mask < 8; mask++) {

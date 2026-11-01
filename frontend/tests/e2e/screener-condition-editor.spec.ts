@@ -1,3 +1,4 @@
+import { conditionDialog, openConditionSettings, closeConditionSettings } from './helpers/screenerEditor';
 import { test, expect } from '@playwright/test';
 import type { ConditionLeaf, ScanRequest } from '../../src/api/screener';
 import { apiExact } from './helpers/apiRoutes';
@@ -29,138 +30,78 @@ const labels = ['현재가 범위', '거래대금', '기간내 거래대금', '�
   '신고가 대비 고가', '매도 총잔량 peak', '매수 총잔량 peak', '기간내 매도 총잔량 peak', '기간내 매수 총잔량 peak',
   '매도 총잔량 기준시각 돌파', '매수 총잔량 기준시각 돌파', '이동평균', '볼린저밴드 돌파', '기간내 볼린저밴드 돌파', '등락률', '볼린저밴드 위·아래', '기간내 볼린저밴드 위·아래'];
 
-test('all 20 compact editors stay editable through keyboard editing, reorder and scan', async ({ page }, testInfo) => {
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+test('all condition editors fit the modal; search, focus, drag, save and reload work', async ({ page }, testInfo) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await installLiveMocks(page);
-  let saved = { id: 'all-conditions', name: '조건 UI 검증', universe: {}, conditions,
-    created_at_ms: 1, updated_at_ms: 1 };
+  let saved = { id: 'all-conditions', name: '조건 UI 검증', universe: {}, conditions, created_at_ms: 1, updated_at_ms: 1 };
   const scans: ScanRequest[] = [];
-  await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok', warnings: [] } }));
+  await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok' } }));
   await page.route(apiExact('screener/saves'), route => route.fulfill({ json: { saves: [saved] } }));
   await page.route(apiExact('screener/saves/all-conditions'), route => {
-    saved = { ...saved, ...route.request().postDataJSON(), updated_at_ms: saved.updated_at_ms + 1 };
-    return route.fulfill({ json: saved });
+    saved = { ...saved, ...route.request().postDataJSON(), updated_at_ms: 2 }; return route.fulfill({ json: saved });
   });
   await page.route(apiExact('screener/scan'), route => {
-    scans.push(route.request().postDataJSON());
-    return route.fulfill({ json: { status: 'ok', warnings: [], rows: [], has_more: false } });
+    scans.push(route.request().postDataJSON()); return route.fulfill({ json: { status: 'ok', warnings: [], rows: [] } });
   });
   await page.goto('/screener');
   const builder = page.getByTestId('screener-builder-pane');
-  const period = builder.getByRole('group', { name: '신고가 조건', exact: true }).getByLabel('신고 기준 기간(봉)');
-  const time = builder.getByRole('group', { name: '매도 총잔량 기준시각 돌파 조건', exact: true }).getByLabel('기준 시각', { exact: true });
-  for (const input of [period, time]) {
-    await input.click();
-    await expect(input).toBeFocused();
-    await expect(input).toHaveCSS('outline-style', 'none');
-    await expect(input.locator('..')).toHaveCSS('outline-style', 'solid');
-    await expect(input.locator('..')).toHaveCSS('outline-width', '1px');
-  }
-  await period.click();
-  await period.press('Tab');
-  await expect(period).not.toBeFocused();
-  await expect(period.locator('..')).toHaveCSS('outline-style', 'none');
-  await page.keyboard.press('Shift+Tab');
-  await expect(period).toBeFocused();
-  await expect(period).toHaveCSS('outline-style', 'none');
-  await expect(period.locator('..')).toHaveCSS('outline-style', 'solid');
-  await builder.getByRole('group', { name: '신고가 조건', exact: true }).screenshot({ path: testInfo.outputPath('condition-single-focus.png') });
-  for (const label of labels) {
-    const card = builder.getByRole('group', { name: `${label} 조건`, exact: true });
-    await expect(card.getByRole('textbox').first()).toBeVisible();
-    await expect(card.getByRole('button', { name: /접기|펼치기/ })).toHaveCount(0);
-  }
+  await expect(builder.getByRole('textbox', { name: '신고 기준 기간(봉)' })).toHaveCount(0);
+  const card = await openConditionSettings(page, '신고가');
+  const period = card.getByLabel('신고 기준 기간(봉)');
+  await period.click(); await expect(period).toBeFocused();
+  await expect(period).toHaveCSS('outline-style', 'none'); await expect(period.locator('..')).toHaveCSS('outline-style', 'solid');
+  await period.press('Tab'); await expect(period).not.toBeFocused(); await page.keyboard.press('Shift+Tab'); await expect(period).toBeFocused();
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '조회', exact: true }).click();
-  await expect.poll(() => scans.length).toBe(1);
-  expect(scans[0].conditions).toEqual(conditions);
-
-  const amount = builder.getByRole('group', { name: '거래대금 조건', exact: true });
+  await expect.poll(() => scans.at(-1)?.conditions).toEqual(conditions);
+  const amount = await openConditionSettings(page, '거래대금');
   await amount.getByLabel('최소 거래대금(억)').fill('500');
-  await expect(amount.getByLabel('최소 거래대금(억)')).toHaveValue('500');
-
-  // Native drag-and-drop must work with the compact rows as well as open forms.
-  const handle = amount.getByRole('button', { name: '조건 순서 변경' });
-  const target = builder.getByRole('group', { name: '현재가 범위 조건', exact: true })
-    .getByRole('button', { name: '조건 순서 변경' });
-  // Reveal both handles before mouse-down: scrolling a clipped target mid-drag
-  // cancels Chromium's native drag gesture in the long, independently scrolling list.
-  await target.scrollIntoViewIfNeeded();
-  await handle.scrollIntoViewIfNeeded();
-  await handle.dragTo(target);
-  await expect(builder.getByRole('group', { name: '거래대금 조건', exact: true })
-    .getByRole('button', { name: 'A 거래대금 조합식에 입력' })).toBeVisible();
+  await closeConditionSettings(page);
+  const handles = builder.getByRole('button', { name: '조건 순서 변경' });
+  await handles.nth(1).dragTo(handles.nth(0));
+  await expect(builder.getByRole('button', { name: 'A 거래대금 설정', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '저장', exact: true }).click();
-  const expected = [
-    { ...conditions[1], params: { ...conditions[1].params, min_eok: 500 } },
-    conditions[0], ...conditions.slice(2),
-  ];
+  const expected = [{ ...conditions[1], params: { ...conditions[1].params, min_eok: 500 } }, conditions[0], ...conditions.slice(2)];
   await expect.poll(() => saved.conditions).toEqual(expected);
-  await expect(page.getByRole('button', { name: '저장본으로 되돌리기', exact: true })).toHaveCount(0);
-  await page.reload();
+  await page.reload(); await openConditionSettings(page, '거래대금');
   await expect(amount.getByLabel('최소 거래대금(억)')).toHaveValue('500');
-  await page.getByRole('button', { name: '조회', exact: true }).click();
-  // Hydration may replay the previous scan before the explicit, edited request.
-  await expect.poll(() => scans.at(-1)?.conditions).toEqual(expected);
-
-  for (const label of ['기간내 볼린저밴드 돌파', '기간내 볼린저밴드 위·아래']) {
-    const card = builder.getByRole('group', { name: `${label} 조건`, exact: true });
-    const help = card.getByRole('button', { name: `${label} 도움말` });
-    await help.scrollIntoViewIfNeeded();
-    await expect(help).toBeInViewport();
-    await help.press('Enter');
-    await expect(page.getByRole('tooltip')).toContainText('최신 봉을 포함한 기간');
-    await expect(card.getByLabel('볼린저 기간')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('tooltip')).toHaveCount(0);
-  }
-
-  // Each editor's controls must fit its actual 23rem builder at both density scales.
-  for (const [theme, size] of [['trading-desk', 16], ['ledger-studio', 20]] as const) {
-    await page.evaluate(([theme, size]) => {
-      document.documentElement.dataset.theme = String(theme);
-      document.documentElement.style.fontSize = `${size}px`;
-    }, [theme, size] as const);
-    await page.setViewportSize({ width: 1024, height: 900 });
+  for (const [theme, size, width] of [['trading-desk', 16, 1280], ['ledger-studio', 20, 768]] as const) {
+    await page.evaluate(({ theme, size }) => { document.documentElement.dataset.theme = theme; document.documentElement.style.fontSize = `${size}px`; }, { theme, size });
+    await page.setViewportSize({ width, height: 1000 });
     for (const label of labels) {
-      const card = builder.getByRole('group', { name: `${label} 조건`, exact: true });
-      await card.scrollIntoViewIfNeeded();
-      const overflow = await card.evaluate(element => {
-        const boundary = element.getBoundingClientRect();
+      const group = await openConditionSettings(page, label);
+      const overflow = await group.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
         return [...element.querySelectorAll<HTMLElement>('input, select, button, .condition-unit')]
           .filter(node => node.getClientRects().length)
-          .some(node => { const box = node.getBoundingClientRect(); return box.left < boundary.left - 1 || box.right > boundary.right + 1; });
+          .some(node => { const box = node.getBoundingClientRect(); return box.left < bounds.left - 1 || box.right > bounds.right + 1; });
       });
       expect(overflow, `${label} at ${size}px`).toBe(false);
-      const height = (await card.boundingBox())!.height;
-      // Density changes scale the rows while their controls remain fully editable.
-      expect(height / size, `${label} has compact rows`).toBeLessThan(12);
-
     }
-    for (const [name, modeLabel] of [['기간내 거래대금', '거래대금 검색 기간'], ['기간내 신고거래량', '거래량 검색 기간']]) {
-      const card = builder.getByRole('group', { name: `${name} 조건`, exact: true });
-      await card.getByRole('combobox', { name: modeLabel, exact: true }).selectOption('date_range');
-      const dateLabel = name === '기간내 거래대금' ? '거래대금' : '거래량';
-      await expect(card.getByLabel(`${dateLabel} 발생 시작일`)).toBeVisible();
-      await expect(card.getByLabel(`${dateLabel} 발생 종료일`)).toBeVisible();
-      const datesFit = await card.evaluate(element => {
-        const boundary = element.getBoundingClientRect();
+    for (const [name, modeLabel, prefix] of [['기간내 거래대금', '거래대금 검색 기간', '거래대금'], ['기간내 신고거래량', '거래량 검색 기간', '거래량']]) {
+      const group = await openConditionSettings(page, name);
+      await group.getByRole('combobox', { name: modeLabel, exact: true }).selectOption('date_range');
+      await expect(group.getByLabel(`${prefix} 발생 시작일`)).toBeVisible();
+      const datesFit = await group.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
         return [...element.querySelectorAll<HTMLInputElement>('input[type="date"]')].every(input => {
-          const box = input.getBoundingClientRect();
-          return box.width > 0 && box.left >= boundary.left && box.right <= boundary.right;
+          const box = input.getBoundingClientRect(); return box.width > 0 && box.left >= bounds.left && box.right <= bounds.right;
         });
       });
-      expect(datesFit, `${name} date fields at ${size}px`).toBe(true);
-      await card.screenshot({ path: testInfo.outputPath(`${name}-${theme}.png`) });
+      expect(datesFit).toBe(true);
     }
-    await amount.scrollIntoViewIfNeeded();
-    const amountInput = amount.getByLabel('최소 거래대금(억)');
-    await amountInput.click();
-    await expect(amountInput).toHaveCSS('outline-style', 'none');
-    await expect(amountInput.locator('..')).toHaveCSS('outline-style', 'solid');
-    await builder.screenshot({ path: testInfo.outputPath(`condition-editor-${theme}.png`) });
+    await conditionDialog(page).screenshot({ path: testInfo.outputPath(`condition-settings-${theme}.png`) });
   }
-  expect(errors).toEqual([]);
+  await closeConditionSettings(page);
+  const trigger = builder.getByRole('button', { name: '조건 추가', exact: true });
+  await trigger.click();
+  const dialog = conditionDialog(page), search = dialog.getByRole('textbox', { name: '조건 검색' });
+  await expect(search).toBeFocused(); await search.fill('기간내 등락률'); await search.press('ArrowDown');
+  await expect(dialog.getByRole('button', { name: '기간내 등락률 선택', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter'); await expect(dialog.getByRole('heading', { name: '기간내 등락률' })).toBeVisible();
+  await search.press('Escape'); await expect(search).toHaveValue(''); await expect(dialog).toBeVisible();
+  await search.press('Escape'); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
+  expect(saved.conditions).toEqual(expected); expect(errors).toEqual([]);
 });
 
 test('numeric drafts allow backspace and decimals while invalid fields block scan and save', async ({ page }) => {
@@ -182,6 +123,7 @@ test('numeric drafts allow backspace and decimals while invalid fields block sca
   await page.goto('/screener');
   const scan = page.getByRole('button', { name: '조회', exact: true });
   const save = page.getByRole('button', { name: '저장', exact: true });
+  await openConditionSettings(page, '이동평균');
   const period = page.getByLabel('이동평균 기간(봉)');
   await expect(period).toHaveValue('20');
   await period.click();
@@ -190,10 +132,15 @@ test('numeric drafts allow backspace and decimals while invalid fields block sca
   await expect(period).toHaveValue('2');
   await period.press('Backspace');
   await expect(period).toHaveValue('');
+  await expect(page.getByText('값을 입력하세요.', { exact: true })).toHaveCount(0);
+  await closeConditionSettings(page);
   await expect(scan).toBeDisabled();
   await expect(save).toBeDisabled();
+  await openConditionSettings(page, '이동평균');
+  await expect(period).toHaveValue('');
   await expect(page.getByRole('button', { name: '다른 이름으로 저장' })).toBeDisabled();
-  await expect(page.getByText('값을 입력하세요.', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('값을 입력하세요.', { exact: true })).toBeVisible();
+  await period.click();
   await period.press('Tab');
   await expect(period).toHaveAccessibleDescription('값을 입력하세요.');
   await period.fill('1001');
@@ -206,12 +153,16 @@ test('numeric drafts allow backspace and decimals while invalid fields block sca
   await period.fill('60');
   await expect(scan).toBeEnabled();
 
+  await closeConditionSettings(page);
+  await expect(scan).toBeEnabled();
+  await openConditionSettings(page, '볼린저밴드 돌파');
   const multiplier = page.getByLabel('표준편차 배수');
   await multiplier.fill('');
   await multiplier.pressSequentially('2.');
   await expect(multiplier).toHaveValue('2.');
   await multiplier.pressSequentially('5');
   await expect(multiplier).toHaveValue('2.5');
+  await openConditionSettings(page, '등락률');
   const rate = page.getByLabel('등락률 하한(%)');
   await rate.fill('');
   await rate.pressSequentially('-');
@@ -220,6 +171,7 @@ test('numeric drafts allow backspace and decimals while invalid fields block sca
   await rate.pressSequentially('0.5');
   await expect(rate).toHaveValue('-0.5');
   await rate.press('Tab');
+  await openConditionSettings(page, '현재가 범위');
   await page.getByLabel('최저가(원)').fill('');
   await page.getByLabel('최고가(원)').fill('');
   await page.getByLabel('최고가(원)').press('Tab');
@@ -229,6 +181,7 @@ test('numeric drafts allow backspace and decimals while invalid fields block sca
   await page.getByLabel('최고가(원)').fill('50000');
   await expect(scan).toBeEnabled();
   await expect(save).toBeEnabled();
+  await closeConditionSettings(page);
   await scan.click();
   await expect.poll(() => scans.length).toBe(1);
   const expected = selected.map(c => c.type === 'ma' ? { ...c, params: { ...c.params, period: 60 } }

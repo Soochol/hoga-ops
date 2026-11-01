@@ -32,7 +32,9 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
-export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side = 'center', onClose, children }: {
+export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side = 'center', onClose, children, open = true }: {
+  /** Keep form drafts mounted while closing the modal and releasing focus/listeners. */
+  open?: boolean;
   ariaLabel: string;
   title?: string;
   width?: string;
@@ -54,16 +56,18 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side
   }, [isDrawer]);
 
   useEffect(() => {
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, open]);
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // 초기 포커스 + 복원 — 마운트 시 1회. 복원 대상이 이미 DOM 에서 떨어졌으면
+  // 초기 포커스 + 복원 — 열릴 때마다 1회. 복원 대상이 이미 DOM 에서 떨어졌으면
   // (탭이 닫혔다든가) focus 호출이 조용히 무시되므로 connected 검사만 한다.
   useEffect(() => {
+    if (!open) return;
     const prev = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const card = cardRef.current;
     const first = card?.querySelector<HTMLElement>('[data-modal-autofocus]:not(:disabled)')
@@ -72,7 +76,7 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side
     return () => {
       if (prev?.isConnected) prev.focus();
     };
-  }, []);
+  }, [open]);
 
   // Tab 순환(trap). 카드 밖으로 나가려는 첫/끝 경계에서만 개입 — 중간 이동은
   // 브라우저 기본에 맡긴다(포커서블 목록을 매 keydown 재조회하므로 동적 콘텐츠 안전).
@@ -80,7 +84,7 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side
     if (e.key !== 'Tab') return;
     const card = cardRef.current;
     if (!card) return;
-    const els = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    const els = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(el => !el.closest('[hidden]'));
     if (els.length === 0) { e.preventDefault(); return; }
     const first = els[0];
     const last = els[els.length - 1];
@@ -106,6 +110,8 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
+      hidden={!open}
+      style={open ? undefined : { display: 'none' }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onKeyDown={trapTab}
       className={backdropClass}

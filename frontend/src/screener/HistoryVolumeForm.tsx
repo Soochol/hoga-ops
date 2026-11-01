@@ -2,6 +2,7 @@ import type { ScreenerTimeframe, VolumeParams } from '../api/screener';
 import { ConditionChoice, ConditionFields, ConditionTimeframe } from './ConditionControls';
 import { HistoryDateRangeFields } from './HistoryDateRangeFields';
 import { Num, Select } from './paramForms';
+import { ConditionFormLayout } from './ConditionFormLayout';
 
 export function HistoryVolumeForm({ params, onChange }: {
   params: VolumeParams; onChange: (value: VolumeParams) => void;
@@ -16,7 +17,7 @@ export function HistoryVolumeForm({ params, onChange }: {
       timeframe: next, include_open_bar: 'include_open_bar' in params ? params.include_open_bar : true,
       record_period: { unit: 'bars', value: params.record_period.unit === 'bars' ? params.record_period.value : 250 } });
   };
-  return <div className="condition-form">
+  return <ConditionFormLayout basis={
     <ConditionTimeframe label="거래량 주기" value={timeframe} onChange={changeTimeframe}>
       <ConditionChoice label="거래량 검색 기간" caption="검색" value={historical ? 'date_range' : 'recent'}
         onChange={value => onChange(value === 'recent' ? { lookback: 60,
@@ -32,7 +33,7 @@ export function HistoryVolumeForm({ params, onChange }: {
             record_period: { unit: 'bars', value: !historical ? params.period : 250 },
           })}
         options={[[ 'recent', '최근 N봉' ], ['date_range', '날짜 범위']]} />
-    </ConditionTimeframe>
+    </ConditionTimeframe>}>
     {historical ? <>
       <ConditionFields>
         <HistoryDateRangeFields label="거래량" start={params.start_date} end={params.end_date}
@@ -58,5 +59,5 @@ export function HistoryVolumeForm({ params, onChange }: {
       <Num label="비교" ariaLabel="신고 기준 기간(봉)" suffix="봉" step={1} min={1} max={1000} value={params.period}
         onChange={value => onChange({ ...params, period: value ?? 1 })} />
     </ConditionFields>}
-  </div>;
+  </ConditionFormLayout>;
 }

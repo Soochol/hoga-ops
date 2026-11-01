@@ -78,25 +78,47 @@ export function expressionError(expression: string | null | undefined, count: nu
   catch (error) { return error instanceof Error ? error.message : '조건 조합식을 확인해 주세요.'; }
 }
 
-/** Positional letters follow the same leaf IDs when reordered; deleted leaves are pruned. */
+/** Remap references without choosing parentheses or reformatting the user's formula. */
 export function reconcileExpression(expression: string | null, before: ConditionLeaf[], after: ConditionLeaf[]): string | null {
   if (expression == null || before.map(c => c.id).join('\0') === after.map(c => c.id).join('\0')) return expression;
   if (!after.length) return null;
   const indices = new Map(after.map((c, i) => [c.id, i]));
-  const stack: (string | null)[] = [];
-  for (const token of parseExpression(expression, before.length)) {
-    if (typeof token === 'number') {
-      const next = indices.get(before[token].id);
-      stack.push(next === undefined ? null : conditionLabel(next));
+  parseExpression(expression, before.length);
+  const labels = new Map(before.map((c, i) => [conditionLabel(i), c.id]));
+  const stack: { text: string | null; start: number; end: number }[] = [];
+  const operators: { token: string; start: number }[] = [];
+  const precedence: Record<string, number> = { AND: 2, OR: 1 };
+  const reduce = () => {
+    operators.pop();
+    const right = stack.pop()!, left = stack.pop()!;
+    stack.push({ start: left.start, end: right.end, text: left.text && right.text
+      ? left.text + expression.slice(left.end, right.start) + right.text : left.text ?? right.text });
+  };
+  for (const match of expression.matchAll(/AND\b|OR\b|그리고|또는|[A-Z]+|[()]/gi)) {
+    const token = match[0] === '그리고' ? 'AND' : match[0] === '또는' ? 'OR' : match[0].toUpperCase();
+    const start = match.index, end = start + match[0].length;
+    if (token === '(') operators.push({ token, start });
+    else if (token === ')') {
+      while (operators.at(-1)?.token !== '(') reduce();
+      const open = operators.pop()!, inside = stack.pop()!;
+      stack.push({ start: open.start, end, text: inside.text == null ? null
+        : expression.slice(open.start, inside.start) + inside.text + expression.slice(inside.end, end) });
+    } else if (token === 'AND' || token === 'OR') {
+      while (operators.length && operators.at(-1)!.token !== '('
+        && precedence[operators.at(-1)!.token] >= precedence[token]) reduce();
+      operators.push({ token, start });
     } else {
-      const right = stack.pop()!, left = stack.pop()!;
-      stack.push(left && right ? `(${left} ${token} ${right})` : left ?? right);
+      const next = indices.get(labels.get(token)!);
+      const label = next === undefined ? null : conditionLabel(next);
+      stack.push({ start, end, text: label && match[0] === match[0].toLowerCase() ? label.toLowerCase() : label });
     }
   }
-  let result = stack[0] ?? null;
+  while (operators.length) reduce();
+  const root = stack[0];
+  let result = root?.text == null ? '' : expression.slice(0, root.start) + root.text + expression.slice(root.end);
   const oldIds = new Set(before.map(c => c.id));
   after.forEach((c, i) => {
-    if (!oldIds.has(c.id)) result = result ? `(${result}) AND ${conditionLabel(i)}` : conditionLabel(i);
+    if (!oldIds.has(c.id)) result = result ? `${result} AND ${conditionLabel(i)}` : conditionLabel(i);
   });
   // Removing the only referenced leaf must not silently activate previously unused leaves.
   return result ?? '';

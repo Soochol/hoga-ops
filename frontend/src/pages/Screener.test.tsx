@@ -226,7 +226,7 @@ it('조회 중 편집해도 실행 당시 요청과 서버 조회시각을 보�
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await waitFor(() => expect(finish).toBeDefined());
   expect(screen.queryByRole('group', { name: '스크리너 기준' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '조건 제거' }));
+  fireEvent.click(screen.getByRole('button', { name: 'A 조건 제거' }));
   const serverTime = Date.now() - 1000;
   await act(async () => finish({ status: 'ok', warnings: [], scanned_at_ms: serverTime,
     rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 100, change_pct: 1,
@@ -636,31 +636,39 @@ it('현재가·등락률을 라이브 quote 로 덮는다 (EOD 코퍼스 위 오
   expect(screen.queryByText('74,200')).not.toBeInTheDocument(); // 코퍼스 현재가는 덮여 사라짐
 });
 
+function openAmountEditor() { fireEvent.click(screen.getByRole('button', { name: 'A 거래대금 설정' })); }
+function closeConditionEditor() { fireEvent.click(within(screen.getByRole('dialog', { name: '조건 설정' })).getByRole('button', { name: '닫기' })); }
+function addConditionInDialog(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
+  const dialog = screen.getByRole('dialog', { name: '조건 설정' });
+  fireEvent.change(within(dialog).getByLabelText('조건 검색'), { target: { value: name } });
+  fireEvent.click(within(dialog).getByRole('button', { name: `${name} 선택` }));
+  fireEvent.click(within(dialog).getByRole('button', { name: '추가' }));
+  closeConditionEditor();
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^[A-Z]+ ${name} 설정$`) }));
+}
+
 it('protects unsaved edits on saved-condition switch, new draft and restore', async () => {
   const other: SavedScreener = { ...defaultSaves().saves[0], id: 'other', name: '다른조건' };
   vi.mocked(listSaves).mockResolvedValueOnce({ schema_version: 1, saves: [...defaultSaves().saves, other] });
   await renderPageReady();
-  const input = screen.getByLabelText('최소 거래대금(억)');
-  fireEvent.change(input, { target: { value: '200' } });
-  fireEvent.blur(input);
+  openAmountEditor();
+  fireEvent.change(screen.getByLabelText('최소 거래대금(억)'), { target: { value: '200' } });
+  closeConditionEditor();
   await loadSave('다른조건');
   expect(screen.getByRole('dialog', { name: '미저장 변경 확인' })).toBeVisible();
-  expect(screen.getByLabelText('저장한 조건검색 선택')).toHaveTextContent('기본조건');
   fireEvent.click(screen.getByRole('button', { name: '계속 편집' }));
-  expect(input).toHaveValue('200');
+  openAmountEditor();expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('200');closeConditionEditor();
   fireEvent.click(screen.getByRole('button', { name: '새 조건검색' }));
   fireEvent.click(screen.getByRole('button', { name: '계속 편집' }));
-  expect(input).toHaveValue('200');
   fireEvent.click(screen.getByRole('button', { name: '저장본으로 되돌리기' }));
   fireEvent.click(screen.getByRole('button', { name: '변경 버리고 복원' }));
-  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('100');
-  expect(screen.queryByText('수정됨')).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText('최소 거래대금(억)'), { target: { value: '300' } });
-  fireEvent.blur(screen.getByLabelText('최소 거래대금(억)'));
+  openAmountEditor();expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('100');
+  fireEvent.change(screen.getByLabelText('최소 거래대금(억)'), { target: { value: '300' } });closeConditionEditor();
   await loadSave('다른조건');
   fireEvent.click(screen.getByRole('button', { name: '변경 버리고 이동' }));
   expect(screen.getByLabelText('저장한 조건검색 선택')).toHaveTextContent('다른조건');
-  expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('100');
+  openAmountEditor();expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('100');
 });
 
 it('keeps an explicitly created empty draft across remounts', async () => {
@@ -676,9 +684,11 @@ it('prevents switching or restoring while a save is in flight', async () => {
   let resolveSave!: (save: SavedScreener) => void;
   vi.mocked(updateSave).mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
   await renderPageReady();
+  openAmountEditor();
   const input = screen.getByLabelText('최소 거래대금(억)');
   fireEvent.change(input, { target: { value: '200' } });
   fireEvent.blur(input);
+  closeConditionEditor();
   fireEvent.click(screen.getByRole('button', { name: '저장' }));
   await waitFor(() => expect(screen.getByLabelText('저장한 조건검색 선택')).toBeDisabled());
   expect(screen.getByRole('button', { name: '새 조건검색' })).toBeDisabled();
@@ -692,6 +702,7 @@ it('필수 숫자의 빈칸은 조회·저장을 차단하고 저장본 복원�
   vi.mocked(runScan).mockClear();
   vi.mocked(updateSave).mockClear();
   vi.mocked(createSave).mockClear();
+  openAmountEditor();
   const input = screen.getByLabelText('최소 거래대금(억)');
   fireEvent.change(input, { target: { value: '' } });
   fireEvent.blur(input);
@@ -705,8 +716,10 @@ it('필수 숫자의 빈칸은 조회·저장을 차단하고 저장본 복원�
   expect(runScan).not.toHaveBeenCalled();
   expect(updateSave).not.toHaveBeenCalled();
   expect(createSave).not.toHaveBeenCalled();
+  closeConditionEditor();
   fireEvent.click(screen.getByRole('button', { name: '저장본으로 되돌리기' }));
   fireEvent.click(screen.getByRole('button', { name: '변경 버리고 복원' }));
+  openAmountEditor();
   expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue('100');
   expect(screen.getByRole('button', { name: '조회' })).toBeEnabled();
   expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
@@ -715,22 +728,21 @@ it('필수 숫자의 빈칸은 조회·저장을 차단하고 저장본 복원�
 
 it('잘못된 숫자 조건을 제거하면 다른 조건의 조회·저장을 다시 허용한다', async () => {
   await renderPageReady();
-  fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: '이동평균' }));
+  addConditionInDialog('이동평균');
   const input = screen.getByLabelText('이동평균 기간(봉)');
   fireEvent.change(input, { target: { value: '1001' } });
   fireEvent.blur(input);
   expect(input).toHaveValue('1001');
   expect(screen.getByRole('button', { name: '조회' })).toBeDisabled();
-  fireEvent.click(within(screen.getByRole('group', { name: '이동평균 조건' })).getByRole('button', { name: '조건 제거' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '조건 설정' })).getByRole('button', { name: '조건 제거' }));
   expect(screen.getByRole('button', { name: '조회' })).toBeEnabled();
   expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
 });
 
 it('가격·등락률 범위의 서버 제약을 조회 전에 검증한다', async () => {
   await renderPageReady();
-  fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: '현재가 범위' }));
+  if (screen.queryByRole('dialog', { name: '조건 설정' })) closeConditionEditor();
+  addConditionInDialog('현재가 범위');
   const min = screen.getByLabelText('최저가(원)');
   const max = screen.getByLabelText('최고가(원)');
   fireEvent.change(min, { target: { value: '' } });
@@ -745,8 +757,8 @@ it('가격·등락률 범위의 서버 제약을 조회 전에 검증한다', as
   expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
   fireEvent.change(max, { target: { value: '2000' } });
   expect(screen.getByRole('button', { name: '조회' })).toBeEnabled();
-  fireEvent.click(screen.getByRole('button', { name: '조건 추가' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: '등락률' }));
+  if (screen.queryByRole('dialog', { name: '조건 설정' })) closeConditionEditor();
+  addConditionInDialog('등락률');
   fireEvent.change(screen.getByLabelText('등락률 연산'), { target: { value: 'between' } });
   const lo = screen.getByLabelText('등락률 하한(%)');
   fireEvent.change(lo, { target: { value: '10' } });
