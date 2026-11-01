@@ -1,0 +1,66 @@
+{
+  "checked_at_kst": "2026-11-01T18:22:39.452567+09:00",
+  "branch": "codex/indicator-settings-inline",
+  "head_and_base_sha": "d025f70392efab4c1e767a4307658d9f0033b0f7",
+  "origin_main_sha": "d025f70392efab4c1e767a4307658d9f0033b0f7",
+  "worktree_changes": "Uncommitted indicator settings changes; source/test/configuration fingerprint identifies the tested input.",
+  "inputs": {
+    "scope": "All tracked/untracked frontend, hoga, tests files plus .python-version, pyproject.toml, uv.lock; ignored dependencies/build outputs excluded. Hash sorted path + NUL + SHA256(file bytes).",
+    "file_count": 2908,
+    "sha256": "767e7864a98794faae5f23c5696006aa2713d09d0c7e50c625b8afe19f7aa32e"
+  },
+  "runtime": {
+    "node": "v24.13.1",
+    "python": "3.14.7",
+    "chrome": "156.0.8078.79",
+    "react": "18.3.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed: app, unit and E2E projects",
+      "log": "/tmp/hoga-4647-inline-typecheck-pass.log"
+    },
+    {
+      "command": "npx vitest run src/live/indicators src/live/settings src/live/workspace/WorkspaceIndicatorDrawer.test.tsx src/live/workspace/secondsIndicatorSettings.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx",
+      "cwd": "frontend",
+      "result": "55 files, 566 tests passed",
+      "log": "/tmp/hoga-4647-inline-vitest-final.log"
+    },
+    {
+      "command": "npx vitest run src/live/indicators/VolumeConfig.test.tsx",
+      "cwd": "frontend",
+      "result": "7 tests passed again after correcting the exact-match selector type; other inputs unchanged",
+      "log": "/tmp/hoga-4647-inline-volume-unit-final.log"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/indicator-compact.spec.ts tests/e2e/indicator-configure-before-add.spec.ts tests/e2e/chart-window-settings.spec.ts --grep 'indicator-compact|indicator-configure-before-add|거래량.*겹|겹.*거래량' --reporter=line",
+      "cwd": "frontend",
+      "result": "11 tests passed, workers=1; isolated ports 20318/21318 and empty vendor credentials",
+      "log": "/tmp/hoga-4647-inline-e2e-final.log"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "Same volume form labels in Mine and Catalog; primary/first-add editable, repeated volume placement disabled without touching window settings.",
+    "No dependent-setting disclosures across all indicator categories; parent gates keep visible inputs disabled and preserve values.",
+    "First-volume placement draft commits only on Add, cancels on close, survives navigation, preserves unrelated edits and supports undo.",
+    "Cached catalog draft permits placement after deleting the last volume; repeat addition and primary resets remain scoped.",
+    "Two themes, desktop and 640/390/320px layouts; minute/day/week/month/seconds overlay, viewport, persistence, reload and catalog isolation."
+  ],
+  "visual_review": "Inspected actual E2E screenshots of desktop and 320px volume forms and enabled primary placement.",
+  "limits": "Implementation in this worktree; no production deployment, user server restart or real vendor/order traffic."
+}

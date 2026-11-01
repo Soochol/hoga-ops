@@ -28,6 +28,11 @@ for (const theme of ['toss-light', 'trading-desk']) {
     await editor.getByRole('button', { name: '이동평균선 설명' }).click();
     await expect(editor.locator('.settings-editor-description')).toContainText('평균 가격');
     await editor.getByRole('button', { name: '이동평균선 설명' }).click();
+    await editor.getByRole('button', { name: '거래량', exact: true }).click();
+    const placementLabels = await editor.locator('.indicator-config .settings-row > div:first-child').allTextContents();
+    await expect(editor.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
+    await expect(editor.getByRole('slider', { name: '거래량 투명도' })).toBeDisabled();
+    await expect(editor.locator('.settings-dependent > summary')).toHaveCount(0);
     await editor.screenshot({ path: testInfo.outputPath(`indicator-simple-${theme}.png`) });
 
     await editor.getByRole('button', { name: '지표 추가', exact: true }).click();
@@ -36,6 +41,7 @@ for (const theme of ['toss-light', 'trading-desk']) {
     for (const name of names) {
       await editor.getByRole('button', { name, exact: true }).click();
       await expect(editor.locator('.settings-editor-description')).toHaveCount(0);
+      await expect(editor.locator('.settings-dependent > summary')).toHaveCount(0);
       expect(await editor.getByRole('switch').evaluateAll(buttons => buttons.every(button => {
         const style = getComputedStyle(button);
         return button.classList.contains('window-settings-switch') && style.width === '26px' && style.height === '15px';
@@ -46,10 +52,13 @@ for (const theme of ['toss-light', 'trading-desk']) {
     await editor.getByRole('button', { name: '거래량 설명' }).click();
     await expect(editor.getByText('해당 캔들의 양봉·음봉 색상으로 표시합니다.', { exact: true })).toBeVisible();
     await expect(editor.getByRole('radio')).toHaveCount(2);
+    expect(await editor.locator('.indicator-config .settings-row > div:first-child').allTextContents()).toEqual(placementLabels);
+    await expect(editor.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' })).toBeDisabled();
+    await expect(editor.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
 
     for (const width of [640, 390, 320]) {
       await page.setViewportSize({ width, height: 760 });
-      for (const name of ['이동평균선', '볼린저 밴드', '총잔량']) {
+      for (const name of ['이동평균선', '볼린저 밴드', '총잔량', '거래량']) {
         await editor.getByRole('button', { name, exact: true }).click();
         await expect(async () => {
           expect(await editor.locator('.settings-editor-main').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
@@ -68,3 +77,41 @@ for (const theme of ['toss-light', 'trading-desk']) {
     await expect(chartToggle).toHaveCSS('height', '15px');
   });
 }
+
+test('첫 거래량의 표시 방식을 추가 전 설정하고 즉시 펼쳐진 폼에서 수정·되돌리기·복원한다', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await installLiveMocks(page);
+  await page.goto('/live?code=098460');
+  await page.getByTestId('live-indicators-button').click();
+  const editor = page.getByTestId('indicator-panel-shell');
+  await editor.getByRole('button', { name: '거래량', exact: true }).click();
+  await editor.locator('.indicator-instance-actions').getByRole('button', { name: '삭제', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page.getByTestId('live-indicators-button').click();
+  await editor.getByRole('button', { name: '지표 추가', exact: true }).click();
+  await editor.getByRole('button', { name: '거래량', exact: true }).click();
+  const toggle = editor.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true });
+  const height = editor.getByRole('slider', { name: '거래량 표시 높이', exact: true });
+  await expect(toggle).toBeEnabled();
+  await expect(height).toBeVisible();
+  await expect(height).toBeDisabled();
+  await toggle.click();
+  await height.focus(); await height.press('End');
+  await expect(height).toHaveValue('40');
+  await expect(editor.getByRole('button', { name: '되돌리기', exact: true })).toBeDisabled();
+  await editor.getByRole('button', { name: '설정대로 추가', exact: true }).click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(height).toHaveValue('40');
+  await editor.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await expect(editor.getByRole('button', { name: '설정대로 추가', exact: true })).toBeEnabled();
+  await editor.getByRole('button', { name: '설정대로 추가', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => history.replaceState(null, '', '/live'));
+  await page.reload();
+  await page.getByTestId('live-indicators-button').click();
+  await editor.getByRole('button', { name: '거래량', exact: true }).click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(height).toHaveValue('40');
+  await expect(editor.locator('.settings-dependent > summary')).toHaveCount(0);
+  await editor.screenshot({ path: testInfo.outputPath('volume-inline-placement.png') });
+});

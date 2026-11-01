@@ -34,9 +34,7 @@ it('edits existing window placement and styles, persists and undoes only the las
   useWindowSettingsStore.getState().patch('b', 'chart', { volumeOverlayHeight: 20 });
   render(content()); selectVolume();
   expect(overlay()).toHaveAttribute('aria-checked', 'true');
-  const details = screen.getByLabelText('거래량을 캔들에 겹쳐 표시 세부 설정');
-  expect(details.closest('details')).not.toHaveAttribute('open');
-  fireEvent.click(details);
+  expect(screen.queryByText('세부 설정')).toBeNull();
   expect(screen.getByRole('slider', { name: '거래량 투명도' })).toHaveValue('42');
   expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('35');
   expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject(saved);
@@ -52,7 +50,8 @@ it('edits existing window placement and styles, persists and undoes only the las
   await undo();
   expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayUpColor).toBe('#123456');
   fireEvent.click(overlay());
-  expect(screen.queryByLabelText('거래량을 캔들에 겹쳐 표시 세부 설정')).toBeNull();
+  expect(screen.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
+  expect(screen.getByRole('slider', { name: '거래량 투명도' })).toBeDisabled();
   await undo();
   expect(overlay()).toHaveAttribute('aria-checked', 'true');
   expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject(saved);
@@ -78,17 +77,23 @@ it('keeps placement across timeframe changes and invalidates undo only for confl
   expect(overlay()).toHaveAttribute('aria-checked', 'false');
 });
 
-it('does not expose window placement in catalog drafts or repeated volume instances', () => {
+it('keeps the same placement form for catalog and repeated volumes without editing the primary window', () => {
   render(content());
   fireEvent.click(screen.getByRole('button', { name: '지표 추가' })); selectVolume();
-  expect(screen.queryByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' })).toBeNull();
+  expect(overlay()).toBeDisabled();
+  expect(screen.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
+  expect(screen.getByRole('slider', { name: '거래량 투명도' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: '설정대로 추가' }));
-  expect(screen.queryByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' })).toBeNull();
+  expect(overlay()).toBeDisabled();
+  expect(screen.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
+  expect(screen.getByRole('slider', { name: '거래량 투명도' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: '내 지표' }));
   fireEvent.click(screen.getByRole('button', { name: '거래량 1 설정' }));
   expect(overlay()).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '거래량 2 설정' }));
-  expect(screen.queryByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' })).toBeNull();
+  expect(overlay()).toBeDisabled();
+  expect(screen.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
+  expect(screen.getByRole('slider', { name: '거래량 투명도' })).toBeDisabled();
   expect(useWindowSettingsStore.getState().byWindow).toEqual({});
 });
 
@@ -109,4 +114,64 @@ it('resets only primary volume settings and placement in its window, and undoes 
   expect(overlay()).toHaveAttribute('aria-checked', 'true');
   expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject(saved);
   expect(screen.getByLabelText('이전 거래량과 비교')).toBeChecked();
+});
+
+it('stages first-volume placement until Add, retains it between categories, and undoes the complete addition', async () => {
+  useLivePageStore.getState().patchIndicatorsScoped({ windowKey: 'live:a' }, '1m', { volumeEnabled: false });
+  const saved = { volumeOverlayEnabled: false, volumeOverlayHeight: 25, volumeOverlayTransparency: 65 };
+  useWindowSettingsStore.getState().patch('a', 'chart', saved);
+  useWindowSettingsStore.getState().patch('b', 'chart', { volumeOverlayHeight: 20 });
+  render(content());
+  fireEvent.click(screen.getByRole('button', { name: '지표 추가' })); selectVolume();
+  expect(overlay()).toBeEnabled();
+  expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toBeDisabled();
+  fireEvent.click(overlay());
+  fireEvent.change(screen.getByRole('slider', { name: '거래량 표시 높이' }), { target: { value: '40' } });
+  fireEvent.click(screen.getByRole('button', { name: '상승봉 거래량 색상 선택' }));
+  fireEvent.click(screen.getByRole('button', { name: '상승봉 거래량 색상 #22C55E' }));
+  fireEvent.click(screen.getByRole('button', { name: '볼린저 밴드' })); selectVolume();
+  expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
+  expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject(saved);
+  expect(screen.getByRole('button', { name: '되돌리기' })).toBeDisabled();
+  // Let the preceding navigation event finish before a background update.
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  // Preserve unrelated live edits made while the catalog draft is open.
+  act(() => useWindowSettingsStore.getState().patch('a', 'chart', { candleLogScale: true, volumeOverlayTransparency: 30 }));
+  fireEvent.click(screen.getByRole('button', { name: '설정대로 추가' }));
+  expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject({
+    volumeOverlayEnabled: true, volumeOverlayHeight: 40, volumeOverlayUpColor: '#22C55E',
+    candleLogScale: true, volumeOverlayTransparency: 30,
+  });
+  expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
+  await undo();
+  expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject({ ...saved, candleLogScale: true, volumeOverlayTransparency: 30 });
+  expect(useWindowSettingsStore.getState().byWindow.b.chart).toMatchObject({ volumeOverlayHeight: 20 });
+  expect(screen.getByRole('button', { name: '설정대로 추가' })).toBeEnabled();
+});
+
+it('discards unadded placement edits when the editor closes', () => {
+  useLivePageStore.getState().patchIndicatorsScoped({ windowKey: 'live:a' }, '1m', { volumeEnabled: false });
+  const view = render(content());
+  fireEvent.click(screen.getByRole('button', { name: '지표 추가' })); selectVolume();
+  fireEvent.click(overlay());
+  fireEvent.change(screen.getByRole('slider', { name: '거래량 표시 높이' }), { target: { value: '40' } });
+  view.unmount(); render(content());
+  fireEvent.click(screen.getByRole('button', { name: '지표 추가' })); selectVolume();
+  expect(overlay()).toHaveAttribute('aria-checked', 'false');
+  expect(screen.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('25');
+  expect(useWindowSettingsStore.getState().byWindow).toEqual({});
+});
+
+it('enables first-volume placement after deleting the last volume even with a cached catalog draft', () => {
+  render(content());
+  fireEvent.click(screen.getByRole('button', { name: '지표 추가' })); selectVolume();
+  expect(overlay()).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: '내 지표' })); selectVolume();
+  fireEvent.click(screen.getByRole('button', { name: /^삭제$/ }));
+  fireEvent.click(screen.getByRole('button', { name: '지표 추가' })); selectVolume();
+  expect(overlay()).toBeEnabled();
+  fireEvent.click(overlay());
+  expect(useWindowSettingsStore.getState().byWindow).toEqual({});
+  fireEvent.click(screen.getByRole('button', { name: '설정대로 추가' }));
+  expect(useWindowSettingsStore.getState().byWindow.a.chart!.volumeOverlayEnabled).toBe(true);
 });

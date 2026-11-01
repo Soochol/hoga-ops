@@ -3,9 +3,10 @@ import { useStore } from 'zustand';
 import { IndicatorEditorDraftContext } from '../../state/indicatorEditorDraftContext';
 import type { CatalogDraft } from './indicatorCatalogDraft';
 
-export function CatalogDraftProvider({ draft, children }: { draft: CatalogDraft; children: ReactNode }) {
+export function CatalogDraftProvider({ draft, children, volumeOverlayEditable }: { draft: CatalogDraft; children: ReactNode; volumeOverlayEditable?: boolean }) {
   const snapshot = useStore(draft.store);
-  const value = useMemo(() => ({ ...snapshot, actions: draft.actions, setPref: draft.setPref, resetPrefs: draft.resetPrefs }), [snapshot, draft]);
+  const value = useMemo(() => ({ ...snapshot, actions: draft.actions, setPref: draft.setPref, resetPrefs: draft.resetPrefs,
+    patchVolumeOverlay: draft.patchVolumeOverlay, volumeOverlayEditable }), [snapshot, draft, volumeOverlayEditable]);
   return <IndicatorEditorDraftContext.Provider value={value}>{children}</IndicatorEditorDraftContext.Provider>;
 }
 

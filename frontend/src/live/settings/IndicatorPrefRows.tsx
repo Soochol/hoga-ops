@@ -12,8 +12,11 @@ import ToggleRow from './ToggleRow';
 import NumericPrefRow from './NumericPrefRow';
 import LineStyleRow from './LineStyleRow';
 import { SettingsUndoContext } from './settingsUndoContext';
+import { CompactSettingsContext } from './SettingsRow';
 
 function DependentRows({ inEditor, expanded, label, children }: { inEditor: boolean; expanded: boolean; label: string; children: ReactNode }) {
+  const compact = useContext(CompactSettingsContext);
+  if (compact) return <div className="settings-dependent">{children}</div>;
   if (!inEditor) return <div className="ml-4">{children}</div>;
   return <details className="settings-dependent" open={expanded || undefined}>
     <summary aria-label={`${label} 세부 설정`}>세부 설정</summary>{children}

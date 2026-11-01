@@ -1,18 +1,16 @@
-import { useWindowSettingsStore } from '../../state/windowSettings';
-import { DEFAULT_CHART_DISPLAY_PREFS, type VolumeOverlayStyle } from '../../state/chartDisplayPrefs';
+import type { VolumeOverlayPrefs } from '../../state/chartDisplayPrefs';
 import { SettingsRow } from '../settings/SettingsRow';
 import ColorSwatchPicker from '../indicators/ColorSwatchPicker';
 import { resolveTokensThemed } from '../../util/tokens';
 
 const TOKEN_SPEC = { up: ['--price-up', '#F04452'], down: ['--price-down', '#3485FA'] } as const;
 
-export function VolumeOverlaySettings({ windowId }: { windowId: string }) {
-  const prefs = useWindowSettingsStore(s => s.byWindow[windowId]?.chart) ?? DEFAULT_CHART_DISPLAY_PREFS;
-  if (!prefs.volumeOverlayEnabled) return null;
-  const patch = (values: Partial<VolumeOverlayStyle>) => useWindowSettingsStore.getState().patch(windowId, 'chart', values);
+export function VolumeOverlaySettings({ prefs, onChange, disabled = false }: {
+  prefs: VolumeOverlayPrefs; onChange: (patch: Partial<VolumeOverlayPrefs>) => void; disabled?: boolean;
+}) {
+  const patch = (values: Partial<VolumeOverlayPrefs>) => { if (!disabled) onChange(values); };
   const tokens = resolveTokensThemed(TOKEN_SPEC);
-  return <details className="settings-dependent">
-    <summary aria-label="거래량을 캔들에 겹쳐 표시 세부 설정">세부 설정</summary>
+  return <fieldset disabled={disabled} className={`settings-dependent min-w-0 ${disabled ? 'opacity-50' : ''}`} key={String(disabled)}>
     {([
       ['volumeOverlayTransparency', '거래량 투명도', 0, 100],
       ['volumeOverlayHeight', '거래량 표시 높이', 10, 40],
@@ -33,5 +31,5 @@ export function VolumeOverlaySettings({ windowId }: { windowId: string }) {
           aria-label={`${label} 테마 색상 사용`} onClick={() => patch({ [key]: '' })}>테마</button>
       </div>
     </SettingsRow>)}
-  </details>;
+  </fieldset>;
 }

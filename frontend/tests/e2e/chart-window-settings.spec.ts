@@ -34,13 +34,12 @@ async function open(page: Page, id: string) {
   return panel;
 }
 
-async function openVolume(page: Page, id: string, expand = true) {
+async function openVolume(page: Page, id: string) {
   await page.locator(`[data-win="${id}"]`).getByTestId('live-indicators-button').click();
   const panel = page.getByTestId('indicator-panel-shell');
   await panel.getByRole('button', { name: '내 지표', exact: true }).click();
   await panel.getByRole('button', { name: '거래량', exact: true }).click();
-  const details = panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정');
-  if (expand && await details.isVisible()) await details.click();
+  await expect(panel.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
   return panel;
 }
 
@@ -485,10 +484,9 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
       Object.assign(window, { __volumeBefore: { chart, candle, rows: volume.data(),
         paneCount: chart.panes().length, range: chart.timeScale().getVisibleLogicalRange(), spacing: chart.timeScale().options().barSpacing } });
     });
-    let panel = await openVolume(page, 'a', false);
+    let panel = await openVolume(page, 'a');
     await panel.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
-    await expect(panel.getByRole('slider', { name: '거래량 투명도' })).not.toBeVisible();
-    await panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정').press('Enter');
+    await expect(panel.getByRole('slider', { name: '거래량 투명도' })).toBeEnabled();
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toHaveCount(0);
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-candle')).toContainText('거래량');
     const overlayState = () => page.evaluate(() => {
@@ -564,7 +562,6 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
     await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts!.get('a')!.panes()[0]
       .getSeries().filter(s => s.seriesType() === 'Histogram').length)).toBe(0);
     await panel.getByRole('button', { name: '되돌리기', exact: true }).click();
-    await panel.getByLabel('거래량을 캔들에 겹쳐 표시 세부 설정').click();
     await expect(panel.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toHaveCount(0);
     expect(errors).toEqual([]);

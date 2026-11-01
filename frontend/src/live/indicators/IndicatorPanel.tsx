@@ -27,6 +27,8 @@ import { indicatorResetPatch } from './indicatorReset';
 import { CompactSettingsContext, SettingsDescriptionTooltipContext } from '../settings/SettingsRow';
 import { IndicatorExplanationContext } from './IndicatorExplanation';
 import './IndicatorEditor.css';
+import { DEFAULT_CHART_DISPLAY_PREFS } from '../../state/chartDisplayPrefs';
+import { useWindowSettingsStore } from '../../state/windowSettings';
 
 const GROUP_LABEL: Record<GroupId, string> = {
   top: '상단 지표',
@@ -223,7 +225,9 @@ export default function IndicatorPanel({
   const getDraft = (id: CategoryId) => {
     const existing = drafts[id];
     if (existing) return existing;
-    const draft = createCatalogDraft(id, ind, prefs);
+    const display = id === 'volume' && view?.windowId
+      ? useWindowSettingsStore.getState().byWindow[view.windowId]?.chart ?? DEFAULT_CHART_DISPLAY_PREFS : undefined;
+    const draft = createCatalogDraft(id, ind, prefs, display);
     setCache({ scope: draftScopeKey, drafts: { ...drafts, [id]: draft } });
     return draft;
   };
@@ -312,7 +316,9 @@ export default function IndicatorPanel({
     const row = instancesFor(selectedId).find(row => row.id === selectedInstance) ?? instancesFor(selectedId)[0];
     if (!row) return;
     const source = ind.indicatorInstances?.find(item => item.id === row.id);
-    const draft = createCatalogDraft(selectedId, row.settings, { ...prefs, ...source?.prefs });
+    const display = selectedId === 'volume' && windowId
+      ? useWindowSettingsStore.getState().byWindow[windowId]?.chart ?? DEFAULT_CHART_DISPLAY_PREFS : undefined;
+    const draft = createCatalogDraft(selectedId, row.settings, { ...prefs, ...source?.prefs }, display);
     setCache({ scope: draftScopeKey, drafts: { ...drafts, [selectedId]: draft } });
     setSelected(selectedId);
     setMode('catalog');
@@ -544,7 +550,7 @@ export default function IndicatorPanel({
             aria-label={selectedCategory.label}
             className="settings-editor-content indicator-config space-y-4"
           >
-              {emptyCatalog ? <p className="text-sm text-fg-dim">모든 지표를 사용 중이에요.</p> : draft ? <CatalogDraftProvider key={selectedId} draft={draft}>
+              {emptyCatalog ? <p className="text-sm text-fg-dim">모든 지표를 사용 중이에요.</p> : draft ? <CatalogDraftProvider key={selectedId} draft={draft} volumeOverlayEditable={currentInstances.length === 0}>
                 <IndicatorConfigContent category={selectedId} capabilities={capabilities} />
               </CatalogDraftProvider> : selectedAdded ? currentId === PRIMARY_INDICATOR_ID
                 ? <IndicatorConfigContent key={`${selectedId}:${formEpoch}`} category={selectedId} capabilities={capabilities} />
