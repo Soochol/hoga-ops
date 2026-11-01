@@ -265,4 +265,104 @@ describe('screenerPanel store', () => {
     expect(isPanelScanFresh(SCAN, NOW + SCREENER_PANEL_SCAN_TTL_MS + 1)).toBe(false);
     expect(isPanelScanFresh({ ...SCAN, scannedAtMs: NOW + 1 }, NOW)).toBe(false);
   });
+
+  it('keeps a departed stock in place, updates matching quotes, and removes its shade on reentry', () => {
+    const other = { ...SCAN.rows[0], code: '000660', name: 'SK하이닉스' };
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan({ ...SCAN, rows: [...SCAN.rows, other] }, true);
+    store.setLastScan({ ...SCAN, rows: [{ ...other, price: 180000 }], scannedAtMs: NOW + 1 }, true);
+    const departed = useScreenerPanelStore.getState().lastScan!;
+    expect(departed.rows.map(r => r.code)).toEqual(['005930', '000660']);
+    expect(departed.exitedCodes).toEqual(['005930']);
+    expect(departed.rows[1].price).toBe(180000);
+    expect(departed.interactionStartedAtMs).toBe(NOW);
+    store.setLastScan({ ...SCAN, rows: [other, { ...SCAN.rows[0], price: 71000 }] }, true);
+    expect(useScreenerPanelStore.getState().lastScan).toMatchObject({
+      exitedCodes: [], rows: [{ code: '005930', price: 71000 }, { code: '000660' }],
+    });
+  });
+
+  it('bulk dismissal persists, does not resurrect absent stocks, and permits a new match', async () => {
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan(SCAN, true);
+    store.setLastScan({ ...SCAN, rows: [] }, true);
+    store.dismissExited();
+    expect(useScreenerPanelStore.getState().lastScan).toMatchObject({ rows: [], exitedCodes: [] });
+    store.setLastScan({ ...SCAN, rows: [] }, true);
+    expect(useScreenerPanelStore.getState().lastScan?.rows).toEqual([]);
+    vi.resetModules();
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+    expect(fresh.getState().lastScan).toMatchObject({ rows: [], exitedCodes: [] });
+    fresh.getState().setLastScan(SCAN, true);
+    expect(fresh.getState().lastScan).toMatchObject({ rows: SCAN.rows, exitedCodes: [] });
+  });
+
+  it('restores retained shaded rows and ignores corrupt exit codes', async () => {
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({ lastScan: {
+      ...SCAN, exitedCodes: ['005930', 'missing', 123],
+    } }));
+    vi.resetModules();
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+    expect(fresh.getState().lastScan).toMatchObject({ rows: SCAN.rows, exitedCodes: ['005930'] });
+  });
+
+  it('uses the server position for newly matched stocks while retaining existing rows', () => {
+    const other = { ...SCAN.rows[0], code: '000660', name: 'SK하이닉스' };
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan({ ...SCAN, rows: [other] }, true);
+    store.setLastScan({ ...SCAN, rows: [...SCAN.rows, other] }, true);
+    expect(useScreenerPanelStore.getState().lastScan?.rows.map(row => row.code)).toEqual(['005930', '000660']);
+  });
+
+  it.each([
+    { savedId: 'other' }, { savedUpdatedAtMs: 11 }, { basis: 'eod' as const },
+    { requestJson: '{"conditions":[],"universe":{"markets":["KOSDAQ"]},"basis":"intraday"}' },
+  ])('does not keep old rows when the search changes: %j', changes => {
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan(SCAN, true);
+    store.setLastScan({ ...SCAN, ...changes, rows: [] }, true);
+    expect(useScreenerPanelStore.getState().lastScan?.rows).toEqual([]);
+  });
+
+  it('shares page/drawer request identities despite JSON property order', () => {
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan(SCAN, true);
+    store.setLastScan({ ...SCAN, rows: [], requestJson: '{"basis":"intraday","universe":{},"conditions":[]}' }, true);
+    expect(useScreenerPanelStore.getState().lastScan?.exitedCodes).toEqual(['005930']);
+  });
+
+  it.each([
+    { scanStatus: 'building' as const }, { hasMore: true }, { warnings: ['intraday_fallback_eod'] },
+    { barCoverage: { total: 1, complete: 0, incomplete: [
+      { code: '005930', condition_id: 'c', reason: 'recovering' },
+    ] } },
+    { dailyCoverage: { total: 1, complete: 0, incomplete: [
+      { code: '005930', condition_id: 'c', reason: 'unverified' },
+    ] } },
+  ])('preserves an unevaluated stock without newly shading it: %j', changes => {
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan(SCAN, true);
+    store.setLastScan({ ...SCAN, ...changes, rows: [] }, true);
+    expect(useScreenerPanelStore.getState().lastScan).toMatchObject({ rows: SCAN.rows, exitedCodes: [] });
+  });
+
+  it('shades evaluated departures even if another stock has insufficient history', () => {
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan(SCAN, true);
+    store.setLastScan({ ...SCAN, rows: [], warnings: ['bar_volume_partial'],
+      barCoverage: { total: 2, complete: 1, incomplete: [{ code: '000660', condition_id: 'c', reason: 'preparing' }] },
+    }, true);
+    expect(useScreenerPanelStore.getState().lastScan?.exitedCodes).toEqual(['005930']);
+  });
+
+  it('explicit occurrence removal and a new monitoring run discard old rows immediately', () => {
+    const store = useScreenerPanelStore.getState();
+    store.setLastScan(SCAN, true);
+    store.setLastScan({ ...SCAN, rows: [], dataStale: true });
+    expect(useScreenerPanelStore.getState().lastScan?.rows).toEqual([]);
+    store.setLastScan(SCAN, true);
+    store.clearLastScan();
+    store.setLastScan({ ...SCAN, rows: [] }, true);
+    expect(useScreenerPanelStore.getState().lastScan?.rows).toEqual([]);
+  });
 });

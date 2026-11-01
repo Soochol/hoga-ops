@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { emptyResultText } from './emptyResultText';
-import type { PanelScan } from '../state/screenerPanel';
+import { useScreenerPanelStore, type PanelScan } from '../state/screenerPanel';
 import { EmptyState } from '../ui/DataSurface';
 import { SegmentedControl, ToolbarButton } from '../ui/PageShell';
 import { usePriceOccurrenceDetails } from './PriceOccurrenceDetails';
@@ -36,6 +36,8 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
   onActivate: (code: string, name?: string, e?: JumpModifiers) => void;
 }) {
   const details = usePriceOccurrenceDetails(scan.rows, occurrenceController);
+  const dismissExited = useScreenerPanelStore(s => s.dismissExited);
+  const exitedCodes = useMemo(() => new Set(scan.exitedCodes ?? []), [scan.exitedCodes]);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'live' | 'snapshot'>('live');
   const snapshotRows = useMemo(() => scan.rows.map((r) => ({ ...r, change_won: null })), [scan.rows]);
@@ -55,6 +57,7 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
           표시 {filtered.length.toLocaleString('ko-KR')} / {scan.rows.length.toLocaleString('ko-KR')}종목
         </span>
         <span className="flex-1" />
+        <ToolbarButton type="button" onClick={dismissExited} disabled={exitedCodes.size === 0}>이탈 제외</ToolbarButton>
         <SegmentedControl aria-label="결과 시세 보기">
           {(['live', 'snapshot'] as const).map((value) => (
             <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)}
@@ -78,6 +81,7 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
         </EmptyState>
       ) : (
         <ResultTable rows={filtered} onActivate={onActivate} sortMode={sortMode} onSortChange={onSortChange}
+          exitedCodes={exitedCodes}
           occurrenceKinds={details.conditionKinds} onOccurrenceDetails={details.onOpen}
           embedded depthValues={scan.depthValues} depthSides={depthSides} quoteMode={mode} />
       )}

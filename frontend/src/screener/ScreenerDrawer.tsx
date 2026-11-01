@@ -75,6 +75,7 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
   row,
   active,
   flash,
+  shaded,
   onActivate,
   onOpenMenu,
   columnLayout, occurrenceKinds, onOccurrenceDetails,
@@ -83,6 +84,7 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
   row: ScreenerRowLive;
   active: boolean;
   flash: boolean;
+  shaded: boolean;
   onActivate: (row: ScreenerRowLive, e?: JumpModifiers) => void;
   onOpenMenu: (row: ScreenerRowLive, e: React.MouseEvent<HTMLLIElement>) => void;
 }) {
@@ -107,6 +109,7 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
       expectedPct={row.expected_change_pct}
       active={active}
       flash={flash}
+      shaded={shaded}
       ariaLabel={`${row.name} ${row.code} 차트 열기`}
       testId={`screener-row-${row.code}`}
       // 관심·히트맵과 같은 좌측 여백. 우측 레일 네 리스트의 종목명 시작 x 를 한 값으로
@@ -172,6 +175,7 @@ export function ScreenerDrawer() {
   const occurrenceController = useOccurrenceExclusions(lastScan);
   const periodDetails = usePriceOccurrenceDetails(lastScan?.rows ?? [], occurrenceController);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
+  const dismissExited = useScreenerPanelStore((s) => s.dismissExited);
   const clearLastScan = useScreenerPanelStore((s) => s.clearLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
@@ -231,7 +235,7 @@ export function ScreenerDrawer() {
       fallbackBasisAtMs: res.fallback_basis_at_ms,
       basis: DRAWER_SCAN_BASIS,
       dataStale: false,
-    });
+    }, true);
   };
   const screener = useScreener({ continuous: monitoringActive, request: drawerRequest, onProgress: publishScan,
     anchor: selected ? `${selected.id}:${selected.updated_at_ms}` : '' });
@@ -273,6 +277,7 @@ export function ScreenerDrawer() {
   // 매 렌더 새 [] 가 훅 내부 codes 메모를 무효화하지 않게 한다(풀페이지 Screener.tsx 와
   // 대칭). resultCodes 는 모니터 훅의 phase 조회 키(드로어 내부 useQuotes 와 동일).
   const scanRows = useMemo(() => lastScan?.rows ?? [], [lastScan]);
+  const exitedCodes = useMemo(() => new Set(lastScan?.exitedCodes ?? []), [lastScan?.exitedCodes]);
   const resultCodes = useMemo(() => scanRows.map((r) => r.code), [scanRows]);
   // 재조회 주기: 사용자 override(monitorPeriodMs) ?? 자동(스코프15/전체30초).
   const scoped = (selected?.universe.scopes?.length ?? 0) > 0;
@@ -496,6 +501,8 @@ export function ScreenerDrawer() {
                 </span>
               )}
             </div>
+            <ToolbarButton type="button" onClick={dismissExited} disabled={exitedCodes.size === 0}
+              className="shrink-0 text-xs">이탈 제외</ToolbarButton>
             <ScreenerResultSortControl mode={sortMode} onChange={handleSortChange} disabled={lastScan.rows.length === 0} />
           </div>
         )}
@@ -555,7 +562,8 @@ export function ScreenerDrawer() {
                       row={r}
                       occurrenceKinds={periodDetails.conditionKinds} onOccurrenceDetails={periodDetails.onOpen}
                       active={r.code === activeCode}
-                      flash={monitoringActive && flashCodes.has(r.code)}
+                      flash={monitoringActive && !exitedCodes.has(r.code) && flashCodes.has(r.code)}
+                      shaded={exitedCodes.has(r.code)}
                       onActivate={onActivateRow}
                       onOpenMenu={onOpenRowMenu}
                     />

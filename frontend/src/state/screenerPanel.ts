@@ -8,6 +8,7 @@ import type {
   ScreenerResultSortMode,
 } from '../screener/sortResults';
 import { persistJson, readJsonObject } from './persist';
+import { retainMissingResults } from '../screener/retainedResults';
 
 const STORAGE_KEY = 'screenerPanel.v1';
 export const SCREENER_PANEL_SCAN_TTL_MS = 30 * 60 * 1000;
@@ -37,6 +38,8 @@ export interface PanelScan {
   /** 실행 때의 요청 원문. 현재 편집 중인 조건과 구별한다. */
   requestJson?: string;
   rows: ScreenerRow[];
+  /** Client-only list state. Retained rows are shaded until dismissed or matched again. */
+  exitedCodes?: string[];
   /** undefined는 상한 여부를 제공하지 않던 서버/저장 상태. */
   hasMore?: boolean;
   scanStatus: ScreenerResponse['status'];
@@ -73,7 +76,8 @@ type Store = Persisted & {
   lastScan: PanelScan | null;
   setSelectedSavedId: (id: string | null) => void;
   setSortMode: (mode: ScreenerResultSortMode) => void;
-  setLastScan: (scan: PanelScan) => void;
+  setLastScan: (scan: PanelScan, retainMissing?: boolean) => void;
+  dismissExited: () => void;
   clearLastScan: () => void;
   markLastScanDataStale: () => void;
   clearExpiredScan: (nowMs?: number) => void;
@@ -215,6 +219,8 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     scanKey,
     requestJson: typeof raw.requestJson === 'string' ? raw.requestJson : undefined,
     rows: raw.rows as ScreenerRow[],
+    ...(Array.isArray(raw.exitedCodes) ? { exitedCodes: raw.exitedCodes.filter((code): code is string =>
+      typeof code === 'string' && (raw.rows as ScreenerRow[]).some(row => row.code === code)) } : {}),
     hasMore: typeof raw.hasMore === 'boolean' ? raw.hasMore : undefined,
     scanStatus: raw.scanStatus,
     // 구버전 저장본에는 없다(필드를 넓히기만 하는 마이그레이션 — 위 주석 참조).
@@ -269,10 +275,23 @@ export const useScreenerPanelStore = create<Store>((set, get) => ({
     persistFromState(get());
   },
 
-  setLastScan: (scan) => {
+  setLastScan: (scan, retainMissing = false) => {
     // 시각·경고는 매 조회 반영하고, 값이 같은 행/배열만 재사용한다. 종목 집합만
     // 같다고 응답 전체를 버리면 실패 안내·거래대금·30분 TTL까지 과거에 머문다.
-    set({ lastScan: replaceEqualDeep(get().lastScan, scan) });
+    const previous = get().lastScan;
+    set({ lastScan: replaceEqualDeep(previous, retainMissing ? retainMissingResults(previous, scan) : scan) });
+    persistFromState(get());
+  },
+
+  dismissExited: () => {
+    const { lastScan } = get();
+    if (!lastScan?.exitedCodes?.length) return;
+    const exited = new Set(lastScan.exitedCodes);
+    const depthValues = lastScan.depthValues ? Object.fromEntries(
+      Object.entries(lastScan.depthValues).filter(([code]) => !exited.has(code)),
+    ) : null;
+    set({ lastScan: { ...lastScan, rows: lastScan.rows.filter(row => !exited.has(row.code)),
+      exitedCodes: [], depthValues } });
     persistFromState(get());
   },
 

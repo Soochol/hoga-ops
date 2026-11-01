@@ -196,7 +196,7 @@ export function Screener() {
     [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe, venue],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
-  const publishScan = (res: ScreenerResponse, body: ScanRequest) => {
+  const publishScan = (res: ScreenerResponse, body: ScanRequest, newInteraction = false) => {
     const anchored = !editor.dirty && editor.anchorId != null;
     const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
     const savedId = anchored ? editor.anchorId : null;
@@ -218,11 +218,12 @@ export function Screener() {
       calculation: res.calculation,
       depthValues: res.depth_values ?? null,
       scannedAtMs: res.scanned_at_ms ?? Date.now(),
+      ...(newInteraction ? { interactionStartedAtMs: res.scanned_at_ms ?? Date.now() } : {}),
       basisAtMs: res.basis_at_ms,
       fallbackBasisAtMs: res.fallback_basis_at_ms,
       basis: 'auto',
       dataStale: false,
-    });
+    }, true);
   };
   const screener = useScreener({ continuous: !volumeRefreshStopped && !invalidEditor, anchor: scanKey,
     request: scanBody, onProgress: publishScan });
@@ -252,7 +253,7 @@ export function Screener() {
         onSuccess: (res) => {
           // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
           // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
-          publishScan(res, scanBody);
+          publishScan(res, scanBody, !background);
           if (!background) setSortMode('default');
         },
       });

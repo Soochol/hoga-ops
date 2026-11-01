@@ -43,7 +43,9 @@ export function pruneExcludedRows(scan: PanelScan, exclusions: ScreenerExclusion
     return [{ ...row, occurrences: remaining,
       history_matches: row.history_matches?.filter(m => remaining.some(o => o.condition_id === m.condition_id && o.date === m.date)) }];
   });
-  return changed ? { ...scan, rows, dataStale: true } : scan;
+  return changed ? { ...scan, rows, dataStale: true,
+    ...(scan.exitedCodes ? { exitedCodes: scan.exitedCodes.filter(code => rows.some(row => row.code === code)) } : {}),
+  } : scan;
 }
 
 function pruneCurrent(exclusions: ScreenerExclusion[]) {
@@ -71,7 +73,8 @@ async function refreshResults() {
       calculation: response.calculation, warnings: response.warnings, hasMore: response.has_more,
       historyCoverage: response.history_coverage, barCoverage: response.bar_coverage, depthValues: response.depth_values ?? null,
       intradayFailure: response.intraday_failure, scannedAtMs: response.scanned_at_ms ?? Date.now(),
-      basisAtMs: response.basis_at_ms, fallbackBasisAtMs: response.fallback_basis_at_ms, dataStale: false });
+      basisAtMs: response.basis_at_ms, fallbackBasisAtMs: response.fallback_basis_at_ms, dataStale: false,
+      dailyCoverage: response.daily_coverage, rankBasis: response.rank_basis }, true);
   } catch (error) {
     if (useScreenerPanelStore.getState().lastScan === before) store.markLastScanDataStale();
     throw error;
