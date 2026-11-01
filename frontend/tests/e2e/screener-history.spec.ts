@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
 import { installScreenerRunsMock } from './helpers/screenerRuns';
+import { closeConditionSettings, openConditionSettings } from './helpers/screenerEditor';
 
 for (const editWhileCollecting of [false, true]) {
   test(editWhileCollecting ? 'editing detaches from old automatic preparation'
@@ -24,14 +25,19 @@ for (const editWhileCollecting of [false, true]) {
           volume: 10000000, maximum: 10000000, window_start: '2018-03-20', window_end: '2020-03-19' }] }] : [],
     }), () => !completed);
     await page.goto('/screener');
+    await openConditionSettings(page, '기간내 신고거래량');
     await page.getByRole('combobox', { name: '거래량 검색 기간', exact: true }).selectOption('date_range');
+    await closeConditionSettings(page);
+    expect(runs.starts).toHaveLength(0);
     await page.getByRole('button', { name: '조회', exact: true }).click();
     const status = page.getByRole('status', { name: '조건검색 데이터 준비' });
     await expect(status).toContainText('데이터 준비 중 1');
     await expect(page.getByRole('button', { name: '과거 일봉 수집', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '새 기준 일봉 준비', exact: true })).toHaveCount(0);
     if (editWhileCollecting) {
+      await openConditionSettings(page, '기간내 신고거래량');
       await page.getByLabel('거래량 발생 종료일').fill('2021-12-31');
+      await closeConditionSettings(page);
       await expect(status).toHaveCount(0);
     }
     completed = true;

@@ -1,0 +1,73 @@
+{
+  "checked_at_utc": "2026-11-01T11:55:51.932645+00:00",
+  "base_sha": "5d46acb54757d67c5e419afe6e1df3e4e49fbce5",
+  "verified_source_commit": "d77c79d38a013e199ba0109c875f065c720b8e3a",
+  "subsequent_changes": "Only this verification record; product/test/dependency/configuration inputs are unchanged.",
+  "context": "PR #2368 entered main after the last fetch for #2367 and before GitHub completed its merge. The resulting main is 5d46acb54757d67c5e419afe6e1df3e4e49fbce5. Verify the combined condition-settings modal and automatic preparation flow on that tree.",
+  "change": "Adapt three E2E fixtures to open the condition-settings modal before parameter edits and close it before scan/save. Assert parameter editing does not initiate a preparation run. Product sources are unchanged from the merged main.",
+  "inputs": {
+    "file_count": 5618,
+    "sha256": "8ab3b463f12aa1d7006d2a83556522c0ebcf0d0e93079d33024beb22b2383b65",
+    "algorithm": "SHA256 of compact UTF-8 sorted JSON path->SHA256(file bytes) from git ls-files -co --exclude-standard; exclude this record."
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "result": "app, unit and E2E TypeScript projects passed",
+      "log": "/tmp/hoga-auto-modal-typecheck.log",
+      "normalized_text_log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250"
+    },
+    {
+      "command": "npx vitest run",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "result": "760 files, 9746 tests passed",
+      "log": "/tmp/hoga-auto-modal-vitest.log",
+      "normalized_text_log_sha256": "3dd64ad25411588a0231873632ba6cbf6970059d4a6415cf0fd4f48941c450bc"
+    },
+    {
+      "command": "npx playwright test tests/e2e/screener-automatic-preparation.spec.ts tests/e2e/screener-drawer-occurrence-layout.spec.ts tests/e2e/screener-history.spec.ts tests/e2e/screener-trade-value-history.spec.ts tests/e2e/screener-calculation-bases.spec.ts tests/e2e/screener-condition-editor.spec.ts tests/e2e/screener-expression.spec.ts tests/e2e/screener-volume-conditions.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "result": "12 passed, one worker",
+      "log": "/tmp/hoga-auto-modal-e2e.log",
+      "normalized_text_log_sha256": "03f023e149ea9172681e0b60093a28b719e6fa9d28bccb5885e6af74fb4bdf09"
+    },
+    {
+      "command": "npx vite build (Playwright webServer prerequisite)",
+      "exit_code": 0,
+      "result": "passed; existing large chunk warning"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "exit_code": 0,
+      "result": "zero violations"
+    },
+    {
+      "command": "git diff origin/main...HEAD --check",
+      "exit_code": 0,
+      "result": "passed"
+    }
+  ],
+  "reuse": {
+    "backend_record": "2026-11-01-screener-auto-preparation-validation.json",
+    "backend_area_sha256": "896c4a8f755d3d44596328ff977db45cae7184bfa0fbe41bd502d2f3009f5865",
+    "reason": "hoga/, tests/, pyproject.toml, uv.lock and ruff.toml exactly match the original validated backend; API mirrors, dependencies and runtime tools remain unchanged.",
+    "results": "Screener 1437 passed; broad backend 8005 passed, 2 skipped, 13 deselected and the same 2 baseline PREOPEN_CLOSE failures (reproduced on unmodified main)."
+  },
+  "runtime_reference": "2026-11-01-screener-auto-preparation-validation.json environment (unchanged)",
+  "e2e_environment": {
+    "backend_port": 20244,
+    "frontend_port": 21244,
+    "data": "/tmp/hoga-e2e-data-244",
+    "dist": "/tmp/hoga-e2e-dist-244",
+    "workers": 1,
+    "credentials": "blank/fake providers"
+  },
+  "scope_limits": [
+    "No product behavior change in this follow-up.",
+    "No real-vendor benchmark, production data mutation or user server restart."
+  ]
+}

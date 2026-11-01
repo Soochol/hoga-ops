@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
 import { installScreenerRunsMock } from './helpers/screenerRuns';
+import { closeConditionSettings, openConditionSettings } from './helpers/screenerEditor';
 
 test('historical trade value prepares automatically from a single search', async ({ page }) => {
   await installLiveMocks(page);
@@ -22,7 +23,10 @@ test('historical trade value prepares automatically from a single search', async
         trade_value_won: 150000000000 }] }] : [],
   }), () => !completed);
   await page.goto('/screener');
+  await openConditionSettings(page, '기간내 거래대금');
   await page.getByRole('combobox', { name: '거래대금 검색 기간', exact: true }).selectOption('date_range');
+  await closeConditionSettings(page);
+  expect(runs.starts).toHaveLength(0);
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect(page.getByRole('status', { name: '조건검색 데이터 준비' })).toContainText('데이터 준비 중 1');
   completed = true;
