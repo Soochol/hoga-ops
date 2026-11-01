@@ -29,7 +29,8 @@ def condition_key(leaf: ConditionLeaf, *, calculation_policy: str = "legacy_v1")
         params.pop("volume_basis", None)
     if calculation_policy != "legacy_v1":
         params["calculation_policy"] = calculation_policy
-        if leaf.type in {"new_high_vol", "new_high_vol_today"}:
+        if leaf.type in {"new_high_vol", "new_high_vol_today", "volume_range", "volume_range_period",
+                         "volume_compare", "volume_compare_period", "volume_ratio", "volume_ratio_period"}:
             params["volume_basis"] = params.get("volume_basis") or (
                 "raw" if params.get("timeframe", "D").endswith("m") else "share_adjusted"
             )
@@ -48,6 +49,9 @@ def condition_key(leaf: ConditionLeaf, *, calculation_policy: str = "legacy_v1")
         "ma_cross_period",
         "ma_gap_period",
         "ma_slope_period",
+        "volume_range_period",
+        "volume_compare_period",
+        "volume_ratio_period",
 
         "ask_depth_new_high_period",
         "bid_depth_new_high_period",

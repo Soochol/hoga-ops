@@ -1,5 +1,6 @@
 const reasons: Record<string, string> = {
   share_evidence_unavailable: '주식 수 변환 이력 미확인', vendor_price_unavailable: '공급자 수정 가격 부족',
+  zero_average_volume: '비교 평균 거래량이 0', invalid_volume_ratio: '거래량 비율 계산 불가',
   missing_history: '원본 일봉 부족', insufficient_history: '비교 기간 부족',
   original_observation_conflict: '원본과 공급자 관측값 충돌', invalid_daily_rows: '원본 일봉 오류',
   calendar_unavailable: '거래일 달력 부족', insufficient_minute_history: '비교할 분봉 부족',

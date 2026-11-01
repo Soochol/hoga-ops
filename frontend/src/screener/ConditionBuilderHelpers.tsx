@@ -7,6 +7,7 @@ import type { ConditionType } from '../api/screener';
  *  카탈로그가 같은 집합인지 단언하므로, 조건을 추가하면 여기도 반드시 채워야 한다. */
 export const CONDITION_GROUPS: Array<[string, ConditionType[]]> = [
   ['가격', ['price_range', 'price_compare', 'price_compare_period']],
+  ['거래량', ['volume_range', 'volume_range_period', 'volume_compare', 'volume_compare_period', 'volume_ratio', 'volume_ratio_period']],
   ['거래대금', ['trade_value', 'trade_value_period', 'trade_value_rank']],
   ['신고가/거래량', ['new_high_today', 'new_high', 'new_high_vol_today', 'new_high_vol', 'high_off_peak']],
   ['호가 잔량', ['ask_depth_new_high', 'bid_depth_new_high',

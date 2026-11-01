@@ -26,6 +26,7 @@ from hoga.api import (
     screener_history_evidence,
     screener_ma,
     screener_price_compare,
+    screener_volume_conditions,
     trading_days,
 )
 from hoga.api.models import (
@@ -46,6 +47,7 @@ from hoga.api.screener_bar_policy import (
     RANGE_PARAMS,
     RANK_TYPES,
     TRADE_VALUE_TYPES,
+    VOLUME_CONDITION_TYPES,
     VOLUME_TYPES,
     comparison_period,
     lookback,
@@ -109,6 +111,7 @@ _SPECIAL_RECORDS = {
     **dict.fromkeys(CHANGE_TYPES, screener_bar_threshold.change_records),
     **dict.fromkeys(PRICE_COMPARE_TYPES, screener_price_compare.records),
     **dict.fromkeys(MA_TYPES, screener_ma.records),
+    **dict.fromkeys(VOLUME_CONDITION_TYPES, screener_volume_conditions.records),
 }
 
 
@@ -398,7 +401,9 @@ def _evaluate_calendar(result, selected, codes, values, days, as_of, data_dir=No
                         and leaf.type not in VOLUME_TYPES:
                     reasons["invalid_daily_rows"] = []
                 if not reasons:
-                    reasons["insufficient_history"] = []
+                    reason = (screener_volume_conditions.evaluate(leaf, bars, fetched_at_ms=0)[2]
+                              if leaf.type in VOLUME_CONDITION_TYPES else None)
+                    reasons[reason or "insufficient_history"] = []
                 incomplete.add(code)
                 for reason, absent in reasons.items():
                     result.coverage.incomplete.append(BarVolumeCoverageItem(
@@ -477,6 +482,8 @@ async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetc
         if event.bar_match and event.bar_start_ms in lower_bounds:
             event.bar_match.volume_is_lower_bound = True
     reason = snapshot.reason or adjustment_reason
+    if not reason and not complete and leaf.type in VOLUME_CONDITION_TYPES:
+        reason = screener_volume_conditions.evaluate(leaf, data, fetched_at_ms=0)[2]
     if not reason and not complete and lower_bounds and any(not bar.valid for bar in data):
         reason = "live_bar_unconfirmed"
     return leaf, code, events, complete and reason is None, reason

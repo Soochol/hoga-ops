@@ -1,3 +1,4 @@
+import { VOLUME_TYPES } from './volumeLabels';
 import { AppIcon } from '../ui/AppIcon';
 import type { DragEvent } from 'react';
 import type { CalculationPolicy, ConditionLeaf, VolumeBasis } from '../api/screener';
@@ -63,18 +64,17 @@ export function ConditionRow({
       </div>
       <div className="condition-editor-body">
         <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => {
-          if (calculationPolicy === 'separate_bases_v2' &&
-            (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')) {
+          if (calculationPolicy === 'separate_bases_v2' && VOLUME_TYPES.has(leaf.type)) {
             const minute = 'timeframe' in params && params.timeframe?.endsWith('m');
             const basis = minute ? 'raw' : ('volume_basis' in params ? params.volume_basis : null)
-              ?? leaf.params.volume_basis ?? 'share_adjusted';
+              ?? ('volume_basis' in leaf.params ? leaf.params.volume_basis : null) ?? 'share_adjusted';
             onChange({ ...leaf, params: { ...params, volume_basis: basis } } as ConditionLeaf);
           } else onChange({ ...leaf, params } as ConditionLeaf);
         }} />
         {calculationPolicy === 'separate_bases_v2' &&
-          (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today') &&
+          VOLUME_TYPES.has(leaf.type) &&
           !('timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')) &&
-          <Select<VolumeBasis> label="거래량 기준" value={leaf.params.volume_basis ?? 'share_adjusted'}
+          <Select<VolumeBasis> label="거래량 기준" value={('volume_basis' in leaf.params ? leaf.params.volume_basis : null) ?? 'share_adjusted'}
             options={[["share_adjusted", "주식 수 단위 보정"], ["raw", "실제 거래량"]]}
             onChange={basis => onChange({ ...leaf, params: { ...leaf.params, volume_basis: basis } } as ConditionLeaf)} />}
       </div>
