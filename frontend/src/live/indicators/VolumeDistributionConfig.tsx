@@ -1,3 +1,5 @@
+import { IndicatorSettingsGroup } from './IndicatorSettingsLayout';
+import { SettingsRow } from '../settings/SettingsRow';
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
 import ToggleRow from '../settings/ToggleRow';
 import ColorSwatchPicker from './ColorSwatchPicker';
@@ -9,7 +11,8 @@ export default function VolumeDistributionConfig() {
   const { volumeDistributionRangeCount, volumeDistributionHoverCutoffEnabled, volumeDistributionColor, volumeDistributionMaxColor } = ind;
   const { setVolumeDistributionRangeCount, setVolumeDistributionHoverCutoffEnabled, setVolumeDistributionStyle } = actions;
   return (
-    <div>
+    <div className="indicator-settings-groups">
+      <IndicatorSettingsGroup label="조건">
       <div className="mb-3">
         <label className="flex items-center justify-between gap-3 text-sm text-fg">
           <span>구간 수</span>
@@ -34,27 +37,13 @@ export default function VolumeDistributionConfig() {
           testId="settings-toggle-volumeDistributionHoverCutoff"
         />
       </div>
-      <div className="mb-3">
-        <div className="mb-1.5 text-xs text-fg-dim">색상</div>
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="w-20 text-sm text-fg">기본 구간</span>
-            <ColorSwatchPicker
-              label="연속체결 매물대 분포 색상"
-              color={volumeDistributionColor}
-              onChange={(color) => setVolumeDistributionStyle({ color })}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-20 text-sm text-fg">최대 구간</span>
-            <ColorSwatchPicker
-              label="연속체결 매물대 분포 최대 구간 색상"
-              color={volumeDistributionMaxColor}
-              onChange={(maxColor) => setVolumeDistributionStyle({ maxColor })}
-            />
-          </div>
-        </div>
-      </div>
+      </IndicatorSettingsGroup>
+      <IndicatorSettingsGroup label="표시·스타일">
+        <SettingsRow label="기본 구간"><ColorSwatchPicker label="연속체결 매물대 분포 색상"
+          color={volumeDistributionColor} onChange={color => setVolumeDistributionStyle({ color })} /></SettingsRow>
+        <SettingsRow label="최대 구간"><ColorSwatchPicker label="연속체결 매물대 분포 최대 구간 색상"
+          color={volumeDistributionMaxColor} onChange={maxColor => setVolumeDistributionStyle({ maxColor })} /></SettingsRow>
+      </IndicatorSettingsGroup>
       <IndicatorExplanation>
         거래일 내 체결량이 가장 많은 구간을 별도 색상으로 강조합니다.
       </IndicatorExplanation>

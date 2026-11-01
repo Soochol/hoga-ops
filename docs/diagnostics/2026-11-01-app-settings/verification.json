@@ -1,0 +1,84 @@
+{
+  "checked_at_kst": "2026-11-01T19:29:46.057945+09:00",
+  "branch": "codex/indicator-group-rail",
+  "origin_main_sha": "3346e84ede31c11f47f062bc48ef5075febce348",
+  "worktree_changes": "Implementation committed and rebased onto latest main; this verification-record update changes documentation only.",
+  "inputs": {
+    "scope": "All tracked/untracked frontend, hoga, tests files and .python-version, pyproject.toml, uv.lock; ignored outputs/dependencies excluded. Sorted path + NUL + SHA256(file bytes).",
+    "file_count": 2933,
+    "sha256": "e064e83c9d018865d33e1144658f50df86f5adc85d444f98ad7ef4daa2a3889b"
+  },
+  "runtime": {
+    "node": "v24.13.1",
+    "python": "3.14.7",
+    "chrome": "156.0.8078.79",
+    "react": "18.3.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed: app, unit and E2E TypeScript projects",
+      "log": "/tmp/hoga-4647-pr-typecheck.log"
+    },
+    {
+      "command": "npx vitest run src/live/indicators src/live/settings src/live/SettingsSections.test.tsx src/live/workspace/WorkspaceIndicatorDrawer.test.tsx src/live/workspace/secondsIndicatorSettings.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx src/state/settingsTransfer.test.ts src/rightrail/RightRail.test.tsx",
+      "cwd": "frontend",
+      "result": "57 files, 587 tests passed",
+      "log": "/tmp/hoga-4647-pr-unit.log"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/app-settings-compact.spec.ts tests/e2e/settings-editor.spec.ts tests/e2e/trading-themes.spec.ts tests/e2e/indicator-group-rail.spec.ts tests/e2e/indicator-compact.spec.ts tests/e2e/indicator-line-visibility.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "23 passed (1.8m), one worker; isolated ports 20318/21318, data/dist slot 318, empty vendor credentials",
+      "log": "/tmp/hoga-4647-pr-e2e.log"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "App settings open from the actual right rail. Existing TOC, search, single-scroll layout, fixed header/footer, local and server PATCH undo remain functional.",
+    "App and indicator editors share the same 44px group rail, 24px minimum rows and 26x15px switches. Narrow layouts checked at 640/390/320px without content overflow.",
+    "Dependent trade inputs remain visible, retain their values and are disabled with the parent off, including keyboard access to the color picker.",
+    "All seven theme choices remain available through a select. Selection, undo, first paint, chart colors, reload and cross-tab propagation verified.",
+    "Native desktop actions (server selector, new window, zoom in/out/reset) verified against a mocked desktop bridge; connection details and server-change notice remain visible.",
+    "Export download, import validation, backup download, both acknowledgements, apply and reload verified with an isolated settings archive.",
+    "All 20 indicator categories checked in minute/day profiles with light/dark themes after extracting common styles; line visibility, undo, persistence and responsive layouts retained.",
+    "Final app light/dark desktop, 320px, desktop controls and import review screenshots inspected; shared indicator screenshot also inspected."
+  ],
+  "screenshots_root": "/home/dev/.codex/visualizations/2026/10/30/01a18ca6-e125-7851-a7f0-05936ef1ecf8",
+  "screenshots": [
+    "implemented-app-settings-dark.png",
+    "implemented-app-settings-light.png",
+    "implemented-app-settings-320.png",
+    "implemented-app-settings-desktop.png",
+    "implemented-app-settings-desktop-320.png",
+    "implemented-app-settings-import-320.png"
+  ],
+  "base_update": "Rebased onto main 3346e84ed (PR #2361), preserving both additions to DESIGN.md. App/unit/E2E types, related units, production build and browser checks rerun on the combined code. Confirmed main unchanged after checks.",
+  "earlier_diagnostics": "Earlier type/E2E diagnostic failures were resolved: typed desktop-call access and pre-existing chart price-line checkbox role expectations. Earlier records/results are not the final validation for current inputs.",
+  "limits": "UI-only changes; backend business logic unchanged. Native desktop bridge was mocked in browser E2E; no installed Electron runtime exercised. No backend suite rerun for this UI PR. Background fixture API non-200 responses can appear in E2E logs; no console-clean claim. Verification uses isolated servers and does not restart user servers.",
+  "tested_code_commit_sha": "3b9a1cd5a412dc42309d7d004611fae68fd4006e",
+  "base_sha": "3346e84ede31c11f47f062bc48ef5075febce348",
+  "previous_validation": {
+    "head_and_base_sha": "7783d0429890c44770bb1b49c696ec2ef6116e1d",
+    "inputs": {
+      "scope": "All tracked/untracked frontend, hoga, tests files and .python-version, pyproject.toml, uv.lock; ignored outputs/dependencies excluded. Sorted path + NUL + SHA256(file bytes).",
+      "file_count": 2921,
+      "sha256": "505eea37036c1685d7da8299699c2d71ade1a811d5488206194ebf6f4c55d050"
+    },
+    "checked_at_kst": "2026-11-01T19:25:30.922359+09:00"
+  },
+  "reuse_for_pr_head": "The follow-up commit only updates this verification record. Recompute inputs and confirm equality before merging; tested sources, fixtures, dependencies, lockfiles and test configuration remain identical."
+}

@@ -1,0 +1,38 @@
+.app-settings-editor .app-settings-content { container-type: inline-size; }
+.settings-editor.app-settings-editor .settings-editor-content { padding-top: var(--space-md); }
+.app-settings-editor .settings-editor-heading > h2 { font-size: var(--text-lg); }
+.app-settings-editor [data-settings-section] { scroll-margin-top: var(--space-md); font-size: var(--text-lg); margin-bottom: var(--space-sm); }
+.app-settings-editor .app-settings-content > section { margin-top: var(--space-xl); }
+.app-settings-editor .app-settings-content > section:first-child { margin-top: 0; }
+.app-settings-editor .settings-row-control > .flex { min-width: 0; }
+.app-settings-editor .settings-row-control input[type=range] + output { width: 2.25rem; }
+.app-settings-editor .settings-scope-note { color: var(--fg-dim); font-size: var(--text-xs); line-height: 1.5; }
+.app-settings-editor .settings-readonly-value { overflow-wrap: anywhere; text-align: right; font-size: var(--text-sm); }
+.app-settings-editor .settings-row-control:has(.settings-readonly-value) { flex: 1; max-width: 65%; }
+.settings-editor.app-settings-editor .settings-row-control .settings-theme-select { width: 10rem; }
+.app-settings-editor .settings-venue-options { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-sm); }
+.app-settings-editor .settings-venue-option { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 1.5rem; border: 0; background: transparent; padding: 0; font-size: var(--text-sm); }
+.app-settings-editor input:is([type=radio], [type=checkbox]) { accent-color: var(--accent); }
+.app-settings-editor .settings-transfer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-xs); }
+.app-settings-editor .settings-transfer-actions > button,
+.app-settings-editor .settings-property-group-body .ui-choice { min-height: 1.5rem; padding: var(--space-2xs) var(--space-sm); font-size: var(--text-sm); }
+.app-settings-editor .settings-style-dependent { min-width: 0; }
+.app-settings-editor .settings-desktop-zoom { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-xs); }
+.app-settings-editor .settings-desktop-zoom > output { width: 2.75rem; }
+.app-settings-editor .settings-server-note { font-size: var(--text-xs); line-height: 1.5; color: var(--fg-dim); }
+.app-settings-editor .settings-import-review { min-width: 0; }
+.app-settings-editor .settings-import-review input[type=checkbox] { flex-shrink: 0; }
+.app-settings-editor .settings-import-review > p { overflow-wrap: anywhere; }
+@container (max-width: 220px) {
+  .app-settings-editor .settings-row-control:has(.settings-readonly-value) { max-width: 100%; }
+}
+@media (max-width: 460px) {
+  .settings-editor.app-settings-editor .settings-editor-content { padding-inline: var(--space-sm); }
+  .app-settings-editor .settings-editor-heading { gap: var(--space-sm); }
+  .app-settings-editor .settings-editor-heading-actions { gap: var(--space-sm); }
+}
+@media (pointer: coarse) {
+  .app-settings-editor .settings-venue-option,
+  .app-settings-editor .settings-transfer-actions > button,
+  .app-settings-editor .settings-property-group-body .ui-choice { min-height: 2.75rem; }
+}

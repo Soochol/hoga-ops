@@ -1,0 +1,63 @@
+{
+  "checked_at_kst": "2026-11-01T19:00:01.898826+09:00",
+  "branch": "codex/indicator-group-rail",
+  "head_and_base_sha": "7783d0429890c44770bb1b49c696ec2ef6116e1d",
+  "origin_main_sha": "7783d0429890c44770bb1b49c696ec2ef6116e1d",
+  "worktree_changes": "Uncommitted group-rail implementation. Recorded input hashes identify the tested source.",
+  "inputs": {
+    "scope": "All tracked/untracked frontend, hoga, tests files and .python-version, pyproject.toml, uv.lock; ignored outputs/dependencies excluded. Sorted path + NUL + SHA256(file bytes).",
+    "file_count": 2916,
+    "sha256": "1bc62304c02178505aff0186cfa95b2fca0f1c0fd1a181e7cddba4749b1fa771"
+  },
+  "runtime": {
+    "node": "v24.13.1",
+    "python": "3.14.7",
+    "chrome": "156.0.8078.79",
+    "react": "18.3.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed: app, unit and E2E projects",
+      "log": "/tmp/hoga-4647-rail-typecheck-verified.log"
+    },
+    {
+      "command": "npx vitest run src/live/indicators src/live/settings src/live/workspace/WorkspaceIndicatorDrawer.test.tsx src/live/workspace/secondsIndicatorSettings.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx",
+      "cwd": "frontend",
+      "result": "55 files, 569 tests passed",
+      "log": "/tmp/hoga-4647-rail-unit-verified.log"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/indicator-group-rail.spec.ts tests/e2e/indicator-compact.spec.ts tests/e2e/indicator-configure-before-add.spec.ts tests/e2e/indicator-line-visibility.spec.ts tests/e2e/indicator-instances.spec.ts tests/e2e/indicator-reset.spec.ts tests/e2e/chart-window-settings.spec.ts --grep 'indicator-|거래량.*겹|겹.*거래량' --reporter=line",
+      "cwd": "frontend",
+      "result": "24 passed (1.4m), one worker; isolated ports 20318/21318 and empty vendor credentials",
+      "log": "/tmp/hoga-4647-rail-e2e-verified.log"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "All 20 categories share a labeled group rail and right-hand visibility controls. Both themes and minute/day catalogs are checked.",
+    "MA tables, broker sets, peak-wall five-stage selection and independent candle/pane controls retain their scope and behavior.",
+    "Shared line width is edited once for Bollinger/Envelope/Supertrend and supports undo without changing colors.",
+    "Heatmap color-only controls, percentage range alignment, no overflow or control overlap at 1440/1024/640/480/390/320 widths.",
+    "Volume opacity is the inverse of stored transparency; no migration. Add-before-commit, repeats, reset, hide, persistence and undo verified.",
+    "Actual final light/dark desktop and narrow-screen screenshots inspected."
+  ],
+  "base_update": "Integrated latest main 7783d0429 before final type/unit/build/browser checks; earlier diagnostic runs were superseded.",
+  "observations": "The passing viewport-resize E2E run logged one ResizeObserver loop completed with undelivered notifications message from the browser/Vite client. No console-clean result is claimed.",
+  "limits": "UI-only worktree implementation. No production deployment, main checkout update, user server restart, real vendor credentials or orders.",
+  "superseded_for_current_source_by": "docs/diagnostics/2026-11-01-app-settings/verification.json (shared group/compact styles extracted and affected app/indicator checks rerun)"
+}

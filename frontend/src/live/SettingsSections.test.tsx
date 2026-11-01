@@ -338,7 +338,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     renderSettings({ variant: 'study' });
     fireEvent.click(screen.getByTestId('settings-nav-data-source'));
     expect(screen.getByTestId('study-candle-source-note')).toBeTruthy();
-    expect(screen.getByText('호가·체결 데이터 기준')).toBeTruthy();
+    expect(screen.getByText('호가·체결')).toBeTruthy();
     expect(screen.getByText('표시 소스')).toBeTruthy();
   });
 

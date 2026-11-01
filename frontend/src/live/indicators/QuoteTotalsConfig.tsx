@@ -1,4 +1,4 @@
-import SignColorLegend from './SignColorLegend';
+import { IndicatorSettingsGroup, IndicatorThemeColor } from './IndicatorSettingsLayout';
 import LineVisibilityRow from './LineVisibilityRow';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import ToggleRow from '../settings/ToggleRow';
@@ -29,11 +29,17 @@ export default function QuoteTotalsConfig() {
   const dayMaxAskStyle = useWindowIndicator((s) => s.quoteTotalsDayMaxAskStyle);
   const setDayMaxAskStyle = useIndicatorActions().setQuoteTotalsDayMaxAskStyle;
   return (
-    <div>
-      <SignColorLegend up="매수 총잔량" down="매도 총잔량" />
-      <LineVisibilityRow lineKey="quoteTotalsBid" label="매수 총잔량" />
-      <LineVisibilityRow lineKey="quoteTotalsAsk" label="매도 총잔량" />
-      <div className="border-b border-border my-3" />
+    <div className="indicator-settings-groups">
+      <IndicatorSettingsGroup label="조건">
+      {/* 호가단위 보정은 급증 마커의 하위 설정이라(enabledBy: surgeMarkerEnabled)
+          바로 뒤에 온다. 행 순서는 이 배열이 아니라 CHART_TOGGLES 등록 순서를 따른다. */}
+      <IndicatorPrefRows
+        toggleKeys={['surgeMarkerEnabled', 'quoteTotalsTickNormalize', 'quoteTotalsIntraMax']}
+      />
+      </IndicatorSettingsGroup>
+      <IndicatorSettingsGroup label="표시·스타일">
+      <LineVisibilityRow lineKey="quoteTotalsBid" label="매수 총잔량"><IndicatorThemeColor direction="up" /></LineVisibilityRow>
+      <LineVisibilityRow lineKey="quoteTotalsAsk" label="매도 총잔량"><IndicatorThemeColor direction="down" /></LineVisibilityRow>
       <ToggleRow
         label="현재값 수평선"
         description="현재 매수·매도 총잔량에 수평선을 표시합니다."
@@ -41,8 +47,7 @@ export default function QuoteTotalsConfig() {
         onToggle={() => setLevelEnabled(!levelEnabled)}
         testId="settings-toggle-quoteTotalsLevelLineEnabled"
       />
-      {levelEnabled && (
-        <div className="space-y-2 mt-2">
+      <fieldset disabled={!levelEnabled} key={`current-${levelEnabled}`} className="indicator-child-rows">
           <LineVisibilityRow lineKey="quoteTotalsBidLevel" label="매수 수평선">
             <MAStylePicker
               color={bidColor}
@@ -63,9 +68,7 @@ export default function QuoteTotalsConfig() {
               label="매도 수평선"
             />
           </LineVisibilityRow>
-        </div>
-      )}
-      <div className="border-b border-border my-3" />
+        </fieldset>
       <ToggleRow
         label="당일 최고 수평선"
         description="최근 거래일의 매수·매도 최대 총잔량에 선을 표시합니다. 마감 동시호가는 제외하며, 장 마감 후에도 날짜와 함께 유지합니다."
@@ -73,8 +76,7 @@ export default function QuoteTotalsConfig() {
         onToggle={() => setDayMaxEnabled(!dayMaxEnabled)}
         testId="settings-toggle-quoteTotalsDayMaxLineEnabled"
       />
-      {dayMaxEnabled && (
-        <div className="space-y-2 mt-2">
+      <fieldset disabled={!dayMaxEnabled} key={`maximum-${dayMaxEnabled}`} className="indicator-child-rows">
           <LineVisibilityRow lineKey="quoteTotalsDayMaxBid" label="매수 최고선">
             <MAStylePicker
               color={dayMaxBidColor}
@@ -95,13 +97,9 @@ export default function QuoteTotalsConfig() {
               label="매도 최고선"
             />
           </LineVisibilityRow>
-        </div>
-      )}      <div className="border-b border-border my-3" />
-      {/* 호가단위 보정은 급증 마커의 하위 설정이라(enabledBy: surgeMarkerEnabled)
-          바로 뒤에 온다. 행 순서는 이 배열이 아니라 CHART_TOGGLES 등록 순서를 따른다. */}
-      <IndicatorPrefRows
-        toggleKeys={['surgeMarkerEnabled', 'quoteTotalsTickNormalize', 'quoteTotalsIntraMax']}
-      />
+        </fieldset>
+      </IndicatorSettingsGroup>
+
     </div>
   );
 }

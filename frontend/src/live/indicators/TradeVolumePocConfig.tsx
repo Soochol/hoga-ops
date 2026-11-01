@@ -1,16 +1,7 @@
+import { IndicatorSettingsGroup, IndicatorRangeRow } from './IndicatorSettingsLayout';
+import { SettingsRow } from '../settings/SettingsRow';
 import ColorSwatchPicker from './ColorSwatchPicker';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
-
-function hexToRgba(hex: string, opacity: number): string {
-  const match = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!match) return `rgba(168, 85, 247, ${Math.max(0, Math.min(1, opacity))})`;
-  const raw = match[1];
-  const r = Number.parseInt(raw.slice(0, 2), 16);
-  const g = Number.parseInt(raw.slice(2, 4), 16);
-  const b = Number.parseInt(raw.slice(4, 6), 16);
-  const alpha = Math.max(0, Math.min(1, opacity));
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 export default function TradeVolumePocConfig() {
   const color = useWindowIndicator((s) => s.tradeVolumePocColor);
@@ -19,43 +10,13 @@ export default function TradeVolumePocConfig() {
   const setStyle = useIndicatorActions().setTradeVolumePocStyle;
   const opacityPct = Math.round(opacity * 100);
 
-  return (
-    <div>
-      <div className="mb-3">
-        <div className="text-xs text-fg-dim mb-1.5">색상</div>
-        <div className="flex items-center gap-2">
-          <div
-            aria-hidden="true"
-            className="h-6 w-10 rounded border border-border-subtle"
-            style={{ backgroundColor: hexToRgba(color, opacity), borderColor: color }}
-          />
-          <ColorSwatchPicker
-            label="당일 최대 매물대 색상"
-            color={color}
-            onChange={(next) => setStyle({ color: next })}
-          />
-        </div>
-      </div>
-      <div className="mb-3">
-        <div className="flex items-center justify-between text-xs text-fg-dim mb-1.5">
-          <span>투명도</span>
-          <span>{opacityPct}%</span>
-        </div>
-        <input
-          type="range"
-          min={5}
-          max={40}
-          step={1}
-          value={opacityPct}
-          aria-label="당일 최대 매물대 투명도"
-          className="w-full"
-          onChange={(event) => setStyle({ opacity: Number(event.currentTarget.value) / 100 })}
-        />
-      </div>
-      <div className="text-xs text-fg-dim leading-5">
-        <div>매물대 분포와 같은 {rangeCount}개 구간 중</div>
-        <div>체결량이 가장 많은 가격대를 밴드로 표시합니다.</div>
-      </div>
-    </div>
-  );
+  return <div className="indicator-settings-groups">
+    <IndicatorSettingsGroup label="표시·스타일">
+      <SettingsRow label="밴드 색상"><ColorSwatchPicker label="당일 최대 매물대 색상" color={color}
+        onChange={color => setStyle({ color })} /></SettingsRow>
+      <IndicatorRangeRow label="불투명도" ariaLabel="당일 최대 매물대 불투명도" value={opacityPct} min={5} max={40}
+        onChange={value => setStyle({ opacity: value / 100 })} />
+    </IndicatorSettingsGroup>
+    <p className="text-xs text-fg-dim">매물대 분포와 같은 {rangeCount}개 구간 중 체결량이 가장 많은 가격대를 밴드로 표시합니다.</p>
+  </div>;
 }

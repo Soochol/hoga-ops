@@ -9,7 +9,9 @@ import {
 import { useLiveSettings, usePatchLiveSettings, LIVE_SETTINGS_KEY, type LiveSettings, type LiveSettingsPatch } from '../../api/liveSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRecordSettingsUndo } from './settingsUndoContext';
-import { SettingsRow, ToggleSwitch } from './SettingsRow';
+import { SettingsRow } from './SettingsRow';
+import ToggleRow from './ToggleRow';
+import { SettingsGroup } from './SettingsGroup';
 
 function RoleSourceGroup({
   title,
@@ -20,18 +22,11 @@ function RoleSourceGroup({
   description: string;
   children: ReactNode;
 }) {
-  return (
-    <section className="border-t border-border pt-3 first:border-t-0 first:pt-0">
-      <div className="mb-1 text-sm font-medium text-fg">{title}</div>
-      <div className="mb-2 text-xs text-fg-dim">{description}</div>
-      {children}
-    </section>
-  );
+  const label = title === '캔들 데이터 기준' ? '캔들' : title === '호가·체결 데이터 기준' ? '호가·체결' : title;
+  return <SettingsGroup label={label} description={description}>{children}</SettingsGroup>;
 }
 
-/** 데이터소스 패널의 상위 구분.
- * RoleSourceGroup 제목(text-sm/medium/fg)보다 조용한 캡션 톤(dimmer/semibold)이라
- * 하위 그룹이 시각적으로 더 도드라진다. */
+/** 데이터소스 패널의 상위 구분. */
 function MacroGroupLabel({ children }: { children: ReactNode }) {
   return (
     <div className="text-xs font-semibold text-fg-dim">{children}</div>
@@ -45,7 +40,7 @@ function MacroGroupLabel({ children }: { children: ReactNode }) {
  * 같은 톤이라 "지금 적용되지 않는다" 계열 문구가 한 벌로 읽힌다. */
 function ScopeNote({ testId, children }: { testId: string; children: ReactNode }) {
   return (
-    <div className="mt-1 text-xs text-fg-dim" data-testid={testId}>
+    <div className="settings-scope-note mt-1 text-xs text-fg-dim" data-testid={testId}>
       {children}
     </div>
   );
@@ -101,20 +96,17 @@ export function DataSourceDetail() {
       )}
       {/* 표시 소스(읽기): 캔들·거래소·호가체결의 표시 기준. */}
       <MacroGroupLabel>표시 소스</MacroGroupLabel>
-      <div>
+      <div className="settings-property-groups">
         {/* 캔들 소스는 'REST 우회' 토글이 단독 결정(4옵션 캔들 라디오 폐기). */}
         <RoleSourceGroup
           title="캔들 데이터 기준"
           description="기본은 시세 서버입니다. 켜면 저장된 분봉·스크리너 일봉을 사용하며, 저장되지 않은 날짜는 비워둡니다. 오늘 실시간 시세는 계속 표시합니다."
         >
-          <SettingsRow label="저장 데이터로 캔들 보기" testId="kis-rest-bypass-row">
-            <ToggleSwitch
-              label="저장 데이터로 캔들 보기"
-              checked={restBypassEnabled}
-              disabled={patch.isPending}
-              onClick={() => change('rest_bypass_enabled', !restBypassEnabled)}
-            />
-          </SettingsRow>
+          <ToggleRow label="저장 데이터로 캔들 보기" testId="kis-rest-bypass-row"
+            description="저장되지 않은 날짜는 비워둡니다. 오늘 실시간 시세는 계속 표시합니다."
+            checked={restBypassEnabled} disabled={patch.isPending}
+            onToggle={() => change('rest_bypass_enabled', !restBypassEnabled)} />
+          {restBypassEnabled && <p className="settings-scope-note">미저장 날짜는 빈 화면 · 오늘 실시간 시세는 유지됩니다.</p>}
           <ScopeNote testId="study-candle-source-note">
             복기뷰는 항상 저장된 분봉·스크리너 일봉을 사용합니다.
           </ScopeNote>
@@ -124,12 +116,11 @@ export function DataSourceDetail() {
             이걸 뺐던 근거("복기가 값을 무시하니 아무 일도 안 하는 컨트롤")는 앱 전역
             설정에서는 성립하지 않으므로, 숨기는 대신 범위를 적는다(헤더 주석). */}
         <RoleSourceGroup title="거래소" description={LIVE_VENUE_HELP}>
-          {/* pb-2: 박스형 거래소 pill이 다음 그룹 구분선에 붙지 않도록 하단 여백. */}
-          <div className="flex flex-wrap gap-2 pb-2">
-            {LIVE_VENUE_OPTIONS.map((opt) => (
-              <LiveVenueRadio key={opt} value={opt} />
-            ))}
-          </div>
+          <SettingsRow label="실시간 거래소">
+            <div className="settings-venue-options">
+              {LIVE_VENUE_OPTIONS.map(opt => <LiveVenueRadio key={opt} value={opt} />)}
+            </div>
+          </SettingsRow>
           {/* 「복기뷰는 예외로 항상 KRX」 자체는 `LIVE_VENUE_HELP` 가 이미 말한다 —
               여기서 반복하지 않고 **이유**만 잇는다(실물 확인에서 잡은 중복). 이유가
               없으면 고정이 임의 제약으로 읽힌다. */}
@@ -146,14 +137,11 @@ export function DataSourceDetail() {
           title="호가·체결 데이터 기준"
           description="KRX 호가·체결에 더 촘촘한 hogaplay 저장 데이터를 우선 사용합니다. NXT·통합과 데이터 기준이 달라 지표를 직접 비교하기 어렵습니다."
         >
-          <SettingsRow label="KRX에서 hogaplay 우선" testId="krx-prefer-hogaplay-row">
-            <ToggleSwitch
-              label="KRX에서 hogaplay 우선"
-              checked={krxPreferHogaplay}
-              disabled={patch.isPending}
-              onClick={() => change('krx_prefer_hogaplay', !krxPreferHogaplay)}
-            />
-          </SettingsRow>
+          <ToggleRow label="KRX에서 hogaplay 우선" testId="krx-prefer-hogaplay-row"
+            description="KRX 호가·체결에 더 촘촘한 hogaplay 저장 데이터를 우선 사용합니다."
+            checked={krxPreferHogaplay} disabled={patch.isPending}
+            onToggle={() => change('krx_prefer_hogaplay', !krxPreferHogaplay)} />
+          <p className="settings-scope-note">KRX 전용 · NXT·통합과 데이터 기준이 다릅니다.</p>
           {/* 비활성화하지 **않는다** — 설정은 지속되는 값이고 거래소는 자주 바뀌므로,
               NXT 를 볼 때마다 회색이면 고장으로 읽힌다. 대신 지금 적용되지 않는다는
               사실만 알린다.
@@ -179,10 +167,8 @@ function LiveVenueRadio({ value }: { value: LiveVenueOption }) {
   const checked = venue === value;
   return (
     <label
-      className="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm cursor-pointer focus-within:outline focus-within:outline-2 focus-within:outline-offset-2"
+      className="settings-venue-option inline-flex items-center gap-2 text-sm cursor-pointer focus-within:outline focus-within:outline-2 focus-within:outline-offset-2"
       style={{
-        borderColor: checked ? 'var(--accent)' : 'var(--border)',
-        background: checked ? 'var(--bg-input)' : 'transparent',
         color: checked ? 'var(--fg)' : 'var(--fg-dim)',
         outlineColor: 'var(--accent)',
       }}

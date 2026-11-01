@@ -45,12 +45,12 @@ for (const initial of themes) {
     await page.getByRole('button', { name: '설정', exact: true }).first().click();
     const editor = page.getByTestId('settings-shell');
     await editor.getByTestId('settings-nav-theme').click();
-    const picker = editor.getByRole('group', { name: '테마 선택', exact: true });
-    await expect(picker.getByRole('button')).toHaveCount(7);
-    await expect(picker.getByRole('button', { name: initial.label, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const picker = editor.getByRole('combobox', { name: '테마 선택', exact: true });
+    await expect(picker.getByRole('option')).toHaveCount(7);
+    await expect(picker).toHaveValue(initial.id);
 
     const next = themes.find(theme => theme.id !== initial.id)!;
-    await picker.getByRole('button', { name: next.label, exact: true }).click();
+    await picker.selectOption(next.id);
     await expect(page.locator('html')).toHaveAttribute('data-theme', next.id);
     await expect(otherTab.locator('html')).toHaveAttribute('data-theme', next.id);
     await expect.poll(() => page.evaluate(() => {
@@ -61,7 +61,8 @@ for (const initial of themes) {
 
     for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 1000 });
-      await expect(picker.getByRole('button', { name: next.label, exact: true })).toBeVisible();
+      await expect(picker).toBeVisible();
+      await expect(picker).toHaveValue(next.id);
       expect(await picker.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -84,7 +85,7 @@ for (const initial of themes) {
     await expect(page.locator('html')).toHaveAttribute('data-theme', next.id);
     await page.getByRole('button', { name: '설정', exact: true }).first().click();
     await editor.getByTestId('settings-nav-theme').click();
-    await expect(picker.getByRole('button', { name: next.label, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(picker).toHaveValue(next.id);
     await otherTab.close();
   });
 }
@@ -125,7 +126,7 @@ test('Trading Desk changes presentation while retaining saved windows, groups an
   await page.getByRole('button', { name: '설정', exact: true }).first().click();
   const editor = page.getByTestId('settings-shell');
   await editor.getByTestId('settings-nav-theme').click();
-  await editor.getByRole('button', { name: 'Trading Desk', exact: true }).click();
+  await editor.getByRole('combobox', { name: '테마 선택', exact: true }).selectOption('trading-desk');
   await editor.getByRole('button', { name: '닫기', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'trading-desk');
   await expect(chart.getByTestId('titlebar-current-price')).toHaveCSS('font-size', '11.5px');

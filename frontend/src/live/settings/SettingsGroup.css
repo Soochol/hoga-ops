@@ -1,0 +1,12 @@
+.settings-property-groups { display: grid; gap: var(--space-md); }
+.settings-property-group { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); gap: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border); min-width: 0; }
+.settings-property-groups > .settings-property-group:first-child { border-top: 0; padding-top: 0; }
+.settings-property-group-unlabeled { grid-template-columns: minmax(0, 1fr); }
+.settings-property-group-label { margin: 0; padding-top: var(--space-xs); font-size: var(--text-xs); font-weight: 500; color: var(--fg-dim); word-break: keep-all; overflow-wrap: normal; }
+.settings-property-group-body { min-width: 0; container-type: inline-size; }
+.settings-property-group-body > :not([hidden]) ~ :not([hidden]) { margin-top: var(--space-xs); }
+.settings-property-group-label .settings-group-help { display: flex; margin-top: var(--space-2xs); }
+@container (max-width: 420px) {
+  .settings-property-group { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); }
+  .settings-property-group-label .settings-group-help { display: inline-flex; margin-top: 0; margin-left: var(--space-xs); vertical-align: middle; }
+}

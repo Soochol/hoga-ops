@@ -2,7 +2,8 @@ import { useState } from 'react';
 import LineVisibilityRow from './LineVisibilityRow';
 import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
-import MAStylePicker from './MAStylePicker';
+import ColorSwatchPicker from './ColorSwatchPicker';
+import { IndicatorSettingsGroup, IndicatorLineWidthRow } from './IndicatorSettingsLayout';
 import MASourceSelect from './MASourceSelect';
 import { IndicatorExplanation } from './IndicatorExplanation';
 
@@ -24,7 +25,8 @@ export default function BollingerConfig() {
   };
   const inputClass = 'w-24 text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums';
   return (
-    <div className="space-y-3">
+    <div className="indicator-settings-groups">
+      <IndicatorSettingsGroup label="계산">
       <label className="indicator-parameter-row flex items-center justify-between gap-2 text-sm text-fg">
         기간 (봉 개수)
         <input aria-label="볼린저 기간" type="number" min={MA_PERIOD_MIN} max={MA_PERIOD_MAX} step={1}
@@ -42,20 +44,22 @@ export default function BollingerConfig() {
         <MASourceSelect aria-label="볼린저 기준가" value={settings.bollingerSource}
           onChange={(source) => setBollingerSettings({ bollingerSource: source })} />
       </label>
+      </IndicatorSettingsGroup>
+      <IndicatorSettingsGroup label="표시·스타일">
       {([
         ['상단선', 'bollingerUpperColor', 'bollingerUpper'],
         ['중심선', 'bollingerMiddleColor', 'bollingerMiddle'],
         ['하단선', 'bollingerLowerColor', 'bollingerLower'],
       ] as const).map(([label, key, lineKey]) => (
         <LineVisibilityRow key={key} lineKey={lineKey} label={label} toggleLabel={`볼린저 ${label} 표시`}>
-          <MAStylePicker label={`볼린저 ${label}`} color={settings[key]} lineWidth={settings.bollingerLineWidth}
-            onChange={(patch) => setBollingerSettings({
-              ...(patch.color ? { [key]: patch.color } : {}),
-              ...(patch.lineWidth ? { bollingerLineWidth: patch.lineWidth } : {}),
-            })} />
+          <ColorSwatchPicker label={`볼린저 ${label}`} color={settings[key]}
+            onChange={color => setBollingerSettings({ [key]: color })} />
         </LineVisibilityRow>
       ))}
-      <IndicatorExplanation summary="세 선의 두께는 함께 적용됩니다.">중심선은 단순이동평균입니다. 설정한 봉 수가 쌓이면 표시되며, 세 선의 두께는 함께 적용됩니다.</IndicatorExplanation>
+      <IndicatorLineWidthRow label="볼린저" value={settings.bollingerLineWidth}
+        onChange={lineWidth => setBollingerSettings({ bollingerLineWidth: lineWidth })} />
+      </IndicatorSettingsGroup>
+      <IndicatorExplanation>중심선은 단순이동평균입니다. 설정한 봉 수가 쌓이면 표시되며, 세 선의 두께는 함께 적용됩니다.</IndicatorExplanation>
     </div>
   );
 }

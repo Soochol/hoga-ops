@@ -1,3 +1,4 @@
+import { IndicatorSettingsGroup } from './IndicatorSettingsLayout';
 import { MA_SLOT_LIMIT } from '../../state/livePage';
 import { AppIcon } from '../../ui/AppIcon';
 import MovingAverageRow from './MovingAverageRow';
@@ -11,13 +12,13 @@ export default function MovingAverageConfig() {
   const atLimit = configs.length >= MA_SLOT_LIMIT;
 
   return (
-    <div>
+    <IndicatorSettingsGroup label="이평선">
       {/* 열 헤더 — 행과 **같은 트랙 문자열**을 써서 열이 맞는다. 슬롯이 넷씩
           쌓이면 가운데 셀렉트가 무엇을 고르는 것인지(기준가) 행만 봐서는 알 수
           없었다. 슬롯이 하나도 없으면 헤더도 뜨지 않는다 — 빈 표의 머리만 남는
           것은 설명이 아니라 잔해다. */}
       {configs.length > 0 && (
-        <div className="ma-config-grid ma-config-heading"><span>표시</span><span>기간</span><span>기준가</span><span>색상 · 두께</span><span /></div>
+        <div className="ma-config-grid ma-config-heading"><span>기간</span><span>기준가</span><span>색상 · 두께</span><span>표시</span><span /></div>
       )}
       <div>
         {configs.map((cfg, i) => (
@@ -39,6 +40,6 @@ export default function MovingAverageConfig() {
       >
         <AppIcon name="plus" size={12} />기간 추가
       </button>
-    </div>
+    </IndicatorSettingsGroup>
   );
 }
