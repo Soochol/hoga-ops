@@ -1500,6 +1500,7 @@ describe('horizontal line placement', () => {
     { key: 'ㄸ', code: 'KeyE' },
   ])('Shift+E with key $key keeps drawing at the clicked price until Escape', (event) => {
     const { container } = mount();
+    useDrawingsStore.getState().setDefaults({ keepDrawing: true });
     const scope = '005930|minute';
     fireEvent.keyDown(window, { ...event, shiftKey: true });
     expect(useDrawingsStore.getState().activeTool).toBe('hline');

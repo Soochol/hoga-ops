@@ -1,3 +1,5 @@
+import { analysisTool, horizontalRayTool, type AnalysisDraft } from './analysisTools';
+import { analysisHandlePatch, isAnalysisDrawing, projectAnalysis, type AnalysisProjection } from './analysisGeometry';
 // frontend/src/chart/drawing/tools.ts
 //
 // Drawing Tool Spec — the deepened module that owns per-tool pointer
@@ -169,6 +171,7 @@ export type DragMode =
       pointerId: number;
       paneId: PaneId;
     }
+  | { kind: 'analysis-handle'; id: string; key: AnalysisProjection['handles'][number]['key']; pointerId: number; paneId: PaneId }
   | { kind: 'handle'; id: string; endpoint: 'a' | 'b'; pointerId: number; paneId: PaneId }
   // Rect corner drag. A corner is identified by which stored point supplies its
   // X (msKey) and which supplies its Y (priceKey): the top-left corner of a
@@ -354,6 +357,7 @@ export type ToolCtx = {
 
   /** Per-gesture draft refs. The overlay owns them as React refs; tools
    *  read and mutate `.current` directly. */
+  analysisDraft?: Ref<AnalysisDraft | null>;
   trendlineDraft: Ref<TrendlineDraft | null>;
   pencilDraft: Ref<PencilDraft | null>;
   rectDraft: Ref<RectDraft | null>;
@@ -513,6 +517,14 @@ export const selectTool: DrawingToolSpec = {
     // 정확성이 아니라 감촉이다: 게이트가 없으면 dragRef 가 서서 포인터를
     // 캡처하고, 사용자는 잡아서 끌고 있는데 도형만 안 따라오는 상태를 본다.
     const selected = isLocked(rawSelected) ? null : rawSelected;
+    if (selected && isAnalysisDrawing(selected)) {
+      const g = projectAnalysis(selected, { x: ctx.realMsToCanvasX, y: p => ctx.priceToCanvasY(p, selected.paneId), width: 0 });
+      const h = g.handles.find(h => Math.hypot(ctx.px-h.at.x,ctx.py-h.at.y) <= HIT_THRESHOLD.trendlineHandle);
+      if (h) {
+        ctx.dragRef.current = { kind: 'analysis-handle', id: selected.id, key: h.key, pointerId: ctx.pointerId, paneId: selected.paneId };
+        ctx.capturePointer(); return;
+      }
+    }
     // Trendline and measure share the 2-endpoint (a/b) handle-drag path.
     if (selected && (selected.kind === 'trendline' || selected.kind === 'measure')) {
       const xa = ctx.realMsToCanvasX(selected.a.realMs);
@@ -691,6 +703,15 @@ export const selectTool: DrawingToolSpec = {
         ctx.update(target.id, translateDrawing(target, shift, 0));
       }
       if (curRealMs != null) drag.lastRealMs = curRealMs;
+      return;
+    }
+    if (drag.kind === 'analysis-handle') {
+      const target = ctx.drawings.find(d => d.id === drag.id);
+      if (!target || !isAnalysisDrawing(target)) return;
+      const p = ctx.pixelToData(ctx.px, ctx.py, drag.paneId);
+      if (!p) return;
+      const patch = analysisHandlePatch(target, drag.key, p);
+      if (patch) ctx.update(target.id, patch);
       return;
     }
     if (drag.kind === 'rect-handle') {
@@ -1237,6 +1258,11 @@ export const eraserTool: DrawingToolSpec = {
  * 4 actual drawing tools (select sits separately under "선택").
  */
 export const TOOLS: Record<DrawingTool, DrawingToolSpec> = {
+  hray: horizontalRayTool,
+  fib: analysisTool('fib', '피보나치 되돌림'),
+  channel: analysisTool('channel', '평행 채널'),
+  'long-position': analysisTool('long-position', '롱 포지션'),
+  'short-position': analysisTool('short-position', '숏 포지션'),
   select: selectTool,
   hline: hlineTool,
   'day-high': dayExtremeTool('high'),
@@ -1253,6 +1279,7 @@ export const TOOLS: Record<DrawingTool, DrawingToolSpec> = {
 };
 
 export const DRAWABLE_TOOLS_ORDER: readonly DrawingTool[] = [
+  'hray', 'fib', 'channel', 'long-position', 'short-position',
   'hline',
   'day-high',
   'day-low',

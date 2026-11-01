@@ -2,6 +2,9 @@ import type { SVGProps } from 'react';
 
 /** Shared action geometry. Data graphics and user drawing strokes stay independent. */
 const glyphs = {
+  star: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z" />,
+  fib: <><path d="M3 4h18M3 9h18M3 13h18M3 16h18M3 20h18M4 20 20 4" /></>,
+  channel: <><path d="m3 15 15-12M6 21 21 9M4.5 18 19.5 6" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></>,
   layout: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
   arrowUpRight: <path d="m5 19 14-14M5 5h14v14" />,

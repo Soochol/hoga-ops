@@ -1,3 +1,4 @@
+import { DrawingDetails, drawingCoordinates } from './DrawingDetails';
 import { AppIcon } from '../ui/AppIcon';
 import { extendRectToTime } from './drawing/rectCoordinates';
 import { useCallback, useId, useMemo, useState, useRef, type MouseEvent as ReactMouseEvent } from 'react';
@@ -64,7 +65,7 @@ const previewBorderStyle = (style: LineStyle): 'solid' | 'dashed' | 'dotted' =>
   style === 'solid' ? 'solid' : style === 'dashed' ? 'dashed' : 'dotted';
 
 
-type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | 'align' | null;
+type OpenPopover = 'settings' | 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | 'align' | null;
 
 
 /** 참조 안정 빈 목록 — 셀렉터 fallback (EMPTY_SELECTION 과 같은 이유). */
@@ -905,6 +906,15 @@ export default function DrawingPropertyPanel({
 
   return (
     <DrawingPanelFrame key={positionKey} positionKey={positionKey} testId="drawing-property-panel" onMove={closePopover}>
+      <button type="button" aria-label="그리기 세부 설정" aria-expanded={shownPopover === 'settings'}
+        disabled={locked} onClick={event => togglePopover('settings', event)}
+        className="h-7 px-2 inline-flex items-center gap-1 rounded text-xs hover:bg-bg-input-hover disabled:opacity-40">
+        <AppIcon name="settings" size={16} />설정
+      </button>
+      {shownPopover === 'settings' && <DrawingPanelPopover popoverRef={popoverRef}
+        className="absolute z-40 rounded-lg border border-border bg-bg-card shadow-overlay text-xs">
+        <DrawingDetails key={drawing.id + JSON.stringify(drawingCoordinates(drawing))} drawing={drawing} scope={scope} />
+      </DrawingPanelPopover>}
       <button
         type="button"
         data-testid="drawing-color-trigger"

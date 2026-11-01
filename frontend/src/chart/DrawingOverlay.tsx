@@ -1,3 +1,4 @@
+import { drawingFromAnalysisDraft, type AnalysisDraft } from './drawing/analysisTools';
 import { translateRectBars } from './drawing/rectCoordinates';
 import { indexDayExtremes } from './drawing/dayExtremes';
 import { unixMsToKSTDate } from '../util/time';
@@ -135,6 +136,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const defaults = useDrawingsStore((s) => s.defaults);
 
+  const analysisDraft = useRef<AnalysisDraft | null>(null);
   const trendlineDraft = useRef<TrendlineDraft | null>(null);
   const pencilDraft = useRef<PencilDraft | null>(null);
   const rectDraft = useRef<RectDraft | null>(null);
@@ -159,6 +161,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
    *  right-click, pointercancel) clear the SAME list. Stable identity: the
    *  keydown effect below has `[]` deps and captures this once. */
   const gestureRefs = useRef<GestureRefs>({
+    analysisDraft,
     trendlineDraft,
     pencilDraft,
     rectDraft,
@@ -293,6 +296,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     lastRealMs,
     candles,
     drafts: {
+      analysis: analysisDraft.current ? drawingFromAnalysisDraft(analysisDraft.current) : null,
       trendline: trendlineDraft.current,
       rect: rectDraft.current,
       measure: measureDraft.current,
@@ -314,9 +318,20 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     for (const prim of primitivesRef.current.values()) prim.setSource(source);
   }, [paneSeries, drawings, selectedIdSet, defaults, axis, bucketMs, lastRealMs]);
 
+  useEffect(() => {
+    const cancel = () => {
+      const pointerId = analysisDraft.current?.pointerId;
+      analysisDraft.current = null;
+      if (pointerId != null) try { containerRef.current?.releasePointerCapture(pointerId); } catch { /* already released */ }
+      requestRedraw();
+    };
+    cancel(); window.addEventListener('blur', cancel);
+    return () => window.removeEventListener('blur', cancel);
+  }, [activeTool, scope, requestRedraw]);
+
   // Drop the ghost when switching away from the 1-click line tools.
   useEffect(() => {
-    if (activeTool !== 'hline' && activeTool !== 'vline' && ghostRef.current) {
+    if (activeTool !== 'hline' && activeTool !== 'vline' && activeTool !== 'hray' && ghostRef.current) {
       ghostRef.current = null;
       requestRedraw();
     }
@@ -337,8 +352,15 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       if (!isFocusedRef.current) return;
       const keyScope = scopeRef.current;
       if (keyScope == null) return;
+      if (e.key === 'Escape' && analysisDraft.current) {
+        const pointerId = analysisDraft.current.pointerId;
+        analysisDraft.current = null;
+        try { containerRef.current?.releasePointerCapture(pointerId); } catch { /* already released */ }
+        useDrawingsStore.getState().exitDrawingMode(); requestRedraw(); e.preventDefault(); return;
+      }
       if (
         dragRef.current ||
+        analysisDraft.current ||
         trendlineDraft.current ||
         pencilDraft.current ||
         rectDraft.current ||
@@ -537,6 +559,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     priceToCanvasY,
     paneIdAtY: (y) => projPaneIdAtY(chart, paneSeries, y),
     canvasWidth: containerRef.current?.clientWidth ?? 0,
+    paneBounds: paneId => ({ top: clampYToPane(paneId, -Infinity), bottom: clampYToPane(paneId, Infinity) }),
     // 확장된 사각형의 오른쪽 변이 **그려진 자리**에서 끝나도록. 컨테이너는 `inset-0`
     // 이라 가격축 거터까지 덮지만 렌더는 플롯 위에서 돈다 — 그 차이만큼 넓게 잡으면
     // 거터 위 클릭이 사각형에 먹혀 축 드래그가 죽는다(게이트 주석의 그 회귀).
@@ -605,8 +628,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         // (Re-edits take the `edit.id != null` branch above and keep their own.)
         fontSize: textStyle.fontSize,
       });
-      // 커밋 후 선택하지 않는다 — 다른 그리기 도구와 같은 규약(그리기 모드는
-      // 항상 그린다). 방금 쓴 라벨의 색·크기는 select 모드에서 고른다.
+      if (!store.defaults.keepDrawing) revertToSelectMode(id);
     }
     setTextEdit(null);
     setTextValue('');
@@ -637,13 +659,13 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
 
   /** The placement ghost uses the same unmodified coordinates as input. */
   const computeGhost = (px: number, py: number): GhostPreview | null => {
-    if (activeTool !== 'hline' && activeTool !== 'vline') return null;
+    if (activeTool !== 'hline' && activeTool !== 'vline' && activeTool !== 'hray') return null;
     const cursorPaneId = paneIdAtY(py);
     const style = defaults.styleByKind[activeTool];
     const price = canvasYToPrice(py, cursorPaneId);
     return {
       kind: activeTool, style, cursorPx: px, cursorPaneId, price,
-      realMs: activeTool === 'vline' ? rawCanvasXToRealMs(px) : null,
+      realMs: activeTool !== 'hline' ? rawCanvasXToRealMs(px) : null,
     };
   };
 
@@ -721,6 +743,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         || activeTool === 'day-open' || activeTool === 'day-close'
         ? defaults.styleByKind.hline
         : isDrawingKind(activeTool) ? defaults.styleByKind[activeTool] : INITIAL_STYLE,
+      analysisDraft,
       trendlineDraft,
       pencilDraft,
       rectDraft,
@@ -729,7 +752,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       dragRef,
       beginTextEdit,
       requestRedraw,
-      add: (d) => { if (scope != null) useDrawingsStore.getState().add(scope, d); },
+      add: (d) => {
+        if (scope == null) return;
+        const store = useDrawingsStore.getState(); store.add(scope, d);
+        if (!store.defaults.keepDrawing) revertToSelectMode(d.id);
+      },
       update: (id, patch) => { if (scope != null) useDrawingsStore.getState().update(scope, id, patch); },
       remove: (id) => { if (scope != null) useDrawingsStore.getState().remove(scope, id); },
       setSelected: (id) => { if (scope != null) useDrawingsStore.getState().setSelected(scope, id); },
@@ -867,7 +894,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     // 오버레이가 삼킨 이동을 lwc 로 되돌려 크로스헤어·툴팁·레전드를 살린다.
     forwardHoverToChart(e.clientX, e.clientY);
     // Track the cursor for the hline/vline ghost-line preview and repaint.
-    if (activeTool === 'hline' || activeTool === 'vline') {
+    if (activeTool === 'hline' || activeTool === 'vline' || activeTool === 'hray') {
       ghostRef.current = computeGhost(px, py);
       requestRedraw();
     }
@@ -895,7 +922,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const { marqueeCleared } = resetGestureRefs(gestureRefs);
     // 마퀴 상자는 DOM 이라 ref 를 비우는 것만으로는 화면에서 사라지지 않는다 —
     // `requestRedraw` 가 `syncMarqueeBox` 를 함께 돌린다.
-    if (marqueeCleared) requestRedraw();
+    void marqueeCleared;
+    requestRedraw();
   };
   const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
     resetGesture();
@@ -1429,6 +1457,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           {dayExtremesReady ? '날짜를 클릭하세요 · Esc 취소' : '분봉·일봉 데이터가 준비되면 날짜를 클릭하세요'}
         </div>
       )}
+      {activeTool === 'channel' && <div role="status" className="pointer-events-none absolute right-2 top-2 rounded bg-bg-card px-2 py-1 text-xs text-fg-dim">기준선 드래그 → 채널 폭 클릭 · Esc 취소</div>}
       {/* 마퀴(우측 드래그 / Shift+드래그) 선택 상자. 항상 마운트하고 display 로 여닫는다 —
           드래그마다 마운트/언마운트하면 첫 프레임이 React 렌더를 기다린다. */}
       <div

@@ -76,6 +76,12 @@ export interface PersistenceDecl {
 
 export const NON_DEFAULT_PERSISTENCE: readonly PersistenceDecl[] = [
   {
+    key: 'hoga.chart.trade.accounts.v1',
+    module: 'state/chartTradeAccounts.ts',
+    policy: 'shared-synced',
+    note: '차트 창별 매매 계좌 참조를 표시 프리셋과 분리해 보존하고, storage 이벤트로 열린 다른 탭의 같은 창 선택도 동기화한다.',
+  },
+  {
     key: 'heatmap.flowComparison.v1',
     module: 'state/heatmapFlowPrefs.ts',
     policy: 'shared-synced',

@@ -2,6 +2,7 @@
 
 import { projectRectX, rectCorner, type RectCorner } from './rectCoordinates';
 import { textLayout } from './textLayout';
+import { isAnalysisDrawing, projectAnalysis } from './analysisGeometry';
 import type { Drawing, PaneId } from './types';
 import { HIT_THRESHOLD, subBarOffsetPx, isLocked, isExtendedRight, rectXSpan } from './types';
 
@@ -97,6 +98,7 @@ export interface HitCoord {
    *  grabbable off its drawn position. Absent → offsets read as 0, the
    *  bar-anchored geometry, which is also what every pre-subX stub gets. */
   barPx?: number;
+  paneBounds?: (paneId: PaneId) => { top: number; bottom: number };
 }
 
 /** Topmost drawing under pixel (px, py), or null. Iterates back-to-front so a
@@ -116,6 +118,7 @@ export function hitTestDrawings(
   const cursorPaneId = coord.paneIdAtY(py);
   for (let i = drawings.length - 1; i >= 0; i--) {
     const d = drawings[i];
+    if (d.hidden) continue;
     // vline is pane-agnostic (spans every pane), so it's tested BEFORE the
     // per-pane filter — a cursor in any pane can grab it by horizontal
     // proximity alone.
@@ -125,6 +128,13 @@ export function hitTestDrawings(
       continue;
     }
     if (d.paneId !== cursorPaneId) continue;
+    if (isAnalysisDrawing(d) || (d.kind === 'trendline' && (d.extendLeft || d.extendRight))) {
+      const g = projectAnalysis(d, { x: coord.realMsToCanvasX, xClamped: coord.realMsToCanvasXClamped, y: p => coord.priceToCanvasY(p, d.paneId), width: coord.plotWidth ?? coord.canvasWidth ?? 0 });
+      if (g.segments.some(s => distanceToSegment({x:px,y:py}, s.a, s.b) <= HIT_THRESHOLD.trendlineBody)
+        || g.handles.some(h => Math.hypot(px-h.at.x,py-h.at.y) <= HIT_THRESHOLD.trendlineHandle)
+        || g.fills.some(f => pointInPolygon({x:px,y:py},f.points))) return d;
+      continue;
+    }
     if (d.kind === 'hline') {
       const y = coord.priceToCanvasY(d.price, d.paneId);
       if (y != null && distanceToHline({ x: px, y: py }, y) <= HIT_THRESHOLD.hline) return d;
@@ -204,6 +214,15 @@ export function marqueeRect(ax: number, ay: number, bx: number, by: number): Mar
     x2: Math.max(ax, bx),
     y2: Math.max(ay, by),
   };
+}
+
+function pointInPolygon(p: Pixel, vertices: readonly Pixel[]): boolean {
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const a = vertices[i], b = vertices[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x) inside = !inside;
+  }
+  return inside;
 }
 
 /** Axis-aligned box overlap (touching counts). */
@@ -316,6 +335,19 @@ export function drawingsInRect(
 }
 
 function hitsRect(coord: HitCoord, d: Drawing, rect: MarqueeRect): boolean {
+  if (d.hidden) return false;
+  if (d.kind !== 'vline' && coord.paneBounds) {
+    const bounds = coord.paneBounds(d.paneId);
+    if (rect.y2 < bounds.top || rect.y1 > bounds.bottom) return false;
+    rect = { ...rect, y1: Math.max(rect.y1, bounds.top), y2: Math.min(rect.y2, bounds.bottom) };
+  }
+  if (isAnalysisDrawing(d) || (d.kind === 'trendline' && (d.extendLeft || d.extendRight))) {
+    const g = projectAnalysis(d, { x: coord.realMsToCanvasX, xClamped: coord.realMsToCanvasXClamped, y: p => coord.priceToCanvasY(p, d.paneId), width: coord.plotWidth ?? coord.canvasWidth ?? 0 });
+    return g.segments.some(s => segmentIntersectsBox(s.a, s.b, rect))
+      || g.fills.some(f => pointInPolygon({ x: rect.x1, y: rect.y1 }, f.points)
+        || f.points.some(p => p.x >= rect.x1 && p.x <= rect.x2 && p.y >= rect.y1 && p.y <= rect.y2)
+        || f.points.some((p, i) => segmentIntersectsBox(p, f.points[(i + 1) % f.points.length], rect)));
+  }
   switch (d.kind) {
     case 'vline': {
       const x = coord.realMsToCanvasX(d.realMs);

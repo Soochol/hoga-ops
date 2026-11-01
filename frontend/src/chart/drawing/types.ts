@@ -21,6 +21,7 @@ export type Point = {
 export type DrawingId = string;
 
 export type DrawingKind =
+  | 'hray' | 'fib' | 'channel' | 'long-position' | 'short-position'
   | 'hline'
   | 'vline'
   | 'trendline'
@@ -30,6 +31,7 @@ export type DrawingKind =
   | 'pencil';
 
 export type DrawingTool =
+  | 'hray' | 'fib' | 'channel' | 'long-position' | 'short-position'
   | 'day-high'
   | 'day-low'
   | 'day-open'
@@ -70,6 +72,8 @@ export type BasePaneId =
   | 'peak-wall';
 
 interface DrawingBase {
+  name?: string;
+  hidden?: boolean;
   id: DrawingId;
   /** Stroke color as hex string. */
   color: string;
@@ -115,6 +119,8 @@ export interface Vline extends DrawingBase {
 }
 
 export interface Trendline extends DrawingBase {
+  extendLeft?: boolean;
+  extendRight?: boolean;
   /** Delta label and guide are opt-in; absent means hidden. */
   labelHidden?: boolean;
   kind: 'trendline';
@@ -271,7 +277,40 @@ export function rectXSpan(
   return { x1: Math.min(a, b), x2: extendRight ? Math.max(x2, rightEdge) : x2 };
 }
 
-export type Drawing = Hline | Vline | Trendline | Rect | Measure | Text | Pencil;
+export interface HorizontalRay extends DrawingBase {
+  kind: 'hray';
+  at: Point;
+  labelHidden?: boolean;
+}
+
+export const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1] as const;
+export interface Fib extends DrawingBase {
+  kind: 'fib';
+  a: Point;
+  b: Point;
+  levels: number[];
+  reverse?: boolean;
+  extendRight?: boolean;
+  labelHidden?: boolean;
+}
+export interface Channel extends DrawingBase {
+  kind: 'channel';
+  a: Point;
+  b: Point;
+  c: Point;
+  extendRight?: boolean;
+  middleHidden?: boolean;
+  fillOpacity: number;
+}
+export interface Position extends DrawingBase {
+  kind: 'long-position' | 'short-position';
+  a: Point;
+  b: Point;
+  stop: number;
+  quantity: number;
+}
+export type AnalysisDrawing = HorizontalRay | Fib | Channel | Position;
+export type Drawing = Hline | Vline | Trendline | Rect | Measure | Text | Pencil | AnalysisDrawing;
 
 /**
  * True iff `d` is a rectangle whose right edge is pinned to the canvas edge.
@@ -364,6 +403,9 @@ export type DrawingStyle = {
  *  rect). `hiddenAll` stays session-global (it is not a style), so
  *  it never lives inside a per-kind slot. See ADR-0032 / drawing-tools notes. */
 export type DrawingDefaults = {
+  templates?: { name: string; kind: DrawingKind; style: DrawingStyle }[];
+  favorites?: DrawingTool[];
+  keepDrawing?: boolean;
   /** One `DrawingStyle` per drawable kind. */
   styleByKind: Record<DrawingKind, DrawingStyle>;
   /** Hide all drawings without deleting them (rail eye toggle). */
@@ -384,6 +426,8 @@ export const INITIAL_STYLE: DrawingStyle = {
  *  source of truth for "which kinds have a style slot". */
 export function initialStyleByKind(): Record<DrawingKind, DrawingStyle> {
   return {
+    hray: { ...INITIAL_STYLE }, fib: { ...INITIAL_STYLE }, channel: { ...INITIAL_STYLE },
+    'long-position': { ...INITIAL_STYLE }, 'short-position': { ...INITIAL_STYLE },
     hline: { ...INITIAL_STYLE },
     vline: { ...INITIAL_STYLE },
     trendline: { ...INITIAL_STYLE },

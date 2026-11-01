@@ -20,6 +20,7 @@ import { subBarOffsetPx, isLocked, isExtendedRight, rectXSpan } from './types';
 import type { TrendlineDraft } from './tools';
 import { type FutureBand, dragBarDomain } from './chartCoordinates';
 import { catmullRomSpans } from './smooth';
+import { isAnalysisDrawing, projectAnalysis } from './analysisGeometry';
 
 /**
  * Everything a render needs to place a Drawing on SOME canvas, with the
@@ -593,10 +594,11 @@ function renderTrendline(
   if (ya == null || yb == null) return; // price scale not ready
   const x1 = xa ?? 0;
   const x2 = xb ?? ctx.width;
+  const extended = projectAnalysis(t, { x: ctx.realMsToX, xClamped: ctx.realMsToXClamped, y: ctx.priceToY, width: ctx.width }).segments[0];
   drawHaloThenMain(c, t, selected, () => {
     c.beginPath();
-    c.moveTo(x1, ya);
-    c.lineTo(x2, yb);
+    c.moveTo(extended?.a.x ?? x1, extended?.a.y ?? ya);
+    c.lineTo(extended?.b.x ?? x2, extended?.b.y ?? yb);
     c.stroke();
   });
   if (showHandles(t, handles)) {
@@ -741,7 +743,7 @@ function renderPencil(
  * as a price.
  */
 export type GhostPreview = {
-  kind: 'hline' | 'vline';
+  kind: 'hline' | 'vline' | 'hray';
   style: DrawingStyle;
   /** Cursor X — identical in chart-global and pane-local space (see above). */
   cursorPx: number;
@@ -759,7 +761,7 @@ export function renderGhostPreview(
   ctx: ProjectCtx,
   ghost: GhostPreview,
 ) {
-  const isHline = ghost.kind === 'hline';
+  const isHline = ghost.kind !== 'vline';
   const onCursorPane = ghost.cursorPaneId === ctx.paneId;
   // An hline ghost lives on one pane; a vline ghost spans them all.
   if (isHline && !onCursorPane) return;
@@ -775,7 +777,7 @@ export function renderGhostPreview(
   c.setLineDash([5, 4]);
   c.beginPath();
   if (isHline) {
-    c.moveTo(0, y as number);
+    c.moveTo(ghost.kind === 'hray' ? x : 0, y as number);
     c.lineTo(ctx.width, y as number);
   } else {
     c.moveTo(x, 0);
@@ -829,6 +831,13 @@ export function lockBadgeAnchor(ctx: ProjectCtx, d: Drawing): { x: number; y: nu
     }
     case 'text':
       return at(d.at.realMs, d.at.price);
+    case 'hray':
+      return at(d.at.realMs, d.at.price);
+    case 'fib':
+    case 'channel':
+    case 'long-position':
+    case 'short-position':
+      return at(d.a.realMs, d.a.price);
     case 'pencil': {
       const first = d.points[0];
       return first == null ? null : at(first.realMs, first.price);
@@ -867,7 +876,30 @@ export function renderDrawing(
   selected: boolean,
   opts: { vlineTimeBadge?: boolean; handles?: boolean } = {},
 ) {
+  if (d.hidden) return;
+  if (isAnalysisDrawing(d)) {
+    const geometry = projectAnalysis(d, { x: ctx.realMsToX, xClamped: ctx.realMsToXClamped, y: ctx.priceToY, width: ctx.width });
+    for (const fill of geometry.fills) {
+      c.save(); c.fillStyle = fill.role === 'target' ? MEASURE_UP : fill.role === 'stop' ? MEASURE_DOWN : d.color;
+      c.globalAlpha = fill.opacity;
+      c.beginPath(); fill.points.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y));
+      c.closePath(); c.fill(); c.restore();
+    }
+    drawHaloThenMain(c, d, selected, () => {
+      for (const s of geometry.segments) {
+        c.setLineDash(s.dashed ? [4, 4] : dashPattern(d.lineStyle, d.width));
+        c.beginPath(); c.moveTo(s.a.x, s.a.y); c.lineTo(s.b.x, s.b.y); c.stroke();
+      }
+    });
+    for (const label of geometry.labels) {
+      drawFloatingLabel(c, ctx.width, label.at.x + 4, label.at.y - 10, label.text, d.color);
+    }
+    if (showHandles(d, opts.handles ?? selected)) {
+      for (const h of geometry.handles) drawHandle(c, d.color, h.at.x, h.at.y);
+    }
+  } else {
   renderDrawingBody(c, ctx, d, selected, opts);
+  }
   // Drawn last so it is never overpainted by the shape it labels. A locked
   // drawing is otherwise identifiable only by selecting it (ADR-0164).
   if (isLocked(d)) {

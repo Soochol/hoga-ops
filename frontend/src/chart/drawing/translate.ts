@@ -40,6 +40,10 @@ export function translateDrawing(
 ): Partial<Drawing> {
   const shift = toShiftFn(dMs);
   switch (drawing.kind) {
+    case 'hray': return { at: { realMs: shift(drawing.at.realMs), price: drawing.at.price + dPrice } };
+    case 'fib': return { a: { realMs: shift(drawing.a.realMs), price: drawing.a.price + dPrice }, b: { realMs: shift(drawing.b.realMs), price: drawing.b.price + dPrice } };
+    case 'channel': return { a: { realMs: shift(drawing.a.realMs), price: drawing.a.price + dPrice }, b: { realMs: shift(drawing.b.realMs), price: drawing.b.price + dPrice }, c: { realMs: shift(drawing.c.realMs), price: drawing.c.price + dPrice } };
+    case 'long-position': case 'short-position': return { a: { realMs: shift(drawing.a.realMs), price: drawing.a.price + dPrice }, b: { realMs: shift(drawing.b.realMs), price: drawing.b.price + dPrice }, stop: drawing.stop + dPrice };
     case 'hline':
       return translateHline(drawing, dPrice);
     case 'vline':
@@ -115,6 +119,10 @@ function translatePencil(p: Pencil, shift: ShiftFn, dPrice: number): Partial<Pen
  *  has none, so it returns [] and group translation skips its vertical component. */
 export function pricesOf(drawing: Drawing): number[] {
   switch (drawing.kind) {
+    case 'hray': return [drawing.at.price];
+    case 'fib': return [drawing.a.price, drawing.b.price];
+    case 'channel': return [drawing.a.price, drawing.b.price, drawing.c.price];
+    case 'long-position': case 'short-position': return [drawing.a.price, drawing.b.price, drawing.stop];
     case 'hline':
       return [drawing.price];
     case 'vline':
@@ -137,6 +145,9 @@ export function pricesOf(drawing: Drawing): number[] {
  *  which is correct (hline discards the horizontal shift entirely). */
 export function timesOf(drawing: Drawing): number[] {
   switch (drawing.kind) {
+    case 'hray': return [drawing.at.realMs];
+    case 'fib': case 'long-position': case 'short-position': return [drawing.a.realMs, drawing.b.realMs];
+    case 'channel': return [drawing.a.realMs, drawing.b.realMs, drawing.c.realMs];
     case 'hline':
       return [];
     case 'vline':

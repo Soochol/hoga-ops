@@ -1,4 +1,6 @@
 // frontend/src/chart/drawing/persistence.ts
+import { validPosition } from './analysisGeometry';
+import { FIB_LEVELS } from './types';
 import { finiteSubX } from './rectCoordinates';
 import type { Drawing, DrawingKind, LineStyle, PaneId, DrawingDefaults, DrawingStyle } from './types';
 import { PANE_SPECS } from '../paneSpecs';
@@ -37,6 +39,7 @@ export function parseScope(scope: string): { code: string; slot: DrawingSlot | n
  *  or a shape written by a newer build) are dropped on load rather than
  *  crashing the exhaustive render/hit-test switches. */
 const KNOWN_KINDS: ReadonlySet<string> = new Set<DrawingKind>([
+  'hray', 'fib', 'channel', 'long-position', 'short-position',
   'hline',
   'vline',
   'trendline',
@@ -161,7 +164,22 @@ export function normalizeItems(raw: unknown): Drawing[] {
         if (subX) normalized.subX = subX;
         else delete normalized.subX;
       }
+      if (normalized.hidden !== true) delete normalized.hidden;
+      if (typeof normalized.name !== 'string') delete normalized.name;
+      if (normalized.kind === 'fib') {
+        normalized.levels = Array.isArray(normalized.levels)
+          ? [...new Set(normalized.levels.filter(v => typeof v === 'number' && Number.isFinite(v) && v >= -10 && v <= 10))].slice(0, 24)
+          : [...FIB_LEVELS];
+      }
+      if (normalized.kind === 'channel' && !Number.isFinite(normalized.fillOpacity)) normalized.fillOpacity = 0.1;
       return normalized;
+    }).filter(item => {
+      const point = (v: unknown) => v != null && typeof v === 'object' && Number.isFinite((v as {realMs:number}).realMs) && Number.isFinite((v as {price:number}).price);
+      if (item.kind === 'hray') return point(item.at);
+      if (item.kind === 'fib') return point(item.a) && point(item.b);
+      if (item.kind === 'channel') return point(item.a) && point(item.b) && point(item.c);
+      if (item.kind === 'long-position' || item.kind === 'short-position') return point(item.a) && point(item.b) && validPosition(item);
+      return true;
     });
 }
 
@@ -233,6 +251,9 @@ function mergeV2(value: Partial<DrawingDefaults>): DrawingDefaults {
   return {
     styleByKind,
     hiddenAll: value.hiddenAll ?? false,
+    ...(typeof value.keepDrawing === 'boolean' ? { keepDrawing: value.keepDrawing } : {}),
+    ...(Array.isArray(value.favorites) ? { favorites: [...new Set(value.favorites.filter(k => KNOWN_KINDS.has(k) || ['day-high', 'day-low', 'day-open', 'day-close', 'eraser'].includes(k)))] } : {}),
+    ...(Array.isArray(value.templates) ? { templates: value.templates.filter(t => t && typeof t.name === 'string' && KNOWN_KINDS.has(t.kind) && t.style && typeof t.style.color === 'string').slice(0, 32) } : {}),
   };
 }
 

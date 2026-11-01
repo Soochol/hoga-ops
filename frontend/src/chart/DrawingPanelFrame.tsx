@@ -158,6 +158,7 @@ export function DrawingPanelPopover({ popoverRef, className, children }: {
     if (!menu || !toolbar || !chart) return;
     const place = () => {
       const owner = chart.getBoundingClientRect(), bar = toolbar.getBoundingClientRect();
+      menu.style.maxWidth = `${Math.max(0, owner.width - MARGIN * 2)}px`;
       const below = Math.max(0, owner.bottom - bar.bottom - MARGIN - 4);
       const above = Math.max(0, bar.top - owner.top - MARGIN - 4);
       const flip = menu.scrollHeight > below && above > below;

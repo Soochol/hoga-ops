@@ -331,7 +331,7 @@ type Actions = {
   redo(scope: string): void;
   /** Patch the SESSION-global visibility flag (hiddenAll). Style is per-kind now
    *  and goes through `setKindStyle`. */
-  setDefaults(patch: Partial<Pick<DrawingDefaults, 'hiddenAll'>>): void;
+  setDefaults(patch: Partial<Pick<DrawingDefaults, 'hiddenAll' | 'favorites' | 'keepDrawing' | 'templates'>>): void;
   /** Patch one tool's sticky style (the per-kind last-used). */
   setKindStyle(kind: DrawingKind, patch: Partial<DrawingStyle>): void;
   /** The last-used style for `kind` (non-reactive read; used to seed new drawings). */
@@ -519,7 +519,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         if ('fillOpacity' in patch && typeof (patch as { fillOpacity?: unknown }).fillOpacity === 'number') {
           stylePatch.fillOpacity = (patch as { fillOpacity: number }).fillOpacity;
         }
-        if ((edited.kind === 'hline' || edited.kind === 'trendline') && 'labelHidden' in patch && typeof patch.labelHidden === 'boolean') {
+        if ((edited.kind === 'hline' || edited.kind === 'trendline' || edited.kind === 'hray' || edited.kind === 'fib') && 'labelHidden' in patch && typeof patch.labelHidden === 'boolean') {
           stylePatch.labelHidden = patch.labelHidden;
         }
         if (Object.keys(stylePatch).length > 0) get().setKindStyle(edited.kind, stylePatch);
