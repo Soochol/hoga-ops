@@ -1,0 +1,89 @@
+{
+  "checked_at_kst": "2026-11-01T19:43:55.637241+09:00",
+  "validated_code_commit": "3de069842a9f8dbd27f0b338c8738ddaf09888c4",
+  "base_commit": "d4263f71ef0d21ab54245237b7689a5344fbd582",
+  "input_fingerprint": {
+    "files": 2945,
+    "sha256": "86166ee1a060adfc1ebba59a6f3adf255f435e41ece3f8dd63deb5d1e09824bf",
+    "algorithm": "sha256(sorted(path + NUL + sha256(bytes)))"
+  },
+  "backend_result_reuse": {
+    "tested_commit": "8dcce2f0cc20c89c175b775805fee3ffeda34e1d",
+    "input_fingerprint": {
+      "files": 1025,
+      "sha256": "688792ec5d633799d848a509e04ca86e9a7f648322a5ec6187b39cb5861882bf",
+      "algorithm": "sha256(sorted(path + NUL + sha256(bytes)))"
+    },
+    "proof": "git diff of all backend sources, tests, configuration, API mirrors and wire-test TS references against the current head is empty; subsequent changes affect only frontend cutoff labels and documentation"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock' tests/api/test_screener*.py tests/unit/live/test_kiwoom_rankings.py tests/unit/live/test_ranking_pagination.py tests/unit/live/test_program_rankings.py tests/unit/live/test_investor_rankings.py tests/unit/live/test_ranking_session_history.py tests/unit/api/test_rest_wire_schema_contract.py --tb=short",
+      "cwd": ".",
+      "result": "1404 passed; 64 pre-existing Polars sortedness warnings",
+      "log_sha256": "d72902788671a90424ce11a168dcc8b7660cf5cefae3221cc4b804b0fd75a88b"
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed; app, unit tests and E2E TypeScript projects",
+      "log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250"
+    },
+    {
+      "command": "npx vitest run src/screener src/pages/Screener.test.tsx src/rightrail/RankingDrawer.test.tsx src/api/liveRankings.test.tsx src/api/screener.test.ts src/state/screenerPanel.test.ts",
+      "cwd": "frontend",
+      "result": "57 files, 550 tests passed",
+      "log_sha256": "80a68279a0dba0fd4edb1c8b51b1bfffc68ba9fb34106fef36d359270b210c13"
+    },
+    {
+      "command": "npx playwright test screener-market-ranks.spec.ts screener-change-pct-rank.spec.ts screener-trade-value-rank.spec.ts ranking-session.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "6 passed; Vite production build also passed in webServer startup",
+      "log_sha256": "96cc1f58ca3ddc2eba8bf016471aa0369e3bd46896b10f0f8cd1309757888490"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_rest_wire_schema_contract.py --tb=short",
+      "cwd": ".",
+      "result": "12 passed after intentional direction union mismatch was rejected and restored",
+      "log_sha256": "45fd7b9f88f15f654f91cc6ef0a9fff54fa3e181132e33323a632c8b2784e9c5"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed; no violations"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "python": "3.14.7",
+    "uv": "0.11.8",
+    "ruff": "0.15.13",
+    "node": "24.13.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "vendor_credentials": "empty worktree .env; explicit blank credentials in Playwright configuration; providers mocked in API tests",
+    "e2e_workers": 1,
+    "backend_port": 20318,
+    "frontend_port": 21318,
+    "data_dir": "/tmp/hoga-e2e-data-318"
+  },
+  "coverage": [
+    "Five rank sources under legacy/v2, AND/OR, original rank after ETF filtering, strict limits and defaults.",
+    "Up/down query isolation and shared maximum limits; old upward condition exclusion identity preserved.",
+    "Actual HTTP save/read/scan serialization, monetary/quantity/percentage units and null investor ranking venue.",
+    "Dated holiday restoration for all new kinds, failures instead of fabricated zero matches, replay restrictions.",
+    "Real browser add/edit/boundary/save/reload/evidence actions and old upward-to-downward transition.",
+    "Same-day mixed cadence timestamps do not claim previous-day data.",
+    "Wire enum guard rejected intentional guard_probe direction member; original source restored.",
+    "Investor condition screenshot visually inspected; no clipping or custom design tokens introduced."
+  ],
+  "notes": [
+    "Upstream price/MA conditions and settings group changes from main d4263f71e were merged before final checks.",
+    "No live credentials or production data were used for implementation verification.",
+    "Running user servers and the installed application were not restarted or deployed.",
+    "This record is documentation only and does not modify fingerprinted test inputs."
+  ]
+}

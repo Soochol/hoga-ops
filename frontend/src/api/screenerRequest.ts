@@ -10,6 +10,10 @@ function candleDefaults<T extends object>(input: T) {
 // Normalize those differences before associating a server job with the editor.
 function conditionParams(leaf: ConditionLeaf) {
   switch (leaf.type) {
+    case 'change_pct_rank': {
+      const { direction, ...params } = leaf.params;
+      return direction === 'down' ? { ...params, direction } : params;
+    }
     case 'new_high_vol': {
       if ('mode' in leaf.params && leaf.params.record_period.unit !== 'bars') return leaf.params;
       return candleDefaults(leaf.params);

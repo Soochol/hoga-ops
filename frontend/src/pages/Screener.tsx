@@ -1,3 +1,4 @@
+import { rankingBasisText } from '../api/rankingBasis';
 import { AppIcon } from '../ui/AppIcon';
 import { isRankCondition } from '../screener/rankConditions';
 import { CalculationNotice } from "../screener/CalculationNotice";
@@ -239,6 +240,7 @@ export function Screener() {
             warnings: res.warnings,
             historyCoverage: res.history_coverage,
             barCoverage: res.bar_coverage, dailyCoverage: res.daily_coverage,
+            rankBasis: res.rank_basis,
             calculation: res.calculation,
             depthValues: res.depth_values ?? null,
             scannedAtMs: res.scanned_at_ms ?? Date.now(),
@@ -454,13 +456,14 @@ export function Screener() {
           </div>
 
           <CalculationNotice scan={lastScan} />
+          {lastScan?.rankBasis && <p className="text-xs text-fg-dim">{rankingBasisText(lastScan.rankBasis)}</p>}
           {notSeeded ? (
             <InlineState tone="warn" className="text-sm">
               <span className="font-semibold">시드 필요</span> 스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요
             </InlineState>
           ) : screener.isError ? (
             <InlineState tone="error" role="alert" className="text-sm">
-              <span className="font-semibold">조회 실패 — 조건을 확인하세요</span>
+              <span className="font-semibold">조회할 수 없습니다</span>
               {screener.error instanceof Error && screener.error.message && (
                 <span className="ml-2 text-fg-dim">{screener.error.message}</span>
               )}

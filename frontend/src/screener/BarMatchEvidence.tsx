@@ -2,6 +2,8 @@ import { maOperandLabel } from './maLabels';
 import { operandLabel, PRICE_COMPARE_SYMBOLS } from './priceCompareLabels';
 import { CHANGE_REFERENCE_LABELS } from './candleLabels';
 import type { ScreenerOccurrence } from '../api/screener';
+import { MARKET_RANK_LABELS } from './rankConditions';
+
 import { VolumeConditionEvidence } from './VolumeConditionEvidence';
 
 const PRICE = { open: '시가', high: '고가', low: '저가', close: '종가' };
@@ -12,9 +14,23 @@ export function BarMatchEvidence({ event }: { event: ScreenerOccurrence }) {
   const changeRank = event.change_pct_rank_match;
   if (changeRank) return <span className="font-data text-xs text-fg-dim">
     {{ all: '전체', kospi: '코스피', kosdaq: '코스닥' }[changeRank.market]}
-    {' · '}{changeRank.venue === 'UN' ? '통합' : changeRank.venue} · 등락률 {changeRank.rank}위
+    {' · '}{changeRank.venue === 'UN' ? '통합' : changeRank.venue} · {changeRank.direction === 'down' ? '하락률' : '등락률'} {changeRank.rank}위
     {' · '}전일 종가 대비 {changeRank.change_pct > 0 ? '+' : ''}{won(changeRank.change_pct)}%
     {' · '}{new Date(changeRank.fetched_at_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} 조회
+  </span>;
+  const marketRank = event.market_rank_match;
+  if (marketRank) return <span className="font-data text-xs text-fg-dim">
+    {{ all: '전체', kospi: '코스피', kosdaq: '코스닥' }[marketRank.market]}
+    {' · '}{marketRank.venue == null
+      ? `순위: 거래소 지정 미지원 · 표시 시세: ${marketRank.quote_venue === 'UN' ? '통합' : marketRank.quote_venue ?? '—'}`
+      : marketRank.venue === 'UN' ? '통합' : marketRank.venue}
+    {' · '}{MARKET_RANK_LABELS[marketRank.kind]} {marketRank.rank}위
+    {marketRank.kind === 'surge' && ` · 1분 기준 급증률 ${marketRank.volume_surge_pct == null ? '—' : won(marketRank.volume_surge_pct)}%`}
+    {marketRank.kind === 'volume' && ` · 당일 거래량 ${marketRank.volume == null ? '—' : won(marketRank.volume)}주`}
+    {['program', 'institution', 'foreign'].includes(marketRank.kind) &&
+      ` · ${marketRank.kind === 'program' ? '' : '장중 추정 ' }순매수금액 ${marketRank.net_buy_won == null ? '—' : `${won(marketRank.net_buy_won / 1e8)}억`}`}
+    {' · '}기준일 {event.date}
+    {' · '}{new Date(marketRank.fetched_at_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} 관측
   </span>;
   const rank = event.trade_value_rank_match;
   if (rank) return <span className="font-data text-xs text-fg-dim">

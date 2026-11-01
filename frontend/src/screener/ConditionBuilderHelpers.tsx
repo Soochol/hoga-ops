@@ -16,4 +16,6 @@ export const CONDITION_GROUPS: Array<[string, ConditionType[]]> = [
   ['이동평균', ['ma', 'ma_compare', 'ma_compare_period', 'ma_cross', 'ma_cross_period', 'ma_gap', 'ma_gap_period', 'ma_slope', 'ma_slope_period']],
   ['볼린저밴드', ['bollinger_breakout_today', 'bollinger_breakout', 'bollinger_position_today', 'bollinger_position']],
   ['등락률', ['change_pct', 'change_pct_period', 'change_pct_rank']],
+  ['거래량 순위', ['volume_surge_rank', 'volume_rank']],
+  ['수급 순위', ['program_net_buy_rank', 'institution_net_buy_rank', 'foreign_net_buy_rank']],
 ];

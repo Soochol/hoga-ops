@@ -77,6 +77,27 @@ def test_missing_bar_invalidates_only_windows_that_depend_on_it():
     assert [event.bar_start_ms for event in events] == [data[3].start_ms]
 
 
+def test_historical_open_bar_cannot_use_final_volume_from_the_future():
+    condition = leaf(timeframe="5m", lookback=1, period=2)
+    data = series([10, 20]) + [bars.VolumeBar(stamp() + 600_000, 9999, is_open=True)]
+    cutoff = dt.datetime(2026, 7, 30, 10, 12, tzinfo=KST)
+    historical, reason = bars._historical_minutes(data, True, cutoff)
+    events, complete = bars.records(condition, historical, fetched_at_ms=0)
+    assert reason == "historical_open_bar_unavailable" and not complete and events == []
+    # Choosing only completed bars is reconstructible at this historical time.
+    closed = leaf(timeframe="5m", lookback=1, period=2, include_open_bar=False)
+    events, complete = bars.records(closed, historical, fetched_at_ms=0)
+    assert complete and events[0].bar_match.volume == 20
+
+
+def test_historical_minutes_never_silently_fall_back_to_another_day():
+    condition = leaf(timeframe="5m", lookback=1, period=2)
+    cutoff = dt.datetime(2026, 7, 31, 16, tzinfo=KST)
+    historical, reason = bars._historical_minutes(series([10, 9999]), True, cutoff)
+    assert reason == "minute_date_mismatch"
+    assert bars.records(condition, historical, fetched_at_ms=0) == ([], False)
+
+
 @pytest.mark.parametrize("timeframe, dates, volumes, expected", [
     ("W", ["2026-07-20", "2026-07-21", "2026-07-27", "2026-07-28"], [10, 20, 15, 20], [30, 35]),
     ("M", ["2026-06-01", "2026-06-02", "2026-07-01", "2026-07-02"], [10, 20, 15, 20], [30, 35]),

@@ -9,7 +9,7 @@ describe('catalog', () => {
        'bid_depth_new_high', 'bid_depth_new_high_period', 'bid_depth_renewal',
        'bollinger_breakout', 'bollinger_breakout_today', 'bollinger_position', 'bollinger_position_today', 'change_pct', 'change_pct_period', 'change_pct_rank', 'high_off_peak', 'ma', 'ma_compare', 'ma_compare_period', 'ma_cross', 'ma_cross_period', 'ma_gap', 'ma_gap_period', 'ma_slope', 'ma_slope_period', 'new_high',
        'new_high_today', 'new_high_vol', 'new_high_vol_today', 'price_compare', 'price_compare_period', 'price_range',
-       'trade_value', 'trade_value_period', 'trade_value_rank', 'volume_compare', 'volume_compare_period', 'volume_range', 'volume_range_period', 'volume_ratio', 'volume_ratio_period']);
+       'trade_value', 'trade_value_period', 'trade_value_rank', 'volume_compare', 'volume_compare_period', 'volume_range', 'volume_range_period', 'volume_ratio', 'volume_ratio_period', 'volume_surge_rank', 'volume_rank', 'program_net_buy_rank', 'institution_net_buy_rank', 'foreign_net_buy_rank'].sort());
   });
   it('카탈로그의 모든 조건이 추가 메뉴 그룹에 정확히 한 번 들어간다', () => {
     // 메뉴는 CONDITION_GROUPS 만 보고 그린다. 카탈로그에만 있고 그룹에 없는 조건은

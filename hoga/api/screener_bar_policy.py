@@ -1,5 +1,6 @@
 """Shared selection policy for candle conditions and the SQL boundary."""
 from hoga.api.models import (
+    SCREENER_RANK_TYPES,
     BarTradeValueRangeParams,
     BarVolumeRangeParams,
     ChangePctRangeParams,
@@ -14,7 +15,7 @@ from hoga.api.models import (
 )
 
 BOLLINGER_POSITION_TYPES = frozenset({"bollinger_position_today", "bollinger_position"})
-RANK_TYPES = frozenset({"trade_value_rank", "change_pct_rank"})
+RANK_TYPES = SCREENER_RANK_TYPES
 BOLLINGER_TYPES = BOLLINGER_POSITION_TYPES | frozenset({"bollinger_breakout_today", "bollinger_breakout"})
 
 MA_TYPES = frozenset({"ma_compare", "ma_compare_period", "ma_cross", "ma_cross_period",

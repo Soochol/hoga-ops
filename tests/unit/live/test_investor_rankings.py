@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import httpx
 import pytest
 
-from hoga.live import kiwoom_rankings, kiwoom_rest_runtime
+from hoga.live import kiwoom_rankings, kiwoom_rest_runtime, ranking_session
 from hoga.live.kiwoom_rankings import KiwoomRankingsError, KiwoomRankingsFetcher, parse_rankings
 from hoga.live.kiwoom_rest import KiwoomRestClient
 from hoga.util.timeenc import KST
@@ -47,7 +47,7 @@ def quote_response(request):
 @pytest.fixture
 def make_fetcher(monkeypatch, tmp_path):
     resources = []
-    monkeypatch.setattr(kiwoom_rankings, "is_trading_day", lambda _day: True)
+    monkeypatch.setattr(ranking_session.trading_days, "is_trading_day", lambda *_: True)
 
     def make(handler, *, now=None):
         client = KiwoomRestClient(TokenProvider(), transport=httpx.MockTransport(handler))
@@ -182,7 +182,7 @@ async def test_cache_singleflight_kind_market_quotevenue_day_and_offhours(make_f
     assert await fetcher.get("institution", "all", "up", "NXT") is snap
     assert len(seen) == 12
     now += timedelta(days=1)
-    monkeypatch.setattr(kiwoom_rankings, "is_trading_day", lambda _day: False)
+    monkeypatch.setattr(ranking_session.trading_days, "is_trading_day", lambda *_: False)
     snap = await fetcher.get("institution", "all", "up", "NXT")
     assert snap.rows == () and not snap.market_open and snap.venue is None
     assert len(seen) == 12

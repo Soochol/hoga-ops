@@ -1,0 +1,91 @@
+{
+  "checked_at_kst": "2026-11-01T19:18:20.324165+09:00",
+  "validated_code_commit": "cc19be6443eb947eb34fd6b5f0f3a64c039a45df",
+  "base_commit": "7783d0429890c44770bb1b49c696ec2ef6116e1d",
+  "input_fingerprint": {
+    "algorithm": "sha256(path + NUL + sha256(file bytes)) over sorted Git-tracked paths",
+    "scope": [
+      "hoga/",
+      "frontend/",
+      "tests/",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version",
+      "ruff.toml",
+      ".github/"
+    ],
+    "files": 2923,
+    "sha256": "976132b82db46e35ca3bb2fb9840dbaa0a40c96a01fe1c64bfdf5e7e1046a419"
+  },
+  "environment": {
+    "platform": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+    "python": "3.14.7",
+    "uv": "0.11.8",
+    "ruff": "0.15.13",
+    "node": "24.13.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "credentials": "empty worktree .env; explicit blank vendor credentials in Playwright config",
+    "e2e": {
+      "workers": 1,
+      "backend_port": 20318,
+      "frontend_port": 21318,
+      "data": "/tmp/hoga-e2e-data-318",
+      "dist": "/tmp/hoga-e2e-dist-318"
+    }
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed; no violations"
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock' tests/api/test_screener*.py tests/unit/live/test_kiwoom_rankings.py tests/unit/live/test_ranking_pagination.py tests/unit/live/test_program_rankings.py tests/unit/live/test_investor_rankings.py tests/unit/live/test_ranking_session_history.py tests/unit/api/test_rest_wire_schema_contract.py --tb=short",
+      "cwd": ".",
+      "result": "1016 passed; 64 existing Polars sortedness warnings",
+      "log_sha256": "943b3a04fb35a1d1cc2cd50fc11ca63667afd67d03aca52d0955a1d439dbcdb5"
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed; app, unit and E2E TypeScript projects",
+      "log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250"
+    },
+    {
+      "command": "npx vitest run src/screener src/pages/Screener.test.tsx src/rightrail/RankingDrawer.test.tsx src/api/liveRankings.test.tsx src/api/screener.test.ts src/state/screenerPanel.test.ts",
+      "cwd": "frontend",
+      "result": "54 files, 507 tests passed",
+      "log_sha256": "3f3ae8369dbeebddd5acbc0c7fd2489962c37d08eeca4b40be3dce5c33e5bf47"
+    },
+    {
+      "command": "npx playwright test ranking-session.spec.ts screener-auto-basis.spec.ts ranking-pagination.spec.ts screener-change-pct-period.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "7 passed; Vite production build passed as part of webServer startup",
+      "log_sha256": "903328186f6876e129af2c9e9c4e03b3cf2666aee38346bce65f34b5d6422215"
+    },
+    {
+      "command": "temporary RankingBasisSource guard_probe union member, then test_wire_enum_members_match_frontend_union",
+      "result": "intentional mismatch rejected with exit 1; exact original source restored"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_rest_wire_schema_contract.py --tb=short",
+      "cwd": ".",
+      "result": "12 passed after probe restoration",
+      "log_sha256": "a55008558b16efa472a966dd2ef7c433f08ed791352647d727405b9f3c9712ed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "scope_notes": [
+    "Latest fetched main 7783d0429 was merged before these final checks; period-change conditions included.",
+    "Earlier pre-merge successes were not substituted for affected merged-code tests.",
+    "One known existing catalog test expected lookback for rank inputs; upstream main independently fixed it to top_n.",
+    "Only credentials-free fixtures and mock providers were used for implementation verification.",
+    "Browser screenshot holiday-ranking.png was visually inspected after successful E2E.",
+    "This validation record is documentation only; its commit does not change the fingerprinted test inputs.",
+    "Running user servers and the installed app were not restarted or deployed."
+  ]
+}

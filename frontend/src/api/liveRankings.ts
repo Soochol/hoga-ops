@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { apiCall } from './client';
 import { useLiveVenueStore } from '../state/liveVenue';
+import type { RankingBasis } from './rankingBasis';
 
 export type RankingKind = 'change' | 'surge' | 'volume' | 'value' | 'program' | 'institution' | 'foreign';
 export type RankingMarket = 'all' | 'kospi' | 'kosdaq';
@@ -30,6 +31,7 @@ export interface RankingRow {
 }
 
 interface RankingsResponseWire {
+  basis?: RankingBasis | null;
   kind: RankingKind;
   market: RankingMarket;
   direction: RankingDirection;
@@ -46,6 +48,7 @@ interface RankingsResponseWire {
 }
 
 export interface RankingsView {
+  basis?: RankingBasis | null;
   rows: RankingRow[];
   marketOpen: boolean;
   fetchedAtMs: number;
@@ -108,7 +111,11 @@ export function useLiveRankings(params: {
       if (excludeEtf) q.set('exclude_etf', 'true');
       if (expandable) q.set('limit', String(limit));
       const res = await apiCall<RankingsResponseWire>(`/api/live/rankings?${q}`, { signal });
+      if (limit > initialLimit && res.basis?.source === 'unavailable') {
+        throw new Error(res.basis.message ?? '요청한 범위의 저장된 순위가 없습니다');
+      }
       return {
+        basis: res.basis,
         rows: res.rows,
         marketOpen: res.market_open,
         fetchedAtMs: res.fetched_at_ms,
