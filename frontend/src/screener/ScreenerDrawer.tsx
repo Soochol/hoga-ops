@@ -412,7 +412,7 @@ export function ScreenerDrawer() {
             않는다 — 시작이 즉시 조회를 겸한다. 시작 = 새 검색이므로 이전 결과를 먼저
             버린다(옛 리스트가 조회 왕복 동안 새 결과인 척 남지 않게). */}
         {continuousNeedsScope && <p className="text-xs text-fg-dim">
-          1분봉 실시간 감시는 조건검색의 사전필터에서 관심종목·히트맵 범위를 선택하세요.
+          1·3·5·10분봉 실시간 감시는 조건검색의 사전필터에서 관심종목·히트맵 범위를 선택하세요.
         </p>}
         {!monitoringActive ? (
           <ToolbarButton

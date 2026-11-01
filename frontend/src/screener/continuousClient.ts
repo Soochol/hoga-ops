@@ -3,7 +3,7 @@ import { readContinuousResult, type ScanRequest, type ScreenerResponse, type Con
 
 export const hasContinuousVolume = (request: ScanRequest) => request.conditions.some(leaf =>
   (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
-  && 'timeframe' in leaf.params && leaf.params.timeframe === '1m' && !('mode' in leaf.params));
+  && 'timeframe' in leaf.params && ['1m', '3m', '5m', '10m'].includes(leaf.params.timeframe ?? '') && !('mode' in leaf.params));
 
 /** One owner per mounted scan surface; no global cross-tab ownership. */
 export class ContinuousClient {

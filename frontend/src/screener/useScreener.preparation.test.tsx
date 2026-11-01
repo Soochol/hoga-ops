@@ -52,9 +52,9 @@ it('does not collect when editing, delivers partial results only for the current
   expect(runPreparedScan).toHaveBeenCalledTimes(1);
 });
 
-it('retains the scoped minute monitor after preparing the daily part of a mixed request', async () => {
+it.each(['1m', '3m', '5m', '10m'] as const)('retains the scoped %s monitor after preparing the daily part of a mixed request', async timeframe => {
   const mixed: ScanRequest = { ...body, universe: { scopes: ['watchlist'] }, conditions: [
-    ...body.conditions, { id: 'minute', type: 'new_high_vol_today', params: { timeframe: '1m', period: 3 } },
+    ...body.conditions, { id: 'minute', type: 'new_high_vol_today', params: { timeframe, period: 3 } },
   ] };
   vi.mocked(runPreparedScan).mockResolvedValue(response);
   const live = { ...response, basis_at_ms: 123 };
@@ -63,5 +63,16 @@ it('retains the scoped minute monitor after preparing the daily part of a mixed 
   await act(async () => { expect(await result.current.mutateAsync(mixed)).toEqual(live); });
   expect(runPreparedScan).toHaveBeenCalledTimes(1);
   expect(liveScan).toHaveBeenCalledWith(mixed);
+  unmount();
+});
+
+it.each(['3m', '5m', '10m'] as const)('keeps unscoped %s on the full API preparation path', async timeframe => {
+  const unscoped: ScanRequest = { universe: {}, conditions: [{ id: 'minute', type: 'new_high_vol_today',
+    params: { timeframe, period: 3 } }] };
+  vi.mocked(runPreparedScan).mockResolvedValue(response);
+  const { result, unmount } = renderHook(() => useScreener({ continuous: true, anchor: 'unscoped' }), { wrapper });
+  await act(async () => { expect(await result.current.mutateAsync(unscoped)).toEqual(response); });
+  expect(runPreparedScan).toHaveBeenCalledTimes(1);
+  expect(liveScan).not.toHaveBeenCalled();
   unmount();
 });

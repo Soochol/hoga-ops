@@ -871,3 +871,22 @@ async def test_daily_false_branch_prunes_only_safe_minute_candidates(corpus, day
         assert len(done.result.rows) == (2 if expression == 'A OR B' else 0)
     finally:
         await owner.close()
+
+
+@pytest.mark.parametrize('policy', ['legacy_v1', 'separate_bases_v2'])
+async def test_multiframe_full_search_reuses_raw_day_across_new_runs(corpus, day_vendor, policy):
+    codes = [f'{index:06d}' for index in range(1, 131)]
+    seed_minutes(corpus, codes)
+    req = minute_request(calculation_policy=policy, conditions=[dict(id=tf, type='volume_range',
+        params=dict(timeframe=tf, min_volume=1, include_open_bar=False)) for tf in ['3m', '5m', '10m']])
+    owner = ScreenerRuns(corpus, clock=lambda: NOW)
+    try:
+        first = await finish(owner, await owner.start(req))
+        assert first.evaluated == 130 and len(day_vendor) == 130
+        assert {params['tic_scope'] for params in day_vendor} == {'1'}
+        # A distinct request must execute, rather than reuse the run ID itself.
+        second = await finish(owner, await owner.start(req.model_copy(update={'limit': 1})))
+        assert second.id != first.id and second.evaluated == 130
+        assert len(day_vendor) == 130
+    finally:
+        await owner.close()

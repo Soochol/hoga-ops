@@ -20,6 +20,7 @@ from hoga.live.data_warnings import make_data_warning
 from hoga.live.error_policy import classify_live_error
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
 from hoga.live.kiwoom_errors import KiwoomRateLimitError, KiwoomRestError
+from hoga.live.minute_day_cache import MinuteBar, MinuteSnapshot, close_ms, shared_days
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.single_flight import SingleFlight
 from hoga.live.venue import LiveVenuePolicy, Venue, session_window_hhmmss
@@ -348,6 +349,13 @@ class LiveMinuteCandleBackfill:
                 continue
 
             state, today_bars = self._cache.get_today_tri(policy, code)
+            if state != 'hit':
+                cached = shared_days.get(shared_days.key(self._data_dir, policy, code, date_s),
+                    int(monotonic_time.time()*1000), full_session=True, ttl_ms=60_000)
+                if cached is not None and cached.chart_bars:
+                    today_bars = [dict(t_ms=b.start_ms, open=b.open, high=b.high, low=b.low,
+                                       close=b.close, volume=b.volume) for b in cached.chart_bars]
+                    state = 'hit'
             session_venue = policy
             if state in {"miss", "negative"} and policy != "KRX":
                 state, today_bars = self._cache.get_today_tri("KRX", code)
@@ -511,19 +519,7 @@ class LiveMinuteCandleBackfill:
                     if today_client is None:
                         warnings.append(self._rate_limit_aborted_warning(date_s))
                         continue
-                    bars = await kiwoom_access.run_with_capacity(
-                        self._scheduler,
-                        key=("live-candle-backfill", "minute", venue, code, date_s, "today"),
-                        api_id=kiwoom_minute_candles.API_ID,
-                        priority="user_visible",
-                        client=today_client,
-                        fetch_fn=lambda c: self._fetch_past_today_once(
-                            c,
-                            venue,
-                            code,
-                            date_s,  # noqa: B023 — await 로 즉시 소비 — 지연 실행 아님
-                        ),
-                    )
+                    bars = await self._shared_today(today_client, venue, code, date_s)
                     if bars:
                         self._cache.store_today(venue, code, bars)
                         fresh_dates.append(date_s)
@@ -910,6 +906,23 @@ class LiveMinuteCandleBackfill:
             self._fresh_past_fetch_errors += 1
             raise
 
+    async def _shared_today(self, client, venue, code, date_s):
+        now_ms = int(monotonic_time.time() * 1000)
+        key = shared_days.key(self._data_dir, venue, code, date_s)
+        async def load():
+            rows = await kiwoom_access.run_with_capacity(
+                self._scheduler,
+                key=('live-candle-backfill', 'minute', venue, code, date_s, 'today'),
+                api_id=kiwoom_minute_candles.API_ID, priority='user_visible', client=client,
+                fetch_fn=lambda c: self._fetch_past_today_once(c, venue, code, date_s))
+            data = [MinuteBar(row['t_ms'], row['volume'],
+                min(row['t_ms'] + 60_000, close_ms(date_s)) > now_ms, open=row['open'], high=row['high'],
+                low=row['low'], close=row['close']) for row in rows]
+            return MinuteSnapshot(data, now_ms, chart_bars=data, cutoff_ms=now_ms)
+        snapshot = await shared_days.obtain(key, now_ms, load, full_session=True, ttl_ms=60_000, allow_advance=True)
+        return [dict(t_ms=b.start_ms, open=b.open, high=b.high, low=b.low, close=b.close, volume=b.volume)
+                for b in (snapshot.chart_bars if snapshot.chart_bars is not None else snapshot.bars)]
+
     async def _fetch_past_today_once(
         self,
         client,
@@ -924,7 +937,7 @@ class LiveMinuteCandleBackfill:
         표시 버킷 집계는 프론트 `aggregateCandles` 가 과거분과 함께 처리한다.
         """
         raw = await kiwoom_minute_candles.fetch_day(
-            client, code, date_s, venue=venue,
+            client, code, date_s, venue=venue, strict=True,
         )
         return [_candle_to_dict(c) for c in raw]
     def _rate_limited_now(self) -> bool:

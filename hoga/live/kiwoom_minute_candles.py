@@ -352,6 +352,7 @@ async def fetch_day(
     *,
     venue: Venue = "KRX",
     tic_scope: str = TIC_SCOPE_1MIN,
+    strict: bool = False,
 ) -> list[LiveCandle]:
     """그 날 하루치. **한 콜이면 끝난다.**
 
@@ -377,6 +378,8 @@ async def fetch_day(
     bars: list[LiveCandle] = []
     for row in page.rows:
         parsed = parse_row(row)
+        if strict and (parsed is None or not str(row.get('trde_qty', '')).strip().lstrip('+-').isdigit()):
+            raise ValueError('invalid_rows')
         if parsed is None or parsed[0] != date_yyyymmdd:
             continue
         bars.append(parsed[1])
