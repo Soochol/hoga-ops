@@ -1,8 +1,8 @@
 # 조건 설정 모달과 사용자 조합식
 
 2026-11-01 사용자 승인안 구현. 작업 브랜치는 `codex/screener-condition-editor`이며
-base/head는 `f5f24862fda4952281cd2da85278bdc5907e665f`다. 최종 검증 시
-`git fetch origin main`으로 같은 기준임을 확인했다. 이 문서는 미커밋 구현의 검증 기록이다.
+초기 base는 `f5f24862fda4952281cd2da85278bdc5907e665f`다. 아래 초기 검증은
+미커밋 구현에 대한 기록이며, 마지막 절에 PR head와 최신 main 통합 검증을 연결한다.
 
 ## 구현
 
@@ -69,3 +69,33 @@ production 사본 `/tmp/hoga-e2e-dist-16`을 사용했다. 사용자 5173/8000 �
 - frontend 전체 소스·단위/E2E·픽스처·public·package/lockfile·설정, 2092파일: `a4ecce0e55c5a63a34e51d3e02d59cca1f17ffc8898ff5312c51bda9070a554a`
 - backend(hoga·tests·pyproject·uv.lock·Ruff/Python 설정), 872파일: `0a25a46f3be87e393d099e06541b0d0a623c23657957580db505728a56eb53ef`
 - CONTEXT.md·DESIGN.md, 2파일: `0a524ba02e3cf9779a1fbd1128c101af162832d27ba01b887cc7397f62e81f0c`
+
+## PR·머지 시 최신 main 통합 검증
+
+구현 커밋 `a20933388`에 main `c25c83abc565716e696025f6aab6f80695372484`
+(#2366 그리기 도구)를 반영한 입력은 `bccf2e71fb8f183c693aaa4f3cc039b7f1091095`다.
+문서 두 곳의 추가는 자동 병합되었고, 제품 소스 충돌은 없다. main의 AppIcon 추가와
+차트/그리기 도구 변경을 포함한 상태에서 다음을 재검증했다. 이후 커밋은 이 기록만
+보강하며 제품·검사 입력은 동일하다.
+
+- `npm run typecheck`: 앱·단위·E2E 세 프로젝트 통과.
+- `npx vitest run src/screener src/pages/Screener.test.tsx src/ui/ModalShell.test.tsx src/chart/drawing src/chart/DrawingDetails.test.tsx src/chart/DrawingPropertyPanel.test.tsx`:
+  78파일·1,318개 통과, 21.00초. 초기 전체 프론트 검증 중 이외의 입력은 변경되지 않아
+  나머지 통과 결과를 재사용한다.
+- `npx playwright test screener-condition-editor.spec.ts screener-expression.spec.ts drawing-advanced.spec.ts --reporter=line`:
+  9개 통과, 1.3분. 기존 조건 편집·수식/숫자 오류·드래그·복원과 main이 추가한
+  확장/경로/콜아웃/회귀 채널 및 취소 제스처를 함께 확인했다.
+  선행 production build와 dist 사본 준비도 성공했다.
+- 기존 E2E 중 추가 main의 영향이 없는 10개 조건 가족 시나리오 통과 기록을 재사용한다.
+  backend 코드·테스트·의존성·설정 지문이 초기 검증과 같아 Ruff·조합식 API 34개 결과도
+  재사용한다. API 계약과 벤더 조회 흐름은 이번 PR에서 바꾸지 않았다.
+- 포트 20016/21016, 새 데이터 `/tmp/hoga-e2e-data-16-condition-editor-pr`,
+  새 dist `/tmp/hoga-e2e-dist-16-condition-editor-pr`을 사용했다. 도구 버전·빈 자격증명·
+  Chrome 단일 워커는 초기 검증과 같다.
+- 열린 PR #2367이 볼륨 E2E와 공통 문서에도 변경을 제안한 것을 확인했다. 이 검증의
+  main 기준에는 아직 포함되지 않으며, 머지 직전 main을 다시 대조한다.
+
+최신 main 통합 입력 지문(위와 같은 산식):
+
+- frontend, 2098파일: `43800e4e7b0c45a65adef1276f67fac3d2d4313f03b7b84d2a65757eab0ce687`
+- backend, 872파일: `0a25a46f3be87e393d099e06541b0d0a623c23657957580db505728a56eb53ef`
