@@ -1,3 +1,5 @@
+import { advancedTool, pathTool, type AdvancedDraft } from './advancedTools';
+import type { DrawingCandle } from './types';
 import { analysisTool, horizontalRayTool, type AnalysisDraft } from './analysisTools';
 import { analysisHandlePatch, isAnalysisDrawing, projectAnalysis, type AnalysisProjection } from './analysisGeometry';
 // frontend/src/chart/drawing/tools.ts
@@ -140,6 +142,7 @@ export const MARQUEE_MIN_PX = 4;
 /** Active drag in select mode. `body` translates the whole drawing;
  *  `handle` moves one endpoint of a trendline only. */
 export type DragMode =
+  | { kind: 'callout-box'; id: string; pointerId: number; paneId: PaneId; startPx: number; startPy: number; offsetX: number; offsetY: number }
   | {
       kind: 'body';
       id: string;
@@ -288,6 +291,7 @@ export type ToolCtx = {
   /** Convert a stored realMs to a canvas X. Returns null when the realMs
    *  falls outside every Virtual Axis segment. */
   realMsToCanvasX(realMs: number): number | null;
+  realMsToCanvasXClamped?(realMs: number): number | null;
   /** Convert a canvas X to realMs — the time-only half of `pixelToData`, used
    *  by the vline tool and vline body-drag (price-independent). Returns null in
    *  the chart's empty band where the time axis can't resolve. */
@@ -357,6 +361,8 @@ export type ToolCtx = {
 
   /** Per-gesture draft refs. The overlay owns them as React refs; tools
    *  read and mutate `.current` directly. */
+  advancedDraft?: Ref<AdvancedDraft | null>;
+  candles?: readonly DrawingCandle[];
   analysisDraft?: Ref<AnalysisDraft | null>;
   trendlineDraft: Ref<TrendlineDraft | null>;
   pencilDraft: Ref<PencilDraft | null>;
@@ -369,6 +375,7 @@ export type ToolCtx = {
    *  are the raw click pixels so the overlay can always position the DOM
    *  <input> at the click even if `at` can't be re-projected. The overlay owns
    *  the input (IME-safe) and commits on Enter/blur. */
+  beginCalloutEdit?(at: Point, paneId: PaneId, offsetX: number, offsetY: number): void;
   beginTextEdit(at: Point, paneId: PaneId, px: number, py: number): void;
 
   /** Effective bar width in canvas px, or null when the time scale can't
@@ -518,9 +525,14 @@ export const selectTool: DrawingToolSpec = {
     // 캡처하고, 사용자는 잡아서 끌고 있는데 도형만 안 따라오는 상태를 본다.
     const selected = isLocked(rawSelected) ? null : rawSelected;
     if (selected && isAnalysisDrawing(selected)) {
-      const g = projectAnalysis(selected, { x: ctx.realMsToCanvasX, y: p => ctx.priceToCanvasY(p, selected.paneId), width: 0 });
+      const g = projectAnalysis(selected, { x: ctx.realMsToCanvasX, xClamped: ctx.realMsToCanvasXClamped, y: p => ctx.priceToCanvasY(p, selected.paneId), width: 0, candles: ctx.candles });
       const h = g.handles.find(h => Math.hypot(ctx.px-h.at.x,ctx.py-h.at.y) <= HIT_THRESHOLD.trendlineHandle);
       if (h) {
+        if (selected.kind === 'callout' && h.key === 'box') {
+          ctx.dragRef.current = { kind: 'callout-box', id: selected.id, pointerId: ctx.pointerId, paneId: selected.paneId,
+            startPx: ctx.px, startPy: ctx.py, offsetX: selected.offsetX, offsetY: selected.offsetY };
+          ctx.capturePointer(); return;
+        }
         ctx.dragRef.current = { kind: 'analysis-handle', id: selected.id, key: h.key, pointerId: ctx.pointerId, paneId: selected.paneId };
         ctx.capturePointer(); return;
       }
@@ -603,6 +615,11 @@ export const selectTool: DrawingToolSpec = {
       return;
     }
     ctx.setSelected(hit?.id ?? null);
+    if (hit?.kind === 'callout') {
+      ctx.dragRef.current = { kind: 'callout-box', id: hit.id, pointerId: ctx.pointerId, paneId: hit.paneId,
+        startPx: ctx.px, startPy: ctx.py, offsetX: hit.offsetX, offsetY: hit.offsetY };
+      ctx.capturePointer(); return;
+    }
     // vline body drag is horizontal-only and resolved off the time axis alone,
     // so it doesn't touch (and doesn't require) any pane's price scale.
     if (hit && hit.kind === 'vline') {
@@ -705,12 +722,16 @@ export const selectTool: DrawingToolSpec = {
       if (curRealMs != null) drag.lastRealMs = curRealMs;
       return;
     }
+    if (drag.kind === 'callout-box') {
+      ctx.update(drag.id, { offsetX: drag.offsetX + ctx.px - drag.startPx, offsetY: drag.offsetY + ctx.py - drag.startPy });
+      return;
+    }
     if (drag.kind === 'analysis-handle') {
       const target = ctx.drawings.find(d => d.id === drag.id);
       if (!target || !isAnalysisDrawing(target)) return;
       const p = ctx.pixelToData(ctx.px, ctx.py, drag.paneId);
       if (!p) return;
-      const patch = analysisHandlePatch(target, drag.key, p);
+      const patch = analysisHandlePatch(target, drag.key, p, ctx.candles);
       if (patch) ctx.update(target.id, patch);
       return;
     }
@@ -1258,6 +1279,10 @@ export const eraserTool: DrawingToolSpec = {
  * 4 actual drawing tools (select sits separately under "선택").
  */
 export const TOOLS: Record<DrawingTool, DrawingToolSpec> = {
+  'fib-extension': advancedTool('fib-extension', '피보나치 확장'),
+  path: pathTool,
+  callout: advancedTool('callout', '콜아웃'),
+  regression: advancedTool('regression', '회귀 채널'),
   hray: horizontalRayTool,
   fib: analysisTool('fib', '피보나치 되돌림'),
   channel: analysisTool('channel', '평행 채널'),
@@ -1279,6 +1304,7 @@ export const TOOLS: Record<DrawingTool, DrawingToolSpec> = {
 };
 
 export const DRAWABLE_TOOLS_ORDER: readonly DrawingTool[] = [
+  'fib-extension', 'path', 'callout', 'regression',
   'hray', 'fib', 'channel', 'long-position', 'short-position',
   'hline',
   'day-high',
