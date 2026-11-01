@@ -1,7 +1,8 @@
 import { createContext, useContext, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import './SettingsControls.css';
+import './CompactSettings.css';
 
-/** Compact window editors use delegated tooltips; other editors keep prose. */
+/** Compact editors use delegated tooltips; other editors keep prose. */
 export const SettingsDescriptionTooltipContext = createContext(false);
 export const CompactSettingsContext = createContext(false);
 

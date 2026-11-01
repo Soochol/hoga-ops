@@ -654,9 +654,9 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText('기준 시각')).toBeTruthy();
     expect(screen.queryByText(new RegExp(['부재', '시간'].join(' ')))).toBeNull();
     expect(screen.getByText('표시 방향')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '둘다' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '매수만' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '매도만' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '둘다' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '매수만' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '매도만' })).toBeTruthy();
     expect(screen.getByText('매수 색상')).toBeTruthy();
     expect(screen.getByText('매도 색상')).toBeTruthy();
   });
@@ -1105,7 +1105,7 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByRole('button', { name: '±0.5%' })).toBeNull();
     expect(screen.queryByRole('button', { name: '±1%' })).toBeNull();
     expect(screen.getByRole('button', { name: '당일 최대 매물대 색상 선택' })).toBeTruthy();
-    expect(screen.getByRole('slider', { name: '당일 최대 매물대 투명도' })).toBeTruthy();
+    expect(screen.getByRole('slider', { name: '당일 최대 매물대 불투명도' })).toBeTruthy();
     expect(screen.getByText(/동시호가는 제외/)).toBeTruthy();
   });
 
@@ -1118,7 +1118,7 @@ describe('IndicatorPanel', () => {
     openDetail('당일 최대 매물대');
     openDetail('당일 최대 매물대 색상 선택');
     openDetail('당일 최대 매물대 색상 #22C55E');
-    fireEvent.change(screen.getByRole('slider', { name: '당일 최대 매물대 투명도' }), {
+    fireEvent.change(screen.getByRole('slider', { name: '당일 최대 매물대 불투명도' }), {
       target: { value: '28' },
     });
     expect(useLivePageStore.getState().tradeVolumePocColor).toBe('#22C55E');
@@ -1185,8 +1185,8 @@ describe('IndicatorPanel', () => {
   it('호가 잔량 히트맵 라벨 클릭 → 매수/매도 색상 + 불투명도 노출', () => {
     renderPanel();
     openDetail('호가 잔량 히트맵');
-    expect(screen.getByRole('button', { name: '매수 색상 스타일 선택' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '매도 색상 스타일 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '매수 색상 선택' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '매도 색상 선택' })).toBeTruthy();
     expect(screen.getByRole('slider')).toBeTruthy();
   });
 

@@ -1,3 +1,4 @@
+import { IndicatorSettingsGroup } from './IndicatorSettingsLayout';
 import { useState, type ReactNode } from 'react';
 import {
   PEAK_WALL_FAMILIES,
@@ -66,9 +67,9 @@ export default function PeakWallsConfig() {
   const [family, setFamily] = useState<PeakWallFamilyId>('Traded');
 
   return (
-    <div>
+    <div className="indicator-settings-groups">
       <Stage n={1} title="방향" hint="매도·매수를 각각 설정합니다">
-        <div className="flex gap-2">
+        <div className="indicator-peak-sides flex gap-2">
           {SIDES.map((s) => (
             <SideCard key={s.id} side={s.id} active={side === s.id} onPick={() => setSide(s.id)} />
           ))}
@@ -95,7 +96,7 @@ export default function PeakWallsConfig() {
       {/* ③④ 는 **고른 칸 하나**의 것이다. 그 사실을 testid 로도 못 박는다 —
           「기준 이동평균 기간」 이라는 이름의 노브가 방향당 셋이라, 스코프 없이
           집으면 하나만 배선돼 있어도 테스트가 통과한다. */}
-      <div data-testid={`peak-wall-detail-zone-${side}-${family}`}>
+      <div className="indicator-stage-detail" data-testid={`peak-wall-detail-zone-${side}-${family}`}>
         <FilterStage side={side} family={family} />
         <SurfaceStage side={side} family={family} />
       </div>
@@ -114,15 +115,12 @@ function Stage({ n, title, hint, right, children }: {
   children: ReactNode;
 }) {
   return (
-    <section className="border-t border-border py-2.5 first:border-t-0 first:pt-0">
-      <header className="mb-1.5 flex items-baseline gap-2">
-        <span className="shrink-0 text-xs font-semibold tabular-nums text-fg-dim">{n}</span>
-        <h4 className="shrink-0 text-sm font-semibold text-fg">{title}</h4>
-        {hint && <span className="truncate text-2xs text-fg-dim">{hint}</span>}
-        {right && <span className="ml-auto shrink-0">{right}</span>}
-      </header>
+    <IndicatorSettingsGroup label={<><span className="indicator-stage-number">{n}</span>{title}</>}>
+      {(hint || right) && <header className="indicator-stage-context">
+        {hint && <span>{hint}</span>}{right && <span>{right}</span>}
+      </header>}
       {children}
-    </section>
+    </IndicatorSettingsGroup>
   );
 }
 
@@ -288,10 +286,8 @@ function FamilySchema({ side }: { side: Side }) {
  *  `title` 안에만 남는다. */
 function FamilyHeader() {
   return (
-    <div className={`${FAMILY_GRID} px-2 pb-0.5`} aria-hidden="true">
-      <span className="col-span-3 text-2xs font-semibold uppercase text-fg-dim">캔들 선</span>
-      <span className="text-right text-2xs font-semibold text-fg-dim">개수</span>
-      <span className="text-center text-2xs font-semibold text-fg-dim">pane</span>
+    <div className={`${FAMILY_GRID} indicator-peak-family-heading px-2 pb-0.5`} aria-hidden="true">
+      <span>계열</span><span>색</span><span>개수</span><span>선</span><span>패널</span>
     </div>
   );
 }
@@ -321,7 +317,7 @@ function FamilyRow({ side, family, name, active, onPick }: {
         event.preventDefault();
         onPick();
       }}
-      className={`${FAMILY_GRID} cursor-pointer rounded-md px-2 py-1.5 transition-colors ${
+      className={`${FAMILY_GRID} indicator-peak-family cursor-pointer rounded-md px-2 py-1.5 transition-colors ${
         active ? 'bg-tint-selection' : 'hover:bg-bg-input-hover'
       }`}
     >
@@ -514,7 +510,7 @@ function FilterStage({ side, family }: { side: Side; family: PeakWallFamilyId })
     <Stage n={3} title="후보 기준" hint={familyName} right={<FilterCount side={side} family={family} />}>
       <FlowReadout side={side} family={family} />
 
-      <div className="flex items-center justify-between gap-3 py-1">
+      <div className="indicator-inline-row flex items-center justify-between gap-3 py-1">
         <span className="text-sm text-fg">표시 개수 상한</span>
         <span
           role="group"
@@ -600,15 +596,14 @@ function SurfaceStage({ side, family }: { side: Side; family: PeakWallFamilyId }
 
   return (
     <Stage n={4} title="표현" hint={`${familyName}을 어디에 그리나`}>
-      <div className="flex items-center gap-2 py-1">
-        <span className="text-sm text-fg">선</span>
+      <SettingsRow label="선">
         <MAStylePicker
           color={style.color}
           lineWidth={style.lineWidth}
           onChange={style.onChange}
           label={`${SIDE_LABEL[side]} ${familyName}`}
         />
-      </div>
+      </SettingsRow>
 
       <div className="mt-2 text-xs font-semibold uppercase text-fg-dim">캔들 위</div>
       <IndicatorPrefRows toggleKeys={onCandle} />
@@ -697,7 +692,7 @@ function PaneModeRow() {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3 py-1">
+      <div className="indicator-inline-row flex items-center justify-between gap-3 py-1">
         <span className="text-sm text-fg">표현</span>
         <span
           role="group"

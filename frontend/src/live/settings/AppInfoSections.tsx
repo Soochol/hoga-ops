@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { loadConfig, type AppConfig } from '../../config';
 import { apiCall } from '../../api/client';
-import { DefinitionRow, SegmentedControl } from '../../ui/PageShell';
+import { SettingsRow } from './SettingsRow';
+import { SettingsGroup } from './SettingsGroup';
 import { THEME_PREFERENCE_OPTIONS, useThemePrefsStore, type ThemePreference } from '../../state/themePrefs';
 
 /**
@@ -45,11 +46,11 @@ export function GeneralSection() {
   }, []);
 
   return (
-    <>
-      <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
+    <SettingsGroup label="연결 정보">
+      <SettingsRow label="API URL"><span className="settings-readonly-value">{config?.api_url ?? '…'}</span></SettingsRow>
       {configError && <p role="status" className="text-xs text-error">{configError}</p>}
-      <DefinitionRow label="Version" value={versionText} />
-    </>
+      <SettingsRow label="버전"><span className="settings-readonly-value">{versionText}</span></SettingsRow>
+    </SettingsGroup>
   );
 }
 
@@ -76,22 +77,13 @@ const THEME_HINT: Record<ThemePreference, string> = {
 export function ThemeSection() {
   const themePreference = useThemePrefsStore((s) => s.themePreference);
   const setThemePreference = useThemePrefsStore((s) => s.setThemePreference);
-  return (
-    <section className="space-y-2">
-      <SegmentedControl aria-label="테마 선택" className="max-w-full flex-wrap">
-        {THEME_PREFERENCE_OPTIONS.map((value) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={themePreference === value}
-            onClick={() => setThemePreference(value)}
-            className={`px-3 py-[7px] text-sm ${themePreference === value ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
-          >
-            {THEME_LABEL[value]}
-          </button>
-        ))}
-      </SegmentedControl>
-      <p className="text-xs text-fg-dim">{THEME_HINT[themePreference]}</p>
-    </section>
-  );
+  return <SettingsGroup label="화면">
+    <SettingsRow label="테마">
+      <select aria-label="테마 선택" className="settings-theme-select" value={themePreference}
+        onChange={event => setThemePreference(event.target.value as ThemePreference)}>
+        {THEME_PREFERENCE_OPTIONS.map(value => <option key={value} value={value}>{THEME_LABEL[value]}</option>)}
+      </select>
+    </SettingsRow>
+    <p className="settings-scope-note">{THEME_HINT[themePreference]}</p>
+  </SettingsGroup>;
 }

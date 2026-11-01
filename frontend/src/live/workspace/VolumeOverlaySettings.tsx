@@ -1,3 +1,4 @@
+import { IndicatorRangeRow } from '../indicators/IndicatorSettingsLayout';
 import type { VolumeOverlayPrefs } from '../../state/chartDisplayPrefs';
 import { SettingsRow } from '../settings/SettingsRow';
 import ColorSwatchPicker from '../indicators/ColorSwatchPicker';
@@ -11,16 +12,10 @@ export function VolumeOverlaySettings({ prefs, onChange, disabled = false }: {
   const patch = (values: Partial<VolumeOverlayPrefs>) => { if (!disabled) onChange(values); };
   const tokens = resolveTokensThemed(TOKEN_SPEC);
   return <fieldset disabled={disabled} className={`settings-dependent min-w-0 ${disabled ? 'opacity-50' : ''}`} key={String(disabled)}>
-    {([
-      ['volumeOverlayTransparency', '거래량 투명도', 0, 100],
-      ['volumeOverlayHeight', '거래량 표시 높이', 10, 40],
-    ] as const).map(([key, label, min, max]) => <SettingsRow key={key} label={label}>
-      <div className="flex items-center gap-2">
-        <input type="range" aria-label={label} min={min} max={max} step={1} value={prefs[key]}
-          className="w-24 accent-accent" onChange={event => patch({ [key]: Number(event.target.value) })} />
-        <output className="text-sm text-fg tabular-nums w-10 text-right">{prefs[key]}%</output>
-      </div>
-    </SettingsRow>)}
+    <IndicatorRangeRow label="표시 높이" ariaLabel="거래량 표시 높이" value={prefs.volumeOverlayHeight} min={10} max={40}
+      onChange={value => patch({ volumeOverlayHeight: value })} />
+    <IndicatorRangeRow label="불투명도" ariaLabel="거래량 불투명도" value={100 - prefs.volumeOverlayTransparency}
+      onChange={value => patch({ volumeOverlayTransparency: 100 - value })} />
     {([
       ['volumeOverlayUpColor', '상승봉 거래량 색상', tokens.up],
       ['volumeOverlayDownColor', '하락봉 거래량 색상', tokens.down],

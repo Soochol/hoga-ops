@@ -51,14 +51,14 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     expect(await screen.findByText('표시 소스')).toBeInTheDocument();
-    expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
+    expect(screen.getByText('캔들')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: '저장 데이터로 캔들 보기' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
     expect(screen.queryByRole('radio', { name: '스크리너 일봉 우선' })).toBeNull();
     // 「호가·체결 데이터 기준」 그룹은 **라디오 3종이 폐지되고 옵트인 토글 하나로**
     // 돌아왔다(2026-08-07 오후). 라디오가 venue 비교를 깨뜨린 사실은 그대로이므로
     // 기본은 키움 고정이고, hogaplay 는 사용자가 명시적으로 켤 때만 이긴다.
-    expect(screen.getByText('호가·체결 데이터 기준')).toBeInTheDocument();
+    expect(screen.getByText('호가·체결')).toBeInTheDocument();
     expect(
       screen.getByRole('switch', { name: 'KRX에서 hogaplay 우선' }),
     ).toBeInTheDocument();
@@ -71,7 +71,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     for (const name of ['hogaplay 우선', '실시간 WS 우선', '완결성 우선', 'KIS API 우선']) {
       expect(screen.queryByRole('radio', { name })).toBeNull();
     }
-    expect(screen.getByText(/켜면 저장된 분봉·스크리너 일봉을 사용/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '캔들 설명' })).toHaveAttribute('data-tooltip', expect.stringContaining('켜면 저장된 분봉·스크리너 일봉을 사용'));
   });
 
   it('복기뷰 캔들 안내는 REST 우회 토글을 숨기지 않고 동반 문구로 붙는다', async () => {

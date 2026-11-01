@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import IndicatorPanel from './IndicatorPanel';
 import { CATEGORIES } from './IndicatorPanelHelpers';
@@ -21,13 +21,15 @@ it.each(CATEGORIES)('$label uses shared compact switches and opt-in help', categ
   render(<IndicatorPanel timeframe={timeframe} onClose={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: category.label }));
   const editor = screen.getByTestId('indicator-panel-shell');
+  expect(editor.querySelector('.settings-property-group-label')).not.toBeNull();
+  expect(editor.querySelector('.settings-property-group-body')).not.toBeNull();
   expect(editor.querySelector('.settings-dependent > summary')).toBeNull();
   expect(editor.querySelector('.settings-editor-description')).toBeNull();
   expect(editor.querySelector('.settings-editor-detail-heading')).not.toHaveTextContent('차트에 추가됨');
   expect(editor.querySelector('.indicator-instance-actions > span')).toBeNull();
   for (const toggle of within(editor).queryAllByRole('switch')) expect(toggle).toHaveClass('window-settings-switch');
   expect(within(editor).queryAllByRole('checkbox')).toHaveLength(0);
-  expect(within(editor).getByRole('status')).toHaveTextContent('즉시 반영');
+  expect(within(editor.querySelector('.settings-editor-footer') as HTMLElement).getByRole('status')).toHaveTextContent('즉시 반영');
   const help = within(editor).getByRole('button', { name: `${category.label} 설명` });
   fireEvent.click(help);
   expect(help).toHaveAttribute('aria-expanded', 'true');
@@ -63,7 +65,28 @@ it('keeps scope, catalog commit state and the existing master/detail structure',
   fireEvent.change(screen.getByLabelText('볼린저 기간'), { target: { value: '35' } });
   fireEvent.blur(screen.getByLabelText('볼린저 기간'));
   expect(useLivePageStore.getState().bollingerPeriod).toBe(before);
-  expect(screen.getByRole('status')).toHaveTextContent('추가 전');
+  expect(within(screen.getByTestId('indicator-panel-shell').querySelector('.settings-editor-footer') as HTMLElement).getByRole('status')).toHaveTextContent('추가 전');
   expect(screen.getByRole('button', { name: '설정대로 추가' })).toHaveTextContent('추가');
   expect(screen.getByRole('navigation', { name: '지표 추가' })).toBeVisible();
+});
+
+it.each([
+  ['볼린저 밴드', '볼린저', 'bollingerLineWidth'],
+  ['엔벨로프', '엔벨로프', 'envelopeLineWidth'],
+  ['슈퍼트렌드', '슈퍼트렌드', 'supertrendLineWidth'],
+] as const)('%s edits its shared width once and undoes it without changing line colors', async (category, label, key) => {
+  useLivePageStore.setState({ bollingerEnabled: true, envelopeEnabled: true, supertrendEnabled: true, [key]: 2 });
+  render(<IndicatorPanel timeframe="1m" onClose={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: category }));
+  const before = useLivePageStore.getState();
+  const input = screen.getByRole('combobox', { name: `${label} 공통 선 두께` });
+  expect(screen.getAllByRole('combobox', { name: `${label} 공통 선 두께` })).toHaveLength(1);
+  fireEvent.change(input, { target: { value: '4' } });
+  expect(useLivePageStore.getState()[key]).toBe(4);
+  for (const color of ['bollingerUpperColor', 'envelopeUpperColor', 'supertrendUpColor'] as const) {
+    expect(useLivePageStore.getState()[color]).toBe(before[color]);
+  }
+  await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+  await waitFor(() => expect(input).toHaveValue('2'));
 });

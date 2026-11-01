@@ -2,6 +2,7 @@ import { AppIcon } from '../../ui/AppIcon';
 import { useEffect, useState } from 'react';
 import type { DesktopState } from '../../desktop';
 import { SettingsRow } from './SettingsRow';
+import { SettingsGroup } from './SettingsGroup';
 
 export default function DesktopSection() {
   const controls = window.hogaDesktop?.controls;
@@ -29,7 +30,8 @@ export default function DesktopSection() {
     const zoomFactor = await controls.zoom(command);
     setState(current => current ? { ...current, zoomFactor } : current);
   });
-  return <>
+  return <div className="settings-property-groups">
+    <SettingsGroup label="연결">
     <SettingsRow label="연결 서버" description={<>
       <span className="block">{state?.serverName ?? '연결 정보를 불러오는 중…'}</span>
       {state && <span className="block break-all">{state.origin}</span>}
@@ -37,18 +39,23 @@ export default function DesktopSection() {
     </>}>
       <button type="button" className="ui-choice" disabled={busy} onClick={() => void run(controls.selectServer)}>서버 선택</button>
     </SettingsRow>
-    <p className="text-xs text-fg-dim">서버를 변경하면 기존 작업 창이 닫힙니다. 이미 접수된 주문·수집 작업은 기존 서버에서 계속됩니다.</p>
+    <p className="settings-server-note text-xs text-fg-dim">서버를 변경하면 기존 작업 창이 닫힙니다. 이미 접수된 주문·수집 작업은 기존 서버에서 계속됩니다.</p>
+    </SettingsGroup>
+    <SettingsGroup label="작업 창">
     <SettingsRow label="작업 창" description="현재 서버에 새 작업 창을 엽니다.">
       <button type="button" className="ui-choice" disabled={busy} onClick={() => void run(controls.newWindow)}>새 작업 창</button>
     </SettingsRow>
+    </SettingsGroup>
+    <SettingsGroup label="화면">
     <SettingsRow label="화면 배율" description="같은 서버의 작업 창에 함께 적용하고 기억합니다.">
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="settings-desktop-zoom flex flex-wrap items-center gap-1">
         <button type="button" className="ui-choice" aria-label="화면 배율 축소" disabled={busy || !state || state.zoomFactor <= .5} onClick={() => void zoom('out')}><AppIcon name="minus" /></button>
         <output className="text-sm tabular-nums" aria-label="현재 화면 배율">{state ? `${Math.round(state.zoomFactor * 100)}%` : '—'}</output>
         <button type="button" className="ui-choice" aria-label="화면 배율 확대" disabled={busy || !state || state.zoomFactor >= 3} onClick={() => void zoom('in')}><AppIcon name="plus" /></button>
         <button type="button" className="ui-choice" disabled={busy || !state} onClick={() => void zoom('reset')}>100% 복원</button>
       </div>
     </SettingsRow>
+    </SettingsGroup>
     {error && <p role="alert" className="text-xs text-error">{error}</p>}
-  </>;
+  </div>;
 }

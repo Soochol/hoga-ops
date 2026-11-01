@@ -424,7 +424,7 @@ export default function IndicatorPanel({
     >
       <CompactSettingsContext.Provider value><SettingsDescriptionTooltipContext.Provider value>
       <IndicatorExplanationContext.Provider value={helpFor === selectedId}>
-      <SettingsEditor title="보조지표" onClose={onClose} undo={undo} testId="indicator-panel-shell" className="indicator-editor"
+      <SettingsEditor title="보조지표" onClose={onClose} undo={undo} testId="indicator-panel-shell" className="indicator-editor settings-compact"
         scope={<span data-testid="indicator-panel-scope-badge">{targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}</span>}
         actions={<IndicatorPanelMenu open={menuOpen} onOpenChange={setMenuOpen}
           resetLabel={`${currentTimeframeLabel} 지표 초기화`} confirmLabel={`${currentTimeframeLabel} 초기화?`} onReset={handleReset} />}

@@ -79,7 +79,8 @@ export default function MovingAverageRow({
         checked={config.enabled && !config.hidden}
         onClick={() => onChange({ enabled: true, hidden: config.enabled && !config.hidden })} />;
   return editorLayout ? <div className="ma-config-grid ma-config-row">
+      {period}{source}{style}
       {compact ? <label htmlFor={controlId} className="ma-config-visibility"><span className="sr-only">{label} 표시</span>{visibility}</label> : visibility}
-      {period}{source}{style}{remove}</div>
+      {remove}</div>
     : <div className={`${MA_ROW_GRID} py-1.5`}><div className="text-sm text-fg tabular-nums">{label}</div>{style}{source}{period}{remove}</div>;
 }

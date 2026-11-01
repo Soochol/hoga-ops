@@ -2,7 +2,8 @@ import { useState } from 'react';
 import LineVisibilityRow from './LineVisibilityRow';
 import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
-import MAStylePicker from './MAStylePicker';
+import ColorSwatchPicker from './ColorSwatchPicker';
+import { IndicatorSettingsGroup, IndicatorLineWidthRow } from './IndicatorSettingsLayout';
 import MASourceSelect from './MASourceSelect';
 import { IndicatorExplanation } from './IndicatorExplanation';
 
@@ -24,7 +25,8 @@ export default function EnvelopeConfig() {
   };
   const inputClass = 'w-24 text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums';
   return (
-    <div className="space-y-3">
+    <div className="indicator-settings-groups">
+      <IndicatorSettingsGroup label="계산">
       <label className="indicator-parameter-row flex items-center justify-between gap-2 text-sm text-fg">
         기간 (봉 개수)
         <input aria-label="엔벨로프 기간" type="number" min={MA_PERIOD_MIN} max={MA_PERIOD_MAX} step={1}
@@ -42,20 +44,22 @@ export default function EnvelopeConfig() {
         <MASourceSelect aria-label="엔벨로프 기준가" value={settings.envelopeSource}
           onChange={(source) => setEnvelopeSettings({ envelopeSource: source })} />
       </label>
+      </IndicatorSettingsGroup>
+      <IndicatorSettingsGroup label="표시·스타일">
       {([
         ['상단선', 'envelopeUpperColor', 'envelopeUpper'],
         ['중심선', 'envelopeMiddleColor', 'envelopeMiddle'],
         ['하단선', 'envelopeLowerColor', 'envelopeLower'],
       ] as const).map(([label, key, lineKey]) => (
         <LineVisibilityRow key={key} lineKey={lineKey} label={label} toggleLabel={`엔벨로프 ${label} 표시`}>
-          <MAStylePicker label={`엔벨로프 ${label}`} color={settings[key]} lineWidth={settings.envelopeLineWidth}
-            onChange={(patch) => setEnvelopeSettings({
-              ...(patch.color ? { [key]: patch.color } : {}),
-              ...(patch.lineWidth ? { envelopeLineWidth: patch.lineWidth } : {}),
-            })} />
+          <ColorSwatchPicker label={`엔벨로프 ${label}`} color={settings[key]}
+            onChange={color => setEnvelopeSettings({ [key]: color })} />
         </LineVisibilityRow>
       ))}
-      <IndicatorExplanation summary="세 선의 두께는 함께 적용됩니다.">중심선은 단순이동평균이며 상·하단선은 중심선에서 이격률(%)만큼 떨어져 있습니다. 설정한 봉 수가 쌓이면 표시되며, 세 선의 두께는 함께 적용됩니다.</IndicatorExplanation>
+      <IndicatorLineWidthRow label="엔벨로프" value={settings.envelopeLineWidth}
+        onChange={lineWidth => setEnvelopeSettings({ envelopeLineWidth: lineWidth })} />
+      </IndicatorSettingsGroup>
+      <IndicatorExplanation>중심선은 단순이동평균이며 상·하단선은 중심선에서 이격률(%)만큼 떨어져 있습니다. 설정한 봉 수가 쌓이면 표시되며, 세 선의 두께는 함께 적용됩니다.</IndicatorExplanation>
     </div>
   );
 }

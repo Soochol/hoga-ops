@@ -1,3 +1,5 @@
+import { useContext } from 'react';
+import { CompactSettingsContext, SettingsRow } from '../settings/SettingsRow';
 // Shared sign-color legend for the bar indicators (volume, investor net-buy).
 // Their bars are colored by SIGN, not configurable — up/buy is --price-up
 // (red), down/sell is --price-down (blue). This little key explains that in
@@ -11,6 +13,12 @@ type Props = {
 };
 
 export default function SignColorLegend({ up, down }: Props) {
+  const compact = useContext(CompactSettingsContext);
+  if (compact) return <div className="indicator-fixed-colors">{([
+    [up, 'up', '빨강'], [down, 'down', '파랑'],
+  ] as const).map(([label, direction, name]) => <SettingsRow key={direction} label={`${label} ${name}`}>
+    <span className="indicator-theme-color"><span aria-hidden="true" style={{ background: `var(--price-${direction})` }} />테마</span>
+  </SettingsRow>)}</div>;
   return (
     <div className="flex items-center gap-4 text-xs">
       <span className="flex items-center gap-1.5">

@@ -1,3 +1,5 @@
+import { IndicatorSettingsGroup } from './IndicatorSettingsLayout';
+import { SettingsRow } from '../settings/SettingsRow';
 import { AppIcon } from '../../ui/AppIcon';
 import {
   BROKER_LATE_ENTRY_SLOT_LIMIT,
@@ -25,10 +27,9 @@ function ColorRow({
   onChange: (color: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-16 text-sm text-fg">{label}</span>
+    <SettingsRow label={label}>
       <ColorSwatchPicker label={label} color={color} onChange={onChange} />
-    </div>
+    </SettingsRow>
   );
 }
 
@@ -47,7 +48,7 @@ function InstanceBlock({
   // 여러 개일 때만 시각을 제목에 실어 구별한다 — 하나뿐이면 중복 정보다.
   const heading = `세트 ${index + 1} · ${formatHhmm(instance.startHHMM)}`;
   return (
-    <div className="rounded-lg border border-border p-3">
+    <div className="indicator-repeat-block">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-medium text-fg">{heading}</span>
         <button
@@ -60,7 +61,7 @@ function InstanceBlock({
         </button>
       </div>
       <div className="mb-3">
-        <label className="flex items-center justify-between gap-3 text-sm text-fg">
+        <label className="indicator-parameter-row flex items-center justify-between gap-3 text-sm text-fg">
           <span>기준 시각</span>
           <TimeOfDayInput
             hhmm={instance.startHHMM}
@@ -69,22 +70,12 @@ function InstanceBlock({
           />
         </label>
       </div>
-      <div className="mb-3">
-        <div className="mb-1.5 text-xs text-fg-dim">표시 방향</div>
-        <div className="inline-flex overflow-hidden rounded border border-border">
-          {SIDE_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              aria-pressed={instance.sideMode === option.value}
-              className={`px-3 py-1 text-sm ${instance.sideMode === option.value ? 'bg-bg-input text-fg' : 'text-fg-dim hover:bg-bg-input'}`}
-              onClick={() => onChange({ sideMode: option.value })}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <SettingsRow label="표시 방향">
+        <select aria-label={`${heading} 표시 방향`} value={instance.sideMode}
+          onChange={event => onChange({ sideMode: event.target.value as BrokerLateEntrySideMode })}>
+          {SIDE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </SettingsRow>
       <div className="flex flex-col gap-2">
         <ColorRow
           label="매수 색상"
@@ -114,7 +105,7 @@ export default function BrokerLateEntryConfig() {
   const atLimit = instances.length >= BROKER_LATE_ENTRY_SLOT_LIMIT;
 
   return (
-    <div>
+    <IndicatorSettingsGroup label="세트">
       <div className="flex flex-col gap-3">
         {instances.map((instance, i) => (
           <InstanceBlock
@@ -134,6 +125,6 @@ export default function BrokerLateEntryConfig() {
       >
         ⊕ 세트 추가
       </button>
-    </div>
+    </IndicatorSettingsGroup>
   );
 }
