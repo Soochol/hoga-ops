@@ -26,7 +26,10 @@ test('add all five market ranks, enforce investor limit, save, reload and inspec
   });
   await page.route(apiExact('screener/scan'), route => {
     request = route.request().postDataJSON();
-    return route.fulfill({ json: { status: 'ok', warnings: [], rows: [{ code: '005930', name: '삼성전자',
+    return route.fulfill({ json: { status: 'ok', warnings: [],
+      basis_at_ms: Date.parse('2026-10-30T10:20:30+09:00'),
+      fallback_basis_at_ms: Date.parse('2026-10-30T10:20:00+09:00'),
+      rows: [{ code: '005930', name: '삼성전자',
       market: 'KOSPI', price: 1000, trade_value_won: 1e9, change_pct: 0,
       occurrences: definitions.map(([type, , kind]) => ({
         condition_id: saved.conditions.find(leaf => leaf.type === type)!.id,
@@ -62,6 +65,7 @@ test('add all five market ranks, enforce investor limit, save, reload and inspec
   }
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect.poll(() => request?.conditions.length).toBe(6);
+  await expect(page.getByTestId('screener-basis-time')).toHaveText('2026-10-30 10:20 기준 · 관측 시각 혼합');
   const expectedText: Record<MarketRankKind, string> = { surge: '1분 기준 급증률 250.5%', volume: '당일 거래량 12,345주',
     program: '순매수금액 50억', institution: '장중 추정 순매수금액 50억', foreign: '장중 추정 순매수금액 50억' };
   for (const [, , kind, label] of definitions) {
