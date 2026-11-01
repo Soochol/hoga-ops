@@ -13,7 +13,7 @@ import polars as pl
 
 from hoga.api import screener_bar_price, screener_exclusions, trading_days
 from hoga.api.models import BarChangeMatch, BarTradeValueMatch, ScreenerOccurrence
-from hoga.api.screener_bar_policy import RANGE_PARAMS, TRADE_VALUE_TYPES, lookback
+from hoga.api.screener_bar_policy import CHANGE_TYPES, RANGE_PARAMS, TRADE_VALUE_TYPES, lookback
 from hoga.api.screener_write_lock import screener_read_lock
 from hoga.util.timeenc import KST
 
@@ -63,17 +63,30 @@ def turnover_records(leaf, bars, *, fetched_at_ms):
 def change_records(leaf, bars, *, fetched_at_ms):
     p = leaf.params
     bars = [bar for bar in bars if p.include_open_bar or not bar.is_open]
-    if not bars:
-        return [], False
-    bar = bars[-1]
+    historical = isinstance(p, RANGE_PARAMS)
+    count = lookback(leaf)
+    indices = [i for i, bar in enumerate(bars) if
+        p.start_date <= dt.datetime.fromtimestamp(bar.start_ms / 1000, KST).date().isoformat() <= p.end_date
+    ] if historical else list(range(max(0, len(bars) - count), len(bars)))
+    complete = bool(indices) and (historical or len(indices) == count)
+    events = []
+    for i in indices:
+        found, valid = _change_record(leaf, bars[i], bars[i - 1] if i else None, fetched_at_ms)
+        events.extend(found)
+        complete = complete and valid
+    return events, complete
+
+
+def _change_record(leaf, bar, previous, fetched_at_ms):
+    p = leaf.params
     if not bar.valid or not screener_bar_price.valid_prices(bar):
         return [], False
     reference, reference_ms = None, None
     if p.change_reference == "bar_open":
         reference, reference_ms = bar.open, bar.start_ms
     elif p.change_reference == "previous_bar":
-        if len(bars) > 1 and bars[-2].valid and screener_bar_price.valid_prices(bars[-2]):
-            reference, reference_ms = bars[-2].close, bars[-2].start_ms
+        if previous is not None and previous.valid and screener_bar_price.valid_prices(previous):
+            reference, reference_ms = previous.close, previous.start_ms
     else:
         reference, reference_ms = bar.previous_day_close, bar.previous_day_ms
     if reference is None or reference_ms is None or not math.isfinite(reference) or reference <= 0:
@@ -121,7 +134,7 @@ async def prepare_minutes(leaf, data, data_dir, code, anchor):
     if leaf.type in TRADE_VALUE_TYPES:
         return data, None  # Price adjustment with unadjusted volume would corrupt turnover.
     references = {}
-    if leaf.type == "change_pct" and leaf.params.change_reference == "previous_day":
+    if leaf.type in CHANGE_TYPES and leaf.params.change_reference == "previous_day":
         try:
             references = await asyncio.to_thread(_raw_references, data_dir, code, data)
         except Exception:
@@ -130,7 +143,7 @@ async def prepare_minutes(leaf, data, data_dir, code, anchor):
     adjusted, reason = await screener_bar_price.adjusted_minutes(data_dir, code, raw, anchor)
     result = adjusted[:len(data)]
     by_stamp = dict(zip(references, adjusted[len(data):], strict=True))
-    if leaf.type == "change_pct" and leaf.params.change_reference == "previous_day":
+    if leaf.type in CHANGE_TYPES and leaf.params.change_reference == "previous_day":
         result = [replace(bar,
             previous_day_close=by_stamp[bar.start_ms].close if bar.start_ms in by_stamp
                                and by_stamp[bar.start_ms].valid else None,
