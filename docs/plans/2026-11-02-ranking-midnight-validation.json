@@ -1,0 +1,46 @@
+{
+  "checked_at_kst": "2026-11-02T00:05:46.226576+09:00",
+  "validated_code_commit": "83935ba8ee410b96218093610ad178058f87d88f",
+  "base_commit": "9365bf28117c00e59e91b3c2d200047122f6ae02",
+  "input_fingerprint": {
+    "algorithm": "sha256(sorted path + NUL + hex sha256(file bytes))",
+    "scope": [
+      "hoga/",
+      "tests/",
+      ".python-version",
+      "pyproject.toml",
+      "uv.lock",
+      "ruff.toml"
+    ],
+    "files": 882,
+    "sha256": "a4e1c7b0881a818733d2a7ec000997e4dad5bfd2ffc7a60d8a03991121488d24"
+  },
+  "environment": {
+    "python": "3.14.7",
+    "uv": "0.11.8",
+    "ruff": "0.15.13",
+    "credentials": "empty worktree .env; mock vendor responses"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_ranking_session_history.py tests/unit/live/test_kiwoom_rankings.py tests/unit/live/test_program_rankings.py tests/unit/live/test_investor_rankings.py tests/unit/live/test_ranking_pagination.py tests/api/test_screener_rankings.py tests/api/test_screener_runs.py --tb=short",
+      "result": "404 passed; one existing Polars sortedness warning",
+      "log_sha256": "27cbbe0d9afee354089365e93362c426e9f93247d44fc7963b14641f2826ad7f"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "notes": [
+    "Observed live failure after KST midnight: right-panel calendar_unavailable and screener HTTP 409 screener_rank_calendar_unavailable, with last_raw_date 20261030.",
+    "Before opening, an unknown current weekday resolves only to a previous confirmed day without crossing any unknown prior weekday. It is not confirmed as a current trading day.",
+    "KRX and investor ranks keep their 09:00 boundary; NXT/UN keep 08:00. Unknown calendar at/after that boundary remains unavailable. No calendar rows are fabricated.",
+    "Tests cover KST midnight and UTC input, opening boundaries, a missing intermediate weekday, stored/provider rankings, three venues and both screener policies.",
+    "The following validation-record commit changes documentation only. Backend check inputs match the implementation commit. Frontend code and wire shapes are unchanged."
+  ]
+}

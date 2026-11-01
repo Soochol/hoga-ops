@@ -1,7 +1,8 @@
 """One calendar policy for market rankings and ranking predicates.
 
-Weekends are known closed even beyond the calendar's coverage. An unknown
-weekday is never permission to fetch and stamp undated vendor rows as today.
+Weekends are known closed even beyond the calendar's coverage. Before opening,
+an unknown current weekday can still read the previous confirmed session.
+It is never permission to stamp undated vendor rows as today's observations.
 """
 from __future__ import annotations
 
@@ -47,13 +48,15 @@ def _trading(day: dt.date, data_dir: Path | None) -> bool | None:
 def resolve(now: dt.datetime, venue: str, data_dir: Path | None) -> RankingSession:
     now = now.astimezone(KST) if now.tzinfo else now.replace(tzinfo=KST)
     day = now.date()
-    trading = _trading(day, data_dir)
-    if trading is None:
-        return RankingSession("calendar_unavailable", None)
     opening = dt.time(9) if venue == "KRX" else dt.time(8)
+    trading = _trading(day, data_dir)
+    if trading is None and now.time() >= opening:
+        return RankingSession("calendar_unavailable", None)
     if trading and now.time() >= opening:
         return RankingSession("open" if stock_indicator_window(int(now.timestamp() * 1000), venue) else "closed", day)
-    state = "preopen" if trading else "holiday"
+    # At midnight a new weekday may be outside the backward-looking calendar.
+    # Before opening we only need its previous confirmed day, not today's verdict.
+    state = "holiday" if trading is False else "preopen"
     known = trading_days.trading_days(data_dir)
     first = min(known) if known else now.strftime("%Y%m%d")
     # Stop at the first unknown weekday rather than silently jumping over it.

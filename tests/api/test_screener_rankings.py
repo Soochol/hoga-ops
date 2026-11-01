@@ -836,3 +836,29 @@ async def test_valid_empty_provider_ranking_is_distinct_from_a_failed_fetch(corp
     monkeypatch.setattr(last_provider[0], "_fetch_rankings", empty)
     result = await screener_runner.run_screener_scan(data_dir=corpus, now=SUNDAY, req=request())
     assert result.status == "ok" and result.rows == [] and result.rank_basis.source == "provider"
+
+
+@pytest.mark.parametrize("policy", ["legacy_v1", "separate_bases_v2"])
+@pytest.mark.parametrize("venue", ["KRX", "NXT", "UN"])
+@pytest.mark.parametrize("stored", [False, True])
+async def test_sunday_to_unknown_monday_midnight_keeps_friday_rank_search(
+    corpus, last_provider, monkeypatch, policy, venue, stored,
+):
+    monkeypatch.setattr(trading_days, "is_trading_day",
+                        lambda day, *_: True if day in {"20261029", "20261030"} else None)
+    if stored:
+        archived = replace(change_snapshot(venue=venue), fetched_at_ms=STAMP, queried_count=3,
+                           basis=ranking_session.RankingBasis(session="open", source="live",
+                               trading_date="2026-10-30", observed_at_ms=STAMP))
+        ranking_history.save(corpus, archived, 200)
+    req = request(rank_type="change_pct_rank", calculation_policy=policy, venue=venue)
+    for now in [SUNDAY.replace(hour=23, minute=59, second=59),
+                (SUNDAY + dt.timedelta(days=1)).replace(hour=0, minute=0, second=1)]:
+        last_provider[0]._now = lambda value=now: value
+        result = await screener_runner.run_screener_scan(data_dir=corpus, now=now, req=req)
+        assert {row.code for row in result.rows} == {"000001", "000002"}
+        assert result.rank_basis.source == ("stored" if stored else "provider")
+        assert result.rank_basis.session == ("holiday" if now.weekday() == 6 else "preopen")
+        assert {row.price_date for row in result.rows} == {"2026-10-30"}
+        assert result.basis_at_ms == (STAMP if stored else int(FRIDAY_END.timestamp() * 1000))
+    assert len(last_provider[1]) == (0 if stored else 2)
