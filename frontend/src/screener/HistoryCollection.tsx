@@ -37,7 +37,7 @@ export function HistoryCollection({ request, coverage, onComplete }: {
     queryFn: () => apiCall<HistoryJob | null>('/api/screener/history/jobs/current'),
     refetchInterval: q => running(q.state.data) ? 2000 : false });
   const create = useMutation({ mutationFn: () => apiCall<HistoryJob>('/api/screener/history/jobs', {
-    method: 'POST', body: JSON.stringify(request),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
   }), onSuccess: job => client.setQueryData(['screener-history-job'], job) });
   const cancel = useMutation({ mutationFn: () => apiCall<HistoryJob>(`/api/screener/history/jobs/${query.data?.id}/cancel`, {
     method: 'POST',
