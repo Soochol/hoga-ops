@@ -8,7 +8,7 @@ import datetime as dt
 import math
 from collections.abc import Iterable
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 from zoneinfo import ZoneInfo
 
 from pydantic import (
@@ -1917,13 +1917,31 @@ class TradeValueParams(CandleParams):
     min_eok: float = Field(ge=0, allow_inf_nan=False)
 
 
+ScreenerRankDirection = Literal["up", "down"]
+MarketRankKind = Literal["surge", "volume", "program", "institution", "foreign"]
+ScreenerRankType = Literal[
+    "trade_value_rank", "change_pct_rank", "volume_surge_rank", "volume_rank",
+    "program_net_buy_rank", "institution_net_buy_rank", "foreign_net_buy_rank",
+]
+SCREENER_RANK_TYPES = frozenset(get_args(ScreenerRankType))
+
+
 class TradeValueRankParams(BaseModel):
     model_config = {"extra": "forbid"}
     top_n: int = Field(default=100, ge=1, le=5000, strict=True)
 
 
 class ChangePctRankParams(TradeValueRankParams):
-    """Highest signed previous-close change percentages, not absolute changes."""
+    """Signed previous-close percentages, ordered highest or lowest first."""
+    direction: ScreenerRankDirection = "up"
+
+
+class ProgramNetBuyRankParams(TradeValueRankParams):
+    top_n: int = Field(default=50, ge=1, le=5000, strict=True)
+
+
+class InvestorNetBuyRankParams(TradeValueRankParams):
+    top_n: int = Field(default=100, ge=1, le=100, strict=True)
 
 
 class TradeValuePeriodParams(TradeValueParams):
@@ -2140,6 +2158,31 @@ class ChangePctRankLeaf(BaseModel):
     id: str
     params: ChangePctRankParams
 
+class VolumeSurgeRankLeaf(BaseModel):
+    type: Literal["volume_surge_rank"] = "volume_surge_rank"
+    id: str
+    params: TradeValueRankParams
+
+class VolumeRankLeaf(BaseModel):
+    type: Literal["volume_rank"] = "volume_rank"
+    id: str
+    params: TradeValueRankParams
+
+class ProgramNetBuyRankLeaf(BaseModel):
+    type: Literal["program_net_buy_rank"] = "program_net_buy_rank"
+    id: str
+    params: ProgramNetBuyRankParams
+
+class InstitutionNetBuyRankLeaf(BaseModel):
+    type: Literal["institution_net_buy_rank"] = "institution_net_buy_rank"
+    id: str
+    params: InvestorNetBuyRankParams
+
+class ForeignNetBuyRankLeaf(BaseModel):
+    type: Literal["foreign_net_buy_rank"] = "foreign_net_buy_rank"
+    id: str
+    params: InvestorNetBuyRankParams
+
 class TradeValuePeriodLeaf(BaseModel):
     type: Literal["trade_value_period"] = "trade_value_period"
     id: str
@@ -2274,7 +2317,7 @@ class BidDepthRenewalLeaf(BaseModel):
     params: DepthRenewalParams
 
 ConditionLeaf = Annotated[
-    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | ChangePctPeriodLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | VolumeSurgeRankLeaf | VolumeRankLeaf | ProgramNetBuyRankLeaf | InstitutionNetBuyRankLeaf | ForeignNetBuyRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | ChangePctPeriodLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -2364,7 +2407,7 @@ class ScanRequest(ScreenerConditionExpression):
     @model_validator(mode="after")
     def validate_snapshot_policy(self):
         if self.snapshot_id is not None and any(
-            leaf.type in {"trade_value_rank", "change_pct_rank"}
+            leaf.type in SCREENER_RANK_TYPES
             for leaf in active_conditions(self.conditions, self.expression)
         ):
             raise ValueError("당일 시장 순위는 과거 스냅샷 조회를 지원하지 않습니다")
@@ -2497,6 +2540,7 @@ class TradeValueRankMatch(BaseModel):
 
 
 class ChangePctRankMatch(BaseModel):
+    direction: ScreenerRankDirection = "up"
     rank: int
     change_pct: float = Field(allow_inf_nan=False)
     market: Literal["all", "kospi", "kosdaq"]
@@ -2504,7 +2548,20 @@ class ChangePctRankMatch(BaseModel):
     fetched_at_ms: int
 
 
+class MarketRankMatch(BaseModel):
+    kind: MarketRankKind
+    rank: int
+    market: Literal["all", "kospi", "kosdaq"]
+    venue: Literal["KRX", "NXT", "UN"] | None
+    quote_venue: Literal["KRX", "NXT", "UN"] | None = None
+    fetched_at_ms: int
+    volume_surge_pct: float | None = Field(default=None, allow_inf_nan=False)
+    volume: int | None = None
+    net_buy_won: int | None = None
+
+
 class ScreenerOccurrence(BaseModel):
+    market_rank_match: MarketRankMatch | None = None
     change_pct_rank_match: ChangePctRankMatch | None = None
     trade_value_rank_match: TradeValueRankMatch | None = None
     volume_evidence: ScreenerVolumeEvidence | None = None

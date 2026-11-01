@@ -281,7 +281,7 @@ def test_change_rank_http_save_and_evidence(corpus):
     assert response.status_code == 200
     assert [row["code"] for row in response.json()["rows"]] == ["000002"]
     assert response.json()["rows"][0]["occurrences"][0]["change_pct_rank_match"] == dict(
-        rank=199, change_pct=11.34, market="all", venue="UN", fetched_at_ms=STAMP)
+        rank=199, change_pct=11.34, market="all", venue="UN", fetched_at_ms=STAMP, direction="up")
 
 
 @pytest.mark.parametrize("change", [None, float("nan"), float("inf")])
@@ -446,3 +446,153 @@ async def test_saved_daily_combinations_wait_for_provider_full_session_finalizat
         with pytest.raises(HTTPException) as error:
             await screener_runner.run_screener_scan(data_dir=corpus, now=NOW.replace(month=11, day=1), req=scan)
         assert error.value.detail["code"] == "screener_rank_daily_history_unavailable"
+
+
+NEW_RANKS = [
+    ('volume_surge_rank', 'surge'), ('volume_rank', 'volume'), ('program_net_buy_rank', 'program'),
+    ('institution_net_buy_rank', 'institution'), ('foreign_net_buy_rank', 'foreign'),
+]
+
+
+def new_rank_snapshot(kind, venue='UN', **changes):
+    rows = tuple(RankingRow(rank=rank, code=f'{i:06d}', name=str(i), price=100 * i, change_pct=-i,
+        volume=1000 - i, volume_surge_pct=200.5 - i,
+        program_net_buy_won=10_000_000_000 - i, investor_net_buy_won=5_000_000_000 - i)
+        for i, rank in enumerate((1, 99, 101), 1))
+    return replace(RankingSnapshot(kind=kind, market='all', direction='up', rows=rows,
+        market_open=True, fetched_at_ms=STAMP, venue=None if kind in {'institution', 'foreign'} else venue,
+        quote_venue=venue if kind in {'institution', 'foreign'} else None,
+        queried_count=3, has_more=False), **changes)
+
+
+@pytest.mark.parametrize('rank_type,kind', NEW_RANKS)
+@pytest.mark.parametrize('policy', ['legacy_v1', 'separate_bases_v2'])
+async def test_all_new_rank_sources_keep_market_position_and_evidence(corpus, monkeypatch, rank_type, kind, policy):
+    calls = []
+    async def fetch(source, market, venue, limit, direction='up'):
+        calls.append((source, market, venue, limit, direction))
+        return new_rank_snapshot(source, venue)
+    monkeypatch.setattr(ranking, '_fetch_kind', fetch)
+    req = request(100, rank_type=rank_type, calculation_policy=policy, venue='UN', universe={'exclude_etf': True})
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=NOW, req=req)
+    assert calls == [(kind, 'all', 'UN', 100, 'up')]
+    assert [row.code for row in result.rows] == ['000002']
+    evidence = result.rows[0].occurrences[0].market_rank_match
+    assert evidence.rank == 99 and evidence.kind == kind and evidence.fetched_at_ms == STAMP
+    assert evidence.venue == (None if kind in {'institution', 'foreign'} else 'UN')
+    assert evidence.quote_venue == ('UN' if kind in {'institution', 'foreign'} else None)
+    assert evidence.volume == (998 if kind == 'volume' else None)
+    assert evidence.volume_surge_pct == (198.5 if kind == 'surge' else None)
+    assert evidence.net_buy_won == (9_999_999_998 if kind == 'program' else 4_999_999_998
+                                  if kind in {'institution', 'foreign'} else None)
+
+
+@pytest.mark.parametrize('rank_type,kind', NEW_RANKS)
+@pytest.mark.parametrize('policy', ['legacy_v1', 'separate_bases_v2'])
+@pytest.mark.parametrize('expression,expected', [('A AND B', []), ('A OR B', ['000001', '000002', '000003'])])
+async def test_new_ranks_are_independent_expression_leaves(
+    corpus, monkeypatch, rank_type, kind, policy, expression, expected,
+):
+    async def fetch(*_):
+        return new_rank_snapshot(kind)
+    monkeypatch.setattr(ranking, '_fetch_kind', fetch)
+    req = request(100, rank_type=rank_type, calculation_policy=policy, venue='UN').model_dump()
+    req['conditions'].append({'id': 'price', 'type': 'price_range', 'params': {'min': 250}})
+    req['expression'] = expression
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=NOW, req=ScanRequest.model_validate(req))
+    assert sorted(row.code for row in result.rows) == expected
+
+
+@pytest.mark.parametrize('rank_type,kind', NEW_RANKS)
+def test_new_rank_http_save_and_actual_wire_evidence(corpus, monkeypatch, rank_type, kind):
+    async def fetch(*_):
+        return new_rank_snapshot(kind)
+    monkeypatch.setattr(ranking, '_fetch_kind', fetch)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=corpus))
+    client = TestClient(app)
+    req = request(100, rank_type=rank_type, venue='UN').model_dump(mode='json')
+    saved = client.post('/api/screener/saves', json={'name': rank_type, 'conditions': req['conditions']})
+    assert saved.status_code == 201
+    assert client.get(f'/api/screener/saves/{saved.json()["id"]}').json()['conditions'] == req['conditions']
+    result = client.post('/api/screener/scan', json=req)
+    assert result.status_code == 200
+    match = result.json()['rows'][0]['occurrences'][0]['market_rank_match']
+    assert set(match) == {'kind', 'rank', 'market', 'venue', 'quote_venue', 'fetched_at_ms',
+                          'volume', 'volume_surge_pct', 'net_buy_won'}
+    assert match['kind'] == kind
+
+
+@pytest.mark.parametrize('rank_type,kind', NEW_RANKS)
+async def test_new_ranks_restore_dated_holiday_records_without_vendor(corpus, monkeypatch, rank_type, kind):
+    snap = new_rank_snapshot(kind)
+    snap = replace(snap, basis=ranking_session.RankingBasis(session='open', source='live',
+        trading_date=NOW.date().isoformat(), observed_at_ms=STAMP))
+    ranking_history.save(corpus, snap, 100)
+    async def forbidden(*args, **kwargs):
+        raise AssertionError('holiday scans must use stored observations')
+    monkeypatch.setattr(ranking, '_fetch_kind', forbidden)
+    req = request(100, rank_type=rank_type, venue='UN')
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=NOW.replace(month=11, day=1), req=req)
+    assert {row.code for row in result.rows} == {'000001', '000002'}
+    assert result.rank_basis.source == 'stored' and result.basis_at_ms == STAMP
+
+
+@pytest.mark.parametrize('rank_type,kind', NEW_RANKS)
+async def test_invalid_or_missing_new_rank_metric_is_an_error(corpus, monkeypatch, rank_type, kind):
+    row = RankingRow(rank=1, code='000001', name='bad', price=100, change_pct=0)
+    async def fetch(*_):
+        return new_rank_snapshot(kind, rows=(row,))
+    monkeypatch.setattr(ranking, '_fetch_kind', fetch)
+    with pytest.raises(HTTPException) as error:
+        await ranking.evaluate(corpus, request(100, rank_type=rank_type, venue='UN'), NOW, None)
+    assert error.value.detail['code'] == 'screener_rank_invalid_rank'
+
+
+@pytest.mark.parametrize('rank_type,_kind', NEW_RANKS)
+def test_new_rank_limits_are_strict_and_snapshots_remain_forbidden(rank_type, _kind):
+    maximum = 100 if rank_type in {'institution_net_buy_rank', 'foreign_net_buy_rank'} else 5000
+    for value in (0, maximum + 1, 1.5, True, '50'):
+        with pytest.raises(ValidationError):
+            request(value, rank_type=rank_type)
+    assert request(maximum, rank_type=rank_type).conditions[0].params.top_n == maximum
+    with pytest.raises(ValidationError, match='과거 스냅샷'):
+        request(50, rank_type=rank_type, calculation_policy='separate_bases_v2', snapshot_id='a' * 64)
+    with pytest.raises(ValueError):
+        validate_archivable(request(50, rank_type=rank_type, calculation_policy='separate_bases_v2'))
+
+
+async def test_up_and_down_requests_are_separate_and_shared_limits_do_not_mix(corpus, monkeypatch):
+    calls = []
+    async def up(market, venue, limit):
+        calls.append(('up', limit))
+        return change_snapshot()
+    async def down(kind, market, venue, limit, direction):
+        calls.append((direction, limit))
+        return change_snapshot(direction=direction, rows=(RankingRow(
+            rank=1, code='000003', name='down', price=300, change_pct=-29.5),))
+    monkeypatch.setattr(ranking, '_fetch_change', up)
+    monkeypatch.setattr(ranking, '_fetch_kind', down)
+    req = request(rank_type='change_pct_rank').model_dump()
+    req['conditions'] += [
+        {'id': 'down', 'type': 'change_pct_rank', 'params': {'top_n': 100, 'direction': 'down'}},
+        {'id': 'up50', 'type': 'change_pct_rank', 'params': {'top_n': 50}},
+    ]
+    req['expression'] = 'A OR B OR C'
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=NOW, req=ScanRequest.model_validate(req))
+    assert sorted(calls) == [('down', 100), ('up', 200)]
+    assert {row.code for row in result.rows} == {'000001', '000002', '000003'}
+    down_event = next(row for row in result.rows if row.code == '000003').occurrences[0]
+    assert down_event.change_pct_rank_match.direction == 'down'
+    assert down_event.change_pct_rank_match.change_pct == -29.5
+
+
+def test_old_upward_rank_exclusion_identity_and_new_direction_are_distinct():
+    import hashlib
+
+    from hoga.api.screener_exclusions import condition_key
+    old = request(rank_type='change_pct_rank').conditions[0]
+    expected = hashlib.sha256(b'{"params":{"top_n":200},"type":"change_pct_rank"}').hexdigest()
+    assert condition_key(old) == expected
+    down = old.model_copy(update={'params': old.params.model_copy(update={'direction': 'down'})})
+    assert condition_key(down) != expected

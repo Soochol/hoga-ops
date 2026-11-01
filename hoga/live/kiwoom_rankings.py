@@ -493,7 +493,8 @@ class KiwoomRankingsFetcher:
                 rows=rows, market_open=market_open, fetched_at_ms=now_ms,
                 venue=snapshot_venue, quote_venue=quote_venue,
                 queried_count=queried_count, has_more=has_more,
-                basis=RankingBasis(session=session.state, source="live", trading_date=session.date.isoformat(),
+                basis=RankingBasis(session="open" if market_open else "closed", source="live",
+                                   trading_date=session.date.isoformat(),
                                    observed_at_ms=now_ms),
             )
             snap = await self._persist(snap, limit)

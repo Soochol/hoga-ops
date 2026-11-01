@@ -157,8 +157,12 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "ScreenerAmountEvidence": frozenset({"trade_value_won", "method"}),
     "TradeValueRankParams": frozenset({"top_n"}),
     "TradeValueRankMatch": frozenset({"rank", "trade_value_won", "market", "venue", "fetched_at_ms"}),
-    "ChangePctRankParams": frozenset({"top_n"}),
-    "ChangePctRankMatch": frozenset({"rank", "change_pct", "market", "venue", "fetched_at_ms"}),
+    "ChangePctRankParams": frozenset({"top_n", "direction"}),
+    "ChangePctRankMatch": frozenset({"rank", "change_pct", "market", "venue", "fetched_at_ms", "direction"}),
+    "ProgramNetBuyRankParams": frozenset({"top_n"}),
+    "InvestorNetBuyRankParams": frozenset({"top_n"}),
+    "MarketRankMatch": frozenset({"kind", "rank", "market", "venue", "quote_venue", "fetched_at_ms",
+                                  "volume_surge_pct", "volume", "net_buy_won"}),
     "VolumePeriodParams": frozenset({"period", "timeframe", "include_open_bar", "volume_basis"}),
     "VolumeBreakoutParams": frozenset({"lookback", "period", "timeframe", "include_open_bar", "volume_basis"}),
     "HistoryVolumeParams": frozenset({"mode", "start_date", "end_date", "record_period", "volume_basis"}),
@@ -184,7 +188,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
                                           "bar_start_ms", "bar_match", "bar_price_match",
                                           "bar_trade_value_match", "bar_change_match",
                                           "volume_evidence", "amount_evidence", "trade_value_rank_match",
-                                          "change_pct_rank_match"}),
+                                          "change_pct_rank_match", "market_rank_match"}),
     "ScreenerExclusionWrite": frozenset({"calculation_policy", "condition", "code", "date", "stock_name",
                                          "bar_start_ms"}),
     "ScreenerExclusion": frozenset({"calculation_policy", "id", "condition_key", "condition", "code", "date",
@@ -645,6 +649,9 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "ScreenerRankDirection": (frozenset(get_args(m.ScreenerRankDirection)), "frontend/src/api/screener.ts"),
+    "MarketRankKind": (frozenset(get_args(m.MarketRankKind)), "frontend/src/api/screener.ts"),
+    "ScreenerRankType": (frozenset(get_args(m.ScreenerRankType)), "frontend/src/api/screener.ts"),
     "RankingSessionState": (
         frozenset(get_args(ranking_session.RankingSessionState)), "frontend/src/api/rankingBasis.ts"),
     "RankingBasisSource": (frozenset(get_args(ranking_session.RankingBasisSource)), "frontend/src/api/rankingBasis.ts"),

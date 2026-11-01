@@ -24,7 +24,13 @@ export interface ScreenerVolumeEvidence {
 // --- condition params (one per catalog type; type keys MUST match backend) ---
 export interface TradeValueParams extends CandleOptions { min_eok: number }
 export interface TradeValueRankParams { top_n: number }
-export interface ChangePctRankParams { top_n: number }
+export type ScreenerRankDirection = 'up' | 'down';
+export type MarketRankKind = 'surge' | 'volume' | 'program' | 'institution' | 'foreign';
+export type ScreenerRankType = 'trade_value_rank' | 'change_pct_rank' | 'volume_surge_rank' | 'volume_rank'
+  | 'program_net_buy_rank' | 'institution_net_buy_rank' | 'foreign_net_buy_rank';
+export interface ChangePctRankParams { top_n: number; direction?: ScreenerRankDirection }
+export interface ProgramNetBuyRankParams { top_n: number }
+export interface InvestorNetBuyRankParams { top_n: number }
 export interface CandleOptions { timeframe?: ScreenerTimeframe; include_open_bar?: boolean }
 export interface BreakoutParams extends CandleOptions { lookback: number; period: number }
 export type ScreenerTimeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m' | '60m' | 'D' | 'W' | 'M';
@@ -140,6 +146,11 @@ export interface DepthPeakPeriodParams { lookback: number; period: number; thres
 export interface DepthRenewalParams { start_hhmm: number; threshold_pct: number }
 
 export type ConditionLeaf =
+  | { id: string; type: 'volume_surge_rank'; params: TradeValueRankParams }
+  | { id: string; type: 'volume_rank'; params: TradeValueRankParams }
+  | { id: string; type: 'program_net_buy_rank'; params: ProgramNetBuyRankParams }
+  | { id: string; type: 'institution_net_buy_rank'; params: InvestorNetBuyRankParams }
+  | { id: string; type: 'foreign_net_buy_rank'; params: InvestorNetBuyRankParams }
   | { id: string; type: 'change_pct_rank'; params: ChangePctRankParams }
   | { id: string; type: 'trade_value_rank'; params: TradeValueRankParams }
   | { id: string; type: 'trade_value'; params: TradeValueParams }
@@ -642,10 +653,17 @@ export interface TradeValueRankMatch {
   venue: 'KRX' | 'NXT' | 'UN'; fetched_at_ms: number;
 }
 export interface ChangePctRankMatch {
+  direction?: ScreenerRankDirection;
   rank: number; change_pct: number; market: 'all' | 'kospi' | 'kosdaq';
   venue: 'KRX' | 'NXT' | 'UN'; fetched_at_ms: number;
 }
+export interface MarketRankMatch {
+  kind: MarketRankKind; rank: number; market: 'all' | 'kospi' | 'kosdaq';
+  venue: 'KRX' | 'NXT' | 'UN' | null; quote_venue: 'KRX' | 'NXT' | 'UN' | null;
+  fetched_at_ms: number; volume_surge_pct: number | null; volume: number | null; net_buy_won: number | null;
+}
 export interface ScreenerOccurrence {
+  market_rank_match?: MarketRankMatch | null;
   change_pct_rank_match?: ChangePctRankMatch | null;
   trade_value_rank_match?: TradeValueRankMatch | null;
   volume_evidence?: ScreenerVolumeEvidence | null;
