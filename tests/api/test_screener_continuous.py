@@ -414,3 +414,75 @@ async def test_initial_failure_surfaces_reason_and_is_not_perpetual_preparing(fi
     assert status.unavailable == 1
     assert status.preparing == 1  # other symbol has not been attempted
     assert ContinuousAdapter(owner, monitor).reason('005930') == 'credentials_missing'
+
+
+def cache_frame(owner, clock, *, first_volume=10, first_revision=1):
+    if owner.replica.epoch != 'cache':
+        owner.replica.reset('cache')
+    owner.replica.apply(dict(protocol=1, epoch='cache', observed_ms=clock.now, streams={
+        code: dict(revision=first_revision if code == '005930' else 1, generation='cache:1',
+            ready=True, tick_ms=clock.now, since_ms=START-60_000,
+            bars=[[START, first_volume if code == '005930' else 10, True]])
+        for code in ['005930', '000660']}), clock.now)
+    for code, history in owner.histories.items():
+        owner.merge(code, history, clock.now)
+
+
+async def test_notify_only_recomputes_changed_symbols_and_clock_or_quality_changes(fixture, monkeypatch):
+    owner, clock, _ = fixture
+    monitor = await start(owner, request(period=3))
+    for code in monitor.codes:
+        await owner.prepare(code, owner.histories[code])
+    cache_frame(owner, clock)
+    original, seen = owner.match_fingerprint, []
+    def count(*args):
+        seen.append(args[1])
+        return original(*args)
+    monkeypatch.setattr(owner, 'match_fingerprint', count)
+    owner.notify()
+    assert len(seen) == 2
+    owner.notify()
+    assert len(seen) == 2
+    clock.now += 1000
+    cache_frame(owner, clock, first_volume=2000, first_revision=2)
+    owner.notify()
+    assert len(seen) == 3
+    clock.now = START+61_000
+    for code in monitor.codes:
+        owner.merge(code, owner.histories[code], clock.now)
+    owner.notify()
+    assert len(seen) == 5
+
+
+async def test_result_cache_shares_concurrent_reads_and_only_rechecks_changed_symbol(fixture, monkeypatch):
+    owner, clock, calls = fixture
+    monitor = await start(owner, request(period=3))
+    for code in monitor.codes:
+        await owner.prepare(code, owner.histories[code])
+    cache_frame(owner, clock)
+    original, checked = bars.records, []
+    def count(*args, **kwargs):
+        checked.append(args[0].id)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(bars, 'records', count)
+    monkeypatch.setattr(bars.time, 'time', lambda: clock.now/1000)
+    async def read():
+        return await bars.evaluate(data_dir=owner.data_dir, conditions=monitor.leaves, codes=monitor.codes,
+            basis='intraday', now=dt.datetime.fromtimestamp(clock.now/1000, KST),
+            volume_runtime=ContinuousAdapter(owner, monitor))
+    first, _ = await asyncio.gather(read(), read())
+    assert len(checked) == 2
+    first.events['v'][0][1].condition_key = 'mutated by a consumer'
+    again = await read()
+    assert len(checked) == 2
+    assert all(event.condition_key != 'mutated by a consumer' for _, event in again.events['v'])
+    clock.now += 1000
+    cache_frame(owner, clock, first_volume=2000, first_revision=2)
+    changed = await read()
+    assert len(checked) == 3
+    assert changed.coverage.complete == 2
+    assert len(calls) == 2  # still just the initial per-code preparation
+    clock.now += 6000  # an offline replica invalidates cached positive matches
+    offline = await read()
+    assert len(checked) == 5 and offline.coverage.complete == 0
+    assert not offline.events['v']

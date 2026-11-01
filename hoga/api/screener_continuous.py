@@ -10,6 +10,7 @@ import contextlib
 import logging
 import time
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 
@@ -39,6 +40,8 @@ AUDIT_MS = 300_000
 TARGET_REFRESH_MS = 1000
 SCOPE_REFRESH_MS = 30_000
 CANONICAL_SETTLE_MS = 15_000
+MAX_EVALUATIONS = 4096
+MAX_CACHED_EVENTS = 16_000
 
 
 class ContinuousStartRequest(BaseModel):
@@ -78,6 +81,9 @@ class History:
     repair_until_ms: int = 0
     coverage_start_ms: int = 0
     attempt_day: str = ''
+    revision: int = 0
+    merge_token: tuple | None = None
+    identity: object = field(default_factory=object, repr=False, compare=False)
 
 
 @dataclass
@@ -116,6 +122,51 @@ class ContinuousAdapter:
         if history.repair_until_ms or (self.owner.live_clock(now) and (not state or not state['ready'])):
             data = [volume.VolumeBar(b.start_ms, b.volume, b.is_open, False) for b in data]
         return data, now, lower
+
+    async def evaluate_leaf(self, leaf, code, now):
+        history = self.owner.histories.get(code)
+        if history:
+            self.owner.merge(code, history, now)
+        version = self.owner.version(code, history, now) if history else None
+        key = code, leaf.model_dump_json()
+        cached = self.owner.evaluations.get(key)
+        if cached is not None and cached[0] == version:
+            self.owner.evaluations.move_to_end(key)
+        else:
+            flight = key, version
+            task = self.owner.evaluation_flights.get(flight)
+            if task is None:
+                task = asyncio.create_task(self._evaluate_changed(leaf, code, now, key, version))
+                self.owner.evaluation_flights[flight] = task
+                task.add_done_callback(lambda _task: self.owner.evaluation_flights.pop(flight, None))
+            cached = await asyncio.shield(task)
+        return leaf, code, [event.model_copy(deep=True) for event in cached[1]], cached[2], cached[3]
+
+    async def _evaluate_changed(self, leaf, code, now, key, version):
+        cached = self.owner.evaluations.get(key)
+        if cached is None or cached[0] != version:
+            data, observed, lower = self.snapshot(leaf, code, now)
+            events, complete = await asyncio.to_thread(volume.records, leaf, data, fetched_at_ms=observed)
+            for event in events:
+                if event.bar_match and event.bar_start_ms in lower:
+                    event.bar_match.volume_is_lower_bound = True
+            reason = self.reason(code, leaf)
+            if not reason and not complete and lower and any(not bar.valid for bar in data):
+                reason = 'live_bar_unconfirmed'
+            cached = version, events, complete and reason is None, reason
+            history = self.owner.histories.get(code)
+            if self.owner.closed or (history and self.owner.version(code, history, self.owner.now()) != version):
+                return cached
+            old = self.owner.evaluations.pop(key, None)
+            self.owner._event_count -= len(old[1]) if old else 0
+            self.owner.evaluations[key] = cached
+            self.owner._event_count += len(events)
+            while len(self.owner.evaluations) > MAX_EVALUATIONS or self.owner._event_count > MAX_CACHED_EVENTS:
+                _, old = self.owner.evaluations.popitem(last=False)
+                self.owner._event_count -= len(old[1])
+        elif key in self.owner.evaluations:
+            self.owner.evaluations.move_to_end(key)
+        return cached
 
     def seed(self, *args):
         pass  # Preparation belongs exclusively to the background coordinator.
@@ -158,6 +209,11 @@ class ContinuousMonitors:
         self._last_scope = 0
         self._errors: dict[str, str] = {}
         self._day_cache: tuple | None = None
+        self._fingerprints = {}
+        self._quality = {}
+        self.evaluations = OrderedDict()
+        self._event_count = 0
+        self.evaluation_flights = {}
 
     def selected_day(self, now):
         # Calendar I/O is outside raw ingest and shared across all result/status
@@ -256,6 +312,18 @@ class ContinuousMonitors:
     def stop(self, monitor_id):
         self.monitors.pop(monitor_id, None)
 
+    def monitor_quality(self, monitor, code, history, now):
+        version = self.version(code, history, now)
+        key = monitor.id, code
+        quality = self._quality.get(key)
+        if quality is None or quality[0] != version:
+            ready = self.current_day(history, now) and candles.prepared(history, monitor.leaves, now)
+            damaged = bool(history.repair_until_ms) or any(not b.valid for leaf in monitor.leaves
+                for b in candles.window(history, leaf, now)[0][-candles.candle_count(leaf):])
+            quality = version, ready, damaged
+            self._quality[key] = quality
+        return quality[1:]
+
     def status(self, monitor, now):
         prepared = receiving = recovering = unavailable = insufficient = preparing = 0
         verified = []
@@ -263,15 +331,12 @@ class ContinuousMonitors:
         for code in monitor.codes:
             history = self.histories.get(code, History(needed))
             state = self.replica.get(code, now)
-            ready = self.current_day(history, now) and candles.prepared(history, monitor.leaves, now)
+            ready, damaged = self.monitor_quality(monitor, code, history, now)
             prepared += ready
             insufficient += bool(not ready and history.reason == 'insufficient_minute_history')
             failed = bool(not ready and history.reason and history.reason != 'insufficient_minute_history')
             unavailable += failed
             preparing += bool(not ready and not history.reason)
-            damaged = bool(history.repair_until_ms) or any(
-                not b.valid for leaf in monitor.leaves
-                for b in candles.window(history, leaf, now)[0][-candles.candle_count(leaf):])
             recovering += bool(ready and damaged)
             receiving += bool(ready and not damaged and self.live_clock(now) and state and state['ready'])
             unavailable += bool(ready and self.live_clock(now) and (not state or not state['ready']))
@@ -284,9 +349,23 @@ class ContinuousMonitors:
 
     def merge(self, code, history, now):
         state = self.replica.get(code, now)
-        if not state:
-            history.bars = candles.close_minutes(history.bars, history.lower, now)
+        token = ((self.replica.epoch, state['generation'], state['revision'], state['ready']) if state else None,
+                 now // MINUTE, history.fetched_ms, history.needed)
+        covered = max(history.source_seen_ms, history.fetched_ms)
+        if token == history.merge_token and (not state or covered >= state['replay_since_ms']):
+            if state:
+                history.source_seen_ms = state['observed_ms']
             return
+        before = (list(history.bars), set(history.lower), history.repair_until_ms)
+        if state:
+            self._merge_state(history, state, now)
+        else:
+            history.bars = candles.close_minutes(history.bars, history.lower, now)
+        history.merge_token = token
+        if before != (history.bars, history.lower, history.repair_until_ms):
+            history.revision += 1
+
+    def _merge_state(self, history, state, now):
         incoming = candles.source_bars(history, state)
         self.track_source(history, state, now)
         data = {bar.start_ms: bar for bar in history.bars}
@@ -344,8 +423,9 @@ class ContinuousMonitors:
         now = self.now()
         history.attempt_day = self.selected_day(now).isoformat()
         try:
+            repair = self.loader is volume.monitor_day_snapshot and bool(history.fetched_ms or history.failures)
             snapshot = await self.loader(self.data_dir, code, '1m', history.needed, None,
-                                         datetime.fromtimestamp(now / 1000, KST))
+                datetime.fromtimestamp(now / 1000, KST), **({'force': True} if repair else {}))
             if snapshot.reason:
                 raise ValueError(snapshot.reason)
             if snapshot.bars:
@@ -381,6 +461,8 @@ class ContinuousMonitors:
             history.retry_at = self.now() + min(30_000, 1000 * 2 ** min(history.failures, 5))
             log.exception('screener.volume.prepare_failed code=%s reason=%s', code, history.reason)
         finally:
+            history.revision += 1
+            history.merge_token = None
             self.pending.pop(code, None)
 
     @staticmethod
@@ -468,18 +550,38 @@ class ContinuousMonitors:
                 continue
             damaged = bool(history.repair_until_ms) or any(not b.valid for b in history.bars[-history.needed:])
             short = not self.current_day(history, now) or any(
-                        code in monitor.codes and not candles.prepared(history, monitor.leaves, now)
+                        code in monitor.codes and not self.monitor_quality(monitor, code, history, now)[0]
                         for monitor in self.monitors.values())
             if not history.fetched_ms or damaged or (short and now - history.fetched_ms >= AUDIT_MS):
                 candidates.append((bool(history.fetched_ms and not damaged), history.fetched_ms, code))
         for _, _, code in sorted(candidates)[:max(0, 4 - len(self.pending))]:
             self.pending[code] = asyncio.create_task(self.prepare(code, self.histories[code]))
+    def version(self, code, history, now):
+        state = self.replica.get(code, now)
+        closing = candles.session_start(history.bars[-1].start_ms) + 390 * MINUTE if history.bars else now
+        return (history.identity, history.revision, history.fetched_ms, history.reason, history.repair_until_ms,
+                len(history.bars),
+                min(now, closing) // MINUTE, bool(state and state['ready']), self.selected_day(now))
+
     def notify(self):
         now = self.now()
+        active = set(self.monitors)
+        self._fingerprints = {key: value for key, value in self._fingerprints.items() if key in active}
+        self._quality = {key: value for key, value in self._quality.items() if key[0] in active}
         for monitor in self.monitors.values():
-            signature = tuple((code, self.histories[code].fetched_ms,
-                               self.match_fingerprint(monitor, self.histories[code], now),
-                               bool((self.replica.get(code, now) or {}).get('ready'))) for code in monitor.codes)
+            cached = self._fingerprints.setdefault(monitor.id, {})
+            signature = []
+            for code in monitor.codes:
+                history = self.histories[code]
+                version = self.version(code, history, now)
+                if code not in cached or cached[code][0] != version:
+                    cached[code] = version, self.match_fingerprint(monitor, history, now)
+                signature.append((code, history.fetched_ms, cached[code][1], version[-2],
+                                  history.reason, bool(history.repair_until_ms), version[-1]))
+            signature = tuple(signature)
+            cached_keys = set(monitor.codes)
+            for code in cached.keys() - cached_keys:
+                del cached[code]
             if signature != monitor.fingerprint:
                 monitor.fingerprint = signature
                 if self.bus:
@@ -514,7 +616,12 @@ class ContinuousMonitors:
 
     async def close(self):
         self.closed = True
-        tasks = list(self.pending.values()) + ([self.loop_task] if self.loop_task else [])
+        self.evaluations.clear()
+        self._event_count = 0
+        self._fingerprints.clear()
+        self._quality.clear()
+        tasks = (list(self.pending.values()) + list(self.evaluation_flights.values())
+                 + ([self.loop_task] if self.loop_task else []))
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

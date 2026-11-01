@@ -1,0 +1,23 @@
+{
+  "calls": {
+    "symbols": 2808,
+    "timeframes": [
+      "3m",
+      "5m",
+      "10m"
+    ],
+    "first_calls": 2808,
+    "repeat_calls": 0,
+    "cache_entries": 2808,
+    "reserved_cache_bytes": 57771792,
+    "baseline_independent_timeframe_calls": 8424
+  },
+  "cpu": {
+    "symbols": 338,
+    "conditions": 3,
+    "full_fingerprint_ms": 50.236,
+    "unchanged_notification_ms": 0.371,
+    "one_changed_notification_ms": 0.512,
+    "note": "CPU only; complete scan, transport, rendering and busy all-symbol ticks excluded"
+  }
+}

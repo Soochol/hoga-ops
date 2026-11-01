@@ -1,0 +1,40 @@
+{
+  "base_sha": "bb0e1eaddb31311d7544d63045c34302da289bd8",
+  "latest_main": "05dcb648a",
+  "algorithm": "SHA256 of sorted path + NUL + file SHA256 + NUL",
+  "backend": {
+    "sha256": "862ee2829eddadd04e52bc3737143f97524e86bed2e9d07d0bb3c8413aa66d38",
+    "files": 887
+  },
+  "frontend": {
+    "sha256": "592315d75449ca8b3ac124f8edb8f851cb26c9363a2eeaaedf90609698eb63d0",
+    "files": 2110
+  },
+  "benchmark_sha256": "af33e66f301e177f554621927b885310c44f9a7822b168239968cd02f7845a91",
+  "environment": {
+    "python": "3.14.7",
+    "packages": {
+      "pytest": "9.0.3",
+      "ruff": "0.15.13"
+    },
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "e2e_ports": [
+      20367,
+      21367
+    ],
+    "credentials": "empty worktree .env; Playwright empty vendor environment"
+  },
+  "validation": {
+    "ruff": "passed",
+    "backend": "1724 passed, 66 existing warnings, 60.39s",
+    "final_affected_backend": "53 passed, 19.70s",
+    "playwright": "5 passed, 20.2s",
+    "frontend": "same input hash as prior recorded typecheck, 74 unit tests and build"
+  },
+  "backend_reuse": {
+    "reason": "Only final History identity token replaced object address; affected consumers rerun",
+    "broad_screener_continuous_sha256_reconstructed": "670781c41ea8f8db5160af9ce1b429bdfd631089ccf8908ff99af352935f5b6a",
+    "final_screener_continuous_sha256": "debce953e307eca56e9a353d7150e9741a3b836e1db8a6dec4cbe7e54f13f97b"
+  }
+}

@@ -58,6 +58,7 @@ from hoga.api.screener_calendar import EOD_CUTOFF_HOUR
 from hoga.api.screener_write_lock import screener_read_lock
 from hoga.live import kiwoom_access, kiwoom_minute_candles, kiwoom_rest_runtime, settings
 from hoga.live.error_policy import classify_live_error
+from hoga.live.minute_day_cache import MinuteBar as VolumeBar, MinuteSnapshot, shared_days
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
@@ -83,21 +84,6 @@ def needs_daily_overlay(leaf, today: str) -> bool:
     if isinstance(leaf.params, HistoryDateRangeParams):
         return isinstance(leaf.params, RANGE_PARAMS) and leaf.params.end_date >= today
     return True
-
-
-@dataclass(frozen=True)
-class VolumeBar:
-    start_ms: int
-    volume: int
-    is_open: bool = False
-    valid: bool = True
-    open: float | None = None
-    high: float | None = None
-    low: float | None = None
-    close: float | None = None
-    trade_value_won: float | None = None
-    previous_day_close: float | None = None
-    previous_day_ms: int | None = None
 
 
 @dataclass
@@ -275,13 +261,6 @@ def _daily_bar(row):
                      **{source: row.get(source) for source in screener_bar_price.PRICE_FIELDS})
 
 
-@dataclass
-class MinuteSnapshot:
-    bars: list[VolumeBar]
-    fetched_at_ms: int
-    reason: str | None = None
-
-
 _CACHE: OrderedDict[tuple, MinuteSnapshot] = OrderedDict()
 _FLIGHTS: dict[tuple, asyncio.Task] = {}
 _CURSORS: OrderedDict[tuple, int] = OrderedDict()
@@ -298,6 +277,7 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
     scope = timeframe.removesuffix("m")
     cursor = as_of.strftime("%Y%m%d")
     bars_by_ms = {}
+    chart_bars = []
     reason = None
     for page_index in range(MAX_MINUTE_PAGES):
         page = await kiwoom_access.run_with_capacity(scheduler,
@@ -317,6 +297,12 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
         if not rows:
             break
         oldest = min(day for day, _ in rows)
+        if observation is not None and timeframe == '1m':
+            chart_bars = [VolumeBar(c.t_ms, c.volume,
+                int(as_of.timestamp()*1000) < min(c.t_ms + 60_000, _stamp(observation.day, 15, 30)),
+                **{source: getattr(c, source) for source in screener_bar_price.PRICE_FIELDS})
+                for day, c in rows if day == observation.day.strftime('%Y%m%d')]
+            chart_bars.sort(key=lambda b: b.start_ms)
         for day, candle in rows:
             # The oldest day can be truncated. A directly requested latest KRX
             # regular day fits one 900-row page, including at the retention floor.
@@ -339,29 +325,53 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
         cursor = oldest
         if page_index == MAX_MINUTE_PAGES - 1:
             reason = "fetch_budget_exhausted"
-    return MinuteSnapshot([bars_by_ms[ms] for ms in sorted(bars_by_ms)], fetched_at, reason)
+    return MinuteSnapshot([bars_by_ms[ms] for ms in sorted(bars_by_ms)], fetched_at, reason,
+                          chart_bars=chart_bars if observation is not None and timeframe == '1m' else None,
+                          cutoff_ms=int(as_of.timestamp()*1000))
 
 
-async def _day_snapshot(data_dir, code, timeframe, scope):
-    # A day response is shared by all lookbacks/conditions at the same cutoff.
-    key = (data_dir, code, timeframe, "single-day", scope.day, scope.cutoff)
-    if key in scope.snapshots:
-        return scope.snapshots[key]
-    cached = _CACHE.get(key)
-    if _fresh_snapshot(cached, True):
-        _CACHE.move_to_end(key)
-        scope.snapshots[key] = cached
-        return cached
-    if settings.rest_bypass_enabled(data_dir):
-        return MinuteSnapshot([], int(time.time() * 1000), "rest_bypassed")
-    task = _FLIGHTS.get(key)
-    if task is None:
-        with screener_minute_scope.bind(scope):
-            task = asyncio.create_task(_load_minutes(key, data_dir, code, timeframe, 1, None, scope.cutoff))
-        _FLIGHTS[key] = task
-    result = await asyncio.shield(task)
-    scope.snapshots[key] = result
+def aggregate_day_minutes(bars, timeframe, cutoff_ms):
+    """One raw day -> all supported candle grids, preserving OHLC and quality."""
+    interval = int(timeframe[:-1]) * 60_000
+    grouped = defaultdict(list)
+    for bar in bars:
+        if bar.start_ms > cutoff_ms:
+            continue
+        clock = dt.datetime.fromtimestamp(bar.start_ms / 1000, KST)
+        opening = _stamp(clock.date(), 9)
+        start = opening + (bar.start_ms - opening) // interval * interval
+        grouped[start].append(bar)
+    result = []
+    for start, rows in sorted(grouped.items()):
+        closing = _stamp(dt.datetime.fromtimestamp(start/1000, KST).date(), 15, 30)
+        prices = {}
+        if all(screener_bar_price.valid_prices(row) for row in rows):
+            prices = dict(open=rows[0].open, high=max(row.high for row in rows),
+                          low=min(row.low for row in rows), close=rows[-1].close)
+        result.append(VolumeBar(start, sum(row.volume for row in rows),
+            cutoff_ms < min(start + interval, closing), all(row.valid for row in rows), **prices))
     return result
+
+
+async def _day_snapshot(data_dir, code, timeframe, scope, *, force=False):
+    # All scopes/lookbacks share one raw 1m day, independently of scan time.
+    key = (code, '1m')
+    if key not in scope.snapshots:
+        cache_key = shared_days.key(data_dir, 'KRX', code, scope.day)
+        async def load():
+            if settings.rest_bypass_enabled(data_dir):
+                return MinuteSnapshot([], int(time.time() * 1000), 'rest_bypassed')
+            with screener_minute_scope.bind(scope):
+                result = await _fetch_minutes(data_dir, code, '1m', 0, None, scope.cutoff)
+            data = [bar for bar in result.bars
+                    if dt.datetime.fromtimestamp(bar.start_ms / 1000, KST).date() == scope.day]
+            return replace(result, bars=data, cutoff_ms=result.cutoff_ms or int(scope.cutoff.timestamp() * 1000))
+        scope.snapshots[key] = await shared_days.obtain(cache_key, int(scope.cutoff.timestamp() * 1000),
+                                                      load, force=force, allow_advance=scope.live)
+    snapshot = scope.snapshots[key]
+    return snapshot if timeframe == '1m' else replace(snapshot,
+        bars=aggregate_day_minutes(snapshot.bars, timeframe, snapshot.cutoff_ms or
+                                   int(scope.cutoff.timestamp() * 1000)))
 
 
 async def minute_snapshot(data_dir, code, timeframe, needed, lower, as_of, *, historical=False):
@@ -381,11 +391,11 @@ async def minute_snapshot(data_dir, code, timeframe, needed, lower, as_of, *, hi
     return await asyncio.shield(task)
 
 
-async def monitor_day_snapshot(data_dir, code, timeframe, needed, lower, as_of):
+async def monitor_day_snapshot(data_dir, code, timeframe, needed, lower, as_of, *, force=False):
     """Live monitoring prepares the same one-day baseline as manual searches."""
     scope = screener_minute_scope.resolve(data_dir, as_of)
     with screener_minute_scope.bind(scope):
-        return await _day_snapshot(data_dir, code, timeframe, scope)
+        return await _day_snapshot(data_dir, code, timeframe, scope, **({"force": True} if force else {}))
 
 
 def _fresh_snapshot(snapshot, historical):
@@ -521,6 +531,9 @@ async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetc
     scope = screener_minute_scope.current.get()
     if scope is not None:
         return await _evaluate_day_leaf(leaf, code, data_dir, now, sem, scope)
+    if (basis == 'intraday' and volume_runtime and hasattr(volume_runtime, 'evaluate_leaf')
+            and volume_runtime.supports(leaf) and not historical):
+        return await volume_runtime.evaluate_leaf(leaf, code, int(time.time() * 1000))
     return await _evaluate_minute_window(leaf, code, data_dir=data_dir, as_of=as_of, now=now,
         basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime, historical=historical)
 
