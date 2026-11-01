@@ -66,9 +66,24 @@ describe('HistoryCollection server job lifecycle', () => {
     vi.mocked(apiCall).mockResolvedValue({ ...job('queued'), request: changed });
     fireEvent.click(screen.getByRole('button', { name: '과거 일봉 수집' }));
     await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/screener/history/jobs', {
-      method: 'POST', body: JSON.stringify(changed),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changed),
     }));
     expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('sends new-basis daily preparation as JSON after an unrelated legacy job', async () => {
+    const { changeRequest } = setup(job('partial'));
+    const changed: ScanRequest = {
+      calculation_policy: 'separate_bases_v2',
+      conditions: [{ id: 'high', type: 'new_high', params: { lookback: 200, period: 500 } }],
+      universe: {},
+    };
+    changeRequest(changed);
+    vi.mocked(apiCall).mockResolvedValue({ ...job('queued'), request: changed });
+    fireEvent.click(screen.getByRole('button', { name: '새 기준 일봉 준비' }));
+    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/screener/history/jobs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changed),
+    }));
   });
 
   it('does not rescan when completion belongs to a different filter value', () => {
