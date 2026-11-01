@@ -1,6 +1,6 @@
 // frontend/src/chart/drawing/persistence.ts
 import { validPosition } from './analysisGeometry';
-import { FIB_LEVELS } from './types';
+import { FIB_LEVELS, FIB_EXTENSION_LEVELS, PATH_MAX_POINTS, REGRESSION_SOURCES } from './types';
 import { finiteSubX } from './rectCoordinates';
 import type { Drawing, DrawingKind, LineStyle, PaneId, DrawingDefaults, DrawingStyle } from './types';
 import { PANE_SPECS } from '../paneSpecs';
@@ -39,6 +39,7 @@ export function parseScope(scope: string): { code: string; slot: DrawingSlot | n
  *  or a shape written by a newer build) are dropped on load rather than
  *  crashing the exhaustive render/hit-test switches. */
 const KNOWN_KINDS: ReadonlySet<string> = new Set<DrawingKind>([
+  'fib-extension', 'path', 'callout', 'regression',
   'hray', 'fib', 'channel', 'long-position', 'short-position',
   'hline',
   'vline',
@@ -166,15 +167,36 @@ export function normalizeItems(raw: unknown): Drawing[] {
       }
       if (normalized.hidden !== true) delete normalized.hidden;
       if (typeof normalized.name !== 'string') delete normalized.name;
-      if (normalized.kind === 'fib') {
+      if (normalized.kind === 'fib' || normalized.kind === 'fib-extension') {
         normalized.levels = Array.isArray(normalized.levels)
           ? [...new Set(normalized.levels.filter(v => typeof v === 'number' && Number.isFinite(v) && v >= -10 && v <= 10))].slice(0, 24)
-          : [...FIB_LEVELS];
+          : [...(normalized.kind === 'fib' ? FIB_LEVELS : FIB_EXTENSION_LEVELS)];
       }
       if (normalized.kind === 'channel' && !Number.isFinite(normalized.fillOpacity)) normalized.fillOpacity = 0.1;
+      if (normalized.kind === 'path') {
+        normalized.points = Array.isArray(normalized.points) ? normalized.points.slice(0, PATH_MAX_POINTS) : [];
+        if (typeof normalized.arrowStart !== 'boolean') delete normalized.arrowStart;
+        if (typeof normalized.arrowEnd !== 'boolean') delete normalized.arrowEnd;
+      }
+      if (normalized.kind === 'callout') {
+        normalized.offsetX = Number.isFinite(normalized.offsetX) ? normalized.offsetX : 80;
+        normalized.offsetY = Number.isFinite(normalized.offsetY) ? normalized.offsetY : -50;
+        normalized.fontSize = Number.isFinite(normalized.fontSize) ? Math.max(8, Math.min(72, normalized.fontSize)) : 13;
+        normalized.text = typeof normalized.text === 'string' ? normalized.text.slice(0,4000) : '';
+      }
+      if (normalized.kind === 'regression') {
+        if (!REGRESSION_SOURCES.includes(normalized.source)) normalized.source = 'close';
+        normalized.upperDeviation = Number.isFinite(normalized.upperDeviation) ? Math.max(0,Math.min(10,normalized.upperDeviation)) : 2;
+        normalized.lowerDeviation = Number.isFinite(normalized.lowerDeviation) ? Math.max(0,Math.min(10,normalized.lowerDeviation)) : 2;
+        normalized.fillOpacity = Number.isFinite(normalized.fillOpacity) ? Math.max(0,Math.min(1,normalized.fillOpacity)) : 0.1;
+      }
       return normalized;
     }).filter(item => {
       const point = (v: unknown) => v != null && typeof v === 'object' && Number.isFinite((v as {realMs:number}).realMs) && Number.isFinite((v as {price:number}).price);
+      if (item.kind === 'path') return item.points.length >= 2 && item.points.every(point);
+      if (item.kind === 'callout') return point(item.a) && !!item.text.trim();
+      if (item.kind === 'regression') return item.paneId === 'candle' && point(item.a) && point(item.b) && item.a.realMs !== item.b.realMs;
+      if (item.kind === 'fib-extension') return point(item.a) && point(item.b) && point(item.c) && item.a.price !== item.b.price;
       if (item.kind === 'hray') return point(item.at);
       if (item.kind === 'fib') return point(item.a) && point(item.b);
       if (item.kind === 'channel') return point(item.a) && point(item.b) && point(item.c);

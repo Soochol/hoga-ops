@@ -5,7 +5,7 @@ import { FIB_LEVELS } from './types';
 import { validPosition } from './analysisGeometry';
 
 export type AnalysisDraft = {
-  kind: Exclude<AnalysisDrawing['kind'], 'hray'>;
+  kind: 'fib' | 'channel' | 'long-position' | 'short-position';
   a: Point; b: Point; c?: Point;
   paneId: PaneId; pointerId: number;
   phase: 'baseline' | 'width';

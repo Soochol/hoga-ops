@@ -2,6 +2,7 @@ import type { DrawingTool } from '../chart/drawing/types';
 import { AppIcon, type AppIconName } from '../ui/AppIcon';
 
 const icons: Record<DrawingTool, AppIconName> = {
+  'fib-extension': 'fibExtension', path: 'path', callout: 'callout', regression: 'regression',
   hray: 'arrowRight', fib: 'fib', channel: 'channel', 'long-position': 'arrowUpRight', 'short-position': 'arrowDownRight',
   select: 'select', hline: 'horizontal', vline: 'vertical', trendline: 'trendline',
   rect: 'rectangle', measure: 'measure', text: 'text', pencil: 'pencil', eraser: 'eraser',

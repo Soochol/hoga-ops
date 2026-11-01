@@ -207,13 +207,14 @@ describe('TOOLS registry shape', () => {
     // If the union grows, this fails to compile — the cast forces alignment.
     const keys: string[] = Object.keys(TOOLS).sort();
     expect(keys).toEqual([
-      'channel', 'day-close', 'day-high', 'day-low', 'day-open', 'eraser', 'fib', 'hline', 'hray', 'long-position', 'measure', 'pencil', 'rect', 'select', 'short-position', 'text', 'trendline', 'vline',
+      'callout', 'channel', 'day-close', 'day-high', 'day-low', 'day-open', 'eraser', 'fib', 'fib-extension', 'hline', 'hray', 'long-position', 'measure', 'path', 'pencil', 'rect', 'regression', 'select', 'short-position', 'text', 'trendline', 'vline',
     ]);
   });
 
   it('DRAWABLE_TOOLS_ORDER lists only non-select tools', () => {
     expect(DRAWABLE_TOOLS_ORDER).not.toContain('select');
     expect(DRAWABLE_TOOLS_ORDER).toEqual([
+      'fib-extension', 'path', 'callout', 'regression',
       'hray', 'fib', 'channel', 'long-position', 'short-position',
       'hline', 'day-high', 'day-low', 'day-open', 'day-close', 'vline', 'trendline', 'rect', 'measure', 'text', 'pencil', 'eraser',
     ]);

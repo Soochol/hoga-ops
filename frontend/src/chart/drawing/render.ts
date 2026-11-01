@@ -5,6 +5,7 @@ import { CANVAS_FONT_STACK } from '../../styles/design-tokens';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type {
   Drawing,
+  DrawingCandle,
   DrawingStyle,
   Hline,
   Measure,
@@ -69,7 +70,9 @@ export type ProjectCtx = {
   /** The loaded bars, for the measure readout's column count. Absent → the
    *  count falls back to the session-length ladder, which over-counts a
    *  boundary crossing by that session's empty slots. See DragBarDomain. */
-  candles?: readonly { ts_ms: number }[];
+  candles?: readonly DrawingCandle[];
+  backgroundColor?: string;
+  textColor?: string;
   /** Effective bar width in canvas px (`barPitchPx`). Scales a pencil point's
    *  sub-bar offset back into pixels. Absent → offsets read as 0, i.e. the
    *  bar-anchored geometry this renderer had before `Pencil.subX`. */
@@ -833,11 +836,18 @@ export function lockBadgeAnchor(ctx: ProjectCtx, d: Drawing): { x: number; y: nu
       return at(d.at.realMs, d.at.price);
     case 'hray':
       return at(d.at.realMs, d.at.price);
+    case 'callout':
+    case 'fib-extension':
     case 'fib':
     case 'channel':
     case 'long-position':
     case 'short-position':
       return at(d.a.realMs, d.a.price);
+    case 'regression': {
+      const h = projectAnalysis(d, { x: ctx.realMsToX, y: ctx.priceToY, width: ctx.width, candles: ctx.candles }).handles[0];
+      return h ? { x: h.at.x - LOCK_BADGE_GAP, y: h.at.y - LOCK_BADGE_GAP } : null;
+    }
+    case 'path':
     case 'pencil': {
       const first = d.points[0];
       return first == null ? null : at(first.realMs, first.price);
@@ -878,7 +888,7 @@ export function renderDrawing(
 ) {
   if (d.hidden) return;
   if (isAnalysisDrawing(d)) {
-    const geometry = projectAnalysis(d, { x: ctx.realMsToX, xClamped: ctx.realMsToXClamped, y: ctx.priceToY, width: ctx.width });
+    const geometry = projectAnalysis(d, { x: ctx.realMsToX, xClamped: ctx.realMsToXClamped, y: ctx.priceToY, width: ctx.width, candles: ctx.candles, measureTextWidth });
     for (const fill of geometry.fills) {
       c.save(); c.fillStyle = fill.role === 'target' ? MEASURE_UP : fill.role === 'stop' ? MEASURE_DOWN : d.color;
       c.globalAlpha = fill.opacity;
@@ -889,10 +899,28 @@ export function renderDrawing(
       for (const s of geometry.segments) {
         c.setLineDash(s.dashed ? [4, 4] : dashPattern(d.lineStyle, d.width));
         c.beginPath(); c.moveTo(s.a.x, s.a.y); c.lineTo(s.b.x, s.b.y); c.stroke();
+        const arrow = (tip: {x:number;y:number}, tail: {x:number;y:number}) => {
+          const angle = Math.atan2(tip.y-tail.y, tip.x-tail.x), size = 8 + d.width;
+          c.setLineDash([]); c.beginPath();
+          c.moveTo(tip.x-size*Math.cos(angle-0.45), tip.y-size*Math.sin(angle-0.45));
+          c.lineTo(tip.x,tip.y); c.lineTo(tip.x-size*Math.cos(angle+0.45),tip.y-size*Math.sin(angle+0.45)); c.stroke();
+        };
+        if (s.arrowStart) arrow(s.a,s.b);
+        if (s.arrowEnd) arrow(s.b,s.a);
       }
     });
     for (const label of geometry.labels) {
       drawFloatingLabel(c, ctx.width, label.at.x + 4, label.at.y - 10, label.text, d.color);
+    }
+    for (const note of geometry.annotations ?? []) {
+      const { x, y, width, height } = note.box;
+      c.save(); c.setLineDash([]); c.fillStyle = ctx.backgroundColor ?? d.color;
+      c.strokeStyle = d.color; c.lineWidth = d.width;
+      c.beginPath(); c.roundRect(x,y,width,height,BADGE_RADIUS); c.fill(); c.stroke();
+      c.font = textFont(note.fontSize); c.fillStyle = ctx.textColor ?? (luminance(ctx.backgroundColor ?? d.color) < 0.5 ? '#FFFFFF' : '#000000');
+      c.textAlign = 'left'; c.textBaseline = 'top';
+      const layout = textLayout(note.text,note.fontSize,measureTextWidth);
+      layout.lines.forEach((line,i) => c.fillText(line,x+8,y+6+i*layout.lineHeight)); c.restore();
     }
     if (showHandles(d, opts.handles ?? selected)) {
       for (const h of geometry.handles) drawHandle(c, d.color, h.at.x, h.at.y);

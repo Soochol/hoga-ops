@@ -15,11 +15,11 @@ import './DrawingMenu.css';
 const EMPTY_DRAWINGS: never[] = [];
 const DEFAULT_FAVORITES: DrawingTool[] = ['hray', 'trendline', 'fib'];
 const GROUPS: { label: string; tools: DrawingTool[] }[] = [
-  { label: '선 · 채널', tools: ['select', 'hline', 'hray', 'vline', 'trendline', 'channel'] },
-  { label: '피보나치', tools: ['fib'] },
+  { label: '선 · 채널', tools: ['select', 'hline', 'hray', 'vline', 'trendline', 'channel', 'regression'] },
+  { label: '피보나치', tools: ['fib', 'fib-extension'] },
   { label: '포지션 · 측정', tools: ['long-position', 'short-position', 'measure'] },
   { label: '일자 기준선', tools: ['day-high', 'day-low', 'day-open', 'day-close'] },
-  { label: '도형 · 메모', tools: ['rect', 'text', 'pencil', 'eraser'] },
+  { label: '도형 · 메모', tools: ['rect', 'path', 'text', 'callout', 'pencil', 'eraser'] },
 ];
 
 type Props = { code: string | null; timeframe: LiveTimeframe; showLabel?: boolean };

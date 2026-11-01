@@ -1,3 +1,5 @@
+import { drawingFromAdvancedDraft, finishPath, type AdvancedDraft } from './drawing/advancedTools';
+import { fitRegression } from './drawing/regression';
 import { drawingFromAnalysisDraft, type AnalysisDraft } from './drawing/analysisTools';
 import { translateRectBars } from './drawing/rectCoordinates';
 import { indexDayExtremes } from './drawing/dayExtremes';
@@ -69,6 +71,9 @@ function fitTextEditorBox(anchorX: number, naturalWidth: number, containerWidth:
 /** Open text-editor state — a DOM <input> the overlay renders over the canvas.
  *  `id` is null for a new label, or the id of an existing text being re-edited. */
 type TextEdit = {
+  kind?: 'text' | 'callout';
+  offsetX?: number;
+  offsetY?: number;
   id: string | null;
   at: Point;
   paneId: PaneId;
@@ -136,6 +141,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const defaults = useDrawingsStore((s) => s.defaults);
 
+  const advancedDraft = useRef<AdvancedDraft | null>(null);
+  const finishPathRef = useRef<(doubleClick?: boolean) => boolean>(() => false);
   const analysisDraft = useRef<AnalysisDraft | null>(null);
   const trendlineDraft = useRef<TrendlineDraft | null>(null);
   const pencilDraft = useRef<PencilDraft | null>(null);
@@ -161,6 +168,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
    *  right-click, pointercancel) clear the SAME list. Stable identity: the
    *  keydown effect below has `[]` deps and captures this once. */
   const gestureRefs = useRef<GestureRefs>({
+    advancedDraft,
     analysisDraft,
     trendlineDraft,
     pencilDraft,
@@ -296,6 +304,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     lastRealMs,
     candles,
     drafts: {
+      advanced: advancedDraft.current ? drawingFromAdvancedDraft(advancedDraft.current) : null,
       analysis: analysisDraft.current ? drawingFromAnalysisDraft(analysisDraft.current) : null,
       trendline: trendlineDraft.current,
       rect: rectDraft.current,
@@ -320,7 +329,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
 
   useEffect(() => {
     const cancel = () => {
-      const pointerId = analysisDraft.current?.pointerId;
+      const pointerId = advancedDraft.current?.pointerId ?? analysisDraft.current?.pointerId;
+      advancedDraft.current = null;
       analysisDraft.current = null;
       if (pointerId != null) try { containerRef.current?.releasePointerCapture(pointerId); } catch { /* already released */ }
       requestRedraw();
@@ -352,13 +362,18 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       if (!isFocusedRef.current) return;
       const keyScope = scopeRef.current;
       if (keyScope == null) return;
-      if (e.key === 'Escape' && analysisDraft.current) {
-        const pointerId = analysisDraft.current.pointerId;
+      if (e.key === 'Escape' && (advancedDraft.current || analysisDraft.current)) {
+        const pointerId = (advancedDraft.current ?? analysisDraft.current)!.pointerId;
+        advancedDraft.current = null;
         analysisDraft.current = null;
         try { containerRef.current?.releasePointerCapture(pointerId); } catch { /* already released */ }
         useDrawingsStore.getState().exitDrawingMode(); requestRedraw(); e.preventDefault(); return;
       }
+      if (e.key === 'Enter' && advancedDraft.current?.kind === 'path') {
+        finishPathRef.current(); e.preventDefault(); return;
+      }
       if (
+        advancedDraft.current ||
         dragRef.current ||
         analysisDraft.current ||
         trendlineDraft.current ||
@@ -569,6 +584,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     // that shipped before extendRight existed.
     plotWidth: chart.timeScale().width?.(),
     measureTextWidth,
+    candles,
     // MUST be the same pitch the renderer used, or a pencil stroke
     // would be grabbable off its drawn position (see subBarOffsetPx).
     barPx: barPitchPx(chart) ?? undefined,
@@ -614,8 +630,11 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       store.update(scope, edit.id, { text: trimmed } as Partial<Drawing>);
     } else {
       const id = nanoid(8);
-      const textStyle = store.styleForKind('text');
-      store.add(scope, {
+      const textStyle = store.styleForKind(edit.kind === 'callout' ? 'callout' : 'text');
+      store.add(scope, edit.kind === 'callout' ? {
+        id, kind: 'callout', a: edit.at, paneId: edit.paneId, offsetX: edit.offsetX ?? 80, offsetY: edit.offsetY ?? -50,
+        text: trimmed, fontSize: textStyle.fontSize, color: textStyle.color, width: textStyle.width, lineStyle: textStyle.lineStyle,
+      } : {
         id,
         kind: 'text',
         at: edit.at,
@@ -656,6 +675,19 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     setTextEdit({ id: null, at, paneId, initial: '', fontSize, px, py });
     setTextValue('');
   };
+
+  const beginCalloutEdit = (at: Point, paneId: PaneId, offsetX: number, offsetY: number) => {
+    const fontSize = useDrawingsStore.getState().styleForKind('callout').fontSize;
+    const px = (realMsToCanvasXClamped(at.realMs) ?? 0) + offsetX;
+    const py = (priceToCanvasY(at.price, paneId) ?? 0) + offsetY;
+    setTextEdit({ kind: 'callout', id: null, at, paneId, initial: '', fontSize, px, py, offsetX, offsetY });
+    setTextValue('');
+  };
+  finishPathRef.current = (doubleClick = false) => finishPath({ advancedDraft, requestRedraw, add: drawing => {
+    if (scope == null) return;
+    const store = useDrawingsStore.getState(); store.add(scope, drawing);
+    if (!store.defaults.keepDrawing) revertToSelectMode(drawing.id);
+  } }, doubleClick);
 
   /** The placement ghost uses the same unmodified coordinates as input. */
   const computeGhost = (px: number, py: number): GhostPreview | null => {
@@ -716,6 +748,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       },
       pixelToData: rawPixelToData,
       realMsToCanvasX,
+      realMsToCanvasXClamped,
       canvasXToRealMs: rawCanvasXToRealMs,
       priceToCanvasY,
       canvasYToPrice,
@@ -743,6 +776,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         || activeTool === 'day-open' || activeTool === 'day-close'
         ? defaults.styleByKind.hline
         : isDrawingKind(activeTool) ? defaults.styleByKind[activeTool] : INITIAL_STYLE,
+      advancedDraft,
       analysisDraft,
       trendlineDraft,
       pencilDraft,
@@ -750,7 +784,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       measureDraft,
       marqueeDraft,
       dragRef,
+      beginCalloutEdit,
       beginTextEdit,
+      candles,
       requestRedraw,
       add: (d) => {
         if (scope == null) return;
@@ -884,6 +920,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
       //   pointerdown → focusin INPUT → mousedown → focusout INPUT
       e.preventDefault();
     }
+    if (activeTool === 'callout' && textEditRef.current) {
+      e.preventDefault(); commitText(textInputRef.current?.value ?? textValue); return;
+    }
     TOOLS[activeTool].onPointerDown?.(buildCtx(e));
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -969,7 +1008,16 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
+    if (activeTool === 'path') {
+      finishPathRef.current(true); e.preventDefault(); return;
+    }
+    if (activeTool !== 'select') return;
     const hit = hitTestAt(px, py);
+    if (hit?.kind === 'callout' && !isLocked(hit)) {
+      setTextEdit({ kind: 'callout', id: hit.id, at: hit.a, paneId: hit.paneId,
+        initial: hit.text, fontSize: hit.fontSize, offsetX: hit.offsetX, offsetY: hit.offsetY, px, py });
+      setTextValue(hit.text); e.preventDefault(); return;
+    }
     // 잠긴 라벨은 편집기를 열지 않는다. 열어 두고 커밋만 스토어가 거부하면
     // 사용자는 글자를 고쳐 넣고 Enter 를 친 뒤에야 안 먹혔다는 걸 안다.
     if (hit && hit.kind === 'text' && !isLocked(hit)) {
@@ -1379,7 +1427,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const textEditorPoint = (edit: TextEdit) => {
     const x = realMsToCanvasXClamped(edit.at.realMs);
     const y = priceToCanvasY(edit.at.price, edit.paneId);
-    return x != null && y != null ? { x, y } : { x: edit.px, y: edit.py };
+    return x != null && y != null ? { x: x + (edit.offsetX ?? 0), y: y + (edit.offsetY ?? 0) } : { x: edit.px, y: edit.py };
   };
   const textEditPos = textEdit ? textEditorPoint(textEdit) : null;
   const editorLayout = textEdit ? textLayout(textValue, textEdit.fontSize, measureTextWidth) : null;
@@ -1437,6 +1485,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     el.style.width = `${box.width}px`;
   };
 
+  const selectedRegression = selectedId == null ? undefined : drawings.find(d => d.id === selectedId && d.kind === 'regression');
+  const regressionMissing = selectedRegression?.kind === 'regression' && !fitRegression(selectedRegression, candles);
   return (
     <div
       ref={containerRef}
@@ -1457,6 +1507,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           {dayExtremesReady ? '날짜를 클릭하세요 · Esc 취소' : '분봉·일봉 데이터가 준비되면 날짜를 클릭하세요'}
         </div>
       )}
+      {(['fib-extension', 'path', 'callout', 'regression'] as string[]).includes(activeTool) && <div role="status" className="pointer-events-none absolute right-2 top-2 rounded bg-bg-card px-2 py-1 text-xs text-fg-dim">
+        {activeTool === 'fib-extension' ? '기준선 드래그 → 눌림점 클릭 · Esc 취소'
+          : activeTool === 'path' ? '클릭으로 점 추가 · 더블클릭/Enter 완료 · Esc 취소'
+            : activeTool === 'callout' ? '대상 봉에서 메모 위치로 드래그 · Enter 완료 · Shift+Enter 줄바꿈'
+              : '로드된 봉 2개 이상을 드래그 · 현재 봉 주기 기준 회귀'}
+      </div>}
       {activeTool === 'channel' && <div role="status" className="pointer-events-none absolute right-2 top-2 rounded bg-bg-card px-2 py-1 text-xs text-fg-dim">기준선 드래그 → 채널 폭 클릭 · Esc 취소</div>}
       {/* 마퀴(우측 드래그 / Shift+드래그) 선택 상자. 항상 마운트하고 display 로 여닫는다 —
           드래그마다 마운트/언마운트하면 첫 프레임이 React 렌더를 기다린다. */}
@@ -1468,11 +1524,12 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         style={{ display: 'none' }}
       />
 
+      {regressionMissing && <div role="status" className="pointer-events-none absolute right-2 top-2 rounded bg-bg-card px-2 py-1 text-xs text-fg-dim">회귀 구간의 봉 데이터가 필요합니다</div>}
       {textEdit && textEditPos && editorLayout && editorBox && (
         <textarea
           ref={textInputRef}
           data-drawing-text-input
-          aria-label="텍스트 그리기"
+          aria-label={textEdit.kind === 'callout' ? '콜아웃 내용' : '텍스트 그리기'}
           data-tooltip="Shift+Enter 줄바꿈 · Enter 완료 · Esc 취소"
           wrap="off"
           rows={editorLayout.lines.length}
@@ -1506,7 +1563,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             // Swallow other keys so global drawing shortcuts don't fire while typing.
             e.stopPropagation();
           }}
-          placeholder="텍스트…"
+          maxLength={textEdit.kind === 'callout' ? 4000 : undefined}
+          placeholder={textEdit.kind === 'callout' ? '메모…' : '텍스트…'}
           className="absolute z-30 resize-none rounded border border-accent bg-bg-card px-1 py-0 text-fg focus-visible:outline-none"
           style={{
             // Positioned by transform, not left/top: `syncTextEditorPosition`
