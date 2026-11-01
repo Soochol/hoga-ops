@@ -1,15 +1,14 @@
 {
-  "checked_at_kst": "2026-11-01T20:01:29.669715+09:00",
+  "checked_at_kst": "2026-11-01T20:06:00.060066+09:00",
   "branch": "codex/professional-drawing-tools",
-  "verified_source_commit": "b52f69e8dd0dbdfd475ac8985298ebca09ec2f0a",
+  "verified_source_commit": "e81c3b9343163ff01c321fff8171658387e487b1",
   "base_sha": "b939ec8f365e2d05dc6df2ed4bae0d3d5b9b11a1",
-  "applicability": "The following commit updates only this verification record. Product, test, dependency and configuration inputs retain the recorded fingerprint.",
+  "applicability": "The following commit updates only this verification record; product/test/configuration inputs retain this fingerprint.",
   "inputs": {
     "scope": "All git-tracked/non-ignored untracked frontend, hoga, tests files plus .python-version, pyproject.toml, uv.lock. Sorted path + NUL + binary SHA256(file bytes). Dependencies/build/test outputs excluded by gitignore.",
-    "file_count": 2946,
-    "sha256": "3ddbfc315f94b24c4aaa4a8954c0f2d475f63fc3f1fa4d31436816bba38fc2d9"
+    "file_count": 2957,
+    "sha256": "f0e7633c781d432a2507ec6d8deebbacdf5c54696384570027583d44561e447d"
   },
-  "backend_inputs_sha256": "ff06034585f210d8a82344704c5f28b2a99985cd9b3e896183ca83a6b7e05911",
   "runtime": {
     "node": "v24.13.1",
     "backend_python": "Python 3.14.7",
@@ -26,41 +25,39 @@
       "cwd": "frontend",
       "result": "passed: app, unit and E2E TypeScript projects",
       "exit_code": 0,
-      "log": "/tmp/hoga-professional-merge-types.txt"
+      "log": "/tmp/hoga-professional-latest-types.txt"
     },
     {
       "command": "npx vitest run",
       "cwd": "frontend",
-      "result": "755 files, 9643 tests passed",
+      "result": "757 files, 9667 tests passed",
       "exit_code": 0,
-      "log": "/tmp/hoga-professional-merge-unit.txt"
+      "log": "/tmp/hoga-professional-latest-unit.txt"
     },
     {
       "command": "npx vite build (Playwright webServer startup)",
       "cwd": "frontend",
-      "result": "passed; existing large-chunk advisory remains",
+      "result": "passed",
       "exit_code": 0,
-      "log": "/tmp/hoga-professional-merge-e2e.txt"
+      "log": "/tmp/hoga-professional-latest-e2e.txt"
     },
     {
       "command": "npx playwright test drawing-professional.spec.ts drawing-rectangle-free.spec.ts drawing-right-selection.spec.ts drawing-panel-position.spec.ts --reporter=line",
       "cwd": "frontend",
       "result": "14 passed; one worker; isolated ports/data/dist; repository blank vendor credential environment",
       "exit_code": 0,
-      "log": "/tmp/hoga-professional-merge-e2e.txt"
+      "log": "/tmp/hoga-professional-latest-e2e.txt"
     },
     {
       "command": "uv run --extra dev ruff check .",
       "result": "passed",
-      "exit_code": 0,
-      "verified_commit": "1ecee2e2128417b3dd5d347ab97a850b8d401222"
+      "exit_code": 0
     },
     {
-      "command": "uv run --extra dev pytest -q tests/api/test_screener_volume_conditions.py tests/unit/api/test_rest_wire_schema_contract.py -m 'not wallclock'",
-      "result": "158 passed",
+      "command": "uv run --extra dev pytest -q tests/api/test_screener_rankings.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/live/test_ranking_session_history.py -m 'not wallclock'",
+      "result": "143 passed",
       "exit_code": 0,
-      "log": "/tmp/hoga-professional-pr-backend.txt",
-      "verified_commit": "1ecee2e2128417b3dd5d347ab97a850b8d401222"
+      "log": "/tmp/hoga-professional-latest-backend.txt"
     },
     {
       "command": "git diff --check",
@@ -81,22 +78,23 @@
     "position-settings.png"
   ],
   "notes": [
-    "Rebased onto 74ad99999 (screener volume conditions) before final verification; no competing open PR modifies the drawing files.",
-    "The non-positive initial position price regression failed in both directions before the fix; the final full suite passes with both cases included.",
-    "Ruff and backend results are reused: git diff from 1ecee2e2128417b3dd5d347ab97a850b8d401222 to the verified source commit is empty for hoga, tests, pyproject.toml, uv.lock and .python-version. The follow-up fix changes only frontend drawing code/tests.",
-    "Production/user servers and desktop launchers are unchanged. The default checkout has unrelated local edits; those are backed up and preserved during its requested pull."
+    "Merged latest main b939ec8f3 (ranking conditions/session changes) before repeating all frontend type/unit/build and drawing browser checks.",
+    "No competing open PR modified these drawing files; PR #2365 has no unresolved reviews.",
+    "The initial-position validation fix and both regression cases remain included.",
+    "Default checkout local edits are backed up and will be preserved during the requested pull."
   ],
-  "initial_implementation_verification": {
-    "checked_at_kst": "2026-11-01T19:40:55.088821+09:00",
+  "historical_validation_on_74ad99999": {
+    "checked_at_kst": "2026-11-01T20:01:29.669715+09:00",
     "branch": "codex/professional-drawing-tools",
-    "head_sha": "d4263f71ef0d21ab54245237b7689a5344fbd582",
-    "base_sha": "d4263f71ef0d21ab54245237b7689a5344fbd582",
-    "worktree_changes": "Implementation is uncommitted over base; input fingerprint includes tracked and untracked source/test files. Verification artifacts are excluded.",
+    "verified_source_commit": "b52f69e8dd0dbdfd475ac8985298ebca09ec2f0a",
+    "base_sha": "74ad99999d2305f383bfccbb8d6463ba149b9e3b",
+    "applicability": "The following commit updates only this verification record. Product, test, dependency and configuration inputs retain the recorded fingerprint.",
     "inputs": {
       "scope": "All git-tracked/non-ignored untracked frontend, hoga, tests files plus .python-version, pyproject.toml, uv.lock. Sorted path + NUL + binary SHA256(file bytes). Dependencies/build/test outputs excluded by gitignore.",
-      "file_count": 2939,
-      "sha256": "af160e879d9c9bc84fe4944c486bf2f61d2d62dc7b5e6e6b566a5e08b3937b4e"
+      "file_count": 2946,
+      "sha256": "3ddbfc315f94b24c4aaa4a8954c0f2d475f63fc3f1fa4d31436816bba38fc2d9"
     },
+    "backend_inputs_sha256": "ff06034585f210d8a82344704c5f28b2a99985cd9b3e896183ca83a6b7e05911",
     "runtime": {
       "node": "v24.13.1",
       "backend_python": "Python 3.14.7",
@@ -111,30 +109,43 @@
       {
         "command": "npm run typecheck",
         "cwd": "frontend",
-        "result": "passed (app, unit tests, E2E projects)",
+        "result": "passed: app, unit and E2E TypeScript projects",
         "exit_code": 0,
-        "log": "/tmp/hoga-professional-final-types.txt"
+        "log": "/tmp/hoga-professional-merge-types.txt"
       },
       {
         "command": "npx vitest run",
         "cwd": "frontend",
-        "result": "754 files, 9620 tests passed",
+        "result": "755 files, 9643 tests passed",
         "exit_code": 0,
-        "log": "/tmp/hoga-professional-final-unit.txt"
+        "log": "/tmp/hoga-professional-merge-unit.txt"
       },
       {
         "command": "npx vite build (Playwright webServer startup)",
         "cwd": "frontend",
         "result": "passed; existing large-chunk advisory remains",
         "exit_code": 0,
-        "log": "/tmp/hoga-professional-final-e2e.txt"
+        "log": "/tmp/hoga-professional-merge-e2e.txt"
       },
       {
         "command": "npx playwright test drawing-professional.spec.ts drawing-rectangle-free.spec.ts drawing-right-selection.spec.ts drawing-panel-position.spec.ts --reporter=line",
         "cwd": "frontend",
-        "result": "14 passed, one worker, isolated ports/data/dist and repository empty vendor credential environment",
+        "result": "14 passed; one worker; isolated ports/data/dist; repository blank vendor credential environment",
         "exit_code": 0,
-        "log": "/tmp/hoga-professional-final-e2e.txt"
+        "log": "/tmp/hoga-professional-merge-e2e.txt"
+      },
+      {
+        "command": "uv run --extra dev ruff check .",
+        "result": "passed",
+        "exit_code": 0,
+        "verified_commit": "1ecee2e2128417b3dd5d347ab97a850b8d401222"
+      },
+      {
+        "command": "uv run --extra dev pytest -q tests/api/test_screener_volume_conditions.py tests/unit/api/test_rest_wire_schema_contract.py -m 'not wallclock'",
+        "result": "158 passed",
+        "exit_code": 0,
+        "log": "/tmp/hoga-professional-pr-backend.txt",
+        "verified_commit": "1ecee2e2128417b3dd5d347ab97a850b8d401222"
       },
       {
         "command": "git diff --check",
@@ -155,11 +166,86 @@
       "position-settings.png"
     ],
     "notes": [
-      "Source input remained unchanged during the final full unit, type and E2E runs.",
-      "Latest main d4263f71e was fast-forwarded before final verification; origin/main was fetched and matched HEAD before final completion.",
-      "Existing storage policy guard failure (10 listeners vs 9 declarations) was corrected by declaring the existing chartTradeAccounts shared-synced key; guard and runtime account behavior unchanged.",
-      "No backend behavior changed by this implementation; backend tests were not rerun.",
-      "UI screenshots were visually inspected. No desktop installation or production server restart was performed."
-    ]
+      "Rebased onto 74ad99999 (screener volume conditions) before final verification; no competing open PR modifies the drawing files.",
+      "The non-positive initial position price regression failed in both directions before the fix; the final full suite passes with both cases included.",
+      "Ruff and backend results are reused: git diff from 1ecee2e2128417b3dd5d347ab97a850b8d401222 to the verified source commit is empty for hoga, tests, pyproject.toml, uv.lock and .python-version. The follow-up fix changes only frontend drawing code/tests.",
+      "Production/user servers and desktop launchers are unchanged. The default checkout has unrelated local edits; those are backed up and preserved during its requested pull."
+    ],
+    "initial_implementation_verification": {
+      "checked_at_kst": "2026-11-01T19:40:55.088821+09:00",
+      "branch": "codex/professional-drawing-tools",
+      "head_sha": "d4263f71ef0d21ab54245237b7689a5344fbd582",
+      "base_sha": "d4263f71ef0d21ab54245237b7689a5344fbd582",
+      "worktree_changes": "Implementation is uncommitted over base; input fingerprint includes tracked and untracked source/test files. Verification artifacts are excluded.",
+      "inputs": {
+        "scope": "All git-tracked/non-ignored untracked frontend, hoga, tests files plus .python-version, pyproject.toml, uv.lock. Sorted path + NUL + binary SHA256(file bytes). Dependencies/build/test outputs excluded by gitignore.",
+        "file_count": 2939,
+        "sha256": "af160e879d9c9bc84fe4944c486bf2f61d2d62dc7b5e6e6b566a5e08b3937b4e"
+      },
+      "runtime": {
+        "node": "v24.13.1",
+        "backend_python": "Python 3.14.7",
+        "chrome": "Google Chrome 156.0.8078.79",
+        "react": "18.3.1",
+        "typescript": "6.0.3",
+        "vite": "8.0.16",
+        "vitest": "4.1.7",
+        "@playwright/test": "1.60.0"
+      },
+      "checks": [
+        {
+          "command": "npm run typecheck",
+          "cwd": "frontend",
+          "result": "passed (app, unit tests, E2E projects)",
+          "exit_code": 0,
+          "log": "/tmp/hoga-professional-final-types.txt"
+        },
+        {
+          "command": "npx vitest run",
+          "cwd": "frontend",
+          "result": "754 files, 9620 tests passed",
+          "exit_code": 0,
+          "log": "/tmp/hoga-professional-final-unit.txt"
+        },
+        {
+          "command": "npx vite build (Playwright webServer startup)",
+          "cwd": "frontend",
+          "result": "passed; existing large-chunk advisory remains",
+          "exit_code": 0,
+          "log": "/tmp/hoga-professional-final-e2e.txt"
+        },
+        {
+          "command": "npx playwright test drawing-professional.spec.ts drawing-rectangle-free.spec.ts drawing-right-selection.spec.ts drawing-panel-position.spec.ts --reporter=line",
+          "cwd": "frontend",
+          "result": "14 passed, one worker, isolated ports/data/dist and repository empty vendor credential environment",
+          "exit_code": 0,
+          "log": "/tmp/hoga-professional-final-e2e.txt"
+        },
+        {
+          "command": "git diff --check",
+          "result": "passed",
+          "exit_code": 0
+        }
+      ],
+      "e2e_resources": {
+        "backend": 20497,
+        "frontend": 21497,
+        "data": "/tmp/hoga-e2e-data-497",
+        "dist": "/tmp/hoga-e2e-dist-497",
+        "servers": "Playwright-owned servers exited; these ports are no longer listening. User servers were preserved."
+      },
+      "screenshots": [
+        "quick-menu-narrow.png",
+        "trendline-extended.png",
+        "position-settings.png"
+      ],
+      "notes": [
+        "Source input remained unchanged during the final full unit, type and E2E runs.",
+        "Latest main d4263f71e was fast-forwarded before final verification; origin/main was fetched and matched HEAD before final completion.",
+        "Existing storage policy guard failure (10 listeners vs 9 declarations) was corrected by declaring the existing chartTradeAccounts shared-synced key; guard and runtime account behavior unchanged.",
+        "No backend behavior changed by this implementation; backend tests were not rerun.",
+        "UI screenshots were visually inspected. No desktop installation or production server restart was performed."
+      ]
+    }
   }
 }
