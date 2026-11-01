@@ -1,3 +1,4 @@
+import { addCondition, openConditionSettings, closeConditionSettings } from './helpers/screenerEditor';
 import { test, expect } from '@playwright/test';
 import type { SavedScreener } from '../../src/api/savedScreeners';
 import type { ScanRequest } from '../../src/api/screener';
@@ -32,8 +33,8 @@ test('add, validate, save and reload a top-200 turnover rank, then display provi
       }] } });
   });
   await page.goto('/screener');
-  await page.getByRole('button', { name: '조건 추가', exact: true }).click();
-  await page.getByRole('menuitem', { name: '당일 거래대금 순위', exact: true }).click();
+  await addCondition(page, '당일 거래대금 순위');
+  await openConditionSettings(page, '당일 거래대금 순위');
   const card = page.getByRole('group', { name: '당일 거래대금 순위 조건', exact: true });
   const input = card.getByRole('textbox', { name: '거래대금 순위 상한', exact: true });
   await expect(input).toHaveValue('100');
@@ -45,14 +46,18 @@ test('add, validate, save and reload a top-200 turnover rank, then display provi
   await input.fill('200');
   await input.press('Tab');
   await expect(page.getByRole('button', { name: '조회', exact: true })).toBeEnabled();
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '저장', exact: true }).click();
   await expect.poll(() => saved.conditions.at(-1)).toMatchObject({ type: 'trade_value_rank', params: { top_n: 200 } });
   await page.reload();
+  await openConditionSettings(page, '당일 거래대금 순위');
   await expect(input).toHaveValue('200');
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect.poll(() => requests.length).toBe(1);
   expect(requests[0].conditions).toEqual(saved.conditions);
   expect(requests[0].venue).toBe('KRX');
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '삼성전자 거래대금 순위 근거', exact: true }).click();
   const evidence = page.getByRole('dialog', { name: '삼성전자 거래대금 순위 근거', exact: true });
   await expect(evidence).toContainText('거래대금 199위');
@@ -61,11 +66,13 @@ test('add, validate, save and reload a top-200 turnover rank, then display provi
   await page.keyboard.press('Escape');
   await expect(evidence).toHaveCount(0);
   await expect(page).toHaveURL(/\/screener$/);
+  await openConditionSettings(page, '당일 거래대금 순위');
   await card.screenshot({ path: testInfo.outputPath('trade-value-rank.png') });
   await page.setViewportSize({ width: 768, height: 900 });
   await input.scrollIntoViewIfNeeded();
   await expect(input).toBeVisible();
   fail = true;
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect(page.getByText(/키움 거래대금 순위 조회에 실패했습니다/)).toBeVisible();
   expect(errors).toEqual([]);

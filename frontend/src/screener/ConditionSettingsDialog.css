@@ -1,0 +1,60 @@
+.screener-condition-editor .settings-editor-body { grid-template-columns: 240px minmax(0, 1fr); }
+.screener-condition-editor .settings-editor-sidebar { padding: var(--space-sm); }
+.condition-picker { min-height: 0; display: flex; flex: 1; flex-direction: column; gap: var(--space-sm); }
+.condition-picker > .ui-segmented { flex-shrink: 0; }
+.condition-picker-search { display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-sm); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-input); }
+.condition-picker-search svg { flex-shrink: 0; color: var(--fg-dim); }
+.condition-picker-search input { min-width: 0; width: 100%; background: transparent; color: var(--fg); font-size: var(--text-sm); }
+.condition-picker-list { min-height: 0; flex: 1; overflow-y: auto; }
+.condition-picker-list > p { padding: var(--space-sm); color: var(--fg-dim); font-size: var(--text-sm); }
+.condition-picker-list section + section { margin-top: var(--space-xs); }
+.condition-picker-list section > div > button { padding-left: var(--space-lg); }
+.condition-picker-group { display: flex; align-items: center; width: 100%; gap: var(--space-xs); padding: var(--space-sm); color: var(--fg-dim); font-size: var(--text-xs); text-align: left; }
+.condition-picker-group > span:last-child { margin-left: auto; }
+.condition-picker-letter { display: inline-block; min-width: var(--space-xl); color: var(--accent); }
+.condition-picker-summary { display: block; padding-top: var(--space-2xs); color: var(--fg-dim); font-size: var(--text-xs); font-weight: 400; overflow-wrap: anywhere; }
+.condition-settings-content { container-type: inline-size; }
+.condition-settings-content > .condition-expression { padding-bottom: var(--space-md); margin-bottom: var(--space-lg); border-bottom: 1px solid var(--border); }
+.condition-detail-heading { display: flex; align-items: center; gap: var(--space-xs); margin-bottom: var(--space-md); }
+.condition-detail-heading h3 { min-width: 0; font-size: var(--text-base); font-weight: 500; overflow-wrap: anywhere; }
+.condition-detail-remove { margin-left: auto; color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-settings-help { margin-bottom: var(--space-md); color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-settings-parameters > .settings-property-group:first-child { padding-top: 0; border-top: 0; }
+.condition-settings-parameters .condition-form { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-xs); }
+.condition-settings-parameters .condition-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-sm); width: 100%; min-height: 1.5rem; }
+.condition-settings-parameters .condition-field-label { color: var(--fg); font-size: var(--text-sm); white-space: normal; }
+.condition-settings-parameters .condition-input-wrap { justify-self: end; min-width: 6rem; }
+.condition-settings-parameters .condition-input-wrap input { width: 9ch; font-size: var(--text-sm); font-weight: 400; }
+.condition-settings-parameters .condition-select { justify-self: end; width: 9rem; }
+.condition-settings-parameters .condition-number-error { grid-column: 1 / -1; }
+.condition-settings-summary { margin-top: var(--space-lg); padding-top: var(--space-md); border-top: 1px solid var(--border); color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-settings-summary > p { margin-top: var(--space-xs); color: var(--fg); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.condition-settings-empty { margin-top: var(--space-lg); color: var(--fg-dim); font-size: var(--text-sm); }
+.settings-editor.screener-condition-editor .settings-editor-footer-actions > .condition-catalog-add { padding: var(--space-xs) var(--space-lg); border-radius: var(--radius-md); background: var(--accent); color: var(--accent-fg); }
+.settings-editor.screener-condition-editor .condition-catalog-add:disabled { background: var(--bg-input-hover); color: var(--fg-dim); }
+.condition-summary-card { display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-sm); }
+.condition-summary-open { flex: 1; min-width: 0; padding: var(--space-xs); text-align: left; }
+.condition-summary-open > span { display: block; }
+.condition-summary-open > span:last-child { padding-top: var(--space-2xs); color: var(--fg-dim); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.condition-expression-summary { padding: var(--space-sm); border: 1px solid var(--border); border-radius: var(--radius-md); text-align: left; }
+.condition-expression-summary > span { display: block; color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-expression-summary > code { display: block; padding-top: var(--space-xs); color: var(--fg); font-size: var(--text-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
+@media (max-width: 640px) {
+  .screener-condition-editor .settings-editor-body { grid-template-columns: 184px minmax(0, 1fr); }
+  .screener-condition-editor .settings-editor-footer { flex-wrap: wrap; }
+  .screener-condition-editor .settings-editor-footer-actions { margin-left: auto; }
+}
+@container (max-width: 340px) {
+  .condition-settings-parameters .condition-field { grid-template-columns: minmax(0, 1fr); gap: var(--space-2xs); }
+  .condition-settings-parameters .condition-field > :last-child { justify-self: start; }
+}
+@media (max-width: 460px) {
+  .screener-condition-editor .settings-editor-body { grid-template-columns: 136px minmax(0, 1fr); }
+  .condition-picker-group { padding-inline: var(--space-2xs); }
+  .condition-picker-list section > div > button { padding-inline: var(--space-xs); }
+  .condition-picker > div:first-child { flex-wrap: wrap; }
+}
+@media (pointer: coarse) {
+  .condition-picker button, .condition-picker input, .condition-settings-parameters .condition-field { min-height: 2.75rem; }
+  .condition-settings-parameters input, .condition-settings-parameters select { min-height: 2.75rem; font-size: 1rem; }
+}

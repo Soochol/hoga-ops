@@ -1,3 +1,4 @@
+import { addCondition, openConditionSettings, closeConditionSettings } from './helpers/screenerEditor';
 import { test, expect } from '@playwright/test';
 import type { SavedScreener } from '../../src/api/savedScreeners';
 import type { MarketRankKind, ScanRequest } from '../../src/api/screener';
@@ -44,11 +45,12 @@ test('add all five market ranks, enforce investor limit, save, reload and inspec
   });
   await page.goto('/screener');
   for (const [, label] of definitions) {
-    await page.getByRole('button', { name: '조건 추가', exact: true }).click();
-    await page.getByRole('menuitem', { name: label, exact: true }).click();
+    await addCondition(page, label);
+    await openConditionSettings(page, label);
     await expect(page.getByRole('group', { name: `${label} 조건`, exact: true }).getByRole('textbox'))
       .toHaveValue(label.startsWith('프로그램') ? '50' : '100');
   }
+  await openConditionSettings(page, '기관 추정 순매수금액 순위');
   const investor = page.getByRole('group', { name: '기관 추정 순매수금액 순위 조건', exact: true });
   const input = investor.getByRole('textbox');
   await input.fill('101');
@@ -57,18 +59,22 @@ test('add all five market ranks, enforce investor limit, save, reload and inspec
   await expect(page.getByRole('button', { name: '조회', exact: true })).toBeDisabled();
   await input.fill('100');
   await input.press('Tab');
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '저장', exact: true }).click();
   await expect.poll(() => saved.conditions.length).toBe(6);
   await page.reload();
   for (const [, label] of definitions) {
+    await openConditionSettings(page, label);
     await expect(page.getByRole('group', { name: `${label} 조건`, exact: true })).toBeVisible();
   }
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect.poll(() => request?.conditions.length).toBe(6);
   await expect(page.getByTestId('screener-basis-time')).toHaveText('2026-10-30 10:20 기준 · 관측 시각 혼합');
   const expectedText: Record<MarketRankKind, string> = { surge: '1분 기준 급증률 250.5%', volume: '당일 거래량 12,345주',
     program: '순매수금액 50억', institution: '장중 추정 순매수금액 50억', foreign: '장중 추정 순매수금액 50억' };
   for (const [, , kind, label] of definitions) {
+    await closeConditionSettings(page);
     await page.getByRole('button', { name: `삼성전자 ${label} 순위 근거`, exact: true }).click();
     const dialog = page.getByRole('dialog', { name: `삼성전자 ${label} 순위 근거`, exact: true });
     await expect(dialog).toContainText(expectedText[kind]);
@@ -76,6 +82,7 @@ test('add all five market ranks, enforce investor limit, save, reload and inspec
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
   }
+  await openConditionSettings(page, '기관 추정 순매수금액 순위');
   await investor.screenshot({ path: testInfo.outputPath('investor-rank-condition.png') });
 });
 
@@ -98,14 +105,19 @@ test('an old upward rank can switch to downward, persist and display downward ev
     }],
   } }));
   await page.goto('/screener');
+  await openConditionSettings(page, '당일 등락률 순위');
   const direction = page.getByRole('combobox', { name: '등락률 순위 방향', exact: true });
   await expect(direction).toHaveValue('up');
   await direction.selectOption('down');
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '저장', exact: true }).click();
   await expect.poll(() => saved.conditions[0].params).toMatchObject({ top_n: 100, direction: 'down' });
   await page.reload();
+  await openConditionSettings(page, '당일 등락률 순위');
   await expect(direction).toHaveValue('down');
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '조회', exact: true }).click();
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '삼성전자 하락률 순위 근거', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('하락률 12위');
   await expect(page.getByRole('dialog')).toContainText('전일 종가 대비 -20%');

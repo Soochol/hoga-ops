@@ -70,6 +70,20 @@ describe('ModalShell', () => {
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(last);
   });
+  it('can hide without losing drafts, releases focus and ignores Escape until reopened', () => {
+    const onClose = vi.fn();
+    const outside = document.createElement('button'); document.body.appendChild(outside); outside.focus();
+    const content = <><input aria-label="draft" defaultValue="unfinished" /><div hidden><button>hidden last</button></div></>;
+    const { rerender } = render(<ModalShell ariaLabel="drafts" open onClose={onClose}>{content}</ModalShell>);
+    const input = screen.getByLabelText('draft');
+    expect(input).toHaveFocus();
+    fireEvent.keyDown(input, { key: 'Tab' }); expect(input).toHaveFocus();
+    rerender(<ModalShell ariaLabel="drafts" open={false} onClose={onClose}>{content}</ModalShell>);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument(); expect(outside).toHaveFocus();
+    expect(input).toHaveValue('unfinished'); fireEvent.keyDown(document, { key: 'Escape' }); expect(onClose).not.toHaveBeenCalled();
+    rerender(<ModalShell ariaLabel="drafts" open onClose={onClose}>{content}</ModalShell>);
+    expect(input).toHaveFocus(); outside.remove();
+  });
   it('closes on Escape', () => {
     const onClose = vi.fn();
     render(<ModalShell ariaLabel="확인" onClose={onClose}><p>body</p></ModalShell>);
