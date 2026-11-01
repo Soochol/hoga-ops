@@ -105,7 +105,11 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
         for bucket, _, _ in window
         for day in bucket
     ]
-    first = min(required, default=clock.date())
+    # Minute-only scans still need a confirmed price to display a match.
+    # After a weekend that price can predate the last minute trading day;
+    # retain the fallback session without widening any predicate's windows.
+    display_day = min(clock.date(), fallback_clock.date()) if fallback_clock is not None else clock.date()
+    first = min(required, default=display_day)
     prior = [day for day in days if day < first]
     series = values.load_series(data_dir, manifest, codes, first=prior[-1] if prior else first, last=clock.date())
     events, failures = {leaf.id: [] for leaf in selected}, []
@@ -237,8 +241,9 @@ async def _overlay(data_dir, req, inputs, now):
 
 
 async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failures, rank_eval=None):
+    minute_coverage = None
     if not inputs["codes"]:
-        return None
+        return None, minute_coverage
     selected = active_conditions(req.conditions, req.expression)
     minutes = [leaf for leaf in selected if getattr(leaf.params, "timeframe", "D").endswith("m")]
     if minutes:
@@ -253,8 +258,9 @@ async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failure
         )
         events.update(result.events)
         failures.extend(result.coverage.incomplete)
+        minute_coverage = result.coverage
     if not screener_depth.has_depth_conditions(selected):
-        return None
+        return None, minute_coverage
     depth = await asyncio.to_thread(
         screener_depth.evaluate,
         data_dir=data_dir,
@@ -271,7 +277,7 @@ async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failure
                 for code in depth.passing.get(leaf.id, [])
                 for day in depth.occurrence_dates.get(leaf.id, {}).get(code, [now.date().isoformat()])
             ]
-    return depth
+    return depth, minute_coverage
 
 
 def _occurrences(req, inputs, events):
@@ -385,8 +391,8 @@ async def run_scan(
         failures.extend(BarVolumeCoverageItem(code=code, condition_id=condition, reason=reason)
                         for condition, reason in reasons or [("preparation", "daily_preparation_pending")])
     candidates = _minute_candidates(req, available["codes"], events, failures, rank_eval)
-    depth = await _auxiliary(data_dir, req, {**available, "codes": candidates},
-                             now, volume_runtime, events, failures, rank_eval)
+    depth, minute_coverage = await _auxiliary(data_dir, req, {**available, "codes": candidates},
+                                              now, volume_runtime, events, failures, rank_eval)
     events.update(rank_eval.events if rank_eval else {})
     days = [dt.datetime.strptime(day, "%Y%m%d").date() for day in store.snapshot_calendar(data_dir, manifest)]
     rows = await asyncio.to_thread(_rows, req, inputs, series, events, failures, days, clock)
@@ -422,6 +428,8 @@ async def run_scan(
             total=len(inputs["codes"]),
             complete=len(inputs["codes"]) - len({failure.code for failure in failures}),
             incomplete=failures,
+            trading_date=minute_coverage.trading_date if minute_coverage else None,
+            realtime=minute_coverage.realtime if minute_coverage else None,
         ),
         depth_coverage=depth.coverage if depth else None,
         depth_values=depth.values if depth else None,

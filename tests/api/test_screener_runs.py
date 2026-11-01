@@ -879,6 +879,72 @@ async def test_monday_preopen_search_fetches_only_friday_and_warm_search_reuses_
         await owner.close()
 
 
+@pytest.mark.parametrize('has_display_price', [True, False])
+async def test_http_preopen_volume_match_keeps_last_confirmed_display_price(corpus, monkeypatch, has_display_price):
+    from hoga.api import screener_bar_volume as volume, screener_runner, screener_universe
+    from hoga.api.screener_continuous import ContinuousMonitors, build_router as monitor_router
+    from hoga.live.buffer import LiveBuffer
+
+    now = dt.datetime(2026, 11, 2, 1, 36, tzinfo=KST)
+    friday = dt.datetime(2026, 10, 30, 9, tzinfo=KST)
+    stamp = int(now.timestamp() * 1000)
+    # The v2 snapshot has only Thursday's confirmed prices; Friday's raw
+    # minute history is independently ready, as in the production incident.
+    from types import SimpleNamespace
+    payloads = [candidate(SimpleNamespace(code=code, first=DAYS[0], last=DAYS[1]), friday.date(),
+                          now=friday.replace(hour=22)) for code in CODES]
+    if not has_display_price:
+        for payload in payloads:
+            payload['adjusted'] = []
+            for sample in ('first', 'second'):
+                payload['confirmation'][sample]['adjusted'] = []
+    store.publish_pairs(corpus, payloads, adjusted_as_of='2026-10-30')
+    monkeypatch.setattr(screener_runner, 'now_kst', lambda: now)
+    monkeypatch.setattr(volume.time, 'time', lambda: now.timestamp())
+    monkeypatch.setattr(screener_universe, 'scope_codes', lambda *_: set(CODES))
+    calls = []
+
+    async def loader(_dir, code, _tf, _needed, _lower, _asof):
+        calls.append(code)
+        return volume.MinuteSnapshot([volume.VolumeBar(int(friday.timestamp() * 1000) + i * 60_000,
+            10_000 if i == 390 else 10) for i in range(391)], stamp)
+
+    async def targets(_codes):
+        pass
+
+    owner = ContinuousMonitors(corpus, None, LiveBuffer(), targets, loader=loader, now=lambda: stamp)
+    req = minute_request(basis='intraday', universe={'scopes': ['watchlist']},
+        expression='A OR B OR C', conditions=[dict(id=tf, type='new_high_vol', params=dict(
+            timeframe=tf, period=period, lookback=3, include_open_bar=True, volume_basis='raw'))
+            for tf, period in [('3m', 40), ('5m', 24), ('10m', 12)]])
+    app = FastAPI()
+    app.include_router(monitor_router(owner))
+    try:
+        status = await owner.start('http-preopen', req)
+        owner.loop_task.cancel()
+        await asyncio.gather(owner.loop_task, return_exceptions=True)
+        for code in CODES:
+            await owner.prepare(code, owner.histories[code])
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+            response = await client.get(f'/monitors/{status.id}/result')
+        assert response.status_code == 200
+        body = response.json()
+        if has_display_price:
+            assert {row['code'] for row in body['rows']} == set(CODES), body['bar_coverage']
+            assert all(row['price_date'] == '2026-10-29' for row in body['rows'])
+            assert all(event['date'] == '2026-10-30' for row in body['rows'] for event in row['occurrences'])
+            assert body['bar_coverage']['complete'] == len(CODES)
+        else:
+            assert body['rows'] == []
+            assert {item['reason'] for item in body['bar_coverage']['incomplete']} == {'vendor_price_unavailable'}
+        assert body['bar_coverage']['trading_date'] == '2026-10-30'
+        assert body['bar_coverage']['realtime']['prepared'] == len(CODES)
+        assert body['bar_coverage']['realtime']['receiving'] == 0
+        assert calls == CODES  # Reading results never issues another seed.
+    finally:
+        await owner.close()
+
+
 @pytest.mark.parametrize('expression,expected_calls', [('A AND B', 0), ('A OR B', 2)])
 async def test_daily_false_branch_prunes_only_safe_minute_candidates(corpus, day_vendor, expression, expected_calls):
     seed_minutes(corpus, CODES)
