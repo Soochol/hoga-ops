@@ -1,0 +1,64 @@
+{
+  "baseCommit": "008587b1631e3c767a0d48bad7f5131496a52934",
+  "latestMain": "008587b1631e3c767a0d48bad7f5131496a52934",
+  "branch": "codex/etf-search-selection",
+  "sourceState": "working tree; final implementation fingerprint",
+  "environment": {
+    "node": "v24.13.1",
+    "python": "Python 3.14.7",
+    "browser": "system Chrome",
+    "workers": 1
+  },
+  "fingerprint": {
+    "scopes": [
+      "frontend",
+      "hoga",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ],
+    "fileCount": 2390,
+    "format": "sorted JSON array of [relative path, SHA256(file)] pairs, UTF-8 compact JSON",
+    "sha256": "0628d752491f6c89bab7b7a896b9c32841ee0bae37e238612865f12175143619"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed (app/unit/E2E TS projects)",
+      "log": "/tmp/hoga-etf-search-typecheck.log",
+      "sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+      "bytes": 113
+    },
+    {
+      "command": "npx eslint src/etfExplorer tests/e2e/etf-explorer.spec.ts",
+      "result": "0 errors, 0 warnings",
+      "log": "/tmp/hoga-etf-search-eslint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "command": "npx vitest run src/etfExplorer/model.test.ts",
+      "result": "9 passed",
+      "log": "/tmp/hoga-etf-search-unit.log",
+      "sha256": "2c4313429e85ce1fed7537d56de5b893d98351ce4df0846b7f045e7d3766d2d9",
+      "bytes": 233
+    },
+    {
+      "command": "npx playwright test tests/e2e/etf-explorer.spec.ts --reporter=list",
+      "result": "8 passed; Vite production build passed",
+      "log": "/tmp/hoga-etf-search-e2e.log",
+      "sha256": "e603ddcb0e367173b19aaecaa99a15585ad5fd71c7cd43b03caf41ef0d7a63fa",
+      "bytes": 115567
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "manual": {
+    "url": "http://127.0.0.1:20382/etfs",
+    "result": "same-origin compiled project refreshed; entering 091160 then ace k바이오코스닥액티브 switched details immediately without clicking; selected ACE restored",
+    "server": "existing credential-free isolated review server; assets updated without restarting user servers"
+  },
+  "screenshotSha256": "1a8cd58f00aa322769ed9d790db319eead56d8e6e3ba821c0541b9935bffb1c2"
+}

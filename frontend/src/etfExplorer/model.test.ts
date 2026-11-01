@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import snapshotText from '../../public/etf-explorer/snapshot.json?raw';
-import { buildIndex, compareFunds, loadSnapshot, parseSnapshot, percent, restorePrefs, searchFunds, totalBps, type EtfFund } from './model';
+import { buildIndex, compareFunds, exactFundMatch, loadSnapshot, parseSnapshot, percent, restorePrefs, searchFunds, totalBps, type EtfFund } from './model';
 
 const snapshot = parseSnapshot(JSON.parse(snapshotText));
 const index = buildIndex(snapshot);
@@ -33,6 +33,19 @@ describe('ETF explorer frozen data and composition math', () => {
     expect(rows.filter(r => r.fund.style === 'active')).toHaveLength(43);
     expect(new Set(rows.map(r => r.fund.code)).size).toBe(rows.length);
     expect(rows.find(r => r.fund.code === '444200')!.weightBps).toBe(2696);
+  });
+  it('recognizes a single exact ETF identity across spacing, case and full-width forms without auto-opening stock or partial matches', () => {
+    for (const query of ['ace k바이오코스닥액티브', ' ACE  K 바이오 코스닥 액티브 ', 'ＡＣＥＫ바이오코스닥액티브', '0221z0']) {
+      const funds = searchFunds(index, { ...filter, query });
+      expect(funds.map(f => f.code)).toEqual(['0221Z0']);
+      expect(exactFundMatch(funds, query)?.code).toBe('0221Z0');
+    }
+    for (const query of ['ace', '삼성전자', '005930', '']) {
+      expect(exactFundMatch(searchFunds(index, { ...filter, query }), query)).toBeNull();
+    }
+    expect(exactFundMatch(searchFunds(index, { ...filter, style: 'passive', query: '0221Z0' }), '0221Z0')).toBeNull();
+    const fund = index.funds.get('0221Z0')!;
+    expect(exactFundMatch([fund, { ...fund, code: '999999' }], fund.name)).toBeNull();
   });
   it('calculates symmetric overlap using exact basis points without normalizing direct-stock totals', () => {
     const a = index.funds.get('444200')!, b = index.funds.get('091160')!;
