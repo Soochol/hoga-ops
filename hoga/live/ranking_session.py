@@ -17,7 +17,7 @@ from hoga.live.stock_sessions import stock_indicator_window
 from hoga.util.timeenc import KST
 
 RankingSessionState = Literal["open", "closed", "preopen", "holiday", "calendar_unavailable"]
-RankingBasisSource = Literal["live", "stored", "unavailable"]
+RankingBasisSource = Literal["live", "stored", "provider", "unavailable"]
 
 
 class RankingBasis(BaseModel):

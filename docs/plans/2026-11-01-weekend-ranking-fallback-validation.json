@@ -1,0 +1,128 @@
+{
+  "checked_at_kst": "2026-11-01T23:06:55.737191+09:00",
+  "validated_code": {
+    "head": "5b9b65fbfdc214efcfb543c4cc6ef25b9777986e",
+    "base": "66fa16870678186043436e4b888ac7700265d144",
+    "state": "committed implementation; following commit adds this validation record only"
+  },
+  "input_fingerprint": {
+    "algorithm": "sha256(sorted path + NUL + hex sha256(file bytes))",
+    "scope": [
+      "hoga/",
+      "frontend/",
+      "tests/",
+      ".python-version",
+      "pyproject.toml",
+      "uv.lock",
+      "ruff.toml"
+    ],
+    "files": 2987,
+    "sha256": "83524a6021dfad6c6378c6d9e2805fc9cfef93036813d3f5f1b604a7e50ad1ce",
+    "runtime_sources_sha256": "892b6c78e32a417014c9f59021cbc87dc3eeff55dd2dc16fbfabbd220e38234b",
+    "changed_file_hashes": {
+      "frontend/src/api/rankingBasis.ts": "d2a4b4a1739c6a17fefe79a0b2efe33f5c2a84866a1d07af6d03c0db4a73adbe",
+      "frontend/src/api/screener.ts": "f5eb036e446e5b4c965ff20afca132180206a5c19367c54cf0d7de027d01456c",
+      "frontend/src/pages/Screener.tsx": "09b1de885896933958074b1b919cec33748ad7ee16fb8bb059bd5d0513e52c9c",
+      "frontend/src/rightrail/RankingDrawer.test.tsx": "42ced816fba035df5583c6bf9aa293de2f10a3b8fdc8860bca1e449d5ba43202",
+      "frontend/src/screener/BarMatchEvidence.test.tsx": "9cfa05ceaf7123b2f99f8c5ee6535303fed8a68ae9cac93bccf4f9231b92aee0",
+      "frontend/src/screener/BarMatchEvidence.tsx": "e02cff1dafe65ab5503ea7e165f13d766457206a6630982da7bbb8a55f8a01e2",
+      "frontend/src/screener/ScreenerDrawer.tsx": "3b45a175e50cc97361acaf896d97efef11a977980ce6526b2a04053a0429f1a6",
+      "frontend/tests/e2e/ranking-session.spec.ts": "c96dcf40287fcd1e54b78efe492fec0938d5e3fdaeecc590ce6b414e9f64728d",
+      "hoga/api/models.py": "a80012fb9f46b70837a7a788cf3b1801b1c049c6b3a47deb463c24f0536e1814",
+      "hoga/api/screener_daily_quality.py": "0adcc6a0e21098c49c6539332da682113e0983022f64eb3355aeaad8dd36e7dd",
+      "hoga/api/screener_rankings.py": "3276411769ced438fe51a0b52ac6b92c257b8eedb8fcb1413153cb0918df3ae7",
+      "hoga/api/screener_runner.py": "51e7c72ced9cbef905f23aa3e112ae30ac82d45275a7a5dd3c6659800cbc4313",
+      "hoga/api/screener_runs.py": "a51fd63e7528e168c4839a8015590a6f16d9e6c295e04d1a3d1dea84b24178b0",
+      "hoga/api/screener_series_runner.py": "44966de57a532135301f829585d494cea0e8f460e959a5cb8736c4b5eed5e4ad",
+      "hoga/live/api.py": "da13059d9d5e67a9f2da437e48a7947f49191ea8132decfc383589c60f0b3284",
+      "hoga/live/kiwoom_rankings.py": "a9eb815ee45090a56ad3a3ec531f34c171015c1dbaa5b2a4826dd7a26c124d1a",
+      "hoga/live/ranking_session.py": "cc0550ec7433ed4309ed213369d4717c34903cfe19e9b76e986257392aac10e9",
+      "tests/api/test_screener_rankings.py": "b98d408f62476f3657e797b194390438e18f8b03cdd85d28a5a97a128efdb298",
+      "tests/api/test_screener_runs.py": "f159a1dc9cb773fbb56be26e41c5d984ae09ab4130a663bf28781a74d34a068f",
+      "tests/unit/api/test_rest_wire_schema_contract.py": "49a072799cb98e7305275a258a98e2a5119506f4be8e5282efa2d8bff56ec502",
+      "tests/unit/live/test_ranking_session_history.py": "5c49d79ffb0d672e227989349aedef94f05ca2db47a4183a07f0bbe12cdbd592"
+    }
+  },
+  "environment": {
+    "python": "3.14.7",
+    "platform": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+    "uv": "0.11.8",
+    "ruff": "0.15.13",
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0",
+    "vite": "8.0.16",
+    "credentials": "empty worktree .env; blank vendor values in E2E; mock rank/daily/minute providers; no live credentials copied"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed; no violations"
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock' tests/api/test_screener*.py tests/unit/live/test_kiwoom_rankings.py tests/unit/live/test_ranking_pagination.py tests/unit/live/test_program_rankings.py tests/unit/live/test_investor_rankings.py tests/unit/live/test_ranking_session_history.py tests/unit/api/test_rest_wire_schema_contract.py --tb=short",
+      "result": "1663 passed; one new missing-day fixture failed because its partial update correctly retained an earlier verified Friday row",
+      "log_sha256": "b31336e9a2995b6515bf7b941b2b5d0c57bbb8759d80fc7ba002d0f781916340"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener_rankings.py tests/unit/api/test_rest_wire_schema_contract.py --tb=short",
+      "result": "187 passed after correcting the new fixture to start without the Friday row; production Python code unchanged from the broad run",
+      "log_sha256": "1450bb6bc2a0701ff33c11cec7d367e6dda57680d4c0151054754d9613c60441"
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed; application, unit tests and E2E TypeScript projects"
+    },
+    {
+      "command": "npx vitest run src/screener src/pages/Screener.test.tsx src/api/liveRankings.test.tsx src/api/screener.test.ts src/state/screenerPanel.test.ts",
+      "cwd": "frontend",
+      "result": "59 files; 610 passed",
+      "log_sha256": "264ba69c9ba9297ba16fea54e361f064cf83e5a79dbcb4c6a018b290a17284e9"
+    },
+    {
+      "command": "npx playwright test tests/e2e/ranking-session.spec.ts tests/e2e/screener-market-ranks.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "7 passed; Vite production build passed during webServer startup; main screen and right-panel screenshots inspected",
+      "log_sha256": "ced58f48e1af3aff2a01056b2396a393d2f7b0578f2c70ee6df4ff3ec7577b45"
+    },
+    {
+      "command": "in-memory removal of TradeValueRankMatch.basis, then test_rest_wire_models_match_frontend_mirror_snapshot",
+      "result": "intentional mismatch rejected; subprocess-only mutation; no source edits",
+      "log_sha256": "a281de2278381ffd52efa67e484b72949a5cbf7a2cef86201662b45b96860c65"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_rest_wire_schema_contract.py::test_rest_wire_models_match_frontend_mirror_snapshot --tb=short",
+      "result": "1 passed with original model in a fresh process",
+      "log_sha256": "abb192666f758cd25681f41e4719882a3c6b31075ee87cbea3e58bf2be456233"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "reuse_notes": [
+    "The broad backend run covers 1664 tests. Its only failure was the new v2 missing-day test fixture, not production behavior. That fixture was corrected, and all 175 ranking cases plus 12 wire checks passed in the final recheck.",
+    "The other 1477 passing backend cases retain identical runtime sources, test sources, fixtures, dependency locks and validation settings. Together the two runs cover the complete selected backend scope with passing results.",
+    "Initial frontend failures were a one-second asynchronous UI assertion under load and differing Korean locale time formatting. Final tests use explicit KST ISO date/time; all 610 passed.",
+    "The new panel E2E initially looked for a page-only query button. It now uses the existing immediate-scan monitoring start action. All seven E2E cases passed."
+  ],
+  "behavior": [
+    "Holiday/preopen screener ranks prefer exact sufficient dated history; otherwise opt in to the shared provider fallback and 60-second cache for all seven kinds and both change directions.",
+    "Provider trading_date and observed_at_ms remain null; actual fetched_at_ms remains the receipt time; undated results are not persisted as dated history.",
+    "Provider-containing scans use separate evaluation_at_ms at the last trading day 23:59:59.999 KST for other predicates, including mixed stored/provider scans. Each evidence item keeps its own basis.",
+    "Stored-only scans retain their original earliest-observation cutoff. Both calculation policies and automatic daily preparation use the historical cutoff and avoid current quote overlays and live minute accumulations.",
+    "Missing reference-day daily or minute data is incomplete, not replaced with an earlier day. Unknown weekdays, REST bypass, missing connection and provider failures remain explicit errors. Valid empty provider responses remain distinct.",
+    "E2E resources: backend 20352; frontend 21352; data /tmp/hoga-e2e-data-352; dist /tmp/hoga-e2e-dist-352; workers=1.",
+    "The running user app and servers on 8000/5173 were not modified or restarted. This worktree is not deployed; live vendor fallback remains unverified."
+  ],
+  "merge_validation": {
+    "checked_at_kst": "2026-11-01T23:12:23.082760+09:00",
+    "base_sha": "66fa16870678186043436e4b888ac7700265d144",
+    "input_fingerprint_matches": true,
+    "same_file_open_prs": [],
+    "reuse_basis": "All source, test, fixture, lockfile and validation-setting hashes match the recorded final inputs; the final PR head adds this documentation-only record."
+  }
+}

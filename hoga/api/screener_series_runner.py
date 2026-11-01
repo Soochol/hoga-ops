@@ -160,7 +160,7 @@ async def _inputs(data_dir, req, manifest, now, replay, rank_eval=None):
     confirmed = await asyncio.to_thread(_confirmed_at, data_dir, manifest, codes, now.date())
     basis = screener_basis.choose_basis(req.basis, now, confirmed, data_dir)
     clock = now if basis == "intraday" else _eod_clock(now, confirmed)
-    if rank_eval and rank_eval.stored:
+    if rank_eval and rank_eval.historical:
         basis, clock = "eod", rank_eval.cutoff
     excluded = screener_exclusions.exclusion_keys(
         await asyncio.to_thread(
@@ -212,7 +212,7 @@ async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failure
             basis=inputs["basis"],
             now=now,
             volume_runtime=volume_runtime,
-            cutoff=rank_eval.cutoff if rank_eval and rank_eval.stored else None,
+            cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None,
         )
         events.update(result.events)
         failures.extend(result.coverage.incomplete)
@@ -304,7 +304,7 @@ async def run_scan(
     if rank_eval is None:
         rank_eval = await screener_rankings.evaluate(data_dir, req, now, None)
     screener_rankings.validate_stored_conditions(req, rank_eval)
-    if rank_eval and rank_eval.stored:
+    if rank_eval and rank_eval.historical:
         now, volume_runtime = rank_eval.cutoff, None
     pinned = input_snapshot or await asyncio.to_thread(store.load_snapshot, data_dir, req.snapshot_id)
     if pinned is None:

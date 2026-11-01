@@ -164,13 +164,13 @@ class ScreenerRuns:
         if run.request.snapshot_id is None and daily_leaves(run.request) and codes:
             await history._finish_disk_write(
                 lambda: store.publish_pairs(self.data_dir, [], adjusted_as_of=clock.date().isoformat()))
-            # A stored ranking has a fixed population and historical cutoff.
+            # Historical rankings prepare candidates only up to their cutoff.
             # Live ranks may change while collection runs, so prepare the full
             # requested population for them and keep fetching current ranks.
-            stored = rank_eval is not None and rank_eval.stored
-            population = screener_rankings.candidate_codes(run.request, codes, rank_eval) if stored else codes
+            historical = rank_eval is not None and rank_eval.historical
+            population = screener_rankings.candidate_codes(run.request, codes, rank_eval) if historical else codes
             prepared = await asyncio.to_thread(
-                plan, self.data_dir, run.request, population, clock, rank_eval.cutoff if stored else None)
+                plan, self.data_dir, run.request, population, clock, rank_eval.cutoff if historical else None)
             self.blockers[run.id] = prepared.blocked
             return prepared.targets
         return {}

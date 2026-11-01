@@ -22,6 +22,7 @@ from hoga.live.ranking_session import RankingBasis, resolve as ranking_session
 from hoga.util.timeenc import KST
 
 MAX_AGE_MS = 30_000
+PROVIDER_MAX_AGE_MS = 90_000  # Shared last-ranking cache: 60 seconds, plus request allowance.
 _SPECS = {
     "trade_value_rank": ("value", "거래대금"),
     "change_pct_rank": ("change", "등락률"),
@@ -44,14 +45,20 @@ class RankEvaluation:
     fetched_at_ms: int
     earliest_at_ms: int | None = None
     basis: RankingBasis | None = None
+    evaluation_at_ms: int | None = None
 
     @property
     def cutoff(self):
-        return dt.datetime.fromtimestamp((self.earliest_at_ms or self.fetched_at_ms) / 1000, KST)
+        return dt.datetime.fromtimestamp(
+            (self.evaluation_at_ms or self.earliest_at_ms or self.fetched_at_ms) / 1000, KST)
 
     @property
     def stored(self):
         return self.basis is not None and self.basis.source == "stored"
+
+    @property
+    def historical(self):
+        return self.stored or self.evaluation_at_ms is not None
 
 
 def _error(status, code, message):
@@ -70,12 +77,12 @@ async def _fetch_change(market, venue, limit):
     return await _fetch_kind("change", market, venue, limit)
 
 
-async def _fetch_kind(kind, market, venue, limit, direction="up"):
+async def _fetch_kind(kind, market, venue, limit, direction="up", *, allow_last_available=False):
     # The live composition root supplies the same singleton used by the drawer.
     fetcher = rankings_fetcher()
     if fetcher is None:
         raise _error(503, "not_wired", "시장 순위 조회에 필요한 키움 API가 설정되지 않았습니다")
-    return await fetcher.get(kind, market, direction, venue, limit=limit)
+    return await fetcher.get(kind, market, direction, venue, limit=limit, allow_last_available=allow_last_available)
 
 
 async def evaluate(data_dir, req, now, codes):
@@ -96,10 +103,14 @@ async def evaluate(data_dir, req, now, codes):
     results = await asyncio.gather(*(
         _evaluate_kind(data_dir, req, now, codes, market, group, session) for group in groups if group
     ))
+    provider = next((result for result in results if result.basis and result.basis.source == "provider"), None)
+    # A mixed stored/provider scan has no common observation time. Its other
+    # predicates explicitly use the last completed day, independent of receipts.
     return RankEvaluation(
         {identity: events for result in results for identity, events in result.events.items()},
         max(result.fetched_at_ms for result in results), min(result.fetched_at_ms for result in results),
-        min(results, key=lambda result: result.fetched_at_ms).basis,
+        provider.basis if provider else min(results, key=lambda result: result.fetched_at_ms).basis,
+        provider.evaluation_at_ms if provider else None,
     )
 
 
@@ -112,10 +123,13 @@ async def _read_snapshot(data_dir, req, session, market, selected):
 
         snapshot = await asyncio.to_thread(
             ranking_history.load, data_dir, session, kind, market, direction, req.venue, limit)
-        if snapshot is None:
-            raise _error(409, "history_unavailable", f"최근 거래일의 저장된 순위가 없습니다({label}).")
-        return snapshot
+        if snapshot is not None:
+            return snapshot
+        if settings.rest_bypass_enabled(data_dir):
+            raise _error(409, "rest_bypassed", "REST 조회가 중지되어 마지막 시장 순위를 확인할 수 없습니다")
     try:
+        if not session.can_fetch:
+            return await _fetch_kind(kind, market, req.venue, limit, direction, allow_last_available=True)
         if kind == "value":
             return await _fetch(market, req.venue, limit)
         if kind == "change" and direction == "up":
@@ -133,15 +147,20 @@ def _validate_snapshot(snapshot, req, now, market, selected, session):
     if basis is not None and basis.source == "unavailable":
         raise _error(409, "history_unavailable", basis.message or "최근 거래일의 저장된 순위가 없습니다.")
     stored = basis is not None and basis.source == "stored"
+    provider = basis is not None and basis.source == "provider"
     venue_matches = ((snapshot.venue is None and snapshot.quote_venue == req.venue) if kind in _INVESTORS
                      else snapshot.venue == req.venue)
     opening = dt.time(9) if req.venue == "KRX" or kind in _INVESTORS else dt.time(8)
+    invalid_time = (session.can_fetch or basis.session != session.state
+                    or basis.trading_date is not None or basis.observed_at_ms is not None
+                    or fetched.date() != now.date() or not -MAX_AGE_MS <= age <= PROVIDER_MAX_AGE_MS
+                   ) if provider else (fetched.date() != session.date or fetched.time() < opening
+                                        or (not stored and not -MAX_AGE_MS <= age <= MAX_AGE_MS))
     if (snapshot.kind != kind or snapshot.direction != _direction(selected[0]) or snapshot.market != market
-            or not venue_matches or fetched.date() != session.date or fetched.time() < opening
-            or (not stored and not -MAX_AGE_MS <= age <= MAX_AGE_MS)
+            or not venue_matches or invalid_time
             or (stored and (session.can_fetch or basis.trading_date != session.date.isoformat()
                             or basis.observed_at_ms != snapshot.fetched_at_ms))
-            or (not session.can_fetch and not stored)):
+            or (not session.can_fetch and not (stored or provider))):
         raise _error(502, "snapshot_unverified", f"{label} 순위의 기준 시각·시장을 확인할 수 없습니다.")
     for row in snapshot.rows:
         rank = row.provider_rank if kind == "value" else row.rank
@@ -174,7 +193,13 @@ async def _evaluate_kind(data_dir, req, now, codes, market, selected, session):
             and (row.provider_rank if kind == "value" else row.rank) <= leaf.params.top_n
         ] for leaf in selected
     }
-    return RankEvaluation(events, snapshot.fetched_at_ms, basis=snapshot.basis)
+    basis, evaluation_at_ms = snapshot.basis, None
+    if basis is not None and basis.source == "provider":
+        evaluation_at_ms = int(dt.datetime.combine(session.date, dt.time(23, 59, 59, 999000), KST).timestamp() * 1000)
+        basis = basis.model_copy(update={"message":
+            f"순위 거래일 미확인 · 다른 조건은 {session.date.isoformat()} 완료 데이터 기준입니다. "
+            "순위와 같은 시각의 관측을 뜻하지 않습니다."})
+    return RankEvaluation(events, snapshot.fetched_at_ms, basis=basis, evaluation_at_ms=evaluation_at_ms)
 
 
 def candidate_codes(req, codes, evaluation):
@@ -194,7 +219,7 @@ def candidate_codes(req, codes, evaluation):
 
 
 def validate_stored_conditions(req, evaluation):
-    if evaluation is None or not evaluation.stored:
+    if evaluation is None or not evaluation.historical:
         return
     selected = active_conditions(req.conditions, req.expression)
     if any(getattr(leaf.params, "end_date", "") > evaluation.cutoff.date().isoformat() for leaf in selected):
@@ -211,7 +236,8 @@ def validate_stored_conditions(req, evaluation):
 
 
 def _evidence(row, kind, snapshot):
-    common = dict(market=snapshot.market, venue=snapshot.venue, fetched_at_ms=snapshot.fetched_at_ms)
+    common = dict(market=snapshot.market, venue=snapshot.venue, fetched_at_ms=snapshot.fetched_at_ms,
+                  basis=snapshot.basis)
     if kind == "value":
         return {"trade_value_rank_match": TradeValueRankMatch(
             rank=row.provider_rank, trade_value_won=row.trade_value_won, **common)}
@@ -233,8 +259,8 @@ def with_basis(response, req, evaluation):
     if len(leaves(req)) != len(active_conditions(req.conditions, req.expression)):
         timestamps.extend(value for value in (response.basis_at_ms, response.fallback_basis_at_ms) if value is not None)
     response.rank_basis = evaluation.basis
-    if evaluation.stored:
-        response.basis_at_ms = evaluation.earliest_at_ms or evaluation.fetched_at_ms
+    if evaluation.historical:
+        response.basis_at_ms = int(evaluation.cutoff.timestamp() * 1000)
         response.fallback_basis_at_ms = None
         return response
     response.basis_at_ms = max(timestamps)

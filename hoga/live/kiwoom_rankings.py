@@ -23,9 +23,9 @@ api-id 헤더로 분기(스펙 실측: docs/research/2026-07-22-kiwoom-ranking-t
 연타·다중 소비자를 single-flight + TTL 로 흡수해 상류 유량을 아낀다(WS 순위 푸시가
 없어 REST 폴링이 유일 경로). 실패는 캐시하지 않는다(다음 요청이 재시도).
 
-거래일 게이트: 비거래일(주말·휴일)이면 상류 호출을 건너뛰고 빈 목록을 준다 —
-장중에만 순위가 의미 있고, 비거래일 폴링은 유령 데이터 전례(REST30)를 답습한다.
-장 개장 여부(market_open)는 프론트 폴링 on/off 를 가르는 신호로 함께 내려준다.
+거래일 게이트: 휴장·장전에는 최근 거래일 저장 기록을 우선한다. 패널 열람이 명시적으로
+허용한 경우에만 날짜 미제공 공급자 마지막 순위를 60초 캐시로 조회한다. 이 결과는
+날짜별 기록·스크리너 근거로 사용하지 않는다. market_open=False는 60초 폴링 신호다.
 """
 from __future__ import annotations
 
@@ -356,8 +356,8 @@ def _is_trading_day_now(now: datetime | None = None) -> bool:
 class KiwoomRankingsFetcher:
     """순위 스냅샷의 조건·거래소·조회 범위 TTL 캐시 + single-flight fetcher.
 
-    순위의 각 페이지는 공용 REST 거버너를 통과한다. 비거래일엔 상류를
-    건너뛰고 빈 스냅샷(웜 캐시가 있으면 그 rows 유지)을 준다.
+    순위의 각 페이지는 공용 REST 거버너를 통과한다. 휴장·장전에는 저장 기록을
+    우선하며, 패널 열람에 한해 날짜 미제공 공급자 마지막 순위를 허용한다.
     """
 
     def __init__(
@@ -430,6 +430,8 @@ class KiwoomRankingsFetcher:
         self, kind: RankingKind, market: Market, direction: Direction,
         venue: str = "KRX",
         limit: int | None = None,
+        *,
+        allow_last_available: bool = False,
     ) -> RankingSnapshot:
         # direction 은 change 에서만 의미 — 캐시 키를 갈라 상승/하락을 각각 캐시한다.
         # ⚠ venue 도 키에 있어야 한다. 없으면 NXT 요청이 30초 TTL 안에서 KRX 순위를
@@ -439,29 +441,26 @@ class KiwoomRankingsFetcher:
         if venue not in _STEX_BY_VENUE or not 1 <= limit <= RANKING_MAX_LIMIT:
             raise ValueError("순위 거래소 또는 조회 범위를 벗어났습니다")
         session = ranking_session(now, "KRX" if kind in _INVESTOR_KINDS else venue, self._data_dir)
+        last_available = False
         if not session.can_fetch:
-            return await self._stored(session, kind, market, direction, venue, limit)
-        key = (kind, market, direction if kind == "change" else "-", venue)
+            stored = await self._stored(session, kind, market, direction, venue, limit)
+            if (stored.basis.source == "stored" or not allow_last_available
+                    or session.state not in {"holiday", "preopen"}):
+                return stored
+            last_available = True
+        # Undated display rows must never satisfy a dated/screener request.
+        key = (kind, market, direction if kind == "change" else "-", venue,
+               "provider" if last_available else "dated")
         if kind not in _INVESTOR_KINDS:
-            if not 1 <= limit <= RANKING_MAX_LIMIT:
-                raise ValueError("순위 조회 범위를 벗어났습니다")
             key += (str(limit),)
         ttl_ms = _CACHE_TTL_MS
-        if kind not in _NET_BUY_KINDS:
-            day = now.strftime("%Y%m%d")
-            key += (day,)
-            self._cache = {
-                k: v for k, v in self._cache.items() if k[0] in _NET_BUY_KINDS or k[-1] == day
-            }
+        day = now.strftime("%Y%m%d")
+        key += (day,)
+        self._cache = {k: v for k, v in self._cache.items() if k[-1] == day}
         if kind in _NET_BUY_KINDS:
             direction = "up"  # 이 탭은 순매수 금액 상위이며 등락률 방향과 무관하다.
-            day = now.strftime("%Y%m%d")
-            key += (day,)
-            # 순매수 순위의 전일 캐시를 다음 거래일/휴장일에 재사용하지 않는다.
-            self._cache = {
-                k: v for k, v in self._cache.items() if k[0] not in _NET_BUY_KINDS or k[-1] == day
-            }
             ttl_ms = _NET_BUY_CACHE_TTL_MS if self._market_open(kind, now, venue) else 60_000
+        ttl_ms = 60_000 if last_available else ttl_ms
         snapshot_venue = None if kind in _INVESTOR_KINDS else venue
         quote_venue = venue if kind in _INVESTOR_KINDS else None
         now_ms = int(time.time() * 1000)
@@ -473,8 +472,7 @@ class KiwoomRankingsFetcher:
             hit = self._cache.get(key)  # 대기 중 선행자가 채웠으면 재사용
             if hit is not None and now_ms - hit[1] < ttl_ms:
                 return hit[0]
-            now = self._now_kst()
-            market_open = self._market_open(kind, now, venue)
+            market_open = not last_available and self._market_open(kind, now, venue)
             has_more = False
             if kind == "program":
                 rows, has_more = await self._fetch_program(market, venue, limit)
@@ -485,7 +483,8 @@ class KiwoomRankingsFetcher:
             else:
                 rows, queried_count, has_more = await self._fetch_rankings(kind, market, direction, venue, limit)
             observed = self._now_kst()
-            if observed.date() != session.date:
+            if (observed.date() != now.date() or ranking_session(
+                    observed, "KRX" if kind in _INVESTOR_KINDS else venue, self._data_dir) != session):
                 raise KiwoomRankingsError("순위 조회 중 거래일이 변경되었습니다. 다시 조회해 주세요.")
             now_ms = int(observed.timestamp() * 1000)
             snap = RankingSnapshot(
@@ -493,11 +492,16 @@ class KiwoomRankingsFetcher:
                 rows=rows, market_open=market_open, fetched_at_ms=now_ms,
                 venue=snapshot_venue, quote_venue=quote_venue,
                 queried_count=queried_count, has_more=has_more,
-                basis=RankingBasis(session="open" if market_open else "closed", source="live",
-                                   trading_date=session.date.isoformat(),
-                                   observed_at_ms=now_ms),
+                basis=RankingBasis(
+                    session=session.state, source="provider",
+                    message=f"최근 거래일은 {session.date.isoformat()}입니다. "
+                            "공급자 마지막 순위의 거래일·관측 시각은 제공되지 않습니다.",
+                ) if last_available else RankingBasis(
+                    session="open" if market_open else "closed", source="live",
+                    trading_date=session.date.isoformat(), observed_at_ms=now_ms),
             )
-            snap = await self._persist(snap, limit)
+            if not last_available:
+                snap = await self._persist(snap, limit)
             self._cache[key] = (snap, int(time.time() * 1000))
             return snap
 

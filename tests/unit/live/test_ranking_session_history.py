@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 from dataclasses import replace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -79,7 +80,7 @@ async def test_live_fetch_persists_and_new_process_restores_without_vendor(calen
                                     _transport=httpx.MockTransport(handler))
     try:
         original = await live.get("change", "all", "up", limit=200)
-        result = await restored.get("change", "all", "up", limit=100)
+        result = await restored.get("change", "all", "up", limit=100, allow_last_available=True)
         assert len(calls) == 1 and len(result.rows) == 100
         assert result.rows == original.rows[:100]
         assert result.fetched_at_ms == original.fetched_at_ms == int(FRIDAY.timestamp() * 1000)
@@ -91,6 +92,88 @@ async def test_live_fetch_persists_and_new_process_restores_without_vendor(calen
     finally:
         live.close()
         restored.close()
+
+
+@pytest.mark.parametrize("kind", ["change", "surge", "volume", "value", "program", "institution", "foreign"])
+@pytest.mark.parametrize("venue", ["KRX", "NXT", "UN"])
+async def test_panel_can_read_last_provider_rows_without_creating_dated_history(
+    calendar, tmp_path, monkeypatch, kind, venue,
+):
+    fetcher = KiwoomRankingsFetcher(object(), data_dir=tmp_path, _now=lambda: SUNDAY)
+    rows = dated_snapshot(2).rows
+    general = AsyncMock(return_value=(rows, 2, False))
+    program = AsyncMock(return_value=(rows, False))
+    investor = AsyncMock(return_value=rows)
+    monkeypatch.setattr(fetcher, "_fetch_rankings", general)
+    monkeypatch.setattr(fetcher, "_fetch_program", program)
+    monkeypatch.setattr(fetcher, "_fetch_investor", investor)
+
+    latest = await fetcher.get(kind, "all", "up", venue, allow_last_available=True)
+    assert latest.rows == rows and not latest.market_open
+    assert latest.basis.source == "provider" and latest.basis.session == "holiday"
+    assert latest.basis.trading_date is None and latest.basis.observed_at_ms is None
+    assert "2026-10-30" in latest.basis.message
+    assert latest.venue == (None if kind in {"institution", "foreign"} else venue)
+    assert latest.quote_venue == (venue if kind in {"institution", "foreign"} else None)
+    assert await fetcher.get(kind, "all", "up", venue, allow_last_available=True) is latest
+    assert general.await_count + program.await_count + investor.await_count == 1
+    # Even a warm panel cache must not supply undated screener evidence.
+    strict = await fetcher.get(kind, "all", "up", venue)
+    assert strict.rows == () and strict.basis.source == "unavailable"
+    ranking_history.save(tmp_path, latest, 100)
+    assert not (tmp_path / "rankings").exists()
+
+
+async def test_last_provider_cache_expands_and_expires_without_becoming_monday_evidence(
+    calendar, tmp_path, monkeypatch,
+):
+    from hoga.live import kiwoom_rankings
+
+    clock = 1000.0
+    monkeypatch.setattr(kiwoom_rankings.time, "time", lambda: clock)
+    now = SUNDAY
+    fetcher = KiwoomRankingsFetcher(object(), data_dir=tmp_path, _now=lambda: now)
+    mock = AsyncMock(return_value=(dated_snapshot().rows, 200, True))
+    monkeypatch.setattr(fetcher, "_fetch_rankings", mock)
+    await fetcher.get("change", "all", "up", limit=100, allow_last_available=True)
+    await fetcher.get("change", "all", "up", limit=200, allow_last_available=True)
+    await fetcher.get("change", "all", "down", limit=200, allow_last_available=True)
+    assert mock.await_count == 3
+    clock += 60
+    await fetcher.get("change", "all", "up", limit=200, allow_last_available=True)
+    assert mock.await_count == 4
+    now += dt.timedelta(days=1)
+    missing = await fetcher.get("change", "all", "up", allow_last_available=True)
+    assert missing.rows == () and missing.basis.session == "calendar_unavailable"
+    assert mock.await_count == 4
+    calendar.add("20261102")
+    now = now.replace(hour=8)
+    preopen = await fetcher.get("change", "all", "up", allow_last_available=True)
+    assert preopen.basis.source == "provider" and preopen.basis.session == "preopen"
+    now = now.replace(hour=9)
+    opened = await fetcher.get("change", "all", "up", allow_last_available=True)
+    assert opened.basis.source == "live" and opened.basis.trading_date == "2026-11-02"
+    assert opened is not preopen and mock.await_count == 6
+
+
+def test_holiday_panel_route_fetches_last_rows_and_serializes_unknown_date(calendar, tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from hoga.live import api, lifecycle
+
+    fetcher = KiwoomRankingsFetcher(object(), data_dir=tmp_path, _now=lambda: SUNDAY)
+    monkeypatch.setattr(fetcher, "_fetch_rankings", AsyncMock(return_value=(dated_snapshot(2).rows, 2, False)))
+    monkeypatch.setattr(api, "kiwoom_rankings_fetcher_instance", fetcher)
+    app = FastAPI()
+    app.include_router(api.build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/api/live/rankings", params={"kind": "change", "limit": 100})
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["rows"]) == body["queried_count"] == 2
+    assert body["basis"]["source"] == "provider" and body["basis"]["session"] == "holiday"
+    assert body["basis"]["trading_date"] is None and body["basis"]["observed_at_ms"] is None
 
 
 @pytest.mark.parametrize("market,direction,venue,limit", [

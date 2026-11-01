@@ -6,6 +6,8 @@ import datetime as dt
 from functools import lru_cache
 from pathlib import Path
 
+import polars as pl
+
 from hoga.api import screener_daily_ingest as ingest
 from hoga.api.models import BarVolumeCoverage, BarVolumeCoverageItem
 from hoga.api.screener_bar_policy import CHANGE_TYPES, RANK_TYPES
@@ -37,11 +39,11 @@ def reason(guard, code, day):
     return None
 
 
-def legacy_coverage(data_dir, conditions, codes, clock, intraday=False):
+def legacy_coverage(data_dir, conditions, codes, clock, intraday=False, *, historical=False):
     from hoga.api import screener_depth, screener_series_eval as evaluation, trading_days  # noqa: PLC0415
 
     guard = current_guard(data_dir)
-    if guard is None:
+    if guard is None and not historical:
         return None, set()
     calendar = [dt.datetime.strptime(d, "%Y%m%d").date() for d in sorted(trading_days.trading_days(data_dir))]
     previous = dict(zip(calendar[1:], calendar[:-1], strict=True))
@@ -61,9 +63,27 @@ def legacy_coverage(data_dir, conditions, codes, clock, intraday=False):
     price_only = {
         leaf.id for leaf in conditions if leaf.type not in evaluation.VOLUME_TYPES | evaluation.TRADE_VALUE_TYPES
     }
-    failures = _failures(guard, required, codes, clock.date() if intraday else None, price_only)
+    failures = _failures(guard, required, codes, clock.date() if intraday else None, price_only) if guard else []
+    if historical:
+        failures.extend(_missing_dates(data_dir, required, codes))
     excluded = {item.code for item in failures}
     return BarVolumeCoverage(total=len(codes), complete=len(codes) - len(excluded), incomplete=failures), excluded
+
+
+def _missing_dates(data_dir, required, codes):
+    """A historical latest predicate must not silently use an older row."""
+    dates = {day for days in required.values() for day in days}
+    if not dates or not codes:
+        return []
+    present = {code: set() for code in codes}
+    path = data_dir / "screener/daily_adjusted.parquet"
+    if path.exists():
+        rows = (pl.scan_parquet(path).filter(pl.col("code").is_in(codes) & pl.col("date").is_in(sorted(dates)))
+                .select("code", "date").collect())
+        for code, day in rows.iter_rows():
+            present[code].add(day)
+    return [BarVolumeCoverageItem(code=code, condition_id=identity, reason="missing_history")
+            for identity, days in required.items() for code in codes if days - present[code]]
 
 
 def _failures(guard, required, codes, live_day, price_only):

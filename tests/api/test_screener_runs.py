@@ -586,21 +586,27 @@ async def test_missing_stored_rank_fails_before_any_daily_collection_or_publicat
         await owner.close()
 
 
-async def test_stored_rank_prepares_only_its_candidates_and_never_reads_later_daily_rows(corpus, monkeypatch):
+@pytest.mark.parametrize("source", ["stored", "provider"])
+async def test_historical_rank_prepares_only_its_candidates_and_never_reads_later_daily_rows(
+    corpus, monkeypatch, source,
+):
     from hoga.api import screener_rankings
     from hoga.api.models import ScreenerOccurrence, TradeValueRankMatch
     from hoga.live.ranking_session import RankingBasis
 
-    cutoff = dt.datetime.combine(DAYS[0], dt.time(22), KST)
+    cutoff = dt.datetime.combine(DAYS[0], dt.time(22) if source == "stored" else dt.time(23, 59, 59, 999000), KST)
     observed = int(cutoff.timestamp() * 1000)
+    fetched = observed if source == "stored" else int(NOW.timestamp() * 1000)
 
     async def ranking(root, req, clock, codes):
         event = ScreenerOccurrence(condition_id="rank", condition_key="rank", date=DAYS[0].isoformat(),
             trade_value_rank_match=TradeValueRankMatch(rank=1, trade_value_won=1000000000, market="all", venue="KRX",
-                                                       fetched_at_ms=observed))
-        return screener_rankings.RankEvaluation({"rank": [(CODES[-1], event)]}, observed,
-            basis=RankingBasis(session="holiday", source="stored", trading_date=DAYS[0].isoformat(),
-                               observed_at_ms=observed))
+                                                       fetched_at_ms=fetched))
+        return screener_rankings.RankEvaluation({"rank": [(CODES[-1], event)]}, fetched,
+            basis=RankingBasis(session="holiday", source=source,
+                               trading_date=DAYS[0].isoformat() if source == "stored" else None,
+                               observed_at_ms=observed if source == "stored" else None),
+            evaluation_at_ms=observed if source == "provider" else None)
 
     monkeypatch.setattr(screener_rankings, "evaluate", ranking)
     calls = []
@@ -618,7 +624,7 @@ async def test_stored_rank_prepares_only_its_candidates_and_never_reads_later_da
         assert done.status == "complete"
         assert calls == [(CODES[-1], DAYS[0], DAYS[0], NOW.date())]
         assert [row.price_date for row in done.result.rows] == [DAYS[0].isoformat()]
-        assert done.result.rank_basis.source == "stored"
+        assert done.result.rank_basis.source == source
         assert done.result.basis_at_ms == observed
     finally:
         await owner.close()

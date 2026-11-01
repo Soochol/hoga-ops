@@ -76,7 +76,7 @@ async def _run_legacy_scan(
     codes, scope, now_value, requested = _rank_inputs(req, codes, scope, now_value, rank_eval)
     confirmed_at, basis, daily_coverage, codes, scope = await _basis_quality(
         data_dir, conditions, codes, scope, requested, now_value, warnings,
-        cutoff=rank_eval.cutoff if rank_eval and rank_eval.stored else None)
+        cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None)
     history = screener_history_coverage.history_leaves(conditions)
     needs_overlay = basis == "intraday" and (not conditions or any(
         screener_bar_volume.needs_daily_overlay(leaf, now_value.date().isoformat()) for leaf in conditions))
@@ -127,8 +127,8 @@ async def _run_legacy_scan(
         bar_eval = await screener_bar_volume.evaluate(
             data_dir=data_dir, conditions=conditions, codes=codes, basis=basis,
             now=now_value, overlay=intraday_rows,
-            volume_runtime=None if rank_eval and rank_eval.stored else volume_runtime,
-            cutoff=rank_eval.cutoff if rank_eval and rank_eval.stored else None,
+            volume_runtime=None if rank_eval and rank_eval.historical else volume_runtime,
+            cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None,
             daily_fallback_codes=set(codes) - live_codes if needs_overlay else None)
         if bar_eval.coverage.incomplete:
             warnings.append("bar_volume_partial")
@@ -148,7 +148,7 @@ async def _run_legacy_scan(
         daily_unavailable=_daily_unavailable(daily_coverage),
         scope_codes=scope,
         etf_codes=etf_codes,
-        as_of_date=rank_eval.cutoff.date() if rank_eval and rank_eval.stored else None,
+        as_of_date=rank_eval.cutoff.date() if rank_eval and rank_eval.historical else None,
         history_pass=history_eval.passing if history_eval else None,
         bar_events={**(bar_eval.events if bar_eval else {}), **(rank_eval.events if rank_eval else {})},
         occurrence_dates=occurrence_dates, excluded=excluded,
@@ -176,7 +176,8 @@ def _rank_inputs(req, codes, scope, now, evaluation):
     if evaluation is None:
         return codes, scope, now, req.basis
     codes = screener_rankings.candidate_codes(req, codes, evaluation)
-    return codes, set(codes), evaluation.cutoff if evaluation.stored else now, "eod" if evaluation.stored else req.basis
+    return (codes, set(codes), evaluation.cutoff if evaluation.historical else now,
+            "eod" if evaluation.historical else req.basis)
 
 
 async def _basis_quality(data_dir, conditions, codes, scope, requested_basis, now_value, warnings, cutoff=None):
@@ -185,10 +186,10 @@ async def _basis_quality(data_dir, conditions, codes, scope, requested_basis, no
     if cutoff is not None and confirmed_at is not None:
         confirmed_at = min(confirmed_at, int(cutoff.timestamp() * 1000))
     basis = screener_basis.choose_basis(requested_basis, now_value, confirmed_at, data_dir)
-    quality_clock = (dt.datetime.fromtimestamp(confirmed_at / 1000, KST)
-                     if basis == "eod" and confirmed_at is not None else now_value)
+    quality_clock = cutoff or (dt.datetime.fromtimestamp(confirmed_at / 1000, KST)
+                               if basis == "eod" and confirmed_at is not None else now_value)
     coverage, quarantined = await asyncio.to_thread(
-        legacy_coverage, data_dir, conditions, codes, quality_clock, basis == "intraday")
+        legacy_coverage, data_dir, conditions, codes, quality_clock, basis == "intraday", historical=cutoff is not None)
     if quarantined and not conditions:
         codes = [code for code in codes if code not in quarantined]
         scope = set(codes) if scope is None else scope - quarantined
