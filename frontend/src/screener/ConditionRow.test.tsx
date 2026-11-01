@@ -41,6 +41,8 @@ describe('ConditionRow', () => {
     }
     expect(onChange).toHaveBeenLastCalledWith({ ...initial,
       params: { ...initial.params, [type === 'price_range' ? 'min'
+        : type === 'volume_range' || type === 'volume_ratio' ? 'offset'
+        : type === 'volume_compare' ? 'left_offset'
         : type === 'trade_value' ? 'min_eok'
         : type.endsWith('_rank') ? 'top_n'
         : type === 'new_high_today' || type === 'new_high_vol_today' || type === 'high_off_peak' || type === 'ma' || type === 'bollinger_breakout_today' || type === 'bollinger_position_today' ? 'period'

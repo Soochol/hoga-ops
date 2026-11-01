@@ -21,6 +21,7 @@ function conditionParams(leaf: ConditionLeaf) {
       const { change_reference, ...params } = leaf.params;
       return candleDefaults({ ...params, ...(change_reference && change_reference !== 'previous_day' ? { change_reference } : {}) });
     }
+    case 'volume_range': case 'volume_range_period': case 'volume_compare': case 'volume_compare_period': case 'volume_ratio': case 'volume_ratio_period':
     case 'ma_compare': case 'ma_compare_period': case 'ma_cross': case 'ma_cross_period': case 'ma_gap': case 'ma_gap_period': case 'ma_slope': case 'ma_slope_period':
     case 'price_compare': case 'price_compare_period': return candleDefaults(leaf.params);
     case 'trade_value': case 'new_high': case 'new_high_today': case 'new_high_vol_today': return candleDefaults(leaf.params);

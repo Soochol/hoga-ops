@@ -15,6 +15,7 @@ import { price_compare, price_compare_period } from './conditions/price_compare'
 import { price_range } from './conditions/price_range';
 import { bollinger_breakout, bollinger_breakout_today, bollinger_position, bollinger_position_today } from './conditions/bollinger';
 import { ma_compare, ma_compare_period, ma_cross, ma_cross_period, ma_gap, ma_gap_period, ma_slope, ma_slope_period } from './conditions/maConditions';
+import { volume_range, volume_range_period, volume_compare, volume_compare_period, volume_ratio, volume_ratio_period } from './conditions/volumeConditions';
 import { ma } from './conditions/ma';
 import { ask_depth_new_high } from './conditions/ask_depth_new_high';
 import { bid_depth_new_high } from './conditions/bid_depth_new_high';
@@ -30,6 +31,7 @@ import type { CatalogEntry } from './conditions/types';
 // 않는 두 번째 순서 목록은 두지 않는다.
 export const CONDITION_CATALOG: { [T in ConditionType]: CatalogEntry<T> } = {
   bollinger_breakout, bollinger_breakout_today, bollinger_position, bollinger_position_today,
+  volume_range, volume_range_period, volume_compare, volume_compare_period, volume_ratio, volume_ratio_period,
   trade_value, trade_value_rank, trade_value_period, new_high_today, new_high,
   new_high_vol_today, new_high_vol, high_off_peak, ask_depth_new_high, bid_depth_new_high,
   ask_depth_new_high_period, bid_depth_new_high_period,

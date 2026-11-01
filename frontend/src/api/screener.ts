@@ -131,6 +131,27 @@ export interface BarPriceCompareMatch {
   timeframe: ScreenerTimeframe; relation: PriceCompareRelation; left: BarPriceCompareValue; right: BarPriceCompareValue;
   is_open: boolean; fetched_at_ms: number;
 }
+export type VolumeConditionKind = 'range' | 'compare' | 'ratio';
+export interface VolumeConditionParams extends CandleOptions { volume_basis?: VolumeBasis | null }
+export interface VolumeRangeParams extends VolumeConditionParams { offset: number; min_volume?: number | null; max_volume?: number | null }
+export interface VolumeCompareParams extends VolumeConditionParams { left_offset: number; right_offset: number; relation: PriceCompareRelation }
+export interface VolumeRatioParams extends VolumeConditionParams { offset: number; period: number; op: ChangePctOp; pct?: number; lo?: number; hi?: number }
+export interface VolumeRangePeriodParams extends VolumeRangeParams { lookback: number }
+export interface VolumeRangeDateParams extends VolumeRangeParams { mode: 'date_range'; start_date: string; end_date: string }
+export type VolumeRangePeriodOptions = VolumeRangePeriodParams | VolumeRangeDateParams;
+export interface VolumeComparePeriodParams extends VolumeCompareParams { lookback: number }
+export interface VolumeCompareDateParams extends VolumeCompareParams { mode: 'date_range'; start_date: string; end_date: string }
+export type VolumeComparePeriodOptions = VolumeComparePeriodParams | VolumeCompareDateParams;
+export interface VolumeRatioPeriodParams extends VolumeRatioParams { lookback: number }
+export interface VolumeRatioDateParams extends VolumeRatioParams { mode: 'date_range'; start_date: string; end_date: string }
+export type VolumeRatioPeriodOptions = VolumeRatioPeriodParams | VolumeRatioDateParams;
+export interface BarVolumeValue { offset: number; value: string; bar_start_ms: number; is_open: boolean }
+export interface BarVolumeConditionMatch {
+  kind: VolumeConditionKind; timeframe: ScreenerTimeframe; basis: VolumeBasis | null;
+  left: BarVolumeValue; right: BarVolumeValue | null; relation: PriceCompareRelation | null;
+  average: string | null; period: number | null; window_start_ms: number | null; window_end_ms: number | null;
+  ratio_pct: number | null; is_open: boolean; fetched_at_ms: number;
+}
 export type MaOperandKind = 'price' | 'sma';
 export type MaCrossDirection = 'up' | 'down';
 export type MaConditionKind = 'compare' | 'cross' | 'gap' | 'slope';
@@ -199,6 +220,12 @@ export type ConditionLeaf =
   | { id: string; type: 'price_range'; params: PriceRangeParams }
   | { id: string; type: 'price_compare'; params: PriceCompareParams }
   | { id: string; type: 'price_compare_period'; params: PriceComparePeriodOptions }
+  | { id: string; type: 'volume_range'; params: VolumeRangeParams }
+  | { id: string; type: 'volume_range_period'; params: VolumeRangePeriodOptions }
+  | { id: string; type: 'volume_compare'; params: VolumeCompareParams }
+  | { id: string; type: 'volume_compare_period'; params: VolumeComparePeriodOptions }
+  | { id: string; type: 'volume_ratio'; params: VolumeRatioParams }
+  | { id: string; type: 'volume_ratio_period'; params: VolumeRatioPeriodOptions }
   | { id: string; type: 'ma_compare'; params: MaCompareParams }
   | { id: string; type: 'ma_compare_period'; params: MaComparePeriodOptions }
   | { id: string; type: 'ma_cross'; params: MaCrossParams }
@@ -711,6 +738,7 @@ export interface ScreenerOccurrence {
   bar_change_match?: BarChangeMatch | null;
   bar_price_compare_match?: BarPriceCompareMatch | null;
   bar_ma_match?: BarMaMatch | null;
+  bar_volume_condition_match?: BarVolumeConditionMatch | null;
   history_match?: HistoryMatch | HistoryTradeValueMatch | null;
   condition_id: string;
   condition_key: string;

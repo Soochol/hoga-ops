@@ -65,7 +65,8 @@ def _request(request, policy, volume_basis=None):
     body = request.model_dump(mode="json")
     body.update(calculation_policy=policy, basis="eod", snapshot_id=None)
     for leaf in body["conditions"]:
-        if leaf["type"] in {"new_high_vol", "new_high_vol_today"}:
+        if leaf["type"] in {"new_high_vol", "new_high_vol_today", "volume_range", "volume_range_period",
+                             "volume_compare", "volume_compare_period", "volume_ratio", "volume_ratio_period"}:
             leaf["params"].pop("volume_basis", None)
             if volume_basis:
                 leaf["params"]["volume_basis"] = (

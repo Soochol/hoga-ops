@@ -2086,6 +2086,72 @@ class PriceCompareRangeParams(PriceCompareParams, HistoryDateRangeParams):
 MaOperandKind = Literal["price", "sma"]
 MaCrossDirection = Literal["up", "down"]
 MaConditionKind = Literal["compare", "cross", "gap", "slope"]
+VolumeConditionKind = Literal["range", "compare", "ratio"]
+
+
+class VolumeConditionParams(CandleParams):
+    volume_basis: VolumeBasis | None = None
+
+
+class VolumeRangeParams(VolumeConditionParams):
+    offset: int = Field(default=0, ge=0, le=1000, strict=True)
+    min_volume: int | None = Field(default=None, ge=0, le=9007199254740991, strict=True)
+    max_volume: int | None = Field(default=None, ge=0, le=9007199254740991, strict=True)
+
+    @model_validator(mode="after")
+    def check_bounds(self):
+        if self.min_volume is None and self.max_volume is None:
+            raise ValueError("거래량 하한 또는 상한이 필요합니다")
+        if self.min_volume is not None and self.max_volume is not None and self.min_volume > self.max_volume:
+            raise ValueError("거래량 상한은 하한 이상이어야 합니다")
+        return self
+
+
+class VolumeCompareParams(VolumeConditionParams):
+    left_offset: int = Field(default=0, ge=0, le=1000, strict=True)
+    right_offset: int = Field(default=1, ge=0, le=1000, strict=True)
+    relation: PriceCompareRelation
+
+
+class VolumeRatioParams(VolumeConditionParams):
+    offset: int = Field(default=0, ge=0, le=1000, strict=True)
+    period: int = Field(ge=1, le=1000, strict=True)
+    op: Literal["gte", "lte", "between"]
+    pct: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    lo: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    hi: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def check_threshold(self):
+        if self.op in {"gte", "lte"} and self.pct is None:
+            raise ValueError("gte/lte requires pct")
+        if self.op == "between" and (self.lo is None or self.hi is None or self.lo > self.hi):
+            raise ValueError("between requires lo <= hi")
+        return self
+
+
+class VolumeRangePeriodParams(VolumeRangeParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class VolumeRangeDateParams(VolumeRangeParams, HistoryDateRangeParams):
+    pass
+
+
+class VolumeComparePeriodParams(VolumeCompareParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class VolumeCompareDateParams(VolumeCompareParams, HistoryDateRangeParams):
+    pass
+
+
+class VolumeRatioPeriodParams(VolumeRatioParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class VolumeRatioDateParams(VolumeRatioParams, HistoryDateRangeParams):
+    pass
 
 
 class MaPriceOperand(PriceCompareOperand):
@@ -2331,6 +2397,42 @@ class PriceComparePeriodLeaf(BaseModel):
     id: str
     params: PriceCompareRangeParams | PriceComparePeriodParams
 
+class VolumeRangeLeaf(BaseModel):
+    type: Literal["volume_range"] = "volume_range"
+    id: str
+    params: VolumeRangeParams
+
+
+class VolumeRangePeriodLeaf(BaseModel):
+    type: Literal["volume_range_period"] = "volume_range_period"
+    id: str
+    params: VolumeRangeDateParams | VolumeRangePeriodParams
+
+
+class VolumeCompareLeaf(BaseModel):
+    type: Literal["volume_compare"] = "volume_compare"
+    id: str
+    params: VolumeCompareParams
+
+
+class VolumeComparePeriodLeaf(BaseModel):
+    type: Literal["volume_compare_period"] = "volume_compare_period"
+    id: str
+    params: VolumeCompareDateParams | VolumeComparePeriodParams
+
+
+class VolumeRatioLeaf(BaseModel):
+    type: Literal["volume_ratio"] = "volume_ratio"
+    id: str
+    params: VolumeRatioParams
+
+
+class VolumeRatioPeriodLeaf(BaseModel):
+    type: Literal["volume_ratio_period"] = "volume_ratio_period"
+    id: str
+    params: VolumeRatioDateParams | VolumeRatioPeriodParams
+
+
 class MaCompareLeaf(BaseModel):
     type: Literal["ma_compare"] = "ma_compare"
     id: str
@@ -2444,7 +2546,7 @@ class BidDepthRenewalLeaf(BaseModel):
     params: DepthRenewalParams
 
 ConditionLeaf = Annotated[
-    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | ChangePctPeriodLeaf | PriceRangeLeaf | PriceCompareLeaf | PriceComparePeriodLeaf | MaCompareLeaf | MaComparePeriodLeaf | MaCrossLeaf | MaCrossPeriodLeaf | MaGapLeaf | MaGapPeriodLeaf | MaSlopeLeaf | MaSlopePeriodLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | ChangePctPeriodLeaf | PriceRangeLeaf | PriceCompareLeaf | PriceComparePeriodLeaf | VolumeRangeLeaf | VolumeRangePeriodLeaf | VolumeCompareLeaf | VolumeComparePeriodLeaf | VolumeRatioLeaf | VolumeRatioPeriodLeaf | MaCompareLeaf | MaComparePeriodLeaf | MaCrossLeaf | MaCrossPeriodLeaf | MaGapLeaf | MaGapPeriodLeaf | MaSlopeLeaf | MaSlopePeriodLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -2670,6 +2772,29 @@ class BarMaMatch(BaseModel):
     fetched_at_ms: int
 
 
+class BarVolumeValue(BaseModel):
+    offset: int
+    value: str  # Exact integer or rational share quantity, including v2 unit conversion.
+    bar_start_ms: int
+    is_open: bool
+
+
+class BarVolumeConditionMatch(BaseModel):
+    kind: VolumeConditionKind
+    timeframe: ScreenerTimeframe
+    basis: VolumeBasis | None = None  # None: legacy calendar adjustment; minutes are always raw.
+    left: BarVolumeValue
+    right: BarVolumeValue | None = None
+    relation: PriceCompareRelation | None = None
+    average: str | None = None
+    period: int | None = None
+    window_start_ms: int | None = None
+    window_end_ms: int | None = None
+    ratio_pct: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    is_open: bool
+    fetched_at_ms: int
+
+
 class BarVolumeCoverageItem(BaseModel):
     code: str
     condition_id: str
@@ -2731,6 +2856,7 @@ class ScreenerOccurrence(BaseModel):
     bar_change_match: BarChangeMatch | None = None
     bar_price_compare_match: BarPriceCompareMatch | None = None
     bar_ma_match: BarMaMatch | None = None
+    bar_volume_condition_match: BarVolumeConditionMatch | None = None
 
 
 class ScreenerExclusionWrite(BaseModel):
@@ -2754,6 +2880,9 @@ class ScreenerExclusionWrite(BaseModel):
             if self.condition.type not in {"new_high_vol", "new_high_vol_today", "new_high", "new_high_today",
                                            "high_off_peak", "ma", "trade_value", "trade_value_period",
                                            "change_pct", "change_pct_period", "price_compare", "price_compare_period",
+                                           "volume_range", "volume_range_period",
+                                           "volume_compare", "volume_compare_period",
+                                           "volume_ratio", "volume_ratio_period",
                                            "ma_compare", "ma_compare_period", "ma_cross", "ma_cross_period",
                                            "ma_gap", "ma_gap_period", "ma_slope", "ma_slope_period",
                                            "bollinger_breakout_today", "bollinger_breakout",

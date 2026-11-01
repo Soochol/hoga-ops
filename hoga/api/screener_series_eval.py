@@ -5,7 +5,12 @@ from __future__ import annotations
 import datetime as dt
 from fractions import Fraction
 
-from hoga.api import screener_bar_volume as bars, screener_history_coverage as history, screener_series_values as values
+from hoga.api import (
+    screener_bar_volume as bars,
+    screener_history_coverage as history,
+    screener_series_values as values,
+    screener_volume_conditions,
+)
 from hoga.api.models import (
     BarVolumeCoverageItem,
     HistoryDateRangeParams,
@@ -18,6 +23,7 @@ from hoga.api.screener_bar_policy import (
     MA_TYPES,
     PRICE_COMPARE_TYPES,
     TRADE_VALUE_TYPES,
+    VOLUME_CONDITION_TYPES,
     VOLUME_TYPES,
     comparison_period,
     lookback,
@@ -59,12 +65,24 @@ def _event(leaf, day, **evidence):
     )
 
 
-def _volume(leaf, series, window, expected, anchor):
+def _volume(leaf, series, window, expected, anchor, fetched_at_ms=0):
     basis = getattr(leaf.params, "volume_basis", None) or "share_adjusted"
     quantities = {day: series.quantity(day, anchor, basis) for day in expected}
     if any(value is None for value in quantities.values()):
         return [], "share_evidence_unavailable" if basis == "share_adjusted" else "invalid_daily_rows"
     volumes = [sum((quantities[day] for day in bucket), Fraction()) for bucket, _, _ in window]
+    if leaf.type in VOLUME_CONDITION_TYPES:
+        grouped = [bars.VolumeBar(bars._stamp(bucket[0]), volume, is_open=is_open)
+                   for (bucket, is_open, _), volume in zip(window, volumes, strict=True)]
+        params = leaf.params.model_copy(update={"lookback": 1}) if hasattr(leaf.params, "lookback") else leaf.params
+        if isinstance(params, HistoryDateRangeParams):
+            candidate_day = window[-1][0][0].isoformat()
+            params = params.model_copy(update={"start_date": candidate_day, "end_date": candidate_day})
+        events, complete, reason = screener_volume_conditions.evaluate(leaf.model_copy(update={"params": params}),
+            grouped, fetched_at_ms=fetched_at_ms, basis=basis)
+        for event in events:
+            event.condition_key = condition_key(leaf, calculation_policy=POLICY)
+        return events, None if complete else reason or "insufficient_history"
     maximum = max(volumes)
     if volumes[-1] <= 0 or volumes[-1] < maximum:
         return [], None
@@ -149,7 +167,7 @@ def _evaluate_window(leaf, series, window, calendar_ok, days, clock):
         if any(day in series.conflicts for day in expected):
             return [], "original_observation_conflict"
     if leaf.type in VOLUME_TYPES:
-        return _volume(leaf, series, window, expected, expected[-1])
+        return _volume(leaf, series, window, expected, expected[-1], int(clock.timestamp() * 1000))
     if leaf.type in TRADE_VALUE_TYPES:
         return _turnover(leaf, series, window, expected)
     return _price(leaf, series, window, expected, days, clock)

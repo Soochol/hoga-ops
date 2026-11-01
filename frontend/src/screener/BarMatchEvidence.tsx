@@ -2,11 +2,13 @@ import { maOperandLabel } from './maLabels';
 import { operandLabel, PRICE_COMPARE_SYMBOLS } from './priceCompareLabels';
 import { CHANGE_REFERENCE_LABELS } from './candleLabels';
 import type { ScreenerOccurrence } from '../api/screener';
+import { VolumeConditionEvidence } from './VolumeConditionEvidence';
 
 const PRICE = { open: '시가', high: '고가', low: '저가', close: '종가' };
 const won = (value: number) => value.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
 
 export function BarMatchEvidence({ event }: { event: ScreenerOccurrence }) {
+  if (event.bar_volume_condition_match) return <VolumeConditionEvidence match={event.bar_volume_condition_match} />;
   const changeRank = event.change_pct_rank_match;
   if (changeRank) return <span className="font-data text-xs text-fg-dim">
     {{ all: '전체', kospi: '코스피', kosdaq: '코스닥' }[changeRank.market]}
