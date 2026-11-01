@@ -546,7 +546,7 @@ async def _evaluate_minute_window(leaf, code, *, data_dir, as_of, now, basis, fe
                 if live:
                     data, received_ms, lower_bounds = live
                     snapshot = MinuteSnapshot(data, received_ms,
-                        volume_runtime.reason(code) if hasattr(volume_runtime, 'reason') else None)
+                        volume_runtime.reason(code, leaf) if hasattr(volume_runtime, 'reason') else None)
                 else:
                     snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff,
                                                      **({"historical": True} if historical else {}))

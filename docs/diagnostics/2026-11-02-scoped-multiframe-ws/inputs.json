@@ -1,0 +1,47 @@
+{
+  "base_sha": "9365bf28117c00e59e91b3c2d200047122f6ae02",
+  "algorithm": "SHA256 of sorted path + NUL + file SHA256 + NUL",
+  "backend": {
+    "sha256": "b7327ac6e16c08a3989704a0d6ed22c312390c47414a695d0b103368d90082cb",
+    "files": 884
+  },
+  "frontend": {
+    "sha256": "592315d75449ca8b3ac124f8edb8f851cb26c9363a2eeaaedf90609698eb63d0",
+    "files": 2110
+  },
+  "changed_inputs": {
+    "frontend/src/screener/ScreenerDrawer.tsx": "81e6228f92565180160f436857cd8e3c348564b0b03f818b4b816718e3cf22a9",
+    "frontend/src/screener/continuousClient.test.ts": "aedd3a6b9f748046213ab6dd9981af3fcca2ac30cd81633b4d51d0511b6ad8f2",
+    "frontend/src/screener/continuousClient.ts": "1012b09865f73628fe9f2e366f758bbc941bb6fd67abd64de0894692e238f66b",
+    "frontend/src/screener/useScreener.preparation.test.tsx": "13d0fe76da7e5fa67d3e667663f7fa0a663a2343629e4bd6f09c91c945595437",
+    "frontend/tests/e2e/screener-bar-volume.spec.ts": "50dc302dffd4b69ee686c72bf5c576d9b8d296c7c42163415801711a6000dc7f",
+    "hoga/api/screener_bar_volume.py": "41b7a5f4661d3d3eae7cfa927030417eac60dc27df4ae271b16fa90a866352f7",
+    "hoga/api/screener_continuous.py": "a8be5965dc4e9a18df7e415f534ad7d2a009e1b8aa343cae4a0c40bef36b72ba",
+    "tests/api/test_screener_continuous.py": "e164c73ca4ea84a25551ca25e5fcd5f372d80cce446237903a954cda5583c02b",
+    "hoga/api/screener_continuous_bars.py": "02bdcccecd3d19502eb66ef0f504f0fa4baff18fd04e787aa73b17a28a69e347",
+    "tests/api/test_screener_continuous_multiframe.py": "d22f4547de745b75504a8bbb3f7b0b2bbbbd1628bf2597cf8420c9eec4824571"
+  },
+  "environment": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "packages": {
+      "pytest": "9.0.3",
+      "ruff": "0.15.13"
+    },
+    "credentials": "empty worktree .env and existing Playwright empty vendor environment",
+    "e2e_slot": 367,
+    "e2e_ports": [
+      20367,
+      21367
+    ]
+  },
+  "validation": {
+    "ruff": "passed",
+    "typecheck": "passed",
+    "vitest": "4 files, 74 tests passed",
+    "build": "passed",
+    "playwright": "4 tests passed (19.3s), mocked API/WS; no /runs or /scan requests",
+    "backend": "1563 passed, 66 existing Polars warnings, 54.21s"
+  }
+}

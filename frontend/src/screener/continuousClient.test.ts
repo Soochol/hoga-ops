@@ -40,10 +40,22 @@ describe('continuous monitor ownership', () => {
     expect(readContinuousResult).not.toHaveBeenCalled();
   });
 
+  it.each(['1m', '3m', '5m', '10m'] as const)('uses a shared monitor for %s and never falls back to scan', async timeframe => {
+    const selected: ScanRequest = { ...request, conditions: [{ id: 'v', type: 'new_high_vol',
+      params: { timeframe, period: 12, lookback: 3 } }] };
+    expect(hasContinuousVolume(selected)).toBe(true);
+    vi.mocked(apiCall).mockResolvedValue({ id: 'multi' });
+    vi.mocked(readContinuousResult).mockResolvedValue({ status: 'ok', rows: [], warnings: [] });
+    await new ContinuousClient().scan(selected);
+    expect(apiCall).toHaveBeenCalledTimes(1);
+    expect(apiCall).toHaveBeenCalledWith('/api/screener/monitors', expect.objectContaining({ method: 'POST' }));
+    expect(readContinuousResult).toHaveBeenCalledWith('multi');
+  });
+
   it('selects only the supported minute-volume family', () => {
     expect(hasContinuousVolume(request)).toBe(true);
     expect(hasContinuousVolume({ ...request, conditions: [] })).toBe(false);
     expect(hasContinuousVolume({ ...request, conditions: [{ id: 'x', type: 'new_high_vol',
-      params: { timeframe: '5m', period: 100, lookback: 5 } }] })).toBe(false);
+      params: { timeframe: '15m', period: 100, lookback: 5 } }] })).toBe(false);
   });
 });

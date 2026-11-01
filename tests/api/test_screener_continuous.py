@@ -264,10 +264,8 @@ async def test_full_regular_session_338_symbols_shared_conditions_and_targeted_r
 
     owner, clock, _ = fixture
     base = START - 60 * MINUTE
-    previous_close = int((dt.datetime.fromtimestamp(base / 1000, KST) - dt.timedelta(days=1)).replace(
-        hour=15, minute=30).timestamp() * 1000)
     codes = [f'{i:06d}' for i in range(338)]
-    oracle = {code: [(previous_close - (104 - j) * MINUTE, 1000) for j in range(105)] for code in codes}
+    oracle = {code: [] for code in codes}  # Same-day policy: no prior-session seed.
     clock.now = base
     calls = []
 
@@ -335,14 +333,14 @@ def check_replay(owner, codes, oracle, adapters, monitors, minute, now):
                 continue
             values = [qty for _, qty in oracle[code]]
             period = selected.params.period
-            expected_current = values[-1] == max(values[-period:])
+            expected_current = len(values) >= period and values[-1] == max(values[-period:])
             flag = owner.match_fingerprint(monitor, owner.histories[code])[-1][0]
             assert flag == expected_current
             if minute % 15 == 0 or minute == 389:
-                expected = {oracle[code][j][0] for j in range(len(values)-5, len(values))
+                expected = {oracle[code][j][0] for j in range(max(period-1, len(values)-5), len(values))
                             if values[j] == max(values[j-period+1:j+1])}
                 actual, complete = bars.records(selected, data, fetched_at_ms=now)
-                assert complete
+                assert complete == (len(values) >= period + 4)
                 assert {event.bar_start_ms for event in actual} == expected
             checks += 1
     return checks
