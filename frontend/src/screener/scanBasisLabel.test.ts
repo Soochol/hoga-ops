@@ -16,3 +16,11 @@ it('does not invent a time for legacy snapshots or unknown metadata', () => {
     trade_value_won: 100, change_pct: null, price_date: '2026-10-19' };
   expect(scanBasisLabel({ rows: [row], basisAtMs: null })).toBe('2026-10-19 기준');
 });
+
+it('does not describe ten-second and thirty-second rank observations as previous-day data', () => {
+  const current = Date.UTC(2026, 9, 30, 1, 20, 30);
+  expect(scanBasisLabel({ rows: [], basisAtMs: current, fallbackBasisAtMs: current - 20_000 }))
+    .toBe('2026-10-30 10:20 기준 · 관측 시각 혼합');
+  expect(scanBasisLabel({ rows: [], basisAtMs: current, fallbackBasisAtMs: current - 90_000 }))
+    .toBe('10:20 기준 · 일부 10:19 기준');
+});

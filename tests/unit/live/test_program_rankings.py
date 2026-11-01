@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import httpx
 import pytest
 
-from hoga.live import kiwoom_rankings, kiwoom_rest_runtime
+from hoga.live import kiwoom_rankings, kiwoom_rest_runtime, ranking_session
 from hoga.live.kiwoom_rankings import KiwoomRankingsError, KiwoomRankingsFetcher, parse_rankings
 from hoga.live.kiwoom_rest import KiwoomRestClient
 from hoga.util.timeenc import KST
@@ -47,7 +47,7 @@ def response(rows, *, cont="N", key=""):
 @pytest.fixture
 def make_fetcher(monkeypatch, tmp_path):
     resources = []
-    monkeypatch.setattr(kiwoom_rankings, "is_trading_day", lambda _day: True)
+    monkeypatch.setattr(ranking_session.trading_days, "is_trading_day", lambda *_: True)
 
     def make(handler, *, now=None):
         client = KiwoomRestClient(FakeTokenProvider(), transport=httpx.MockTransport(handler))
@@ -239,7 +239,7 @@ async def test_holiday_does_not_reuse_previous_day_or_call_vendor(make_fetcher, 
     )
     await fetcher.get("program", "kospi", "up")
     now += timedelta(days=1)
-    monkeypatch.setattr(kiwoom_rankings, "is_trading_day", lambda _day: False)
+    monkeypatch.setattr(ranking_session.trading_days, "is_trading_day", lambda *_: False)
     snapshot = await fetcher.get("program", "kospi", "up")
     assert snapshot.rows == ()
     assert not snapshot.market_open

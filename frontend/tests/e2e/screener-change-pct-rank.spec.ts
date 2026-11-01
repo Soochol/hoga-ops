@@ -37,7 +37,7 @@ test('add, validate, save and reload a top-200 change percentage rank, then disp
   const card = page.getByRole('group', { name: '당일 등락률 순위 조건', exact: true });
   const input = card.getByRole('textbox', { name: '등락률 순위 상한', exact: true });
   await expect(input).toHaveValue('100');
-  await expect(card.getByRole('combobox')).toHaveCount(0);
+  await expect(card.getByRole('combobox', { name: '등락률 순위 방향' })).toHaveValue('up');
   await input.fill('1.5');
   await input.press('Tab');
   await expect(card.getByRole('alert')).toHaveText('정수로 입력하세요.');

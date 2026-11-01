@@ -8,7 +8,7 @@ from datetime import datetime
 import httpx
 import pytest
 
-from hoga.live import kiwoom_rankings, kiwoom_rest_runtime
+from hoga.live import kiwoom_rankings, kiwoom_rest_runtime, ranking_session
 from hoga.live.kiwoom_rankings import _KIND_SPEC, KiwoomRankingsError, KiwoomRankingsFetcher
 from hoga.util.timeenc import KST
 
@@ -40,7 +40,7 @@ def response(kind, start, count, *, cont="N", key=""):
 @pytest.fixture
 def make_fetcher(monkeypatch):
     resources = []
-    monkeypatch.setattr(kiwoom_rankings, "is_trading_day", lambda _day: True)
+    monkeypatch.setattr(ranking_session.trading_days, "is_trading_day", lambda *_: True)
     scheduler = Scheduler()
     monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda _dir: scheduler)
 
@@ -149,8 +149,12 @@ async def test_previous_day_rank_cache_is_not_relabelled_as_today(make_fetcher, 
     previous = await fetcher.get("value", "all", "up")
     clock = datetime(2026, 10, 30, 0, 0, 1, tzinfo=KST)
     current = await fetcher.get("value", "all", "up")
-    assert len(scheduler.calls) == 2  # The eight-second TTL cannot cross a date boundary.
+    assert len(scheduler.calls) == 1  # Midnight is pre-open, never a new daily ranking.
     assert current is not previous
+    assert current.rows == () and current.basis.source == "unavailable"
+    clock = clock.replace(hour=9)
+    current = await fetcher.get("value", "all", "up")
+    assert len(scheduler.calls) == 2
     assert current.fetched_at_ms == int(clock.timestamp() * 1000)
 
 

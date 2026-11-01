@@ -23,6 +23,8 @@ _lock = asyncio.Lock()
 
 def condition_key(leaf: ConditionLeaf, *, calculation_policy: str = "legacy_v1") -> str:
     params = leaf.params.model_dump(mode="json")
+    if leaf.type == "change_pct_rank" and params.get("direction") == "up":
+        params.pop("direction")
     if params.get("volume_basis") is None:
         params.pop("volume_basis", None)
     if calculation_policy != "legacy_v1":

@@ -84,6 +84,27 @@ afterEach(() => {
 });
 
 describe('RankingDrawer', () => {
+  it('휴장일에는 저장된 순위의 기준일과 원래 관측 시각을 표시한다', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({ ...OPEN_RESPONSE, market_open: false,
+      basis: { session: 'holiday', source: 'stored', trading_date: '2026-10-30',
+        observed_at_ms: Date.parse('2026-10-30T14:03:12+09:00'), message: null },
+    } as never);
+    renderDrawer();
+    expect(await screen.findByText('2026-10-30 14:03:12 관측 · 저장된 순위')).toBeInTheDocument();
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+  });
+
+  it('달력 미확인은 빈 순위와 구별하고 서버의 원인을 표시한다', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({ ...OPEN_RESPONSE, rows: [], market_open: false,
+      basis: { session: 'calendar_unavailable', source: 'unavailable', trading_date: null,
+        observed_at_ms: null, message: '거래일 달력을 확인할 수 없습니다. 달력 갱신이 필요합니다.' },
+    } as never);
+    renderDrawer();
+    expect(await screen.findByText('순위를 조회할 수 없습니다')).toBeInTheDocument();
+    expect(screen.getByText(/달력 갱신이 필요합니다/)).toBeInTheDocument();
+    expect(screen.queryByText('장 외 — 표시할 순위가 없습니다')).not.toBeInTheDocument();
+  });
+
   it.each([
     ['등락률', { change_won: -1200 }, '-1,200원', '전일대비 -1,200원', '0원'],
     ['거래량 급증', { volume_surge_pct: 1842.37 }, '1,842.37%', '1분 기준 급증률 1,842.37%', '0%'],

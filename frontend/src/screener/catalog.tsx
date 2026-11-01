@@ -11,6 +11,8 @@ import { high_off_peak } from './conditions/high_off_peak';
 import { change_pct_period } from './conditions/change_pct_period';
 import { change_pct } from './conditions/change_pct';
 import { change_pct_rank } from './conditions/change_pct_rank';
+import { volume_surge_rank, volume_rank, program_net_buy_rank, institution_net_buy_rank, foreign_net_buy_rank } from './conditions/market_ranks';
+
 import { price_compare, price_compare_period } from './conditions/price_compare';
 import { price_range } from './conditions/price_range';
 import { bollinger_breakout, bollinger_breakout_today, bollinger_position, bollinger_position_today } from './conditions/bollinger';
@@ -30,6 +32,7 @@ import type { CatalogEntry } from './conditions/types';
 // 빠뜨려도 테스트가 통과해 조건이 메뉴에서 사라지는 일이 있었다(#1021). 렌더에 쓰이지
 // 않는 두 번째 순서 목록은 두지 않는다.
 export const CONDITION_CATALOG: { [T in ConditionType]: CatalogEntry<T> } = {
+  volume_surge_rank, volume_rank, program_net_buy_rank, institution_net_buy_rank, foreign_net_buy_rank,
   bollinger_breakout, bollinger_breakout_today, bollinger_position, bollinger_position_today,
   volume_range, volume_range_period, volume_compare, volume_compare_period, volume_ratio, volume_ratio_period,
   trade_value, trade_value_rank, trade_value_period, new_high_today, new_high,

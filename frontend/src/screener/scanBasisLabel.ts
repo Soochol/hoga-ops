@@ -9,6 +9,12 @@ export function scanBasisLabel(scan: Pick<PanelScan, 'basisAtMs' | 'fallbackBasi
   if (scan.basisAtMs != null && Number.isFinite(scan.basisAtMs)) {
     const fallback = scan.fallbackBasisAtMs;
     if (fallback != null && Number.isFinite(fallback) && fallback !== scan.basisAtMs) {
+      const latest = stamp(scan.basisAtMs);
+      const earlier = stamp(fallback);
+      if (latest.slice(0, 10) === earlier.slice(0, 10)) {
+        return latest === earlier ? `${latest} 기준 · 관측 시각 혼합`
+          : `${latest.slice(-5)} 기준 · 일부 ${earlier.slice(-5)} 기준`;
+      }
       return `${stamp(scan.basisAtMs).slice(-5)} 기준 · 일부 종목 전일 데이터`;
     }
     return `${stamp(scan.basisAtMs)} 기준`;

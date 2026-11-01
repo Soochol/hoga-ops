@@ -1,0 +1,75 @@
+{
+  "checked_at_kst": "2026-11-01T19:59:28.865960+09:00",
+  "validated_code_commit": "b708d2e4603cf8b6bfb820d62d1dd91c5862e865",
+  "base_commit": "74ad99999d2305f383bfccbb8d6463ba149b9e3b",
+  "input_fingerprint": {
+    "files": 2952,
+    "sha256": "caa82e6701c00c30fab3f16613691a604efd13c9977c3e0d3c250c823875292f",
+    "algorithm": "sha256(sorted(path + NUL + sha256(bytes)))"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock' tests/api/test_screener*.py tests/unit/live/test_kiwoom_rankings.py tests/unit/live/test_ranking_pagination.py tests/unit/live/test_program_rankings.py tests/unit/live/test_investor_rankings.py tests/unit/live/test_ranking_session_history.py tests/unit/api/test_rest_wire_schema_contract.py --tb=short",
+      "cwd": ".",
+      "result": "1550 passed; 64 existing Polars sortedness warnings",
+      "log_sha256": "efd3c0053db818645e5568e35ca68441e0a5dd5aa9df8823c3c0b0a45d600cbc"
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed (app, unit and E2E TypeScript projects)",
+      "log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250"
+    },
+    {
+      "command": "npx vitest run src/screener src/pages/Screener.test.tsx src/rightrail/RankingDrawer.test.tsx src/api/liveRankings.test.tsx src/api/screener.test.ts src/state/screenerPanel.test.ts",
+      "cwd": "frontend",
+      "result": "58 files; 571 tests passed",
+      "log_sha256": "a05c558e456742cbb6ad760a03cfa369a16e8b84ea363f54ec6c42aac93b523a"
+    },
+    {
+      "command": "npx playwright test screener-market-ranks.spec.ts screener-change-pct-rank.spec.ts screener-trade-value-rank.spec.ts ranking-session.spec.ts screener-volume-conditions.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "7 passed; production Vite build passed during webServer startup",
+      "log_sha256": "fa2dd8208a7401b6c0ce8ca4a3d763dce0265926a6a664c33b9317672bb415c5"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "cwd": ".",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "cwd": ".",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "python": "3.14.7",
+    "uv": "0.11.8",
+    "ruff": "0.15.13",
+    "node": "24.13.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "e2e_workers": 1,
+    "backend_port": 20318,
+    "frontend_port": 21318,
+    "data_dir": "/tmp/hoga-e2e-data-318",
+    "credentials": "empty worktree .env; E2E vendor credentials explicitly blank; providers mocked"
+  },
+  "merge_audit": {
+    "open_prs_checked": [
+      1927,
+      1726
+    ],
+    "overlapping_open_prs": [],
+    "integrated_main": "74ad99999d2305f383bfccbb8d6463ba149b9e3b",
+    "integration": "Kept both volume scalar conditions and five market rank conditions; preserved centralized coverage reasons and added upstream zero-average/invalid-ratio reasons.",
+    "reuse": "All affected checks rerun after merging latest main. Subsequent commit adds only this validation document; fingerprinted inputs are unchanged.",
+    "earlier_guard_probe": "Intentional direction union mismatch was rejected and restored; see screener-market-ranks-validation.json."
+  },
+  "limitations": [
+    "Stored non-trading-day observations must exist; missing data is explicitly unavailable, not fabricated zero matches.",
+    "No production data or live credentials used. User servers and application not restarted."
+  ]
+}

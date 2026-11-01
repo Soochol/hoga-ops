@@ -111,6 +111,7 @@ from hoga.live.live_quote_fetcher import LiveQuote, LiveQuoteFetcher
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
+from hoga.live.ranking_session import RankingBasis
 from hoga.live.rest_orderbook import RestOrderbookResponse, RestOrderbookStore
 from hoga.live.screener_daily_candles import read_screener_daily_candles
 from hoga.live.session_gate import is_after_hours_single_price_window
@@ -1970,6 +1971,7 @@ class RankingsResponse(BaseModel):
     """
 
     kind: RankingKind
+    basis: RankingBasis | None = None
     market: Literal["all", "kospi", "kosdaq"]
     direction: Literal["up", "down"]
     rows: list[RankingRowModel]
@@ -3474,7 +3476,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         exclude_etf: bool = Query(False),
         # 기존 순위·프로그램은 stex_tp로 거래소를 선택한다. 기관·외국인은
         # 거래소 입력이 없으므로 venue는 보완 시세에만 적용한다.
-        venue: str = Query("KRX"),
+        venue: Literal["KRX", "NXT", "UN"] = Query("KRX"),
         limit: int | None = Query(None, ge=1, le=RANKING_MAX_LIMIT),
     ) -> RankingsResponse:
         """시장 전체 순위 및 프로그램·기관·외국인 순매수 금액 순위.
@@ -3514,6 +3516,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             else:
                 rows = tuple(r for r in rows if r.code not in drop)
         return RankingsResponse(
+            basis=snap.basis,
             kind=snap.kind,
             market=snap.market,
             direction=snap.direction,
