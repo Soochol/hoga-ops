@@ -21,6 +21,7 @@ it.each(CATEGORIES)('$label uses shared compact switches and opt-in help', categ
   render(<IndicatorPanel timeframe={timeframe} onClose={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: category.label }));
   const editor = screen.getByTestId('indicator-panel-shell');
+  expect(editor.querySelector('.settings-dependent > summary')).toBeNull();
   expect(editor.querySelector('.settings-editor-description')).toBeNull();
   expect(editor.querySelector('.settings-editor-detail-heading')).not.toHaveTextContent('차트에 추가됨');
   expect(editor.querySelector('.indicator-instance-actions > span')).toBeNull();
