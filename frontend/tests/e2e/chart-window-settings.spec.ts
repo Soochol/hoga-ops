@@ -39,7 +39,7 @@ async function openVolume(page: Page, id: string) {
   const panel = page.getByTestId('indicator-panel-shell');
   await panel.getByRole('button', { name: '내 지표', exact: true }).click();
   await panel.getByRole('button', { name: '거래량', exact: true }).click();
-  await expect(panel.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
+  await expect(panel.getByRole('slider', { name: '거래량 불투명도' })).toBeVisible();
   return panel;
 }
 
@@ -486,7 +486,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
     });
     let panel = await openVolume(page, 'a');
     await panel.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시', exact: true }).click();
-    await expect(panel.getByRole('slider', { name: '거래량 투명도' })).toBeEnabled();
+    await expect(panel.getByRole('slider', { name: '거래량 불투명도' })).toBeEnabled();
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-volume')).toHaveCount(0);
     await expect(page.locator('[data-win="a"]').getByTestId('pane-legend-rows-candle')).toContainText('거래량');
     const overlayState = () => page.evaluate(() => {
@@ -523,7 +523,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
       panel = await openVolume(page, 'a');
     }
     await panel.getByRole('slider', { name: '거래량 표시 높이' }).press('End');
-    await panel.getByRole('slider', { name: '거래량 투명도' }).press('Home');
+    await panel.getByRole('slider', { name: '거래량 불투명도' }).press('End');
     await panel.getByRole('button', { name: '상승봉 거래량 색상 선택', exact: true }).click();
     await page.getByRole('button', { name: '상승봉 거래량 색상 #22C55E', exact: true }).click();
     await expect(panel).toBeVisible();
@@ -553,7 +553,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M', '5s']) {
       await page.reload();
       panel = await openVolume(page, 'a');
       await expect(panel.getByRole('slider', { name: '거래량 표시 높이' })).toHaveValue('40');
-      await expect(panel.getByRole('slider', { name: '거래량 투명도' })).toHaveValue('0');
+      await expect(panel.getByRole('slider', { name: '거래량 불투명도' })).toHaveValue('100');
       await expect(page.locator('[data-win="a"]').getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
       await page.screenshot({ path: info.outputPath('volume-overlay-settings.png'), animations: 'disabled' });
     } else panel = await openVolume(page, 'a');

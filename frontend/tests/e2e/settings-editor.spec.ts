@@ -71,7 +71,7 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await expect(editor.getByText('앱 전체에 적용', { exact: true })).toBeVisible();
     await editor.getByTestId('settings-nav-general').click();
     await expect(editor.getByText('API URL', { exact: true })).toBeVisible();
-    await expect(editor.getByText('Version', { exact: true })).toBeVisible();
+    await expect(editor.getByText('버전', { exact: true })).toBeVisible();
     await editor.getByTestId('settings-nav-chart').click();
     const movedLabels = ['캔들 기준 Y축', '캔들이 항상 위', '동시호가 구간 지표 숨김', '캔들 정보 툴팁', '가로 구분선', '세로 구분선', '고저 극값 라벨', '고가 가격선', '저가 가격선', '이전일 고가선', '이전일 저가선'];
     for (const name of movedLabels) await expect(editor.getByRole('switch', { name, exact: true })).toHaveCount(0);
@@ -105,7 +105,7 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await expect.poll(async () => {
       const title = (await editor.locator('[data-settings-section="chart"]').boundingBox())!;
       const body = (await editor.locator('.settings-editor-content').boundingBox())!;
-      return Math.abs(title.y - body.y - 22);
+      return Math.abs(title.y - body.y - 12);
     }).toBeLessThan(3);
     await editor.screenshot({ path: testInfo.outputPath(`settings-editor-${theme}.png`) });
     await page.keyboard.press('Escape');
@@ -113,7 +113,8 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await page.getByRole('button', { name: '차트 설정', exact: true }).first().click();
     const popover = page.getByRole('dialog', { name: '차트 설정', exact: true });
     await popover.getByLabel('고저 극값 라벨 세부 설정').click();
-    for (const name of movedLabels) await expect(popover.getByRole('switch', { name, exact: true })).toBeVisible();
+    for (const name of movedLabels.slice(0, 7)) await expect(popover.getByRole('switch', { name, exact: true })).toBeVisible();
+    for (const name of movedLabels.slice(7)) await expect(popover.getByRole('checkbox', { name, exact: true })).toBeVisible();
   });
 }
 

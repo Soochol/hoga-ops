@@ -25,6 +25,8 @@ function conditionParams(leaf: ConditionLeaf) {
       const { change_reference, ...params } = leaf.params;
       return candleDefaults({ ...params, ...(change_reference && change_reference !== 'previous_day' ? { change_reference } : {}) });
     }
+    case 'ma_compare': case 'ma_compare_period': case 'ma_cross': case 'ma_cross_period': case 'ma_gap': case 'ma_gap_period': case 'ma_slope': case 'ma_slope_period':
+    case 'price_compare': case 'price_compare_period': return candleDefaults(leaf.params);
     case 'trade_value': case 'new_high': case 'new_high_today': case 'new_high_vol_today': return candleDefaults(leaf.params);
     case 'ma': return candleDefaults({ ...leaf.params, source: leaf.params.source ?? 'close' });
     case 'high_off_peak': return candleDefaults({ ...leaf.params, side: leaf.params.side ?? 'within' });

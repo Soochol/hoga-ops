@@ -127,6 +127,52 @@ export type HighOffPeakSide = 'within' | 'outside';
 export interface HighOffPeakParams extends CandleOptions { period: number; pct: number; side: HighOffPeakSide }
 export type MaRelation = 'above' | 'below';
 export type MaSource = 'open' | 'high' | 'low' | 'close';
+export type PriceCompareRelation = 'gt' | 'gte' | 'lt' | 'lte' | 'eq';
+export interface PriceCompareOperand { offset: number; source: MaSource }
+export interface PriceCompareParams extends CandleOptions { left: PriceCompareOperand; right: PriceCompareOperand; relation: PriceCompareRelation }
+export interface PriceComparePeriodParams extends PriceCompareParams { lookback: number }
+export interface PriceCompareRangeParams extends PriceCompareParams { mode: 'date_range'; start_date: string; end_date: string }
+export type PriceComparePeriodOptions = PriceComparePeriodParams | PriceCompareRangeParams;
+export interface BarPriceCompareValue { offset: number; source: MaSource; value: number; bar_start_ms: number; is_open: boolean }
+export interface BarPriceCompareMatch {
+  timeframe: ScreenerTimeframe; relation: PriceCompareRelation; left: BarPriceCompareValue; right: BarPriceCompareValue;
+  is_open: boolean; fetched_at_ms: number;
+}
+export type MaOperandKind = 'price' | 'sma';
+export type MaCrossDirection = 'up' | 'down';
+export type MaConditionKind = 'compare' | 'cross' | 'gap' | 'slope';
+export interface MaPriceOperand extends PriceCompareOperand { kind: 'price' }
+export interface MaAverageOperand extends PriceCompareOperand { kind: 'sma'; period: number }
+export type MaOperand = MaPriceOperand | MaAverageOperand;
+export interface MaPairParams extends CandleOptions { left: MaOperand; right: MaOperand }
+export interface MaThresholdParams extends CandleOptions { op: ChangePctOp; pct?: number; lo?: number; hi?: number }
+export interface MaCompareParams extends MaPairParams { relation: PriceCompareRelation }
+export interface MaCrossParams extends MaPairParams { direction: MaCrossDirection }
+export interface MaGapParams extends MaPairParams, MaThresholdParams {}
+export interface MaSlopeParams extends MaThresholdParams { average: MaAverageOperand; lag: number }
+export interface MaComparePeriodParams extends MaCompareParams { lookback: number }
+export interface MaCompareRangeParams extends MaCompareParams { mode: 'date_range'; start_date: string; end_date: string }
+export type MaComparePeriodOptions = MaComparePeriodParams | MaCompareRangeParams;
+export interface MaCrossPeriodParams extends MaCrossParams { lookback: number }
+export interface MaCrossRangeParams extends MaCrossParams { mode: 'date_range'; start_date: string; end_date: string }
+export type MaCrossPeriodOptions = MaCrossPeriodParams | MaCrossRangeParams;
+export interface MaGapPeriodParams extends MaGapParams { lookback: number }
+export interface MaGapRangeParams extends MaGapParams { mode: 'date_range'; start_date: string; end_date: string }
+export type MaGapPeriodOptions = MaGapPeriodParams | MaGapRangeParams;
+export interface MaSlopePeriodParams extends MaSlopeParams { lookback: number }
+export interface MaSlopeRangeParams extends MaSlopeParams { mode: 'date_range'; start_date: string; end_date: string }
+export type MaSlopePeriodOptions = MaSlopePeriodParams | MaSlopeRangeParams;
+export type MaConditionParams = MaCompareParams | MaCrossParams | MaGapParams | MaSlopeParams;
+export interface BarMaValue {
+  kind: MaOperandKind; offset: number; source: MaSource; period: number | null; value: number;
+  bar_start_ms: number; window_start_ms: number; is_open: boolean;
+}
+export interface BarMaMatch {
+  kind: MaConditionKind; timeframe: ScreenerTimeframe; left: BarMaValue; right: BarMaValue;
+  previous_left: BarMaValue | null; previous_right: BarMaValue | null;
+  relation: PriceCompareRelation | null; direction: MaCrossDirection | null; value_pct: number | null;
+  is_open: boolean; fetched_at_ms: number;
+}
 export interface MaParams extends CandleOptions { period: number; relation: MaRelation; source?: MaSource }
 export type BollingerBand = 'upper' | 'lower';
 export interface BollingerBreakoutParams extends CandleOptions {
@@ -163,6 +209,16 @@ export type ConditionLeaf =
   | { id: string; type: 'change_pct'; params: ChangePctParams }
   | { id: string; type: 'change_pct_period'; params: ChangePctPeriodOptions }
   | { id: string; type: 'price_range'; params: PriceRangeParams }
+  | { id: string; type: 'price_compare'; params: PriceCompareParams }
+  | { id: string; type: 'price_compare_period'; params: PriceComparePeriodOptions }
+  | { id: string; type: 'ma_compare'; params: MaCompareParams }
+  | { id: string; type: 'ma_compare_period'; params: MaComparePeriodOptions }
+  | { id: string; type: 'ma_cross'; params: MaCrossParams }
+  | { id: string; type: 'ma_cross_period'; params: MaCrossPeriodOptions }
+  | { id: string; type: 'ma_gap'; params: MaGapParams }
+  | { id: string; type: 'ma_gap_period'; params: MaGapPeriodOptions }
+  | { id: string; type: 'ma_slope'; params: MaSlopeParams }
+  | { id: string; type: 'ma_slope_period'; params: MaSlopePeriodOptions }
   | { id: string; type: 'ma'; params: MaParams }
   | { id: string; type: 'bollinger_breakout_today'; params: BollingerBreakoutParams }
   | { id: string; type: 'bollinger_breakout'; params: BollingerBreakoutPeriodParams }
@@ -673,6 +729,8 @@ export interface ScreenerOccurrence {
   bar_price_match?: BarPriceMatch | null;
   bar_trade_value_match?: BarTradeValueMatch | null;
   bar_change_match?: BarChangeMatch | null;
+  bar_price_compare_match?: BarPriceCompareMatch | null;
+  bar_ma_match?: BarMaMatch | null;
   history_match?: HistoryMatch | HistoryTradeValueMatch | null;
   condition_id: string;
   condition_key: string;

@@ -1,3 +1,5 @@
+import { maOperandLabel } from './maLabels';
+import { operandLabel, PRICE_COMPARE_SYMBOLS } from './priceCompareLabels';
 import { CHANGE_REFERENCE_LABELS } from './candleLabels';
 import type { ScreenerOccurrence } from '../api/screener';
 import { MARKET_RANK_LABELS } from './rankConditions';
@@ -54,6 +56,34 @@ export function BarMatchEvidence({ event }: { event: ScreenerOccurrence }) {
     {CHANGE_REFERENCE_LABELS[change.change_reference]} {won(change.change_pct)}% · 종가 {won(change.close)}원
     {' · '}기준 {won(change.reference_close)}원 · {change.is_open ? '진행 중' : '완료'}
   </span>;
+  const ma = event.bar_ma_match;
+  if (ma) {
+    const price = (value: number) => value.toLocaleString('ko-KR', { maximumFractionDigits: 20 });
+    const stamp = (value: number) => new Date(value + 9 * 60 * 60 * 1000).toISOString()
+      .slice(0, ma.timeframe.endsWith('m') ? 16 : 10).replace('T', ' ');
+    const relation = ma.relation ? PRICE_COMPARE_SYMBOLS[ma.relation] : ma.direction === 'up' ? '>' : ma.direction === 'down' ? '<' : '/';
+    return <span className="block font-data text-xs text-fg-dim">
+      {maOperandLabel(ma.left)} {price(ma.left.value)}원 {relation} {maOperandLabel(ma.right)} {price(ma.right.value)}원
+      {ma.value_pct != null && <span className="block">{ma.kind === 'slope' ? '기울기' : '이격률'} {price(ma.value_pct)}%</span>}
+      {ma.previous_left && ma.previous_right && <span className="block">
+        직전 A {price(ma.previous_left.value)}원 · B {price(ma.previous_right.value)}원 → {ma.direction === 'up' ? '상향' : '하향'} 돌파·교차
+      </span>}
+      <span className="block">A {stamp(ma.left.bar_start_ms)} · 계산 시작 {stamp(ma.left.window_start_ms)}
+        {' · '}B {stamp(ma.right.bar_start_ms)} · 계산 시작 {stamp(ma.right.window_start_ms)}
+        {' · '}{ma.is_open ? '진행 중' : '완료'}</span>
+    </span>;
+  }
+  const compare = event.bar_price_compare_match;
+  if (compare) {
+    const price = (value: number) => value.toLocaleString('ko-KR', { maximumFractionDigits: 20 });
+    const time = (ms: number) => new Date(ms + 9 * 60 * 60 * 1000).toISOString()
+      .slice(0, compare.timeframe.endsWith('m') ? 16 : 10).replace('T', ' ');
+    return <span className="block font-data text-xs text-fg-dim">
+      {operandLabel(compare.left)} {price(compare.left.value)}원 {PRICE_COMPARE_SYMBOLS[compare.relation]} {operandLabel(compare.right)} {price(compare.right.value)}원
+      <span className="block">A {time(compare.left.bar_start_ms)} · {compare.left.is_open ? '진행 중' : '완료'}
+        {' · '}B {time(compare.right.bar_start_ms)} · {compare.right.is_open ? '진행 중' : '완료'}</span>
+    </span>;
+  }
   const price = event.bar_price_match;
   const match = price ?? event.bar_match;
   if (!match) return null;

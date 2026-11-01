@@ -3,7 +3,7 @@ import { emptyResultText } from './emptyResultText';
 import type { PanelScan } from '../state/screenerPanel';
 import { EmptyState } from '../ui/DataSurface';
 import { SegmentedControl, ToolbarButton } from '../ui/PageShell';
-import { usePeriodChangeDetails } from './PeriodChangeDetails';
+import { usePriceOccurrenceDetails } from './PriceOccurrenceDetails';
 import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { ResultTable, type DepthSides } from './ResultTable';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
@@ -35,7 +35,7 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
   onSortChange: (mode: ScreenerResultSortMode) => void;
   onActivate: (code: string, name?: string, e?: JumpModifiers) => void;
 }) {
-  const details = usePeriodChangeDetails(scan.rows, occurrenceController);
+  const details = usePriceOccurrenceDetails(scan.rows, occurrenceController);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'live' | 'snapshot'>('live');
   const snapshotRows = useMemo(() => scan.rows.map((r) => ({ ...r, change_won: null })), [scan.rows]);
@@ -78,7 +78,7 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
         </EmptyState>
       ) : (
         <ResultTable rows={filtered} onActivate={onActivate} sortMode={sortMode} onSortChange={onSortChange}
-          periodConditionIds={details.conditionIds} onPeriodDetails={details.onOpen}
+          occurrenceKinds={details.conditionKinds} onOccurrenceDetails={details.onOpen}
           embedded depthValues={scan.depthValues} depthSides={depthSides} quoteMode={mode} />
       )}
       {details.modal}

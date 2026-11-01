@@ -1,4 +1,6 @@
-import MAStylePicker from './MAStylePicker';
+import ColorSwatchPicker from './ColorSwatchPicker';
+import { IndicatorSettingsGroup, IndicatorRangeRow } from './IndicatorSettingsLayout';
+import { SettingsRow } from '../settings/SettingsRow';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView';
 
@@ -8,46 +10,17 @@ export default function DepthHeatmapConfig() {
   const askColor = useWindowIndicator((s) => s.depthHeatmapAskColor);
   const maxOpacity = useWindowIndicator((s) => s.depthHeatmapMaxOpacity);
   const setStyle = useIndicatorActions().setDepthHeatmapStyle;
-  return (
-    <div>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-fg">매수 색상</span>
-          <MAStylePicker
-            color={bidColor}
-            lineWidth={2}
-            onChange={(p) => { if (p.color) setStyle({ bidColor: p.color }); }}
-            label="매수 색상"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-fg">매도 색상</span>
-          <MAStylePicker
-            color={askColor}
-            lineWidth={2}
-            onChange={(p) => { if (p.color) setStyle({ askColor: p.color }); }}
-            label="매도 색상"
-          />
-        </div>
-      </div>
-      <div className="border-b border-border my-3" />
-      <div>
-        <label htmlFor="dh-opacity" className="text-sm text-fg mb-2 block">
-          최대 불투명도 <span className="text-fg-dim text-xs">{Math.round(maxOpacity * 100)}%</span>
-        </label>
-        <input
-          id="dh-opacity"
-          type="range"
-          min={0.2}
-          max={1}
-          step={0.05}
-          value={maxOpacity}
-          onChange={(e) => setStyle({ maxOpacity: Number(e.target.value) })}
-          className="w-full"
-        />
-      </div>
-      <div className="border-b border-border my-3" />
+  return <div className="indicator-settings-groups">
+    <IndicatorSettingsGroup label="조건">
       <IndicatorPrefRows toggleKeys={['depthHeatmapIntraMax', 'depthHeatmapTopLevelsOnly']} />
-    </div>
-  );
+    </IndicatorSettingsGroup>
+    <IndicatorSettingsGroup label="표시·스타일">
+      <SettingsRow label="매수 색상"><ColorSwatchPicker label="매수 색상" color={bidColor}
+        onChange={bidColor => setStyle({ bidColor })} /></SettingsRow>
+      <SettingsRow label="매도 색상"><ColorSwatchPicker label="매도 색상" color={askColor}
+        onChange={askColor => setStyle({ askColor })} /></SettingsRow>
+      <IndicatorRangeRow label="최대 불투명도" value={Math.round(maxOpacity * 100)} min={20} max={100} step={5}
+        onChange={value => setStyle({ maxOpacity: value / 100 })} />
+    </IndicatorSettingsGroup>
+  </div>;
 }

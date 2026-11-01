@@ -29,16 +29,16 @@ describe('QuoteTotalsConfig', () => {
   // 제목은 더 이상 이 컴포넌트의 것이 아니다 — 카테고리 표가 패널 헤더에서 그린다.
   it('범례·급증 마커 토글을 렌더', () => {
     render(<QuoteTotalsConfig />);
-    expect(screen.getByText(/매수 총잔량 빨강/)).toBeTruthy();
-    expect(screen.getByText(/매도 총잔량 파랑/)).toBeTruthy();
+    expect(screen.getByRole('switch', { name: '매수 총잔량 표시' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: '매도 총잔량 표시' })).toBeTruthy();
     expect(screen.getByTestId('settings-toggle-surgeMarkerEnabled')).toBeTruthy();
   });
 
-  it('당일 최고 수평선은 opt-in — 꺼진 상태에선 스타일 피커가 없다', () => {
+  it('당일 최고 수평선은 opt-in — 스타일 입력은 보이되 비활성화한다', () => {
     render(<QuoteTotalsConfig />);
     expect(screen.getByTestId('settings-toggle-quoteTotalsDayMaxLineEnabled')).toBeTruthy();
-    expect(screen.queryByText('매수 최고선')).toBeNull();
-    expect(screen.queryByText('매도 최고선')).toBeNull();
+    expect(screen.getByRole('button', { name: '매수 최고선 스타일 선택' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '매도 최고선 스타일 선택' })).toBeDisabled();
   });
 
   it('켜면 매수·매도 최고선 스타일 피커가 드러난다', () => {
@@ -47,7 +47,7 @@ describe('QuoteTotalsConfig', () => {
     expect(screen.getByText('매수 최고선')).toBeTruthy();
     expect(screen.getByText('매도 최고선')).toBeTruthy();
     // 현재값 수평선과 독립 토글이다 — 최고선을 켜도 현재값 피커는 나오지 않는다.
-    expect(screen.queryByText('매수 수평선')).toBeNull();
+    expect(screen.getByRole('button', { name: '매수 수평선 스타일 선택' })).toBeDisabled();
   });
 
   // 여기 `/study` 게이트 케이스가 있었다 — 최고 수평선이 복기에서 숨겨지는지 재던

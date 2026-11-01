@@ -20,7 +20,9 @@ import {
 import ColorSwatchPicker from './indicators/ColorSwatchPicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import NumericPrefRow from './settings/NumericPrefRow';
-import { SettingsRow } from './settings/SettingsRow';
+import { CompactSettingsContext, SettingsDescriptionTooltipContext, SettingsRow } from './settings/SettingsRow';
+import { SettingsGroup } from './settings/SettingsGroup';
+import './settings/AppSettingsEditor.css';
 import { highlightLabel } from './settings/SettingsRowHelpers';
 import { DataSourceDetail } from './settings/DataSourceDetail';
 import {
@@ -126,17 +128,11 @@ function buildFilterUnits(): FilterUnit[] {
   return [...toggles, ...numerics];
 }
 
-function GroupHead({ label }: { label: string }) {
-  return (
-    <h4 className="text-sm font-medium text-fg">{label}</h4>
-  );
-}
-
 /** 종속 스타일 행의 공용 게이트 래퍼 — 들여쓰기 + 부모 OFF 시 dim(값은 보존).
  *  `IndicatorPrefRows` 가 하위 토글에 쓰는 것과 같은 문법이다. */
 function GatedStyleRow({ enabled, children }: { enabled: boolean; children: ReactNode }) {
   return (
-    <div className={`ml-4 ${enabled ? '' : 'pointer-events-none opacity-40'}`}>{children}</div>
+    <fieldset disabled={!enabled} key={String(enabled)} className={`settings-style-dependent ml-4 ${enabled ? '' : 'opacity-40'}`}>{children}</fieldset>
   );
 }
 
@@ -173,13 +169,12 @@ function SectionHeading({ id, label }: { id: NavId; label: string }) {
   );
 }
 
-/** 자유 마크업 섹션(데이터소스·테마 …) — 내부 블록 간격은 종전 상세 패널의
- *  `space-y-3` 을 승계한다(각 섹션 본체가 그 간격을 전제로 짜여 있다). */
+/** 자유 마크업 섹션도 같은 그룹 간격과 단일 스크롤을 공유한다. */
 function InfoSection({ id, children }: { id: NavId; children: ReactNode }) {
   return (
     <section aria-label={LABEL[id]} className="mt-6">
       <SectionHeading id={id} label={LABEL[id]} />
-      <div className="mt-3 space-y-3">{children}</div>
+      <div className="settings-property-groups">{children}</div>
     </section>
   );
 }
@@ -272,7 +267,8 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
   };
 
   return (
-    <SettingsEditor title="설정" scope="앱 전체에 적용" onClose={onClose} undo={undo}
+    <CompactSettingsContext.Provider value><SettingsDescriptionTooltipContext.Provider value>
+    <SettingsEditor className="app-settings-editor settings-compact" title="설정" scope="앱 전체에 적용" onClose={onClose} undo={undo}
       testId="settings-shell" footer="변경 즉시 반영 · 자동 저장"
       sidebar={
       <nav className="flex min-h-0 flex-1 flex-col" aria-label="설정 카테고리">
@@ -325,14 +321,14 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
         </div>
       </nav>}
       >
-        <div ref={bodyRef} onScroll={onScroll} className={`settings-editor-content ${filtering ? 'settings-filtered' : ''}`}>
+        <div ref={bodyRef} onScroll={onScroll} className={`settings-editor-content app-settings-content ${filtering ? 'settings-filtered' : ''}`}>
           {sections.map((section) => (
             (!filtering || section.groups.length > 0) && (
               <section key={section.id} aria-label={LABEL[section.id]} className="mt-6 first:mt-0">
                 <SectionHeading id={section.id} label={LABEL[section.id]} />
+                <div className="settings-property-groups">
                 {section.groups.map((group) => (
-                  <div className="settings-editor-group" key={group.id}>
-                    {!filtering && <GroupHead label={group.label} />}
+                  <SettingsGroup label={filtering ? null : group.label} key={group.id}>
                     {group.units.map((unit) => (
                       <Fragment key={unit.key}>
                         {unit.kind === 'numeric'
@@ -341,8 +337,9 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
                         {unit.key === 'tradeHighlightEnabled' && <TradeHighlightColorRow highlight={filtering ? trimmed : undefined} />}
                       </Fragment>
                     ))}
-                  </div>
+                  </SettingsGroup>
                 ))}
+                </div>
               </section>
             )
           ))}
@@ -359,5 +356,6 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
           ))}
         </div>
     </SettingsEditor>
+    </SettingsDescriptionTooltipContext.Provider></CompactSettingsContext.Provider>
   );
 }

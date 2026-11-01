@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiCall } from '../../api/client';
 import { ToolbarButton } from '../../ui/PageShell';
+import { SettingsGroup } from './SettingsGroup';
+import { SettingsRow } from './SettingsRow';
 import { WORKSPACE_STORAGE_KEY } from '../../state/workspaceKeys';
 import { SETTINGS_FILE_LIMIT, applySettings, exportSettings, parseSettingsArchive, type SettingsArchive } from '../../state/settingsTransfer';
 
@@ -20,12 +22,14 @@ export default function SettingsTransferSection() {
   const [message, setMessage] = useState('');
   const health = useQuery({ queryKey: ['health'], queryFn: () => apiCall<{ version: string }>('/health'), staleTime: Infinity });
   const backup = () => exportSettings(localStorage, window.location.origin, health.data?.version ?? 'unknown');
-  return <section className="space-y-3">
-    <p className="text-xs text-fg-dim">이 브라우저의 창 배치·지표·차트 설정·그리기·테마를 다른 브라우저나 Electron으로 옮깁니다. 서버 데이터와 주문 상태는 포함하지 않습니다.</p>
-    <div className="flex gap-2">
-      <ToolbarButton onClick={() => { try { download(backup(), 'export'); setMessage('설정 파일을 저장하세요.'); } catch (error) { setMessage(String(error)); } }}>화면 설정 내보내기</ToolbarButton>
-      <ToolbarButton onClick={() => file.current?.click()}>화면 설정 가져오기</ToolbarButton>
+  return <SettingsGroup label="화면 설정">
+    <p className="settings-scope-note text-xs text-fg-dim">이 브라우저의 창 배치·지표·차트 설정·그리기·테마를 다른 브라우저나 Electron으로 옮깁니다. 서버 데이터와 주문 상태는 포함하지 않습니다.</p>
+    <SettingsRow label="설정 파일">
+    <div className="settings-transfer-actions">
+      <ToolbarButton onClick={() => { try { download(backup(), 'export'); setMessage('설정 파일을 저장하세요.'); } catch (error) { setMessage(String(error)); } }} aria-label="화면 설정 내보내기">내보내기</ToolbarButton>
+      <ToolbarButton onClick={() => file.current?.click()} aria-label="화면 설정 가져오기">가져오기</ToolbarButton>
     </div>
+    </SettingsRow>
     <input ref={file} type="file" accept="application/json,.json" className="hidden" aria-label="화면 설정 파일" onChange={async event => {
       const selected = event.target.files?.[0]; event.target.value = ''; setPending(null); setBackupSaved(false); setClosedOthers(false);
       if (!selected) return;
@@ -34,7 +38,7 @@ export default function SettingsTransferSection() {
         setPending(parseSettingsArchive(await selected.text())); setMessage('파일을 확인했습니다. 현재 설정의 백업을 저장한 뒤 적용하세요.');
       } catch (error) { setMessage(error instanceof Error ? error.message : '설정 파일을 읽지 못했습니다.'); }
     }} />
-    {pending && <div className="space-y-2 text-xs">
+    {pending && <div className="settings-import-review space-y-2 text-xs">
       <p>원본: {pending.origin} · 버전 {pending.appVersion} · {Object.keys(pending.entries).length}개 항목</p>
       <p>적용 대상: {window.location.origin}. 같은 항목을 덮어쓰고 화면을 새로고침합니다.</p>
       <label className="flex gap-2 items-center"><input type="checkbox" checked={closedOthers} onChange={event => setClosedOthers(event.target.checked)} />이 서버의 다른 작업 창과 탭을 모두 닫았습니다.</label>
@@ -51,5 +55,5 @@ export default function SettingsTransferSection() {
       }}>설정 적용 후 새로고침</ToolbarButton>
     </div>}
     {message && <p role="status" className="text-xs text-fg-dim">{message}</p>}
-  </section>;
+  </SettingsGroup>;
 }

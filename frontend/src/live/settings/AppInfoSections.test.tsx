@@ -35,23 +35,23 @@ describe('AppInfoSections — 테마', () => {
     useThemePrefsStore.setState({ themePreference: 'toss-dark' });
   });
 
-  it('renders the theme options with the current one pressed', () => {
+  it('renders all theme options in one compact selector', () => {
     renderWithQuery(<ThemeSection />);
-    expect(screen.getByRole('button', { name: 'Toss Dark' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Obsidian' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: 'Ledger' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('combobox', { name: '테마 선택' })).toHaveValue('toss-dark');
+    expect(screen.getByRole('option', { name: 'Obsidian' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Ledger' })).toBeInTheDocument();
     // `auto`(라벨 '자동')는 2026-08-30 에 제거됐다 — 되살아나면 여기서 빨개진다.
-    expect(screen.queryByRole('button', { name: '자동' })).toBeNull();
+    expect(screen.queryByRole('option', { name: '자동' })).toBeNull();
   });
 
-  it('clicking Ledger updates the store and aria-pressed', async () => {
+  it('selecting Ledger updates the store and selected value', async () => {
     renderWithQuery(<ThemeSection />);
-    const ledger = screen.getByRole('button', { name: 'Ledger' });
-    fireEvent.click(ledger);
+    const ledger = screen.getByRole('combobox', { name: '테마 선택' });
+    fireEvent.change(ledger, { target: { value: 'ledger' } });
     await waitFor(() => {
       expect(useThemePrefsStore.getState().themePreference).toBe('ledger');
     });
-    expect(ledger).toHaveAttribute('aria-pressed', 'true');
+    expect(ledger).toHaveValue('ledger');
   });
 
   it.each([
@@ -60,10 +60,11 @@ describe('AppInfoSections — 테마', () => {
     ['Trading Desk', 'trading-desk', '올리브 블랙과 라임 강조색 · 트레이딩 데스크'],
   ] as const)('selects %s and persists its preference', (label, theme, hint) => {
     renderWithQuery(<ThemeSection />);
-    const option = screen.getByRole('button', { name: label });
-    fireEvent.click(option);
-    expect(option).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Toss Dark' })).toHaveAttribute('aria-pressed', 'false');
+    const option = screen.getByRole('combobox', { name: '테마 선택' });
+    expect(screen.getByRole('option', { name: label })).toBeInTheDocument();
+    fireEvent.change(option, { target: { value: theme } });
+    expect(option).toHaveValue(theme);
+    expect((screen.getByRole('option', { name: 'Toss Dark' }) as HTMLOptionElement).selected).toBe(false);
     expect(screen.getByText(hint)).toBeInTheDocument();
     expect(useThemePrefsStore.getState().themePreference).toBe(theme);
     expect(JSON.parse(localStorage.getItem('ui.themePreference.v1')!)).toEqual({ themePreference: theme });

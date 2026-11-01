@@ -1,3 +1,5 @@
+import { IndicatorSettingsGroup } from './IndicatorSettingsLayout';
+import { SettingsRow } from '../settings/SettingsRow';
 import SignColorLegend from './SignColorLegend';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import ToggleRow from '../settings/ToggleRow';
@@ -14,9 +16,11 @@ export default function RatioConfig() {
   const style = useWindowIndicator((s) => s.ratioLevelStyle);
   const setStyle = useIndicatorActions().setRatioLevelStyle;
   return (
-    <div>
-      <SignColorLegend up="매수 우위" down="매도 우위" />
-      <div className="border-b border-border my-3" />
+    <div className="indicator-settings-groups">
+      <IndicatorSettingsGroup label="조건">
+        <IndicatorPrefRows toggleKeys={['ratioOutlierFilterEnabled', 'ratioIntraMax']} />
+      </IndicatorSettingsGroup>
+      <IndicatorSettingsGroup label="표시·스타일">
       <ToggleRow
         label="현재값 수평선"
         description="현재 호가비에 수평선을 표시합니다."
@@ -24,9 +28,8 @@ export default function RatioConfig() {
         onToggle={() => setLevelEnabled(!levelEnabled)}
         testId="settings-toggle-ratioLevelLineEnabled"
       />
-      {levelEnabled && (
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-sm text-fg">수평선</span>
+      <fieldset disabled={!levelEnabled} key={String(levelEnabled)} className="indicator-child-rows">
+          <SettingsRow label="수평선">
           <MAStylePicker
             color={color}
             lineWidth={width}
@@ -35,10 +38,10 @@ export default function RatioConfig() {
             onLineStyleChange={(lineStyle) => setStyle({ lineStyle })}
             label="호가비 수평선"
           />
-        </div>
-      )}
-      <div className="border-b border-border my-3" />
-      <IndicatorPrefRows toggleKeys={['ratioOutlierFilterEnabled', 'ratioIntraMax']} />
+          </SettingsRow>
+        </fieldset>
+      <SignColorLegend up="매수 우위" down="매도 우위" />
+      </IndicatorSettingsGroup>
     </div>
   );
 }

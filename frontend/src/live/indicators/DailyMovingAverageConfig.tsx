@@ -1,3 +1,4 @@
+import { IndicatorSettingsGroup } from './IndicatorSettingsLayout';
 import { MA_SLOT_LIMIT } from '../../state/livePage';
 import { AppIcon } from '../../ui/AppIcon';
 import MovingAverageRow from './MovingAverageRow';
@@ -17,7 +18,7 @@ export default function DailyMovingAverageConfig() {
   const atLimit = configs.length >= MA_SLOT_LIMIT;
 
   return (
-    <div>
+    <IndicatorSettingsGroup label="이평선">
       <div className="mb-3">
         <ToggleRow
           label="일봉 MA 표시"
@@ -28,7 +29,7 @@ export default function DailyMovingAverageConfig() {
         />
       </div>
       <div>
-        {configs.length > 0 && <div className="ma-config-grid ma-config-heading"><span>표시</span><span>기간</span><span>기준가</span><span>색상 · 두께</span><span /></div>}
+        {configs.length > 0 && <div className="ma-config-grid ma-config-heading"><span>기간</span><span>기준가</span><span>색상 · 두께</span><span>표시</span><span /></div>}
         {configs.map((cfg, i) => (
           <MovingAverageRow editorLayout
             key={cfg.id}
@@ -48,6 +49,6 @@ export default function DailyMovingAverageConfig() {
       >
         <AppIcon name="plus" size={12} />기간 추가
       </button>
-    </div>
+    </IndicatorSettingsGroup>
   );
 }

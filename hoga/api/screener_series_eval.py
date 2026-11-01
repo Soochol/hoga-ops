@@ -13,7 +13,15 @@ from hoga.api.models import (
     ScreenerOccurrence,
     ScreenerVolumeEvidence,
 )
-from hoga.api.screener_bar_policy import CHANGE_TYPES, TRADE_VALUE_TYPES, VOLUME_TYPES, comparison_period, lookback
+from hoga.api.screener_bar_policy import (
+    CHANGE_TYPES,
+    MA_TYPES,
+    PRICE_COMPARE_TYPES,
+    TRADE_VALUE_TYPES,
+    VOLUME_TYPES,
+    comparison_period,
+    lookback,
+)
 from hoga.api.screener_exclusions import condition_key
 
 POLICY = "separate_bases_v2"
@@ -116,7 +124,7 @@ def _price(leaf, series, window, expected, days, clock):
         )
     grouped = bars.calendar_bars(daily, days, timeframe=leaf.params.timeframe, as_of=clock, windows=window)
     p = leaf.params.model_copy(update={"lookback": 1}) if hasattr(leaf.params, "lookback") else leaf.params
-    if leaf.type in CHANGE_TYPES and isinstance(p, HistoryDateRangeParams):
+    if leaf.type in CHANGE_TYPES | PRICE_COMPARE_TYPES | MA_TYPES and isinstance(p, HistoryDateRangeParams):
         candidate_date = window[-1][0][0].isoformat()
         p = p.model_copy(update={"start_date": candidate_date, "end_date": candidate_date})
     candidate = leaf.model_copy(update={"params": p})

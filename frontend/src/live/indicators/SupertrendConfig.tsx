@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import LineVisibilityRow from './LineVisibilityRow';
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
-import MAStylePicker from './MAStylePicker';
+import ColorSwatchPicker from './ColorSwatchPicker';
+import { IndicatorSettingsGroup, IndicatorLineWidthRow } from './IndicatorSettingsLayout';
 import { IndicatorExplanation } from './IndicatorExplanation';
 
 export default function SupertrendConfig() {
@@ -22,7 +23,8 @@ export default function SupertrendConfig() {
   };
   const inputClass = 'w-24 text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums';
   return (
-    <div className="space-y-3">
+    <div className="indicator-settings-groups">
+      <IndicatorSettingsGroup label="계산">
       <label className="indicator-parameter-row flex items-center justify-between gap-2 text-sm text-fg">
         ATR 기간 (봉 개수)
         <input aria-label="슈퍼트렌드 기간" type="number" min={1} max={400} step={1}
@@ -35,19 +37,21 @@ export default function SupertrendConfig() {
           value={multiplier} onChange={(e) => setMultiplierDraft({ base: settings.supertrendMultiplier, text: e.target.value })} onBlur={commit}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} className={inputClass} />
       </label>
+      </IndicatorSettingsGroup>
+      <IndicatorSettingsGroup label="표시·스타일">
       {([
         ['상승 추세', 'supertrendUpColor', 'supertrendUp'],
         ['하락 추세', 'supertrendDownColor', 'supertrendDown'],
       ] as const).map(([label, key, lineKey]) => (
         <LineVisibilityRow key={key} lineKey={lineKey} label={label} toggleLabel={`슈퍼트렌드 ${label} 표시`}>
-          <MAStylePicker label={`슈퍼트렌드 ${label}`} color={settings[key]} lineWidth={settings.supertrendLineWidth}
-            onChange={(patch) => setSupertrendSettings({
-              ...(patch.color ? { [key]: patch.color } : {}),
-              ...(patch.lineWidth ? { supertrendLineWidth: patch.lineWidth } : {}),
-            })} />
+          <ColorSwatchPicker label={`슈퍼트렌드 ${label}`} color={settings[key]}
+            onChange={color => setSupertrendSettings({ [key]: color })} />
         </LineVisibilityRow>
       ))}
-      <IndicatorExplanation summary="진행 중인 봉의 추세는 바뀔 수 있습니다. 두 선의 두께는 함께 적용됩니다.">설정한 봉 수가 쌓이면 표시됩니다. 진행 중인 봉의 추세는 바뀔 수 있으며, 두 선의 두께는 함께 적용됩니다.</IndicatorExplanation>
+      <IndicatorLineWidthRow label="슈퍼트렌드" value={settings.supertrendLineWidth}
+        onChange={lineWidth => setSupertrendSettings({ supertrendLineWidth: lineWidth })} />
+      </IndicatorSettingsGroup>
+      <IndicatorExplanation summary="진행 중인 봉의 추세는 바뀔 수 있습니다.">설정한 봉 수가 쌓이면 표시됩니다. 진행 중인 봉의 추세는 바뀔 수 있으며, 두 선의 두께는 함께 적용됩니다.</IndicatorExplanation>
     </div>
   );
 }

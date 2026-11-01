@@ -30,8 +30,8 @@ for (const theme of ['toss-light', 'trading-desk']) {
     await editor.getByRole('button', { name: '이동평균선 설명' }).click();
     await editor.getByRole('button', { name: '거래량', exact: true }).click();
     const placementLabels = await editor.locator('.indicator-config .settings-row > div:first-child').allTextContents();
-    await expect(editor.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
-    await expect(editor.getByRole('slider', { name: '거래량 투명도' })).toBeDisabled();
+    await expect(editor.getByRole('slider', { name: '거래량 불투명도' })).toBeVisible();
+    await expect(editor.getByRole('slider', { name: '거래량 불투명도' })).toBeDisabled();
     await expect(editor.locator('.settings-dependent > summary')).toHaveCount(0);
     await editor.screenshot({ path: testInfo.outputPath(`indicator-simple-${theme}.png`) });
 
@@ -54,7 +54,7 @@ for (const theme of ['toss-light', 'trading-desk']) {
     await expect(editor.getByRole('radio')).toHaveCount(2);
     expect(await editor.locator('.indicator-config .settings-row > div:first-child').allTextContents()).toEqual(placementLabels);
     await expect(editor.getByRole('switch', { name: '거래량을 캔들에 겹쳐 표시' })).toBeDisabled();
-    await expect(editor.getByRole('slider', { name: '거래량 투명도' })).toBeVisible();
+    await expect(editor.getByRole('slider', { name: '거래량 불투명도' })).toBeVisible();
 
     for (const width of [640, 390, 320]) {
       await page.setViewportSize({ width, height: 760 });

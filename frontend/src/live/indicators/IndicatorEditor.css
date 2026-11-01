@@ -1,24 +1,16 @@
 /* Keep the existing modal/navigation layout; simplify only indicator editor chrome. */
-.settings-editor.indicator-editor .settings-editor-heading { min-height: 2.75rem; padding: var(--space-sm) var(--space-lg); }
 .settings-editor.indicator-editor .settings-editor-detail-heading { padding: var(--space-md) var(--space-lg) var(--space-sm); }
 .indicator-detail-title { display: flex; align-items: center; gap: var(--space-xs); }
 .indicator-detail-title > h3 { min-width: 0; margin: 0; }
+.indicator-editor .indicator-detail-title > h3 { word-break: keep-all; overflow-wrap: anywhere; }
 .indicator-detail-title > button { flex-shrink: 0; }
 .settings-editor.indicator-editor .indicator-instance-actions { gap: var(--space-xs); margin-top: var(--space-xs); font-size: var(--text-xs); }
 .settings-editor.indicator-editor .indicator-instance-actions button { min-height: 1.5rem; padding: var(--space-2xs) var(--space-xs); border: 0; border-radius: var(--radius-md); color: var(--fg-dim); }
 .indicator-editor .indicator-instance-actions button:hover { background: var(--bg-input-hover); color: var(--fg); }
 .indicator-editor .indicator-help-description { margin-top: var(--space-sm); padding: var(--space-sm); background: var(--bg-subtle); border-radius: var(--radius-md); }
-.settings-editor.indicator-editor .settings-editor-content { padding: var(--space-sm) var(--space-lg) var(--space-lg); }
 .settings-editor.indicator-editor .indicator-config > :not([hidden]) ~ :not([hidden]) { margin-top: var(--space-sm); }
 .indicator-editor .indicator-config > .space-y-3 > :not([hidden]) ~ :not([hidden]),
 .indicator-editor .indicator-config > div > .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: var(--space-xs); }
-.settings-editor.indicator-editor .settings-row { align-items: center; min-height: 1.5rem; padding: 0; gap: var(--space-sm); }
-.settings-editor.indicator-editor .settings-dependent .settings-row { min-height: 1.5rem; }
-.settings-editor.indicator-editor .settings-row > div:first-child { align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
-.indicator-editor .settings-row-label { display: flex; align-items: center; flex: 1; padding-block: var(--space-2xs); line-height: 1.5; cursor: pointer; }
-.indicator-editor .opacity-50 .settings-row-label { cursor: not-allowed; }
-.settings-editor.indicator-editor .settings-row-control { max-width: 60%; }
-.settings-editor.indicator-editor .settings-dependent { padding-left: var(--space-sm); margin: var(--space-xs) 0 var(--space-xs) var(--space-sm); border-left-width: 1px; }
 .settings-editor.indicator-editor .settings-dependent > summary { padding-block: var(--space-xs); }
 .indicator-editor .indicator-parameter-row { min-height: 1.5rem; }
 .indicator-editor .indicator-config input:not([type=checkbox]):not([type=radio]):not([type=range]),
@@ -36,29 +28,79 @@
 .settings-editor.indicator-editor .indicator-style-preview > svg { max-height: 6rem; }
 .indicator-editor .indicator-explanation { line-height: 1.5; }
 .indicator-config-notice { margin-top: var(--space-xs); font-size: var(--text-xs); color: var(--fg-dim); line-height: 1.5; }
-.settings-editor.indicator-editor .settings-editor-footer { min-height: 2.25rem; padding: var(--space-xs) var(--space-lg); gap: var(--space-sm); }
-.settings-editor.indicator-editor .settings-editor-footer-actions { gap: var(--space-sm); }
 .settings-editor.indicator-editor .settings-editor-footer-actions > .indicator-catalog-add { min-height: 1.75rem; padding: var(--space-xs) var(--space-lg); }
-@container (max-width: 340px) {
-  .settings-editor.indicator-editor .ma-config-grid { grid-template-columns: 28px 44px minmax(46px, 1fr) 20px; gap: var(--space-xs); }
-  .settings-editor.indicator-editor .ma-config-style { grid-column: 2 / 4; grid-row: 2; padding-bottom: var(--space-xs); }
-  .settings-editor.indicator-editor .ma-config-remove { grid-column: 4; }
-  .settings-editor.indicator-editor .ma-config-heading > span:nth-child(4) { display: none; }
+/* Approved group rail: group / item / value and style / visibility. */
+.indicator-editor .indicator-settings-groups { display: grid; gap: var(--space-md); }
+.indicator-editor .indicator-stage-detail { display: contents; }
+.indicator-editor .indicator-settings-groups > .indicator-settings-group:first-child,
+.indicator-editor .indicator-config > .indicator-settings-group { border-top: 0; padding-top: 0; }
+.indicator-editor .indicator-stage-number { display: block; color: var(--fg-dimmer); }
+.indicator-editor .indicator-stage-context { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-xs); margin-bottom: var(--space-xs); color: var(--fg-dim); font-size: var(--text-xs); }
+.indicator-editor .settings-property-group-body :is(.indicator-parameter-row, .indicator-inline-row),
+.indicator-editor .settings-property-group-body > label,
+.indicator-editor .settings-property-group-body > div > label:not(.form-check) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-sm); min-height: 1.5rem; padding-right: var(--settings-control-gutter); font-size: var(--text-sm); }
+.indicator-editor .indicator-config :is(input[type=number], input[type=time], select) { width: 6rem; max-width: 100%; background: var(--bg-input); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.indicator-editor .indicator-range-control { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; }
+.indicator-editor .indicator-range-control > input { width: 6rem; min-width: 2.5rem; accent-color: var(--accent); }
+.indicator-editor .indicator-range-control > output { width: 2.25rem; flex-shrink: 0; text-align: right; font-variant-numeric: tabular-nums; font-size: var(--text-sm); }
+.indicator-editor .indicator-theme-color { display: inline-flex; gap: var(--space-xs); align-items: center; color: var(--fg-dim); font-size: var(--text-xs); }
+.indicator-editor .indicator-theme-color > span { width: .75rem; height: .75rem; border-radius: var(--radius-sm); flex-shrink: 0; }
+.indicator-editor .indicator-color-basis { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 0; }
+.indicator-editor .indicator-color-basis > label { min-width: 0; }
+.indicator-editor .indicator-repeat-block { min-width: 0; padding-top: var(--space-sm); border-top: 1px solid var(--border); }
+.indicator-editor .indicator-repeat-block:first-child { padding-top: 0; border-top: 0; }
+.indicator-editor .indicator-repeat-block .mb-3 { margin-bottom: var(--space-xs); }
+.indicator-editor .indicator-child-rows { min-width: 0; padding-left: var(--space-sm); }
+.indicator-editor .indicator-child-rows:disabled { opacity: .5; }
+.settings-editor.indicator-editor .indicator-line-row { display: grid; grid-template-columns: minmax(0, 1fr) max-content 1.625rem; align-items: center; gap: var(--space-sm); padding: 0; }
+.settings-editor.indicator-editor .indicator-line-row > label { grid-column: 1; grid-row: 1; }
+.settings-editor.indicator-editor .indicator-line-row > button { grid-column: 3; grid-row: 1; }
+.settings-editor.indicator-editor .indicator-line-row > :not(button):not(label) { grid-column: 2; grid-row: 1; }
+.settings-editor.indicator-editor .ma-config-grid { grid-template-columns: 3.5rem 5.5rem minmax(4.25rem, 1fr) 1.625rem 1.5rem; }
+.settings-editor.indicator-editor .ma-config-grid :is(input, select) { width: 100%; }
+.settings-editor.indicator-editor .ma-config-period { grid-column: 1; grid-row: 1; }
+.settings-editor.indicator-editor .ma-config-source { grid-column: 2; grid-row: 1; }
+.settings-editor.indicator-editor .ma-config-style { grid-column: 3; grid-row: 1; justify-self: end; }
+.settings-editor.indicator-editor .ma-config-visibility { grid-column: 4; grid-row: 1; }
+.settings-editor.indicator-editor .ma-config-remove { grid-column: 5; grid-row: 1; }
+.settings-editor.indicator-editor .ma-config-heading > :nth-child(3) { text-align: right; }
+.settings-editor.indicator-editor .ma-config-heading > :nth-child(4) { display: block; }
+.settings-editor.indicator-editor .ma-config-visibility { justify-content: flex-end; }
+.indicator-editor .indicator-peak-family-heading,
+.indicator-editor .indicator-peak-family { grid-template-columns: minmax(0, 1fr) 1.25rem 1.5rem 1.625rem 1.625rem; gap: var(--space-sm); }
+.indicator-editor .indicator-peak-family-heading { color: var(--fg-dim); font-size: var(--text-xs); text-align: right; }
+.indicator-editor .indicator-peak-family-heading > :first-child { text-align: left; }
+.indicator-editor .indicator-peak-family > :nth-child(1) { grid-column: 4; grid-row: 1; }
+.indicator-editor .indicator-peak-family > :nth-child(2) { grid-column: 2; grid-row: 1; }
+.indicator-editor .indicator-peak-family > :nth-child(3) { grid-column: 1; grid-row: 1; }
+.indicator-editor .indicator-peak-family > :nth-child(4) { grid-column: 3; grid-row: 1; }
+.indicator-editor .indicator-peak-family > :nth-child(5) { grid-column: 5; grid-row: 1; }
+@container (max-width: 420px) {
+  .indicator-editor .indicator-stage-number { display: inline; margin-right: var(--space-xs); }
+}
+@container (max-width: 360px) {
+  .settings-editor.indicator-editor .ma-config-grid { grid-template-columns: 3.5rem minmax(4rem, 1fr) 1.625rem 1.5rem; gap: var(--space-xs); }
+  .settings-editor.indicator-editor .ma-config-heading { display: none; }
+  .settings-editor.indicator-editor .ma-config-style { grid-column: 1 / 3; grid-row: 2; padding-bottom: var(--space-xs); }
+  .settings-editor.indicator-editor .ma-config-visibility { grid-column: 3; grid-row: 1; }
+  .settings-editor.indicator-editor .ma-config-remove { grid-column: 4; grid-row: 1; }
 }
 @container (max-width: 220px) {
-  .settings-editor.indicator-editor .ma-config-grid { grid-template-columns: 28px minmax(0, 1fr) 20px; }
-  .settings-editor.indicator-editor .ma-config-source { grid-column: 2; grid-row: 2; max-width: none; }
-  .settings-editor.indicator-editor .ma-config-style { grid-column: 2; grid-row: 3; }
+  .settings-editor.indicator-editor .ma-config-grid { grid-template-columns: minmax(0, 1fr) 1.625rem 1.25rem; }
+  .settings-editor.indicator-editor .ma-config-source { grid-column: 1; grid-row: 2; }
+  .settings-editor.indicator-editor .ma-config-style { grid-column: 1 / 3; grid-row: 3; }
+  .settings-editor.indicator-editor .ma-config-visibility { grid-column: 2; }
   .settings-editor.indicator-editor .ma-config-remove { grid-column: 3; }
-  .settings-editor.indicator-editor .ma-config-heading > span:nth-child(3) { display: none; }
-  .settings-editor.indicator-editor .indicator-line-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--space-xs); padding-block: var(--space-2xs); }
-  .settings-editor.indicator-editor .indicator-line-row > label { grid-column: 2; grid-row: 1; }
-  .settings-editor.indicator-editor .indicator-line-row > div { grid-column: 2; grid-row: 2; }
-  .settings-editor.indicator-editor .settings-row-control { max-width: 100%; }
+  .settings-editor.indicator-editor .indicator-line-row { grid-template-columns: minmax(0, 1fr) 1.625rem; }
+  .settings-editor.indicator-editor .indicator-line-row > :not(button):not(label) { grid-column: 1; grid-row: 2; justify-self: start; }
+  .settings-editor.indicator-editor .indicator-line-row > button { grid-column: 2; grid-row: 1; }
+  .indicator-editor .settings-property-group-body :is(.indicator-parameter-row, .indicator-inline-row),
+  .indicator-editor .settings-property-group-body > label,
+  .indicator-editor .settings-property-group-body > div > label:not(.form-check) { padding-right: 0; grid-template-columns: minmax(0, 1fr); }
+  .indicator-editor .indicator-config :is(input[type=number], input[type=time], select) { justify-self: start; }
 }
 @media (max-width: 460px) {
   .settings-editor.indicator-editor .settings-editor-content,.settings-editor.indicator-editor .settings-editor-detail-heading { padding-inline: var(--space-sm); }
-  .settings-editor.indicator-editor .settings-row { flex-wrap: wrap; gap: var(--space-xs); }
 }
 @media (pointer: coarse) {
   .settings-editor.indicator-editor .settings-row,.settings-editor.indicator-editor .settings-dependent .settings-row,
@@ -66,4 +108,21 @@
   .settings-editor.indicator-editor .ma-config-visibility,.indicator-editor .indicator-parameter-row { min-height: 2.75rem; }
   .indicator-editor .indicator-config input:not([type=checkbox]):not([type=radio]):not([type=range]),
   .indicator-editor .indicator-config select { min-height: 2.75rem; font-size: 1rem; }
+}
+
+@container (max-width: 260px) {
+  .indicator-editor .indicator-peak-sides { flex-direction: column; }
+  .indicator-editor .indicator-peak-family-heading,
+  .indicator-editor .indicator-peak-family { grid-template-columns: minmax(0, 1fr) 1.625rem 1.625rem; row-gap: var(--space-xs); }
+  .indicator-editor .indicator-peak-family-heading > :nth-child(1),
+  .indicator-editor .indicator-peak-family > :nth-child(3) { grid-column: 1 / 4; grid-row: 1; }
+  .indicator-editor .indicator-peak-family-heading > :nth-child(2) { display: none; }
+  .indicator-editor .indicator-peak-family-heading > :nth-child(3),
+  .indicator-editor .indicator-peak-family > :nth-child(4) { grid-column: 1; grid-row: 2; justify-self: end; }
+  .indicator-editor .indicator-peak-family > :nth-child(2) { grid-column: 1; grid-row: 2; justify-self: start; }
+  .indicator-editor .indicator-peak-family-heading > :nth-child(4),
+  .indicator-editor .indicator-peak-family > :nth-child(1) { grid-column: 2; grid-row: 2; }
+  .indicator-editor .indicator-peak-family-heading > :nth-child(5),
+  .indicator-editor .indicator-peak-family > :nth-child(5) { grid-column: 3; grid-row: 2; }
+  .indicator-editor .indicator-peak-family > :nth-child(3) > span { white-space: normal; }
 }
