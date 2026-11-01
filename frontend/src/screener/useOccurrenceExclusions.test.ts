@@ -68,9 +68,9 @@ describe('cached/in-flight occurrence filtering', () => {
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); useScreenerPanelStore.setState({ lastScan: null }); });
 
-function renderController() {
+function renderController(initial: PanelScan = scan) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  useScreenerPanelStore.setState({ lastScan: scan });
+  useScreenerPanelStore.setState({ lastScan: initial });
   const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children);
   return renderHook(() => useOccurrenceExclusions(useScreenerPanelStore(s => s.lastScan)), { wrapper });
 }
@@ -87,6 +87,16 @@ it('hydration prunes first then accepts the refreshed result and its latest evid
   expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(false);
   expect(refresh).toHaveBeenCalledWith(expect.objectContaining({ basis: 'auto' }));
   expect(useScreenerPanelStore.getState().lastScan).toMatchObject({ basis: 'auto', basisAtMs: 123, fallbackBasisAtMs: 100 });
+});
+
+it('restoring a complete minute result never replaces it with a bounded scan', async () => {
+  vi.spyOn(api, 'listScreenerExclusions').mockResolvedValue({ schema_version: 1, exclusions: [] });
+  const refresh = vi.spyOn(api, 'runScan');
+  const complete = { ...scan, barCoverage: { total: 130, complete: 130, incomplete: [], trading_date: '2026-10-30' } };
+  const { result } = renderController(complete);
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  expect(refresh).not.toHaveBeenCalled();
+  expect(useScreenerPanelStore.getState().lastScan?.barCoverage?.complete).toBe(130);
 });
 
 it('a committed exclusion remains known even if reloading the list fails', async () => {

@@ -74,11 +74,11 @@ describe('server-owned screener preparation', () => {
     expect(apiCall).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps fixed snapshots and minute/rank-only requests on their read-only paths', () => {
+  it('routes minute requests to full runs and keeps fixed snapshots and rank-only reads', () => {
     expect(needsPreparation(body)).toBe(true);
     expect(needsPreparation({ ...body, snapshot_id: 'snapshot' })).toBe(false);
     expect(needsPreparation({ ...body, conditions: [{ id: 'minute', type: 'new_high_today',
-      params: { period: 3, timeframe: '1m' } }] })).toBe(false);
+      params: { period: 3, timeframe: '1m' } }] })).toBe(true);
     expect(needsPreparation({ ...body, conditions: [{ id: 'rank', type: 'trade_value_rank',
       params: { top_n: 50 } }] })).toBe(false);
   });

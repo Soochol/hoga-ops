@@ -103,7 +103,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "ScreenerRun": frozenset({"id", "status", "request", "total", "evaluated", "preparing", "waiting", "failed",
                               "errors", "revision", "result_revision", "result", "started_at_ms", "updated_at_ms",
-                              "next_retry_at_ms"}),
+                              "next_retry_at_ms", "minute_date"}),
     "CaptureCountKey": frozenset({"code", "date"}),
     "CaptureCountsRequest": frozenset({"items"}),
     "CaptureCount": frozenset({"code", "date", "full_capture_count"}),
@@ -217,7 +217,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
                                   "fetched_at_ms", "volume_is_lower_bound"}),
     "BarRealtimeCoverage": frozenset({"prepared", "receiving", "continuous", "preparing", "recovering",
                                       "unavailable", "last_verified_ms", "insufficient", "monitor_error"}),
-    "BarVolumeCoverage": frozenset({"total", "complete", "incomplete", "realtime"}),
+    "BarVolumeCoverage": frozenset({"total", "complete", "incomplete", "realtime", "trading_date"}),
     "BarVolumeCoverageItem": frozenset({"code", "condition_id", "reason", "missing_days",
                                         "required_from", "required_to", "name"}),
     "HistoryCoverage": frozenset({"total", "complete", "incomplete"}),

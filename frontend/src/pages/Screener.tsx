@@ -19,6 +19,7 @@ import { useScreenerStatus } from '../screener/useScreenerStatus';
 import { useScreenerUpdate } from '../screener/useScreenerUpdate';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from '../screener/useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from '../screener/ScreenerUpdateProgress';
+import { ScreenerUpdateFeedbackText } from '../screener/ScreenerUpdateFeedbackText';
 import { ConditionBuilder } from '../screener/ConditionBuilder';
 import { expressionError } from '../screener/conditionExpression';
 import { ScreenerResults } from '../screener/ScreenerResults';
@@ -376,7 +377,7 @@ export function Screener() {
           <ConditionBuilder key={`${editor.anchorId}:${formRevision}`} calculationPolicy={editor.calculationPolicy} conditions={editor.conditions} universe={editor.universe}
             onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse}
             expression={editor.expression} onExpressionChange={editor.editExpression} expressionScope={editor.anchorId}>
-            {!invalidEditor && <ScreenerPreparationStatus run={screener.preparation} />}
+            {!invalidEditor && !screener.preparation?.minute_date && <ScreenerPreparationStatus run={screener.preparation} />}
           </ConditionBuilder>
           {!editor.universe.scopes?.length && editor.conditions.some(leaf =>
             (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
@@ -388,7 +389,9 @@ export function Screener() {
       <PanelCard borderless flat data-testid="screener-results-pane" className="flex min-h-0 flex-col overflow-hidden">
         <div className="feature-pane-header p-md">
           <ControlBar className="flex-wrap">
-            <div className="min-w-0 flex-1" />
+            <div className="min-w-0 flex-1">
+              {!invalidEditor && screener.preparation?.minute_date && <ScreenerPreparationStatus run={screener.preparation} />}
+            </div>
             <ToolbarButton tone="primary" onClick={() => { void runScan(); }}
               disabled={screener.isPending || notSeeded || !hasConditions || !!invalidEditor}
               data-tooltip={invalidEditor ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
@@ -398,21 +401,29 @@ export function Screener() {
             {!notSeeded && (
               <>
                 <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()}
+                  aria-describedby={isUpdating ? 'screener-update-state' : undefined}
                   disabled={isUpdating} data-tooltip="자동 갱신과 같은 절차로 최근 일봉을 받아 비교합니다. 다음 날 재확인과 충돌 격리 기준을 유지합니다">
                   {update.isPending && update.variables !== 'repair-history' ? '확인 중…' : '갱신'}
                 </ToolbarButton>
                 <ToolbarButton aria-label="과거 데이터 복구" onClick={() => update.mutate('repair-history')}
+                  aria-describedby={isUpdating ? 'screener-update-state' : undefined}
                   disabled={isUpdating} data-tooltip="종목 목록을 갱신하고 오래된 누락 일봉을 보충합니다. 전체 이력을 확인하므로 시간이 더 걸릴 수 있습니다">
                   과거 데이터 복구
                 </ToolbarButton>
               </>
+            )}
+            {isUpdating && (
+              <span id="screener-update-state" role="status" className="inline-flex flex-wrap items-center gap-sm text-xs text-fg-dim">
+                {serverUpdating ? <ScreenerUpdateProgress updating={status.updating} /> : '갱신 시작 확인 중…'}
+                <span>완료 후 갱신 가능</span>
+              </span>
             )}
             {update.isError && !isUpdating && (
               <span role="alert" className="text-sm" style={{ color: 'var(--error)' }}>{update.variables === 'repair-history' ? '과거 데이터 복구 실패' : '갱신 실패'}</span>
             )}
             {visibleFeedback && (
               <span role="status" className="text-sm" style={{ color: FEEDBACK_TONE_COLOR[visibleFeedback.tone] }}>
-                {visibleFeedback.message}
+                <ScreenerUpdateFeedbackText feedback={visibleFeedback} />
               </span>
             )}
           </ControlBar>
@@ -453,11 +464,11 @@ export function Screener() {
               </StatusChip>
             ))}
             <span className="min-w-0 flex-1" />
-            <BarVolumeCoverage coverage={lastScan?.barCoverage} />
+            <BarVolumeCoverage coverage={lastScan?.barCoverage} hideSummary={!!screener.preparation?.minute_date} />
             {lastScan?.dailyCoverage && lastScan?.dailyCoverage.complete < lastScan?.dailyCoverage.total &&
               <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan?.dailyCoverage.total - lastScan?.dailyCoverage.complete}종목</div>}
             <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
-            <ScreenerUpdateProgress updating={status?.updating} daily={status?.daily_ingest} />
+            {!serverUpdating && <ScreenerUpdateProgress updating={null} daily={status?.daily_ingest} />}
           </div>
 
           <CalculationNotice scan={lastScan} />

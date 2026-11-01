@@ -2866,6 +2866,7 @@ class BarVolumeCoverage(BaseModel):
     complete: int
     incomplete: list[BarVolumeCoverageItem] = Field(default_factory=list)
     realtime: BarRealtimeCoverage | None = None
+    trading_date: str | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class TradeValueRankMatch(BaseModel):
@@ -3125,6 +3126,7 @@ class ScreenerRun(BaseModel):
     result: ScreenerResponse | None = None
     started_at_ms: int
     updated_at_ms: int
+    minute_date: str | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class ScreenerSaveWriteRequest(ScreenerConditionExpression):

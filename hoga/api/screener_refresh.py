@@ -234,8 +234,8 @@ async def run_refresh(data_dir: Path, *, progress, report: RefreshReport | None 
         if report.errors or report.unresolved:
             report.summary.reason = "partial"
         return report.summary
-    except asyncio.CancelledError:
-        report.summary.reason = "cancelled"
+    except asyncio.CancelledError as exc:
+        report.summary.reason = "server_shutdown" if exc.args == ("server_shutdown",) else "cancelled"
         raise
     except TradingDayUnavailableError as exc:
         report.summary.reason = ("calendar_coverage_behind" if exc.code is UpstreamCode.TRADING_DAYS_STALE

@@ -39,6 +39,7 @@ export async function installScreenerRunsMock(page: Page,
       preparing: pending ? incomplete : 0, waiting: pending ? 0 : incomplete, failed: 0, next_retry_at_ms: null, errors: {},
       revision: reads + starts.length, result_revision: reads + starts.length, result,
       started_at_ms: Date.now(), updated_at_ms: Date.now(),
+      ...(result.bar_coverage?.trading_date ? { minute_date: result.bar_coverage.trading_date } : {}),
     };
     await route.fulfill({ json: run });
   });
