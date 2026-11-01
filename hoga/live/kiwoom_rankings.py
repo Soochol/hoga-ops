@@ -51,6 +51,7 @@ from .kiwoom_errors import KiwoomRestError
 from .kiwoom_rest import KiwoomRestClient, Page
 from .kiwoom_token_provider import KiwoomTokenProvider
 from .kiwoom_venue import split_venue
+from .ranking_session import RankingBasis, resolve as ranking_session, unavailable as unavailable_basis
 from .single_flight import SingleFlight
 from .venue import Venue
 
@@ -132,6 +133,7 @@ class RankingSnapshot:
     # ETF 후처리 전 조회 범위. 표시 행 수와 구분한다.
     queried_count: int = 0
     has_more: bool = False
+    basis: RankingBasis | None = None
 
 
 @dataclass(frozen=True)
@@ -397,6 +399,33 @@ class KiwoomRankingsFetcher:
             return _is_trading_day_now(now) and _MARKET_OPEN <= now.time() < _MARKET_CLOSE
         return _market_open_now(now, venue)
 
+    async def _stored(self, session, kind, market, direction, venue, limit):
+        from . import ranking_history  # noqa: PLC0415 — snapshot type is declared in this module
+
+        stored = (await asyncio.to_thread(ranking_history.load, self._data_dir, session,
+                  kind, market, direction if kind == "change" else "up", venue, limit)
+                  if self._data_dir is not None and session.date is not None else None)
+        return stored or RankingSnapshot(
+            kind=kind, market=market, direction=direction if kind == "change" else "up",
+            rows=(), market_open=False, fetched_at_ms=0,
+            venue=None if kind in _INVESTOR_KINDS else venue,
+            quote_venue=venue if kind in _INVESTOR_KINDS else None,
+            basis=unavailable_basis(session),
+        )
+
+    async def _persist(self, snap, limit):
+        if self._data_dir is None:
+            return snap
+        from . import ranking_history  # noqa: PLC0415 — avoid dataclass import cycle
+
+        try:
+            await asyncio.to_thread(ranking_history.save, self._data_dir, snap, limit)
+        except OSError:
+            log.exception("순위는 조회했으나 거래일 기록 저장에 실패했습니다")
+            return replace(snap, basis=snap.basis.model_copy(update={
+                "message": "순위 기록을 저장하지 못했습니다. 휴장일에 재사용할 수 없습니다."}))
+        return snap
+
     async def get(
         self, kind: RankingKind, market: Market, direction: Direction,
         venue: str = "KRX",
@@ -407,6 +436,11 @@ class KiwoomRankingsFetcher:
         # 그대로 받는다 — 값이 그럴듯해 화면에서 안 드러난다.
         now = self._now_kst()
         limit = limit if limit is not None else (_PROGRAM_LIMIT if kind == "program" else RANKING_DEFAULT_LIMIT)
+        if venue not in _STEX_BY_VENUE or not 1 <= limit <= RANKING_MAX_LIMIT:
+            raise ValueError("순위 거래소 또는 조회 범위를 벗어났습니다")
+        session = ranking_session(now, "KRX" if kind in _INVESTOR_KINDS else venue, self._data_dir)
+        if not session.can_fetch:
+            return await self._stored(session, kind, market, direction, venue, limit)
         key = (kind, market, direction if kind == "change" else "-", venue)
         if kind not in _INVESTOR_KINDS:
             if not 1 <= limit <= RANKING_MAX_LIMIT:
@@ -441,18 +475,6 @@ class KiwoomRankingsFetcher:
                 return hit[0]
             now = self._now_kst()
             market_open = self._market_open(kind, now, venue)
-            if not _is_trading_day_now(now):
-                # 비거래일: 상류 스킵. 웜 캐시 rows 는 유지하되 신선도·개장만 갱신.
-                prev_rows = hit[0].rows if hit is not None else ()
-                snap = RankingSnapshot(
-                    kind=kind, market=market, direction=direction,
-                    rows=prev_rows, market_open=False, fetched_at_ms=now_ms,
-                    venue=snapshot_venue, quote_venue=quote_venue,
-                    queried_count=hit[0].queried_count if hit else 0,
-                    has_more=hit[0].has_more if hit else False,
-                )
-                self._cache[key] = (snap, now_ms)
-                return snap
             has_more = False
             if kind == "program":
                 rows, has_more = await self._fetch_program(market, venue, limit)
@@ -462,14 +484,20 @@ class KiwoomRankingsFetcher:
                 queried_count = len(rows)
             else:
                 rows, queried_count, has_more = await self._fetch_rankings(kind, market, direction, venue, limit)
-            now_ms = int(time.time() * 1000)
+            observed = self._now_kst()
+            if observed.date() != session.date:
+                raise KiwoomRankingsError("순위 조회 중 거래일이 변경되었습니다. 다시 조회해 주세요.")
+            now_ms = int(observed.timestamp() * 1000)
             snap = RankingSnapshot(
                 kind=kind, market=market, direction=direction,
                 rows=rows, market_open=market_open, fetched_at_ms=now_ms,
                 venue=snapshot_venue, quote_venue=quote_venue,
                 queried_count=queried_count, has_more=has_more,
+                basis=RankingBasis(session=session.state, source="live", trading_date=session.date.isoformat(),
+                                   observed_at_ms=now_ms),
             )
-            self._cache[key] = (snap, now_ms)
+            snap = await self._persist(snap, limit)
+            self._cache[key] = (snap, int(time.time() * 1000))
             return snap
 
     async def _fetch_investor(

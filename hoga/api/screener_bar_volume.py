@@ -13,7 +13,7 @@ import datetime as dt
 import logging
 import time
 from collections import OrderedDict, defaultdict, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import polars as pl
@@ -54,6 +54,7 @@ from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 MINUTE_TTL_MS = 15_000
+HISTORICAL_MINUTE_TTL_MS = 300_000
 MAX_MINUTE_PAGES = 8
 MAX_MINUTE_CODES_PER_SCAN = 64
 MAX_CACHE_ENTRIES = 512
@@ -327,11 +328,11 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
     return MinuteSnapshot([bars_by_ms[ms] for ms in sorted(bars_by_ms)], fetched_at, reason)
 
 
-async def minute_snapshot(data_dir, code, timeframe, needed, lower, as_of):
-    key = (data_dir, code, timeframe, needed, lower, as_of.date())
+async def minute_snapshot(data_dir, code, timeframe, needed, lower, as_of, *, historical=False):
+    key = (data_dir, code, timeframe, needed, lower, as_of if historical else as_of.date())
     cached = _CACHE.get(key)
     now_ms = int(time.time() * 1000)
-    if cached is not None and now_ms - cached.fetched_at_ms < MINUTE_TTL_MS:
+    if _fresh_snapshot(cached, historical):
         _CACHE.move_to_end(key)
         return cached
     if settings.rest_bypass_enabled(data_dir):
@@ -342,6 +343,11 @@ async def minute_snapshot(data_dir, code, timeframe, needed, lower, as_of):
         _FLIGHTS[key] = task
 
     return await asyncio.shield(task)
+
+
+def _fresh_snapshot(snapshot, historical):
+    ttl = HISTORICAL_MINUTE_TTL_MS if historical and snapshot is not None and snapshot.reason is None else MINUTE_TTL_MS
+    return snapshot is not None and int(time.time() * 1000) - snapshot.fetched_at_ms < ttl
 
 
 async def _load_minutes(key, data_dir, code, timeframe, needed, lower, as_of):
@@ -413,20 +419,20 @@ def _calendar_complete(leaf, windows, days, as_of):
     return len(windows) >= needed
 
 
-async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetch_codes, sem, volume_runtime):
+async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetch_codes, sem, volume_runtime,
+                                historical=False):
     p = leaf.params
     lower = dt.date.fromisoformat(p.start_date) if isinstance(p, RANGE_PARAMS) else None
     needed = comparison_period(leaf) + (0 if lower else lookback(leaf) - 1) + (not p.include_open_bar)
     cutoff = (min(as_of, dt.datetime.combine(dt.date.fromisoformat(p.end_date), dt.time(15, 30), KST))
               if lower else as_of)
-    key = (data_dir, code, p.timeframe, needed, lower, cutoff.date())
+    key = (data_dir, code, p.timeframe, needed, lower, cutoff if historical else cutoff.date())
     cached = _CACHE.get(key)
     realtime = (volume_runtime if basis == "intraday" and volume_runtime
                 and volume_runtime.supports(leaf) else None)
     live = realtime.snapshot(leaf, code, int(time.time() * 1000)) if realtime else None
     lower_bounds = set()
-    if not live and code not in fetch_codes and (cached is None
-            or int(time.time() * 1000) - cached.fetched_at_ms >= MINUTE_TTL_MS):
+    if not live and code not in fetch_codes and not _fresh_snapshot(cached, historical):
         return leaf, code, [], False, "fetch_budget_exhausted"
     try:
         async with asyncio.timeout(20):
@@ -436,23 +442,26 @@ async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetc
                     snapshot = MinuteSnapshot(data, received_ms,
                         volume_runtime.reason(code) if hasattr(volume_runtime, 'reason') else None)
                 else:
-                    snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff)
+                    snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff,
+                                                     **({"historical": True} if historical else {}))
                     if realtime:
                         realtime.seed(leaf, code, snapshot, int(time.time() * 1000))
                         merged = realtime.snapshot(leaf, code, int(time.time() * 1000))
                         if merged:
                             data, received_ms, lower_bounds = merged
                             snapshot = MinuteSnapshot(data, received_ms)
-                data, adjustment_reason = snapshot.bars, None
+                data, adjustment_reason = (_historical_minutes(snapshot.bars, p.include_open_bar, cutoff)
+                                           if historical else (snapshot.bars, None))
                 if leaf.type not in VOLUME_TYPES:
                     # Pages contain more bars than requested. Only the actual
                     # predicate window needs factors; today's window is factor 1.
                     data = [bar for bar in data if p.include_open_bar or not bar.is_open]
                     if lower is None:
                         data = data[-(comparison_period(leaf) + lookback(leaf) - 1):]
-                    data, adjustment_reason = await screener_bar_threshold.prepare_minutes(
+                    data, price_reason = await screener_bar_threshold.prepare_minutes(
                         leaf, data, data_dir, code, (now.astimezone(KST) if now.tzinfo else
                                                now.replace(tzinfo=KST)).strftime("%Y%m%d"))
+                    adjustment_reason = adjustment_reason or price_reason
     except TimeoutError:
         return leaf, code, [], False, "fetch_timeout"
     events, complete = await asyncio.to_thread(records, leaf, data,
@@ -466,15 +475,27 @@ async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetc
     return leaf, code, events, complete and reason is None, reason
 
 
+def _historical_minutes(bars, include_open, cutoff):
+    # Historical REST bars contain final values, never the partial values that
+    # existed at an intraday observation. Exclude them from positive matches.
+    bars = [bar for bar in bars if bar.start_ms <= int(cutoff.timestamp() * 1000)]
+    if bars and dt.datetime.fromtimestamp(bars[-1].start_ms / 1000, KST).date() != cutoff.date():
+        return [replace(bar, valid=False) for bar in bars], "minute_date_mismatch"
+    return ([replace(bar, valid=False) if bar.is_open else bar for bar in bars],
+            "historical_open_bar_unavailable" if include_open and any(bar.is_open for bar in bars) else None)
+
+
 async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
-                   daily_fallback_codes: set[str] | None = None, volume_runtime=None) -> Evaluation:
+                   daily_fallback_codes: set[str] | None = None, volume_runtime=None, cutoff=None) -> Evaluation:
     selected = leaves(conditions)
     result = Evaluation(BarVolumeCoverage(total=len(codes), complete=0),
                         {leaf.id: [] for leaf in selected})
     as_of = now.astimezone(KST) if now.tzinfo is not None else now.replace(tzinfo=KST)
     confirmed_as_of = dt.datetime.combine(
         as_of.date() - dt.timedelta(days=as_of.hour < EOD_CUTOFF_HOUR), dt.time(15, 30), KST)
-    if basis == "eod":
+    if cutoff is not None:
+        as_of = cutoff
+    elif basis == "eod":
         as_of = confirmed_as_of
     calendar_leaves = [leaf for leaf in selected if not leaf.params.timeframe.endswith("m")]
     incomplete = set()
@@ -484,13 +505,13 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
     fallback = daily_fallback_codes or set()
     groups = [([code for code in codes if code not in fallback], as_of, overlay),
               ([code for code in codes if code in fallback], confirmed_as_of, None)]
-    for group, cutoff, daily_overlay in groups:
+    for group, group_cutoff, daily_overlay in groups:
         if not calendar_leaves or not group:
             continue
         values, days = await asyncio.to_thread(
-            _daily_values, data_dir, group, daily_overlay, cutoff, calendar_leaves)
+            _daily_values, data_dir, group, daily_overlay, group_cutoff, calendar_leaves)
         incomplete.update(await asyncio.to_thread(
-            _evaluate_calendar, result, calendar_leaves, group, values, days, cutoff, data_dir))
+            _evaluate_calendar, result, calendar_leaves, group, values, days, group_cutoff, data_dir))
     minute_leaves = [leaf for leaf in selected if leaf.params.timeframe.endswith("m")]
     if minute_leaves:
         # Rotate the bounded REST batch so repeated monitoring covers the whole
@@ -504,7 +525,7 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
         sem = asyncio.Semaphore(4)
 
         evaluations = await asyncio.gather(*(_evaluate_minute_leaf(leaf, code, data_dir=data_dir, as_of=as_of, now=now,
-            basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime)
+            basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime, historical=cutoff is not None)
             for leaf in minute_leaves for code in codes))
         for leaf, code, events, complete, reason in evaluations:
             result.events[leaf.id].extend((code, event) for event in events)

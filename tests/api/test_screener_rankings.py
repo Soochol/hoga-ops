@@ -14,7 +14,7 @@ from hoga.api import screener_rankings as ranking, screener_runner, screener_ser
 from hoga.api.models import ScanRequest, ScreenerExclusionWrite
 from hoga.api.screener import build_router
 from hoga.api.screener_series_execution import validate_archivable
-from hoga.live import kiwoom_rankings, kiwoom_rest_runtime
+from hoga.live import kiwoom_rankings, kiwoom_rest_runtime, ranking_history, ranking_session
 from hoga.live.kiwoom_rankings import KiwoomRankingsError, KiwoomRankingsFetcher, RankingRow, RankingSnapshot
 from hoga.util.timeenc import KST
 
@@ -327,3 +327,122 @@ async def test_change_rank_uses_200_row_pages_and_unfiltered_positions(corpus, m
         assert result.events["rank"][-1][1].change_pct_rank_match.rank == limit
     finally:
         fetcher.close()
+
+
+def archive_rank(corpus, kind="change", when=None):
+    when = when or NOW.replace(hour=21)
+    stamp = int(when.timestamp() * 1000)
+    result = change_snapshot() if kind == "change" else snapshot()
+    result = replace(result, fetched_at_ms=stamp, market_open=False, queried_count=3, has_more=False,
+        basis=ranking_session.RankingBasis(session="closed", source="live",
+            trading_date=when.date().isoformat(), observed_at_ms=stamp))
+    ranking_history.save(corpus, result, 200)
+    return stamp
+
+
+@pytest.mark.parametrize("policy", ["legacy_v1", "separate_bases_v2"])
+@pytest.mark.parametrize("rank_type", ["change_pct_rank", "trade_value_rank"])
+async def test_holiday_restores_rank_before_daily_or_minute_work(corpus, monkeypatch, policy, rank_type):
+    stamp = archive_rank(corpus, "change" if rank_type == "change_pct_rank" else "value")
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("Historical rank scans do not request today's undated ranks or quotes")
+    monkeypatch.setattr(ranking, "_fetch", forbidden)
+    monkeypatch.setattr(ranking, "_fetch_change", forbidden)
+    monkeypatch.setattr(screener_runner.screener_intraday, "build_intraday_overlay", forbidden)
+    req = request(rank_type=rank_type, calculation_policy=policy, basis="auto")
+    result = await screener_runner.run_screener_scan(data_dir=corpus,
+        now=NOW.replace(month=11, day=1), req=req)
+    assert {row.code for row in result.rows} == {"000001", "000002"}
+    assert result.rank_basis.source == "stored" and result.rank_basis.trading_date == "2026-10-30"
+    assert result.basis_at_ms == result.rank_basis.observed_at_ms == stamp
+    assert {event.date for row in result.rows for event in row.occurrences} == {"2026-10-30"}
+
+
+@pytest.mark.parametrize("policy", ["legacy_v1", "separate_bases_v2"])
+async def test_holiday_minute_and_rank_use_same_cutoff_and_only_rank_candidates(corpus, monkeypatch, policy):
+    from hoga.api import screener_bar_volume as bars
+    at = NOW.replace(hour=16)
+    archive_rank(corpus, when=at)
+    seen = []
+    async def fetch(data_dir, code, timeframe, needed, lower, as_of):
+        seen.append((code, as_of))
+        return bars.MinuteSnapshot([
+            bars.VolumeBar(int(at.replace(hour=15, minute=24).timestamp() * 1000), 10 if code == "000001" else 20),
+            bars.VolumeBar(int(at.replace(hour=15, minute=27).timestamp() * 1000), 20 if code == "000001" else 10),
+        ], int(at.timestamp() * 1000))
+    monkeypatch.setattr(bars, "_fetch_minutes", fetch)
+    req = request(rank_type="change_pct_rank", calculation_policy=policy, basis="auto").model_dump()
+    req["conditions"].append({"id": "minute", "type": "new_high_vol", "params": {
+        "timeframe": "3m", "period": 2, "lookback": 1,
+        "volume_basis": "raw" if policy == "separate_bases_v2" else None}})
+    req["expression"] = "A AND B"
+    result = await screener_runner.run_screener_scan(data_dir=corpus,
+        now=NOW.replace(month=11, day=1), req=ScanRequest.model_validate(req))
+    assert [row.code for row in result.rows] == ["000001"]
+    assert {code for code, _ in seen} == {"000001", "000002"}
+    assert all(clock == at for _, clock in seen)
+    assert result.bar_coverage.complete == 2
+    assert {event.date for event in result.rows[0].occurrences} == {"2026-10-30"}
+
+
+def test_missing_holiday_history_is_http_409_not_a_successful_zero(corpus, monkeypatch):
+    monkeypatch.setattr(screener_runner, "now_kst", lambda: NOW.replace(month=11, day=1))
+    app = FastAPI()
+    app.include_router(build_router(data_dir=corpus))
+    result = TestClient(app).post("/api/screener/scan", json=request(
+        calculation_policy="separate_bases_v2", rank_type="change_pct_rank").model_dump(mode="json"))
+    assert result.status_code == 409
+    assert result.json()["detail"]["code"] == "screener_rank_history_unavailable"
+    assert "저장된 순위" in result.json()["detail"]["message"]
+
+
+async def test_unknown_weekday_is_distinct_from_missing_holiday_history(corpus, monkeypatch):
+    monkeypatch.setattr(trading_days, "is_trading_day", lambda *_: None)
+    with pytest.raises(HTTPException) as error:
+        await ranking.evaluate(corpus, request(), NOW, [])
+    assert error.value.detail["code"] == "screener_rank_calendar_unavailable"
+
+
+async def test_saved_intraday_rank_never_combines_with_final_daily_values(corpus):
+    archive_rank(corpus, when=NOW.replace(hour=14))
+    req = request(rank_type="change_pct_rank").model_dump()
+    req["conditions"].append({"id": "daily", "type": "price_range", "params": {"min": 100}})
+    with pytest.raises(HTTPException) as error:
+        await screener_runner.run_screener_scan(data_dir=corpus, now=NOW.replace(month=11, day=1),
+                                               req=ScanRequest.model_validate(req))
+    assert error.value.detail["code"] == "screener_rank_daily_history_unavailable"
+
+
+async def test_missing_history_in_or_branch_is_unknown_not_false(corpus):
+    req = request().model_dump()
+    req["conditions"].append({"id": "daily", "type": "price_range", "params": {"min": 100}})
+    req["expression"] = "A OR B"
+    with pytest.raises(HTTPException) as error:
+        await screener_runner.run_screener_scan(data_dir=corpus, now=NOW.replace(month=11, day=1),
+                                               req=ScanRequest.model_validate(req))
+    assert error.value.detail["code"] == "screener_rank_history_unavailable"
+
+
+async def test_two_saved_rank_types_report_the_earliest_common_cutoff(corpus):
+    first = archive_rank(corpus, "change", NOW.replace(hour=21))
+    archive_rank(corpus, "value", NOW.replace(hour=21, minute=1))
+    req = request(rank_type="change_pct_rank").model_dump()
+    req["conditions"].append({"id": "value", "type": "trade_value_rank", "params": {"top_n": 200}})
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=NOW.replace(month=11, day=1),
+        req=ScanRequest.model_validate(req))
+    assert result.basis_at_ms == result.rank_basis.observed_at_ms == first
+
+
+@pytest.mark.parametrize("hour,allowed", [(21, False), (22, True)])
+async def test_saved_daily_combinations_wait_for_provider_full_session_finalization(corpus, hour, allowed):
+    archive_rank(corpus, when=NOW.replace(hour=hour))
+    req = request(rank_type="change_pct_rank").model_dump()
+    req["conditions"].append({"id": "daily", "type": "price_range", "params": {"min": 100}})
+    scan = ScanRequest.model_validate(req)
+    if allowed:
+        result = await screener_runner.run_screener_scan(data_dir=corpus, now=NOW.replace(month=11, day=1), req=scan)
+        assert result.rows
+    else:
+        with pytest.raises(HTTPException) as error:
+            await screener_runner.run_screener_scan(data_dir=corpus, now=NOW.replace(month=11, day=1), req=scan)
+        assert error.value.detail["code"] == "screener_rank_daily_history_unavailable"

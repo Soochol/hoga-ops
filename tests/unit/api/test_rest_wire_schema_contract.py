@@ -52,7 +52,7 @@ from hoga.api.screener_continuous import ContinuousStatus
 from hoga.api.screener_daily_confirmation import ConfirmationState
 from hoga.api.screener_recovery import RecoveryItem, RecoveryItemStatus, RecoveryJob, RecoveryJobStatus
 from hoga.api.screener_recovery_api import RecoveryAccepted, RecoveryCancellation, RecoveryRunRequest
-from hoga.live import flow_receipts, futures_runtime, market_overview
+from hoga.live import flow_receipts, futures_runtime, market_overview, ranking_session
 from hoga.live.aftermarket_exclusions import (
     AftermarketExclusionReason,
     AftermarketExclusionResponse,
@@ -69,6 +69,7 @@ from hoga.live.api import (
     LivePastInvestorNetResponse,
     LiveQuote,
     RankingRowModel,
+    RankingsResponse,
 )
 from hoga.live.collector_process import CollectorStateReason, CollectorSyncPhase
 from hoga.live.daily_program_trade import DailyProgramTradePoint
@@ -171,6 +172,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
                                  "created_at_ms", "updated_at_ms"}),
     "SavedScreenersFile": frozenset({"schema_version", "saves"}),
     "ScreenerResponse": frozenset({"daily_coverage",
+        "rank_basis",
         "status", "rows", "has_more", "scanned_at_ms", "basis_at_ms", "fallback_basis_at_ms",
         "warnings", "intraday_failure", "depth_coverage", "depth_values",
         "history_coverage", "bar_coverage", "calculation",
@@ -563,6 +565,9 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
         "program_net_buy_won", "investor_net_buy_won",
         "change_won", "volume", "volume_surge_pct",
     }),
+    RankingsResponse: frozenset({"kind", "market", "direction", "rows", "market_open", "fetched_at_ms",
+        "basis", "venue", "quote_venue", "queried_count", "has_more", "source", "warnings"}),
+    ranking_session.RankingBasis: frozenset({"session", "source", "trading_date", "observed_at_ms", "message"}),
     # 프론트 미러는 ``frontend/src/api/liveQuotes.ts`` 의 ``LiveQuote``.
     #
     # 미러에는 ``expected_price``·``expected_qty``·``expected_change_pct`` 가 더 있는데
@@ -640,6 +645,9 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "RankingSessionState": (
+        frozenset(get_args(ranking_session.RankingSessionState)), "frontend/src/api/rankingBasis.ts"),
+    "RankingBasisSource": (frozenset(get_args(ranking_session.RankingBasisSource)), "frontend/src/api/rankingBasis.ts"),
     "BrokerOrderType": (frozenset(get_args(broker_contracts.BrokerOrderType)), "frontend/src/api/trading.ts"),
     "ExecutionPriceBasis": (
         frozenset(get_args(broker_contracts.ExecutionHistoryRow.model_fields["price_basis"].annotation)),

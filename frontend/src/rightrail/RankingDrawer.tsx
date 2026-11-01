@@ -1,3 +1,4 @@
+import { rankingBasisText, rankingSessionLabel } from '../api/rankingBasis';
 import './RankingColumns.css';
 import { QuoteColumnProbe } from './QuoteColumnProbe';
 import { useQuoteColumns } from './useQuoteColumns';
@@ -354,6 +355,7 @@ export function RankingDrawer() {
   }, []);
 
   const marketClosed = data != null && !data.marketOpen;
+  const sessionLabel = data?.basis ? rankingSessionLabel(data.basis.session) : marketClosed ? '장 외' : null;
 
   return (
     <RailDrawer id="right-rail-ranking-panel" testId="ranking-panel" ariaLabel="순위">
@@ -362,14 +364,17 @@ export function RankingDrawer() {
         title="순위"
         actions={
           <span className="flex items-center gap-sm">
-            {marketClosed && <span className="text-xs text-fg-dim">장 외</span>}
+            {sessionLabel && <span className="text-xs text-fg-dim">{sessionLabel}</span>}
             <span className="font-data tabular-nums text-xs text-fg-dim">
-              {formatUpdatedAt(data?.fetchedAtMs)}
+              {data?.basis ? '' : formatUpdatedAt(data?.fetchedAtMs)}
             </span>
           </span>
         }
       />
       <RailDrawerSection className="flex flex-col gap-sm">
+        {data?.basis && <p className="text-xs text-fg-dim" role="status">{rankingBasisText(data.basis)}</p>}
+        {data?.basis?.source !== 'unavailable' && data?.basis?.message &&
+          <p className="text-xs text-fg-dim">{data.basis.message}</p>}
         <SegmentedControl aria-label="순위 종류" className="w-full !grid grid-cols-3">
           {KINDS.map((k) => {
             const on = kind === k.key;
@@ -477,7 +482,8 @@ export function RankingDrawer() {
         ) : isPending && !data ? (
           <RailState>불러오는 중…</RailState>
         ) : rows.length === 0 ? (
-          <RailState>{marketClosed ? '장 외 — 표시할 순위가 없습니다' : '표시할 종목이 없습니다'}</RailState>
+          <RailState>{data?.basis?.source === 'unavailable' ? '순위를 조회할 수 없습니다'
+            : marketClosed ? '장 외 — 표시할 순위가 없습니다' : '표시할 종목이 없습니다'}</RailState>
         ) : (
           <DndContext
             sensors={sensors}
@@ -509,6 +515,8 @@ export function RankingDrawer() {
         {data && isError && (
           <div className={`px-md py-sm text-xs text-error ${expandable ? 'min-h-[3.5rem]' : ''}`} role="status">
             {isFetching ? '다시 조회 중…' : expansion ? '추가 조회 실패' : '갱신 실패 · 이전 목록을 표시합니다'}
+            {!isFetching && error instanceof Error && error.message &&
+              <div className="text-fg-dim">{error.message}</div>}
             <button type="button" className="ml-2 underline" disabled={isFetching || drag.isDragging} onClick={() => { void refetch(); }}>
               {isFetching ? '불러오는 중…' : '다시 시도'}
             </button>

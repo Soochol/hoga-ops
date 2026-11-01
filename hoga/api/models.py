@@ -24,6 +24,7 @@ from hoga.api.error_codes import UpstreamCode
 from hoga.api.params import CODE_PATTERN, WATCHLIST_CODE_PATTERN
 from hoga.api.screener_expression import active_conditions, parse_expression
 from hoga.api.sources import SourceName
+from hoga.live.ranking_session import RankingBasis
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
 from hoga.util.timeenc import KST
@@ -2661,6 +2662,7 @@ class ScreenerDailyIngestStatus(BaseModel):
 
 
 class ScreenerResponse(BaseModel):
+    rank_basis: RankingBasis | None = None
     daily_coverage: BarVolumeCoverage | None = Field(default=None, exclude_if=lambda v: v is None)
     calculation: ScreenerCalculation | None = None
     history_coverage: HistoryCoverage | None = None

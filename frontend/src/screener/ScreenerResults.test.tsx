@@ -31,6 +31,21 @@ function mount(value = scan) {
 }
 
 describe('조회 결과 활용', () => {
+  it.each([
+    [0, '데이터 부족으로 조건을 평가할 수 없습니다'],
+    [1, '평가한 범위에서 조건에 맞는 종목이 없습니다 · 일부 종목 평가 보류'],
+  ])('0건이어도 분봉이 부족하면 평가 범위를 구분한다 (%s종목)', (complete, message) => {
+    mount({ ...scan, rows: [], barCoverage: { total: 2, complete,
+      incomplete: [{ code: '005930', condition_id: 'a', reason: 'insufficient_minute_history' }] } });
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.queryByText('조건에 맞는 종목이 없습니다')).not.toBeInTheDocument();
+  });
+
+  it('전체 조건을 평가한 0건은 기존 미충족 안내를 표시한다', () => {
+    mount({ ...scan, rows: [], barCoverage: { total: 2, complete: 2, incomplete: [] } });
+    expect(screen.getByText('조건에 맞는 종목이 없습니다')).toBeInTheDocument();
+  });
+
   it('보기별 가격을 정렬하고 조회 당시 가격의 기준일을 표시한다', () => {
     mount();
     expect(screen.getAllByRole('button', { name: /호가창 열기/ })[0]).toHaveAccessibleName('SK하이닉스 000660 호가창 열기');

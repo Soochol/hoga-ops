@@ -1,5 +1,6 @@
 import { apiCall, apiAction } from './client';
 import type { WireDataWarning } from './dataWarnings';
+import type { RankingBasis } from './rankingBasis';
 
 export type CalculationPolicy = 'legacy_v1' | 'separate_bases_v2';
 export type VolumeBasis = 'raw' | 'share_adjusted';
@@ -232,6 +233,7 @@ export interface DepthPeakValue {
 }
 
 export interface ScreenerResponse {
+  rank_basis?: RankingBasis | null;
   daily_coverage?: BarVolumeCoverage | null;
   calculation?: ScreenerCalculation | null;
   /** Actual evaluation cutoff(s), not the request completion time. */

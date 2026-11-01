@@ -399,7 +399,7 @@ it('surfaces a scan error instead of a silent dead-end', async () => {
   vi.mocked(runScan).mockRejectedValueOnce(new Error('422'));
   await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
-  expect(await screen.findByText('조회 실패 — 조건을 확인하세요')).toBeInTheDocument();
+  expect(await screen.findByText('조회할 수 없습니다')).toBeInTheDocument();
 });
 
 it('selecting a saved screener loads it without running a scan', async () => {

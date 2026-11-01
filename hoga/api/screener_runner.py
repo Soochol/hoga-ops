@@ -25,10 +25,14 @@ from hoga.util.timeenc import KST
 
 async def run_screener_scan(*, data_dir: Path, req: ScanRequest,
                             now: dt.datetime | None = None, volume_runtime=None) -> ScreenerResponse:
+    now = now or now_kst()
+    rank_eval = await screener_rankings.evaluate(data_dir, req, now, None)
+    screener_rankings.validate_stored_conditions(req, rank_eval)
     if req.calculation_policy == "separate_bases_v2":
         from hoga.api.screener_series_runner import run_scan  # noqa: PLC0415 — isolate optional v2 path
-        return await run_scan(data_dir=data_dir, req=req, now=now or now_kst(), volume_runtime=volume_runtime)
-    return await _run_legacy_scan(data_dir=data_dir, req=req, now=now, volume_runtime=volume_runtime)
+        return await run_scan(data_dir=data_dir, req=req, now=now, volume_runtime=volume_runtime, rank_eval=rank_eval)
+    return await _run_legacy_scan(data_dir=data_dir, req=req, now=now,
+                                  volume_runtime=volume_runtime, rank_eval=rank_eval)
 
 
 async def _run_legacy_scan(
@@ -37,6 +41,7 @@ async def _run_legacy_scan(
     req: ScanRequest,
     now: dt.datetime | None = None,
     volume_runtime=None,
+    rank_eval=None,
 ) -> ScreenerResponse:
     sdir = data_dir / "screener"
     if not (sdir / "status.json").exists():
@@ -68,9 +73,10 @@ async def _run_legacy_scan(
     conditions = active_conditions(req.conditions, req.expression)
     codes = await asyncio.to_thread(screener_universe.codes_for_universe,
         sdir / "stocks.parquet", req.universe, scope=scope, etf_codes=etf_codes)
-    rank_eval = await screener_rankings.evaluate(data_dir, req, now_value, codes)
+    codes, scope, now_value, requested = _rank_inputs(req, codes, scope, now_value, rank_eval)
     confirmed_at, basis, daily_coverage, codes, scope = await _basis_quality(
-        data_dir, conditions, codes, scope, req.basis, now_value, warnings)
+        data_dir, conditions, codes, scope, requested, now_value, warnings,
+        cutoff=rank_eval.cutoff if rank_eval and rank_eval.stored else None)
     history = screener_history_coverage.history_leaves(conditions)
     needs_overlay = basis == "intraday" and (not conditions or any(
         screener_bar_volume.needs_daily_overlay(leaf, now_value.date().isoformat()) for leaf in conditions))
@@ -121,7 +127,8 @@ async def _run_legacy_scan(
         bar_eval = await screener_bar_volume.evaluate(
             data_dir=data_dir, conditions=conditions, codes=codes, basis=basis,
             now=now_value, overlay=intraday_rows,
-            volume_runtime=volume_runtime,
+            volume_runtime=None if rank_eval and rank_eval.stored else volume_runtime,
+            cutoff=rank_eval.cutoff if rank_eval and rank_eval.stored else None,
             daily_fallback_codes=set(codes) - live_codes if needs_overlay else None)
         if bar_eval.coverage.incomplete:
             warnings.append("bar_volume_partial")
@@ -141,6 +148,7 @@ async def _run_legacy_scan(
         daily_unavailable=_daily_unavailable(daily_coverage),
         scope_codes=scope,
         etf_codes=etf_codes,
+        as_of_date=rank_eval.cutoff.date() if rank_eval and rank_eval.stored else None,
         history_pass=history_eval.passing if history_eval else None,
         bar_events={**(bar_eval.events if bar_eval else {}), **(rank_eval.events if rank_eval else {})},
         occurrence_dates=occurrence_dates, excluded=excluded,
@@ -164,9 +172,18 @@ async def _run_legacy_scan(
     ), req, rank_eval)
 
 
-async def _basis_quality(data_dir, conditions, codes, scope, requested_basis, now_value, warnings):
+def _rank_inputs(req, codes, scope, now, evaluation):
+    if evaluation is None:
+        return codes, scope, now, req.basis
+    codes = screener_rankings.candidate_codes(req, codes, evaluation)
+    return codes, set(codes), evaluation.cutoff if evaluation.stored else now, "eod" if evaluation.stored else req.basis
+
+
+async def _basis_quality(data_dir, conditions, codes, scope, requested_basis, now_value, warnings, cutoff=None):
     from hoga.api.screener_daily_quality import legacy_coverage  # noqa: PLC0415
     confirmed_at = await asyncio.to_thread(screener_basis.confirmed_timestamp, data_dir / "screener", codes)
+    if cutoff is not None and confirmed_at is not None:
+        confirmed_at = min(confirmed_at, int(cutoff.timestamp() * 1000))
     basis = screener_basis.choose_basis(requested_basis, now_value, confirmed_at, data_dir)
     quality_clock = (dt.datetime.fromtimestamp(confirmed_at / 1000, KST)
                      if basis == "eod" and confirmed_at is not None else now_value)

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { emptyResultText } from './emptyResultText';
 import type { PanelScan } from '../state/screenerPanel';
 import { EmptyState } from '../ui/DataSurface';
 import { SegmentedControl, ToolbarButton } from '../ui/PageShell';
@@ -65,7 +66,8 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
           ? '거래대금: 조회 당시 실제치 또는 원주가 추정치(행에서 방법 확인)'
           : '거래대금: 조회 당시 추정치(일봉 기준)'} · 등락률: 전일 종가 대비
       </p>
-      {scan.rows.length > 0 && filtered.length === 0 ? (
+      {scan.rows.length === 0 ? <EmptyState className="flex-1" title={emptyResultText(scan)}>{null}</EmptyState>
+        : filtered.length === 0 ? (
         <EmptyState className="flex-1" title="검색어에 맞는 결과가 없습니다">
           받은 결과 안에서만 검색합니다
           <ToolbarButton type="button" onClick={() => setQuery('')}>검색어 지우기</ToolbarButton>

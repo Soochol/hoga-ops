@@ -1,3 +1,5 @@
+import { rankingBasisText } from '../api/rankingBasis';
+import { emptyResultText } from './emptyResultText';
 import { isRankCondition, hasRankEvidence } from './rankConditions';
 import { MarketRankEvidence } from './MarketRankEvidence';
 import { CalculationNotice } from "./CalculationNotice";
@@ -241,6 +243,7 @@ export function ScreenerDrawer() {
         warnings: res.warnings,
         historyCoverage: res.history_coverage,
           barCoverage: res.bar_coverage, dailyCoverage: res.daily_coverage, calculation: res.calculation,
+          rankBasis: res.rank_basis,
         depthValues: res.depth_values ?? null,
         scannedAtMs: res.scanned_at_ms ?? Date.now(),
         basisAtMs: res.basis_at_ms,
@@ -502,6 +505,7 @@ export function ScreenerDrawer() {
         ) : lastScan ? (
           <>
             <CalculationNotice scan={lastScan} />
+            {lastScan.rankBasis && <RailState>{rankingBasisText(lastScan.rankBasis)}</RailState>}
             <BarVolumeCoverage coverage={lastScan.barCoverage} />
             {lastScan.dailyCoverage && lastScan.dailyCoverage.complete < lastScan.dailyCoverage.total &&
               <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan.dailyCoverage.total - lastScan.dailyCoverage.complete}종목</div>}
@@ -525,7 +529,7 @@ export function ScreenerDrawer() {
               </InlineState>
             )}
             {lastScan.rows.length === 0 ? (
-              <RailState>조건에 맞는 종목이 없습니다</RailState>
+              <RailState>{emptyResultText(lastScan)}</RailState>
             ) : (
               <DndContext
                 sensors={sensors}
