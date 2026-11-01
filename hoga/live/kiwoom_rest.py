@@ -425,6 +425,10 @@ class KiwoomRestClient:
                 # 기본인자 바인딩 — 러너가 지연 실행해도 그 시점의 커서를 쓴다.
                 return client.call(api_id, body, cont=_cont, next_key=_nk)
 
+            # Public-data consumers may share an identical in-flight page across
+            # different walk ranges. Identity contains the actual cursor, never
+            # just its ordinal (different walks can have different cursors).
+            _fetch.request_identity = (api_id, tuple(sorted(body.items())), cont, next_key)
             page = await (
                 run_page(_fetch, page_idx) if run_page is not None else _fetch(self)
             )

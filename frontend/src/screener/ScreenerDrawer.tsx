@@ -46,7 +46,8 @@ import { useEntryOrder } from './useEntryOrder';
 import { QuoteRowGroupMenu } from '../rightrail/QuoteRowGroupMenu';
 import { ScreenerResultSortControl } from './ScreenerResultSortControl';
 import { sortScreenerRows, stackByEntryOrder, type ScreenerResultSortMode } from './sortResults';
-import type { ScanBasis } from '../api/screener';
+import type { ScanBasis, ScanRequest, ScreenerResponse } from '../api/screener';
+import { ScreenerPreparationStatus } from './ScreenerPreparationStatus';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 import { ToolbarButton, SegmentedControl } from '../ui/PageShell';
 import { SavedConditionSelect } from './SavedConditionSelect';
@@ -199,7 +200,40 @@ export function ScreenerDrawer() {
 
   const selected = saves.find((s) => s.id === selectedSavedId) ?? null;
   const continuousNeedsScope = !!selected && hasContinuousVolume(selected) && !selected.universe.scopes?.length;
-  const screener = useScreener({ continuous: monitoringActive,
+  const drawerRequest = useMemo<ScanRequest | undefined>(() => selected ? {
+    conditions: selected.conditions, universe: selected.universe,
+    ...(selected.conditions.some(isRankCondition) ? { venue } : {}),
+    ...(selected.calculation_policy ? { calculation_policy: selected.calculation_policy } : {}),
+    basis: DRAWER_SCAN_BASIS,
+    ...(selected.expression != null ? { expression: selected.expression } : {}),
+  } : undefined, [selected, venue]);
+  const publishScan = (res: ScreenerResponse, request: ScanRequest) => {
+    const sel = selected;
+    if (!sel) return;
+    setLastScan({
+      savedId: sel.id,
+      savedName: sel.name,
+      savedUpdatedAtMs: sel.updated_at_ms,
+      // 드로어는 신원 기반 staleness 라 scanKey 불필요(null).
+      scanKey: null,
+      requestJson: JSON.stringify(request),
+      rows: res.rows,
+      hasMore: res.has_more,
+      scanStatus: res.status,
+      intradayFailure: res.intraday_failure,
+      warnings: res.warnings,
+      historyCoverage: res.history_coverage,
+      rankBasis: res.rank_basis,
+      barCoverage: res.bar_coverage, dailyCoverage: res.daily_coverage, calculation: res.calculation,
+      depthValues: res.depth_values ?? null,
+      scannedAtMs: res.scanned_at_ms ?? Date.now(),
+      basisAtMs: res.basis_at_ms,
+      fallbackBasisAtMs: res.fallback_basis_at_ms,
+      basis: DRAWER_SCAN_BASIS,
+      dataStale: false,
+    });
+  };
+  const screener = useScreener({ continuous: monitoringActive, request: drawerRequest, onProgress: publishScan,
     anchor: selected ? `${selected.id}:${selected.updated_at_ms}` : '' });
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
   // 강등 사유별 문구 — 페이지와 같은 매핑을 쓴다(ADR-0137 R6).
@@ -223,36 +257,9 @@ export function ScreenerDrawer() {
     const sel = selected;
     if (!sel) return false;
     try {
-      const request = {
-        conditions: sel.conditions, universe: sel.universe,
-        ...(sel.conditions.some(isRankCondition) ? { venue } : {}),
-        ...(sel.calculation_policy ? { calculation_policy: sel.calculation_policy } : {}), basis: DRAWER_SCAN_BASIS,
-        ...(sel.expression != null ? { expression: sel.expression } : {}),
-      };
-      const requestJson = JSON.stringify(request);
+      const request = drawerRequest!;
       const res = await screener.mutateAsync(request);
-      setLastScan({
-        savedId: sel.id,
-        savedName: sel.name,
-        savedUpdatedAtMs: sel.updated_at_ms,
-        // 드로어는 신원 기반 staleness 라 scanKey 불필요(null).
-        scanKey: null,
-        requestJson,
-        rows: res.rows,
-        hasMore: res.has_more,
-        scanStatus: res.status,
-        intradayFailure: res.intraday_failure,
-        warnings: res.warnings,
-        historyCoverage: res.history_coverage,
-          barCoverage: res.bar_coverage, dailyCoverage: res.daily_coverage, calculation: res.calculation,
-          rankBasis: res.rank_basis,
-        depthValues: res.depth_values ?? null,
-        scannedAtMs: res.scanned_at_ms ?? Date.now(),
-        basisAtMs: res.basis_at_ms,
-        fallbackBasisAtMs: res.fallback_basis_at_ms,
-        basis: DRAWER_SCAN_BASIS,
-        dataStale: false,
-      });
+      publishScan(res, request);
       // 정렬은 여기서 리셋하지 않는다 — 이 seam 은 모니터링 tick 도 공유하므로 매 재조회
       // 마다 사용자 정렬을 밀어버렸다. 사용자 정렬은 명시적 변경 때만 바뀐다(조건 전환
       // 시 default 로 복귀하는 진입순 스택은 useEntryOrder 의 resetKey 가 처리).
@@ -468,6 +475,7 @@ export function ScreenerDrawer() {
             <ScreenerUpdateProgress updating={status?.updating} daily={status?.daily_ingest} />
           </div>
         )}
+        <ScreenerPreparationStatus run={screener.preparation} />
         {visibleFeedback && (
           <RailState
             tone={visibleFeedback.tone === 'info' ? undefined : visibleFeedback.tone}
@@ -513,7 +521,7 @@ export function ScreenerDrawer() {
               <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan.dailyCoverage.total - lastScan.dailyCoverage.complete}종목</div>}
             {limitNotice && <RailState tone="warn">{limitNotice}</RailState>}
             {!!lastScan?.historyCoverage?.incomplete.length && <RailState tone="warn">
-              과거 일봉이 부족한 종목이 있습니다. <a href="/screener" className="underline">스크리너에서 수집</a>
+              과거 일봉이 부족한 종목은 데이터 준비·검증 상태를 확인하세요.
             </RailState>}
             {intradayDegradation && (
               <InlineState tone="warn" className="mx-md mt-sm">

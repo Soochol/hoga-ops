@@ -240,6 +240,12 @@ def _publish(
     data_dir: Path, section: str, code: str, value: dict, *, anchor: str | None = None,
     expected_snapshot: str | None = None,
 ) -> str:
+    return _publish_many(data_dir, section, [(code, value)], anchor=anchor, expected_snapshot=expected_snapshot)
+
+
+def _publish_many(data_dir, section, incoming, *, anchor=None, expected_snapshot=None,
+                  reuse_existing=False, refresh_metadata=False):
+    """Publish complete objects together; concurrent writers are merged under the same lock."""
     baseline = ensure_baseline(data_dir)
     base = root(data_dir)
     with _series_write_lock(data_dir / "screener"):
@@ -251,21 +257,30 @@ def _publish(
             if old
             else {"schema_version": 1, "baseline": baseline, "observations": {}, "quantity": {}, "adjusted_as_of": None}
         )
-        if section == "observations" and code in manifest[section]:
-            previous = read_object(data_dir, manifest[section][code])
-            if previous["adjusted_as_of"] > value["adjusted_as_of"]:
-                raise ValueError("새 관측의 수정 기준일이 현재 스냅샷보다 과거입니다")
-            candidate = _write_object(base, value)
-            value = {**_merge_observations(previous, value), "candidate_observation": candidate}
-        identity = _write_object(base, value)
-        if manifest.get(section, {}).get(code) == identity:
+        updated = dict(manifest.get(section, {}))
+        confirmed = False
+        for code, incoming_value in incoming:
+            value = incoming_value
+            if section == "observations" and code in updated:
+                previous = read_object(data_dir, updated[code])
+                incoming_id = digest(value)
+                if reuse_existing and (updated[code] == incoming_id
+                                       or previous.get("candidate_observation") == incoming_id):
+                    continue
+                if previous["adjusted_as_of"] > value["adjusted_as_of"]:
+                    raise ValueError("새 관측의 수정 기준일이 현재 스냅샷보다 과거입니다")
+                candidate = _write_object(base, value)
+                value = {**_merge_observations(previous, value), "candidate_observation": candidate}
+            updated[code] = _write_object(base, value)
+            confirmed |= bool(value.get("confirmation"))
+        if old and manifest.get(section, {}) == updated and not refresh_metadata:
             return old[0]
         manifest = {
-            **manifest, section: {**manifest.get(section, {}), code: identity}, "parent": old[0] if old else None,
+            **manifest, section: updated, "parent": old[0] if old else None,
         }
-        if anchor is not None:
+        if anchor is not None and (incoming or not old):
             manifest["adjusted_as_of"] = max(anchor, manifest["adjusted_as_of"] or anchor)
-        if section == "observations" and value.get("confirmation"):
+        if section == "observations" and confirmed:
             manifest["daily_contract_required"] = True
         manifest["calendar"] = sorted(trading_days.trading_days(data_dir))
         roster = data_dir / "screener" / "stocks.parquet"
@@ -279,6 +294,9 @@ def _publish(
             stocks = stocks.with_columns(pl.col("code").is_in(etfs).alias("is_etf"))
         manifest["etf_classification"] = "master" if etfs is not None else "legacy_roster"
         manifest["roster"] = _write_object(base, stocks.to_dicts())
+        if old and refresh_metadata and ({key: value for key, value in manifest.items() if key != "parent"}
+                                         == {key: value for key, value in old[1].items() if key != "parent"}):
+            return old[0]
         snapshot_id = _write_object(base, manifest)
         atomic_write_json(base / "current.json", {"id": snapshot_id})
         _sync_dir(base)
@@ -330,6 +348,15 @@ def publish_pair(
     A new basis can replace derived prices, but conflicting unadjusted values
     remain separate observations; the resolver retains the imported originals.
     """
+    value = pair_value(code, unadjusted, adjusted, adjusted_as_of=adjusted_as_of, price_events=price_events,
+                       observed_at=observed_at, violations=violations, provider_rows=provider_rows,
+                       confirmation=confirmation)
+    return _publish(data_dir, "observations", code, value, anchor=adjusted_as_of)
+
+
+def pair_value(code, unadjusted, adjusted, *, adjusted_as_of, price_events, observed_at,
+               violations=None, provider_rows=None, confirmation=None):
+    """Validate a staged observation before it can enter a publication batch."""
     if not re.fullmatch(r"[A-Z0-9]{6}", code):
         raise ValueError("Invalid code")
     anchor = dt.date.fromisoformat(adjusted_as_of)
@@ -359,7 +386,16 @@ def publish_pair(
 
         value["confirmation"] = confirmation
         state(value)
-    return _publish(data_dir, "observations", code, value, anchor=adjusted_as_of)
+    return value
+
+
+def publish_pairs(data_dir: Path, payloads: list[dict], *, adjusted_as_of: str, reuse_existing=False) -> str:
+    """One atomic snapshot per batch, retaining every prior immutable input."""
+    if any(payload["adjusted_as_of"] != adjusted_as_of for payload in payloads):
+        raise ValueError("서로 다른 수정 기준일의 관측은 함께 공개할 수 없습니다")
+    incoming = [(payload["code"], pair_value(**payload)) for payload in payloads]
+    return _publish_many(data_dir, "observations", incoming, anchor=adjusted_as_of,
+                         reuse_existing=reuse_existing, refresh_metadata=not payloads)
 
 
 def current_observation(data_dir: Path, observation: dict) -> dict:

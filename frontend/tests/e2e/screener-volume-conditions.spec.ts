@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
-import type { ConditionLeaf, ScanRequest, ScreenerExclusion, ScreenerOccurrence } from '../../src/api/screener';
+import type { ConditionLeaf, ScanRequest, ScreenerExclusion, ScreenerOccurrence, ScreenerResponse } from '../../src/api/screener';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
+import { installScreenerRunsMock } from './helpers/screenerRuns';
 import { installLiveMocks } from './helpers/liveMocks';
 
 test('volume range, comparison and prior average retain settings and expose per-bar evidence in page and drawer', async ({ page }, testInfo) => {
@@ -26,8 +27,7 @@ test('volume range, comparison and prior average retain settings and expose per-
     }
     return route.fulfill({ json: { schema_version: 1, exclusions: excluded } });
   });
-  await page.route(apiExact('screener/scan'), route => {
-    const req: ScanRequest = route.request().postDataJSON();
+  const respond = (req: ScanRequest): ScreenerResponse => {
     scans.push(req);
     const occurrences: ScreenerOccurrence[] = req.conditions.flatMap(leaf => {
       if (leaf.type !== 'volume_range' && leaf.type !== 'volume_range_period' && leaf.type !== 'volume_compare'
@@ -48,10 +48,12 @@ test('volume range, comparison and prior average retain settings and expose per-
           is_open: false, fetched_at_ms: 1 } });
       return leaf.type === 'volume_range_period' ? [event(start), event(start + 300000)] : [event(start)];
     }).filter(event => !excluded.some(x => x.condition_key === event.condition_key && x.bar_start_ms === event.bar_start_ms));
-    return route.fulfill({ json: { status: 'ok', warnings: [], bar_coverage: { total: 1, complete: 1, incomplete: [] },
+    return { status: 'ok', warnings: [], bar_coverage: { total: 1, complete: 1, incomplete: [] },
       rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 110, trade_value_won: 1e8,
-        change_pct: 0, occurrences }] } });
-  });
+        change_pct: 0, occurrences }] };
+  };
+  await page.route(apiExact('screener/scan'), route => route.fulfill({ json: respond(route.request().postDataJSON()) }));
+  await installScreenerRunsMock(page, respond);
   await page.goto('/screener');
   const names = ['거래량 범위', '기간내 거래량 범위', '거래량 비교', '기간내 거래량 비교', '평균 대비 거래량', '기간내 평균 대비 거래량'];
   for (const name of names) {

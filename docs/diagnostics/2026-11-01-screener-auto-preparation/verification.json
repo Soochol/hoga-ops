@@ -1,0 +1,29 @@
+{
+  "head": "7783d0429890c44770bb1b49c696ec2ef6116e1d",
+  "base": "7783d0429890c44770bb1b49c696ec2ef6116e1d",
+  "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+  "platform": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+  "pytest": "9.0.3",
+  "ruff": "0.15.13",
+  "production_and_existing_tests_input_sha256": "22f6125393b44b3047cbe07c09a3e49009af9cb80c9c1c988b13a3887a795b0a",
+  "experiment_file_sha256": {
+    "README.md": "54650b66e3c82557aaeace81e2e0230972a38f57e1d5ae127aa0156571d1c437",
+    "contract-tests.txt": "cb1e3167f4948a5127fa29b388bd2ac427781fc2bfc76664ac87090d54291f61",
+    "probe.py": "33145f6dff5bcdfbed415e9e3a0ba0a4be4bab4fee4f03301c10f72c687b5b22",
+    "raw-update-results.json": "d422152e9f2f989635513b565a250bd6377bf5ac27b5a258d2e7a986c5e3f252",
+    "regression-tests.txt": "14a7b6e4e89a6ec8b7368196d53813ea1ec66cd6323e0846c82aa7732bcd237e",
+    "results.json": "5f5f8ca2f88ded895171a55b3c69199e1950859ba21f6741a8cf0df21bb9c1fa",
+    "runtime-summary.json": "48a0bef2661a503082597b03e99521d260a105322fae8baf3dc07adbf5b8a06c",
+    "storage-final-run.txt": "a430a949a7f3264ada7b4de7ca3a83eb900e138f19ecc12a965aefdf6c9332c6",
+    "test_probe_contracts.py": "fc5105e0f84acde40cec5f31c0c1473ccd87825ce9cb52f1c43dd19681cc34c8"
+  },
+  "checks": {
+    "existing_regression_tests_passed": 173,
+    "additional_contract_tests_passed": 4,
+    "offline_probe_assertions": "passed",
+    "final_storage_rerun": "passed",
+    "ruff": "uv run --extra dev ruff check .: passed",
+    "git_diff_check": "git diff --check: passed"
+  },
+  "scope": "proposal and offline prototype only; no product code, frontend, live provider or server changes"
+}

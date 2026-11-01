@@ -76,6 +76,12 @@ export interface PersistenceDecl {
 
 export const NON_DEFAULT_PERSISTENCE: readonly PersistenceDecl[] = [
   {
+    key: 'screener.active-runs.v1',
+    module: 'api/screenerRuns.ts',
+    policy: 'tab',
+    note: '사용자가 이미 시작한 서버 검색의 ID만 이 탭에 보관한다. 새로고침은 재개하고 다른 탭의 선택은 덮어쓰지 않는다.',
+  },
+  {
     key: 'hoga.chart.trade.accounts.v1',
     module: 'state/chartTradeAccounts.ts',
     policy: 'shared-synced',

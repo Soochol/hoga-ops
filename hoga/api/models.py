@@ -3103,6 +3103,27 @@ class ScreenerResponse(BaseModel):
     depth_coverage: DepthCoverage | None = None
     depth_values: dict[str, DepthPeakValue] | None = None
 
+ScreenerRunStatus = Literal["queued", "preparing", "complete", "partial", "failed", "interrupted"]
+
+
+class ScreenerRun(BaseModel):
+    id: str
+    status: ScreenerRunStatus
+    request: ScanRequest
+    total: int = 0
+    evaluated: int = 0
+    preparing: int = 0
+    waiting: int = 0
+    failed: int = 0
+    next_retry_at_ms: int | None = None
+    errors: dict[str, str] = Field(default_factory=dict)
+    revision: int = 0
+    result_revision: int = 0
+    result: ScreenerResponse | None = None
+    started_at_ms: int
+    updated_at_ms: int
+
+
 class ScreenerSaveWriteRequest(ScreenerConditionExpression):
     name: str = Field(min_length=1, max_length=80)
     universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)

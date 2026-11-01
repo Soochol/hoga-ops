@@ -1,0 +1,9 @@
+{"storage": {"repeat": 0, "batch_size": 1, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 719.61, "publications": 48}}
+{"storage": {"repeat": 0, "batch_size": 8, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 404.27, "publications": 6}}
+{"storage": {"repeat": 0, "batch_size": 24, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 370.73, "publications": 2}}
+{"storage": {"repeat": 1, "batch_size": 1, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 669.02, "publications": 48}}
+{"storage": {"repeat": 1, "batch_size": 8, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 352.38, "publications": 6}}
+{"storage": {"repeat": 1, "batch_size": 24, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 352.7, "publications": 2}}
+{"storage": {"repeat": 2, "batch_size": 1, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 625.02, "publications": 48}}
+{"storage": {"repeat": 2, "batch_size": 8, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 364.47, "publications": 6}}
+{"storage": {"repeat": 2, "batch_size": 24, "codes": 48, "bars_per_code": 700, "roster_codes": 4412, "elapsed_ms": 339.94, "publications": 2}}

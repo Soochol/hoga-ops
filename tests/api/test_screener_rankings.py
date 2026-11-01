@@ -10,7 +10,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from hoga.api import screener_rankings as ranking, screener_runner, screener_series_store as store, trading_days
+from hoga.api import (
+    screener_rankings as ranking,
+    screener_runner,
+    screener_series_store as store,
+    symbols,
+    trading_days,
+)
 from hoga.api.models import ScanRequest, ScreenerExclusionWrite
 from hoga.api.screener import build_router
 from hoga.api.screener_series_execution import validate_archivable
@@ -49,6 +55,7 @@ def change_snapshot(**changes):
 
 @pytest.fixture
 def corpus(tmp_path, monkeypatch):
+    monkeypatch.setattr(symbols, "all_etf_etn_codes", lambda: None)
     sd = tmp_path / "screener"
     sd.mkdir()
     codes = ["000001", "000002", "000003"]

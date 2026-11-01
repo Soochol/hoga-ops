@@ -98,6 +98,7 @@ from hoga.live.kiwoom_rankings import (
     Market as RankingMarket,
     RankingKind,
 )
+from hoga.live.kiwoom_rankings_access import set_rankings_fetcher_getter
 from hoga.live.kiwoom_rest import KiwoomRestClient, PageFetch
 from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
 from hoga.live.krx_close import KrxCloseResponse, KrxCloseStore
@@ -185,6 +186,8 @@ kiwoom_stock_info_fetcher_instance: KiwoomStockInfoFetcher | None = None
 # 그 구간엔 WS 가 침묵하므로 이것 말고 대안이 없다(kiwoom_after_hours 모듈 docstring).
 kiwoom_after_hours_fetcher_instance: KiwoomAfterHoursFetcher | None = None
 kiwoom_rankings_fetcher_instance: KiwoomRankingsFetcher | None = None
+
+set_rankings_fetcher_getter(lambda: kiwoom_rankings_fetcher_instance)
 index_minute_candles_cache_instance: IndexMinuteCandlesCache | None = None
 # ka20005 fetcher — 지수 **분봉** 전용(ADR-0129). 키움 자격증명이 있을 때만 만들어지고,
 # None 이면 지수 분봉이 KIS 로 간다(= ADR-0129 이전 동작). 이 None 여부가 소스 선택의

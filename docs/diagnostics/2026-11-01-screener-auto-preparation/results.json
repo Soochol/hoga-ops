@@ -1,0 +1,265 @@
+{
+  "head": "7783d0429890c44770bb1b49c696ec2ef6116e1d",
+  "scope": "offline synthetic transport; real production governor/store; no vendor speed claim",
+  "transport": [
+    {
+      "concurrency": 1,
+      "accounts": 4,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 80.0,
+      "codes": 24,
+      "calls": 48,
+      "elapsed_ms": 3857.27,
+      "peak_transport_calls": 1,
+      "runs_ms": [
+        3857.27,
+        3860.34,
+        3860.11
+      ],
+      "median_ms": 3860.11
+    },
+    {
+      "concurrency": 3,
+      "accounts": 4,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 80.0,
+      "codes": 24,
+      "calls": 48,
+      "elapsed_ms": 2919.69,
+      "peak_transport_calls": 3,
+      "runs_ms": [
+        2919.69,
+        2918.44,
+        2920.07
+      ],
+      "median_ms": 2919.69
+    },
+    {
+      "concurrency": 4,
+      "accounts": 4,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 80.0,
+      "codes": 24,
+      "calls": 48,
+      "elapsed_ms": 2839.87,
+      "peak_transport_calls": 4,
+      "runs_ms": [
+        2839.87,
+        2841.64,
+        2840.59
+      ],
+      "median_ms": 2840.59
+    },
+    {
+      "concurrency": 6,
+      "accounts": 4,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 80.0,
+      "codes": 24,
+      "calls": 48,
+      "elapsed_ms": 2843.81,
+      "peak_transport_calls": 4,
+      "runs_ms": [
+        2843.81,
+        2843.14,
+        2844.38
+      ],
+      "median_ms": 2843.81
+    },
+    {
+      "concurrency": 1,
+      "accounts": 4,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 200.0,
+      "codes": 24,
+      "calls": 48,
+      "elapsed_ms": 9627.47,
+      "peak_transport_calls": 1,
+      "runs_ms": [
+        9627.47,
+        9625.2,
+        9624.95
+      ],
+      "median_ms": 9625.2
+    },
+    {
+      "concurrency": 3,
+      "accounts": 4,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 200.0,
+      "codes": 24,
+      "calls": 48,
+      "elapsed_ms": 3317.61,
+      "peak_transport_calls": 3,
+      "runs_ms": [
+        3317.61,
+        3316.97,
+        3315.99
+      ],
+      "median_ms": 3316.97
+    },
+    {
+      "concurrency": 4,
+      "accounts": 4,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 200.0,
+      "codes": 24,
+      "calls": 48,
+      "elapsed_ms": 2960.59,
+      "peak_transport_calls": 4,
+      "runs_ms": [
+        2960.59,
+        2961.8,
+        2961.63
+      ],
+      "median_ms": 2961.63
+    },
+    {
+      "concurrency": 6,
+      "accounts": 4,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 200.0,
+      "codes": 24,
+      "calls": 48,
+      "elapsed_ms": 2959.61,
+      "peak_transport_calls": 4,
+      "runs_ms": [
+        2959.61,
+        2961.37,
+        2961.02
+      ],
+      "median_ms": 2961.02
+    },
+    {
+      "concurrency": 1,
+      "accounts": 1,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 80.0,
+      "codes": 12,
+      "calls": 24,
+      "elapsed_ms": 5849.72,
+      "peak_transport_calls": 1
+    },
+    {
+      "concurrency": 4,
+      "accounts": 1,
+      "pages_per_code": 2,
+      "synthetic_latency_ms": 80.0,
+      "codes": 12,
+      "calls": 24,
+      "elapsed_ms": 5856.99,
+      "peak_transport_calls": 1
+    }
+  ],
+  "dedup": [
+    {
+      "canonical": false,
+      "independent_confirmation": false,
+      "logical_calls": 48,
+      "transport_calls": 48
+    },
+    {
+      "canonical": true,
+      "independent_confirmation": false,
+      "logical_calls": 48,
+      "transport_calls": 24
+    },
+    {
+      "canonical": true,
+      "independent_confirmation": true,
+      "logical_calls": 48,
+      "transport_calls": 48
+    }
+  ],
+  "storage": [
+    {
+      "repeat": 0,
+      "batch_size": 1,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 691.18,
+      "publications": 48
+    },
+    {
+      "repeat": 0,
+      "batch_size": 8,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 358.18,
+      "publications": 6
+    },
+    {
+      "repeat": 0,
+      "batch_size": 24,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 336.47,
+      "publications": 2
+    },
+    {
+      "repeat": 1,
+      "batch_size": 1,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 633.22,
+      "publications": 48
+    },
+    {
+      "repeat": 1,
+      "batch_size": 8,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 379.08,
+      "publications": 6
+    },
+    {
+      "repeat": 1,
+      "batch_size": 24,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 341.64,
+      "publications": 2
+    },
+    {
+      "repeat": 2,
+      "batch_size": 1,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 622.06,
+      "publications": 48
+    },
+    {
+      "repeat": 2,
+      "batch_size": 8,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 364.51,
+      "publications": 6
+    },
+    {
+      "repeat": 2,
+      "batch_size": 24,
+      "codes": 48,
+      "bars_per_code": 700,
+      "roster_codes": 4412,
+      "elapsed_ms": 346.59,
+      "publications": 2
+    }
+  ],
+  "assertions": {
+    "semantic_snapshot_equal": true,
+    "legacy_files_unchanged": true,
+    "pointer_failure_preserves_snapshot": true,
+    "original_conflict_preserved": true,
+    "adjustment_basis_not_mixed": true,
+    "independent_confirmation_not_deduped": true
+  }
+}

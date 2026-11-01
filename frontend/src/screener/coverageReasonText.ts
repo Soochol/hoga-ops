@@ -1,4 +1,5 @@
 const reasons: Record<string, string> = {
+  daily_preparation_pending: '일봉 자동 준비 중',
   share_evidence_unavailable: '주식 수 변환 이력 미확인', vendor_price_unavailable: '공급자 수정 가격 부족',
   zero_average_volume: '비교 평균 거래량이 0', invalid_volume_ratio: '거래량 비율 계산 불가',
   missing_history: '원본 일봉 부족', insufficient_history: '비교 기간 부족',

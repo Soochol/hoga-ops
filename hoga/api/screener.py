@@ -45,6 +45,7 @@ from hoga.api.request_coalescer import ReadRequestCoalescer
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR as _SCREENER_EOD_CUTOFF_HOUR
 from hoga.api.screener_continuous import build_router as continuous_router, make_owner
 from hoga.api.screener_daily_confirmation import FINALIZATION_HOUR
+from hoga.api.screener_runs import ScreenerRuns, build_router as runs_router
 from hoga.api.screener_store import DailyBar
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kiwoom_access, kiwoom_rest_runtime
@@ -535,6 +536,7 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     router.include_router(continuous_router(continuous))
     from hoga.api.screener_history_jobs import build_router as history_router  # noqa: PLC0415 — router import
     router.include_router(history_router(data_dir))
+    router.include_router(runs_router(ScreenerRuns(data_dir, volume_runtime=volume_runtime)))
     _include_series_routers(router, data_dir)
     from hoga.api.screener_exclusions import build_router as exclusions_router  # noqa: PLC0415
     router.include_router(exclusions_router(data_dir))

@@ -17,6 +17,7 @@ from hoga.api.screener_exclusions import condition_key
 from hoga.api.screener_expression import active_conditions, parse_expression
 from hoga.live import settings
 from hoga.live.kiwoom_rankings import KiwoomRankingsError
+from hoga.live.kiwoom_rankings_access import rankings_fetcher
 from hoga.live.ranking_session import RankingBasis, resolve as ranking_session
 from hoga.util.timeenc import KST
 
@@ -70,10 +71,8 @@ async def _fetch_change(market, venue, limit):
 
 
 async def _fetch_kind(kind, market, venue, limit, direction="up"):
-    # The ranking drawer owns this process singleton; reuse its cache and governor.
-    from hoga.live import api  # noqa: PLC0415 — avoid API/router import cycle
-
-    fetcher = api.kiwoom_rankings_fetcher_instance
+    # The live composition root supplies the same singleton used by the drawer.
+    fetcher = rankings_fetcher()
     if fetcher is None:
         raise _error(503, "not_wired", "시장 순위 조회에 필요한 키움 API가 설정되지 않았습니다")
     return await fetcher.get(kind, market, direction, venue, limit=limit)

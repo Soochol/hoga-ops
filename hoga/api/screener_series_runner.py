@@ -46,7 +46,7 @@ def _matches(tokens, passing: set[str], conditions) -> bool:
     return stack[0] if stack else True
 
 
-def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallback_clock=None):
+def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallback_clock=None, blocked_conditions=None):
     _, manifest = pinned
     days = [dt.datetime.strptime(day, "%Y%m%d").date() for day in store.snapshot_calendar(data_dir, manifest)]
     selected = [
@@ -86,6 +86,10 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
         chosen_clock = fallback_clock if fallback_clock is not None and code not in live_codes else clock
         chosen_plans = fallback_plans if chosen_clock != clock else plans
         for leaf in selected:
+            blocked = (blocked_conditions or {}).get((code, leaf.id))
+            if blocked:
+                failures.append(BarVolumeCoverageItem(code=code, condition_id=leaf.id, reason=blocked))
+                continue
             found, absent = evaluation.evaluate_leaf(
                 leaf, code, series[code], days, chosen_clock, windows=chosen_plans[leaf.id]
             )
@@ -179,7 +183,7 @@ async def _inputs(data_dir, req, manifest, now, replay, rank_eval=None):
 
 async def _overlay(data_dir, req, inputs, now):
     warnings = list(inputs["warnings"])
-    if (inputs["basis"] != "intraday" or req.snapshot_id is not None
+    if (not inputs["codes"] or inputs["basis"] != "intraday" or req.snapshot_id is not None
             or all(leaf.type in screener_rankings.RANK_TYPES
                    for leaf in active_conditions(req.conditions, req.expression)) and req.conditions):
         return None, warnings, None, None
@@ -196,6 +200,8 @@ async def _overlay(data_dir, req, inputs, now):
 
 
 async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failures, rank_eval=None):
+    if not inputs["codes"]:
+        return None
     selected = active_conditions(req.conditions, req.expression)
     minutes = [leaf for leaf in selected if getattr(leaf.params, "timeframe", "D").endswith("m")]
     if minutes:
@@ -251,6 +257,8 @@ def _rows(req, inputs, series, events, failures, days, clock):
     labels = {row["code"]: row for row in inputs["labels"]}
     rows = []
     for code, occurrences in by_code.items():
+        if inputs.get("ready_codes") is not None and code not in inputs["ready_codes"]:
+            continue
         if not _matches(tokens, {event.condition_id for event in occurrences}, req.conditions):
             continue
         item = series[code]
@@ -289,8 +297,8 @@ def _rows(req, inputs, series, events, failures, days, clock):
 
 
 async def run_scan(
-    *, data_dir: Path, req: ScanRequest, now: dt.datetime, volume_runtime=None,
-    record=False, replay=None, rank_eval=None
+    *, data_dir: Path, req: ScanRequest, now: dt.datetime, volume_runtime=None, record=False, replay=None,
+    ready_codes: set[str] | None = None, input_snapshot=None, blocked_conditions=None, rank_eval=None,
 ) -> ScreenerResponse:
     now = now.astimezone(KST) if now.tzinfo else now.replace(tzinfo=KST)
     if rank_eval is None:
@@ -298,7 +306,7 @@ async def run_scan(
     screener_rankings.validate_stored_conditions(req, rank_eval)
     if rank_eval and rank_eval.stored:
         now, volume_runtime = rank_eval.cutoff, None
-    pinned = await asyncio.to_thread(store.load_snapshot, data_dir, req.snapshot_id)
+    pinned = input_snapshot or await asyncio.to_thread(store.load_snapshot, data_dir, req.snapshot_id)
     if pinned is None:
         return ScreenerResponse(
             status="ok",
@@ -308,13 +316,23 @@ async def run_scan(
         )
     identity, manifest = pinned
     inputs = await _inputs(data_dir, req, manifest, now, replay, rank_eval)
+    inputs["ready_codes"] = ready_codes
+    available = inputs if ready_codes is None else {**inputs, "codes": [code for code in inputs["codes"]
+                                                                      if code in ready_codes]}
     clock = dt.datetime.fromisoformat(inputs["clock"])
-    overlay, warnings, overlay_at, intraday_failure = await _overlay(data_dir, req, inputs, now)
+    overlay, warnings, overlay_at, intraday_failure = await _overlay(data_dir, req, available, now)
     fallback_clock = _eod_clock(now, inputs["confirmed_at"]) if inputs["basis"] == "intraday" else None
     series, events, failures = await asyncio.to_thread(
-        calendar_evaluate, data_dir, req, pinned, inputs["codes"], clock, overlay, fallback_clock
+        calendar_evaluate, data_dir, req, pinned, available["codes"], clock, overlay, fallback_clock, blocked_conditions
     )
-    depth = await _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failures, rank_eval)
+    blocked_by_code = {}
+    for (code, condition), reason in (blocked_conditions or {}).items():
+        blocked_by_code.setdefault(code, []).append((condition, reason))
+    for code in set(inputs["codes"]) - set(available["codes"]):
+        reasons = blocked_by_code.get(code, [])
+        failures.extend(BarVolumeCoverageItem(code=code, condition_id=condition, reason=reason)
+                        for condition, reason in reasons or [("preparation", "daily_preparation_pending")])
+    depth = await _auxiliary(data_dir, req, available, now, volume_runtime, events, failures, rank_eval)
     events.update(rank_eval.events if rank_eval else {})
     days = [dt.datetime.strptime(day, "%Y%m%d").date() for day in store.snapshot_calendar(data_dir, manifest)]
     rows = await asyncio.to_thread(_rows, req, inputs, series, events, failures, days, clock)

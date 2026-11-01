@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 from hoga.api import screener_history_coverage as coverage, screener_universe, symbols
 from hoga.api.models import HistoryCoverage, HistoryJob, ScanRequest
 from hoga.api.screener_calendar import completed_day
+from hoga.api.screener_daily_requests import page_key
 from hoga.api.screener_expression import active_conditions
 from hoga.api.screener_history_state import ACTIVE_STATUSES, JobCheckpoint, create_job
 from hoga.api.screener_history_storage import DailyPair, commit_verified, recover_publication, verified_factors
@@ -136,7 +137,7 @@ async def fetch_pair(
         def run_page(fetch_fn, page_idx, adjusted=adjust):
             return kiwoom_access.run_with_capacity(
                 scheduler,
-                key=("screener-history", code, adjusted, page_idx),
+                key=page_key(fetch_fn, ("screener-history", code, adjusted, page_idx)),
                 api_id=kiwoom_daily_candles.API_ID,
                 priority="background",
                 client=client,
@@ -227,12 +228,12 @@ async def flush_batch(data_dir: Path, job: HistoryJob, pending: list[DailyPair],
     _save(data_dir, job)
 
 
-async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
+async def run_job(data_dir: Path, job: HistoryJob, fetch=None):
     if job.request.calculation_policy == "separate_bases_v2":
         from hoga.api.screener_series_jobs import run_job as run_series_job  # noqa: PLC0415
 
         return await run_series_job(data_dir, job)
-    return await _run_legacy_job(data_dir, job, fetch)
+    return await _run_legacy_job(data_dir, job, fetch or fetch_pair)
 
 
 async def _run_legacy_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
@@ -303,6 +304,29 @@ async def _run_legacy_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
         _save(data_dir, job)
 
 
+async def ensure_job(data_dir: Path, req: ScanRequest) -> HistoryJob:
+    """Share admission between explicit collection and automatic searches."""
+    key = str(data_dir)
+    async with _gates.setdefault(key, asyncio.Lock()):
+        if key in _stopping:
+            raise HTTPException(503, "서버 종료 중입니다")
+        active = load_job(data_dir)
+        if active and active.status in ACTIVE_STATUSES:
+            if active.request != req:
+                raise HTTPException(409, "다른 과거 일봉 수집이 진행 중입니다")
+            return active
+        await asyncio.to_thread(preview, data_dir, req)
+        codes = (
+            active.codes
+            if active and active.status == "interrupted" and active.request == req
+            else await asyncio.to_thread(selected_codes, data_dir, req)
+        )
+        job = create_job(req, codes)
+        _save(data_dir, job)
+        _tasks[key] = asyncio.create_task(run_job(data_dir, job))
+        return job
+
+
 def build_router(data_dir: Path):
     _stopping.discard(str(data_dir))
     router = APIRouter(prefix="/history")
@@ -320,25 +344,10 @@ def build_router(data_dir: Path):
 
     @router.post("/jobs")
     async def create(req: ScanRequest) -> HistoryJob:
-        key = str(data_dir)
-        async with _gates.setdefault(key, asyncio.Lock()):
-            if key in _stopping:
-                raise HTTPException(503, "서버 종료 중입니다")
-            active = load_job(data_dir)
-            if active and active.status in ACTIVE_STATUSES:
-                if active.request != req:
-                    raise HTTPException(409, "다른 과거 일봉 수집이 진행 중입니다")
-                return active
-            await history_preview(req)
-            codes = (
-                active.codes
-                if active and active.status == "interrupted" and active.request == req
-                else await asyncio.to_thread(selected_codes, data_dir, req)
-            )
-            job = create_job(req, codes)
-            _save(data_dir, job)
-            _tasks[key] = asyncio.create_task(run_job(data_dir, job))
-            return job
+        try:
+            return await ensure_job(data_dir, req)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @router.get("/jobs/{job_id}")
     async def get(job_id: str) -> HistoryJob:
