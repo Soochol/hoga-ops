@@ -6,6 +6,7 @@ import { INDICATOR_LINE_KEYS } from '../../state/indicatorLineVisibility';
 import type { SettingsSnapshot } from '../settings/useSettingsUndo';
 import type { CategoryId } from './IndicatorPanelHelpers';
 import type { PanePrefKey } from './indicatorPaneProfiles';
+import { VOLUME_OVERLAY_PREF_KEYS, type VolumeOverlayPrefs } from '../../state/chartDisplayPrefs';
 
 export const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
   volume: 'volumeEnabled', 'trade-value': 'tradeValueEnabled', 'quote-totals': 'quoteTotalsEnabled',
@@ -33,8 +34,11 @@ export function indicatorIsPresent(id: CategoryId, settings: IndicatorSettings):
 }
 
 /** One ephemeral store per category, owned by the open dialog, never persisted. */
-export function createCatalogDraft(id: CategoryId, base: IndicatorSettings, basePrefs: ChartViewPrefs) {
-  const store = createStore(() => ({ settings: base, prefs: basePrefs }));
+export function createCatalogDraft(id: CategoryId, base: IndicatorSettings, basePrefs: ChartViewPrefs, volumeOverlay?: VolumeOverlayPrefs) {
+  const store = createStore(() => ({ settings: base, prefs: basePrefs, volumeOverlay }));
+  const patchVolumeOverlay = (patch: Partial<VolumeOverlayPrefs>) => store.setState(s => (
+    s.volumeOverlay ? { volumeOverlay: { ...s.volumeOverlay, ...patch } } : {}
+  ));
   const patch = (changes: Partial<IndicatorSettings>) => store.setState(s => ({ settings: { ...s.settings, ...changes } }));
   const actions = bindIndicatorOps(() => store.getState().settings, patch);
   const paneKey = PANE_CATEGORY_TO_KEY[id];
@@ -65,7 +69,7 @@ export function createCatalogDraft(id: CategoryId, base: IndicatorSettings, base
   const resetPrefs = () => store.setState(s => ({ prefs: { ...s.prefs,
     ...Object.fromEntries(INDICATOR_MODAL_PREF_KEYS.map(key => [key, DEFAULT_PREFS[key]])),
   } }));
-  return { base, basePrefs, store, actions, setPref, resetPrefs };
+  return { base, basePrefs, baseVolumeOverlay: volumeOverlay, store, actions, setPref, resetPrefs, patchVolumeOverlay };
 }
 export type CatalogDraft = ReturnType<typeof createCatalogDraft>;
 
@@ -73,7 +77,7 @@ export type CatalogDraft = ReturnType<typeof createCatalogDraft>;
 const same = (a: unknown, b: unknown) => Object.is(a, b) || JSON.stringify(a) === JSON.stringify(b);
 /** Apply only this draft's edits, preserving unrelated changes made while it was open. */
 export function catalogDraftPatch(draft: CatalogDraft, current: SettingsSnapshot): SettingsSnapshot {
-  const { settings, prefs } = draft.store.getState();
+  const { settings, prefs, volumeOverlay } = draft.store.getState();
   const patch: SettingsSnapshot = {};
   for (const key of INDICATOR_SETTING_KEYS) {
     if (same(draft.base[key], settings[key])) continue;
@@ -88,5 +92,8 @@ export function catalogDraftPatch(draft: CatalogDraft, current: SettingsSnapshot
     } else patch[`indicator:${key}`] = settings[key];
   }
   for (const key of INDICATOR_MODAL_PREF_KEYS) if (!same(draft.basePrefs[key], prefs[key])) patch[`pref:${key}`] = prefs[key];
+  if (volumeOverlay && draft.baseVolumeOverlay) for (const key of VOLUME_OVERLAY_PREF_KEYS) {
+    if (!same(draft.baseVolumeOverlay[key], volumeOverlay[key])) patch[`display:${key}`] = volumeOverlay[key];
+  }
   return patch;
 }
