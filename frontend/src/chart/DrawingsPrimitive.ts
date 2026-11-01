@@ -80,6 +80,7 @@ export type DrawingsSnapshot = {
   /** In-flight creation gestures. Live on refs in the overlay, so they change
    *  without a React render — hence the pull-based source below. */
   drafts: {
+    analysis?: Drawing | null;
     trendline: TrendlineDraft | null;
     rect: RectDraft | null;
     measure: MeasureDraft | null;
@@ -188,6 +189,7 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
         });
       }
 
+      if (snap.drafts.analysis?.paneId === paneId) renderDrawing(c, ctx, snap.drafts.analysis, false);
       const { trendline, rect, measure, pencil } = snap.drafts;
       if (trendline?.b && trendline.paneId === paneId) {
         renderTrendlineDraft(c, ctx, trendline, snap.draftStyles.trendline);
@@ -250,7 +252,7 @@ class DrawingsPriceAxisRenderer implements IPrimitivePaneRenderer {
 
     const paneId = this._source.paneId();
     const hlines = snap.drawings.filter(
-      (d): d is Hline => d.kind === 'hline' && d.paneId === paneId,
+      (d): d is Hline => d.kind === 'hline' && !d.hidden && d.paneId === paneId,
     );
     if (hlines.length === 0) return;
 

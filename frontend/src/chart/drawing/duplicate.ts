@@ -18,10 +18,12 @@ export function refCoords(d: Drawing): { realMs: number | null; price: number | 
       return { realMs: null, price: d.price };
     case 'vline':
       return { realMs: d.realMs, price: null };
+    case 'fib': case 'channel': case 'long-position': case 'short-position':
     case 'trendline':
     case 'rect':
     case 'measure':
       return { realMs: d.a.realMs, price: d.a.price };
+    case 'hray':
     case 'text':
       return { realMs: d.at.realMs, price: d.at.price };
     case 'pencil':

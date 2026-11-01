@@ -9,6 +9,7 @@
 type AnyRef = { current: unknown };
 
 export type GestureRefs = {
+  analysisDraft?: AnyRef;
   trendlineDraft: AnyRef;
   pencilDraft: AnyRef;
   rectDraft: AnyRef;
@@ -34,6 +35,7 @@ export function resetGestureRefs(
   refs: GestureRefs,
   opts: GestureResetOptions = {},
 ): { marqueeCleared: boolean } {
+  if (refs.analysisDraft) refs.analysisDraft.current = null;
   refs.trendlineDraft.current = null;
   refs.pencilDraft.current = null;
   refs.rectDraft.current = null;

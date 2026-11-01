@@ -21,8 +21,8 @@ describe('DrawingMenu', () => {
     await openMenu();
 
     const menu = screen.getByTestId('drawing-menu');
-    for (const label of ['선택', '수평선', '일자 고점 수평선', '일자 저점 수평선', '일자 시가 수평선', '일자 종가 수평선', '수직선', '추세선', '사각형', '측정자', '텍스트', '연필', '지우개']) {
-      expect(within(menu).getByRole('menuitemradio', { name: new RegExp(`^${label}`) })).toBeInTheDocument();
+    for (const label of ['수평 레이', '피보나치 되돌림', '평행 채널', '롱 포지션', '숏 포지션', '선택', '수평선', '일자 고점 수평선', '일자 저점 수평선', '일자 시가 수평선', '일자 종가 수평선', '수직선', '추세선', '사각형', '측정자', '텍스트', '연필', '지우개']) {
+      expect(within(menu).getByRole('button', { name: label })).toBeInTheDocument();
     }
     expect(within(menu).queryByRole('menuitemcheckbox', { name: /자석/ })).not.toBeInTheDocument();
     expect(within(menu).getByTestId('drawing-menu-clear')).toBeInTheDocument();
@@ -31,10 +31,10 @@ describe('DrawingMenu', () => {
   it('shows Shift+E for horizontal lines and Alt+E for eraser', async () => {
     render(<DrawingMenu code={CODE} timeframe={TF} />);
     await openMenu();
-    const hline = screen.getByRole('menuitemradio', { name: /^수평선/ });
+    const hline = screen.getByRole('button', { name: '수평선' });
     expect(hline).toHaveTextContent('⇧E');
     expect(hline).toHaveAttribute('aria-keyshortcuts', 'Shift+E');
-    expect(screen.getByRole('menuitemradio', { name: /지우개/ })).toHaveAttribute('aria-keyshortcuts', 'Alt+E');
+    expect(screen.getByRole('button', { name: '지우개' })).toHaveAttribute('aria-keyshortcuts', 'Alt+E');
     expect(screen.queryByText('⌥H')).not.toBeInTheDocument();
   });
 
@@ -45,7 +45,7 @@ describe('DrawingMenu', () => {
     expect(screen.getByTestId('drawing-menu-trigger')).toHaveTextContent('그리기');
 
     await openMenu();
-    await userEvent.click(screen.getByRole('menuitemradio', { name: /연필/ }));
+    await userEvent.click(screen.getByRole('button', { name: '연필' }));
 
     const trigger = screen.getByTestId('drawing-menu-trigger');
     expect(trigger).toHaveTextContent('연필');
@@ -58,7 +58,7 @@ describe('DrawingMenu', () => {
     render(<DrawingMenu code={CODE} timeframe={TF} />);
 
     await openMenu();
-    await userEvent.click(screen.getByRole('menuitemradio', { name: /선택/ }));
+    await userEvent.click(screen.getByRole('button', { name: '선택' }));
 
     expect(useDrawingsStore.getState().activeTool).toBe('select');
     expect(screen.getByTestId('drawing-menu-trigger')).toHaveTextContent('그리기');
@@ -169,5 +169,40 @@ describe('DrawingMenu', () => {
       await openMenu();
       expect(screen.getByTestId('drawing-menu-lock-all')).not.toHaveTextContent('/');
     });
+  });
+});
+
+describe('quick drawing workflow', () => {
+  beforeEach(() => useDrawingsStore.getState().__resetForTests());
+  it('search and favorite changes keep the portal open; choosing a tool closes it', async () => {
+    render(<DrawingMenu code={CODE} timeframe={TF} />);await openMenu();
+    await userEvent.type(screen.getByLabelText('그리기 도구 검색'), '롱');
+    expect(screen.queryByRole('button', { name: '추세선' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '롱 포지션 즐겨찾기' }));
+    expect(screen.getByTestId('drawing-menu')).toBeInTheDocument();
+    expect(useDrawingsStore.getState().defaults.favorites).toContain('long-position');
+    await userEvent.click(screen.getByRole('button', { name: '롱 포지션' }));
+    expect(screen.queryByTestId('drawing-menu')).not.toBeInTheDocument();
+    expect(useDrawingsStore.getState().activeTool).toBe('long-position');
+  });
+  it('Escape returns focus to the trigger and repeat mode is a sticky preference', async () => {
+    render(<DrawingMenu code={CODE} timeframe={TF} />);await openMenu();
+    await userEvent.click(screen.getByRole('checkbox', { name: '연속 그리기' }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByTestId('drawing-menu-trigger')).toHaveFocus();
+    await openMenu();expect(screen.getByRole('checkbox', { name: '연속 그리기' })).toBeChecked();
+  });
+  it('list visibility and lock actions affect only the current scope', async () => {
+    const scope=drawingScopeFor(CODE,TF)!;
+    useDrawingsStore.getState().add(scope,{id:'list',kind:'hray',name:'전고점',at:{realMs:1,price:100},paneId:'candle',color:'#14B8A6',width:2,lineStyle:'solid'});
+    render(<DrawingMenu code={CODE} timeframe={TF} />);await openMenu();
+    await userEvent.click(screen.getByRole('button', {name:'그리기 목록 1'}));
+    await userEvent.click(screen.getByRole('button', {name:'전고점 숨기기'}));
+    expect(useDrawingsStore.getState().drawingsFor(scope)[0].hidden).toBe(true);
+    await userEvent.click(screen.getByRole('button', {name:'전고점 잠금'}));
+    expect(screen.getByRole('button', {name:'전고점 표시'})).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', {name:'전고점 잠금 해제'}));
+    await userEvent.click(screen.getByRole('button', {name:'전고점 표시'}));
+    expect(useDrawingsStore.getState().drawingsFor(scope)[0].hidden).toBe(false);
   });
 });

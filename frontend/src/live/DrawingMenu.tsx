@@ -1,221 +1,129 @@
 import { AppIcon } from '../ui/AppIcon';
 import { DrawingToolIcon } from './DrawingToolIcon';
-/**
- * DrawingMenu — 그리기 도구 진입로 (지도 #758 / 티켓 #760·#761).
- *
- * 차트 왼쪽 44px 상시 레일(`LiveDrawingRail`)을 대체한다. 레일은 안 쓸 때도
- * 폭을 점유했고, 그 44px 은 차트가 늘 손해보는 고정비였다. 트리거 버튼 하나로
- * 접고 메뉴로 펼치면 평시 폭이 차트로 돌아온다.
- *
- * **트리거 = 상태 표시기 겸용**(#760 결정 4). 레일이 있을 땐 눌린 도구 버튼이
- * 활성 표시였는데, 레일을 없애면 그 표시가 사라진다 — 연필을 골라둔 걸 잊고
- * 차트를 클릭하면 의도 없는 선이 그려지고, Alt 단축키는 메뉴를 안 거치고도
- * 도구를 켜므로(`DrawingOverlay` 의 window keydown) "보이지 않는 모드" 가 된다.
- * 그래서 도구가 켜져 있으면 트리거가 그 도구의 글리프·이름으로 변신하고
- * 봉 버튼과 같은 활성 문법(tint-selection + accent)을 입는다.
- *
- * 해제 경로 3개: 메뉴 첫 항목 '선택' · Escape(`DrawingOverlay` 가 이미 처리) ·
- * 트리거 재클릭 후 '선택'. 일반 도구는 바꿀 때까지 유지하고, 일자 고점·저점·시가·종가는 한 번 그리면 선택으로 돌아간다.
- * Escape 와 우클릭은 **같은 하나의 출구**다 — 한 번에 도구와 선택을 함께 푼다
- * (`useDrawingsStore.exitDrawingMode`).
- *
- * `code`/`timeframe` 은 조작할 드로잉 scope 를 정한다 — 레일과 같은 props 계약.
- * 셸을 마운트하는 쪽(/live 차트 창 · /study)이 이미 둘 다 들고 있고, 훅으로
- * 전역 활성 종목을 읽으면 /study 처럼 Provider 밖인 화면에서 엉뚱한 대상에
- * 걸린다(레일이 props 화된 것과 같은 이유).
- */
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TooltipButton } from '../ui/TextTooltip';
-import { DRAWABLE_TOOLS_ORDER, TOOLS, shortcutLabel } from '../chart/drawing/tools';
+import { TOOLS, shortcutLabel } from '../chart/drawing/tools';
 import type { DrawingTool } from '../chart/drawing/types';
-import { drawingScopeFor, useDrawingsStore } from '../state/drawings';
+import { drawingScopeFor, EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import type { LiveTimeframe } from '../state/livePage';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { COMPACT_PADDING_INLINE } from './workspace/chartHeaderCompact';
+import './DrawingMenu.css';
 
-/** 메뉴 표시 순서 — '선택'(해제)이 먼저, 그 뒤로 실제 그리기 도구들. */
-const MENU_TOOLS: readonly DrawingTool[] = ['select', ...DRAWABLE_TOOLS_ORDER];
+const EMPTY_DRAWINGS: never[] = [];
+const DEFAULT_FAVORITES: DrawingTool[] = ['hray', 'trendline', 'fib'];
+const GROUPS: { label: string; tools: DrawingTool[] }[] = [
+  { label: '선 · 채널', tools: ['select', 'hline', 'hray', 'vline', 'trendline', 'channel'] },
+  { label: '피보나치', tools: ['fib'] },
+  { label: '포지션 · 측정', tools: ['long-position', 'short-position', 'measure'] },
+  { label: '일자 기준선', tools: ['day-high', 'day-low', 'day-open', 'day-close'] },
+  { label: '도형 · 메모', tools: ['rect', 'text', 'pencil', 'eraser'] },
+];
 
-type Props = {
-  code: string | null;
-  timeframe: LiveTimeframe;
-  /** false 면 아이콘만 — 헤더가 좁을 때 라벨을 접는다(#762 접힘 정책). */
-  showLabel?: boolean;
-};
-
-function itemClass(active: boolean): string {
-  return [
-    'flex w-full items-center gap-2.5 px-3 py-[7px] text-left text-sm transition-colors',
-    active
-      ? 'bg-tint-selection text-accent'
-      : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg',
-  ].join(' ');
-}
+type Props = { code: string | null; timeframe: LiveTimeframe; showLabel?: boolean };
 
 export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<'tools' | 'objects'>('tools');
+  const [query, setQuery] = useState('');
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-
   const scope = drawingScopeFor(code, timeframe);
-  const activeTool = useDrawingsStore((state) => state.activeTool);
-  const setActiveTool = useDrawingsStore((state) => state.setActiveTool);
-  const requestClearAll = useDrawingsStore((state) => state.requestClearAll);
-  const setLockedAll = useDrawingsStore((state) => state.setLockedAll);
-  // 항목 라벨이 **다음에 할 일**을 말해야 하므로 개수가 아니라 상태를 센다.
-  // 하나라도 안 잠겼으면 다음 동작은 '모두 잠금', 전부 잠겼으면 '모두 해제'.
-  //
-  // 원시값 두 개로 나눠 뽑는다 — `{total, locked}` 객체를 돌려주면 셀렉터가 매번
-  // 새 참조를 내고 zustand 의 기본 비교(Object.is)가 늘 불일치라, 스토어의 **아무**
-  // 변화에나 이 메뉴가 리렌더된다.
-  const drawingCount = useDrawingsStore(
-    (state) => (scope == null ? 0 : (state.byScope.get(scope) ?? []).length),
-  );
-  const lockedCount = useDrawingsStore((state) => {
-    if (scope == null) return 0;
-    let n = 0;
-    for (const d of state.byScope.get(scope) ?? []) if (d.locked === true) n += 1;
-    return n;
-  });
-  const allLocked = drawingCount > 0 && lockedCount === drawingCount;
-  const canLockToggle = scope != null && drawingCount > 0;
-
+  const activeTool = useDrawingsStore(s => s.activeTool);
+  const favorites = useDrawingsStore(s => s.defaults.favorites ?? DEFAULT_FAVORITES);
+  const keepDrawing = useDrawingsStore(s => s.defaults.keepDrawing === true);
+  const drawings = useDrawingsStore(s => scope ? s.byScope.get(scope) ?? EMPTY_DRAWINGS : EMPTY_DRAWINGS);
+  const selected = useDrawingsStore(s => scope ? s.selectedByScope.get(scope) ?? EMPTY_SELECTION : EMPTY_SELECTION);
+  const { ref: menuRef, left, top } = useClampedFixedPosition<HTMLDivElement>(anchorRect?.left ?? 0, anchorRect ? anchorRect.bottom + 4 : 0);
   const close = useCallback(() => setOpen(false), []);
-  useDismissablePopover(open, wrapRef, close);
-  const { ref: menuPositionRef, left, top } = useClampedFixedPosition<HTMLDivElement>(
-    anchorRect?.left ?? 0,
-    anchorRect ? anchorRect.bottom + 4 : 0,
-  );
-
-  const drawing = activeTool !== 'select';
+  const escape = useCallback(() => { setOpen(false); buttonRef.current?.focus(); }, []);
+  useDismissablePopover(open, wrapRef, close, menuRef, escape);
+  const lockedCount = drawings.filter(d => d.locked).length;
+  const allLocked = drawings.length > 0 && lockedCount === drawings.length;
   const activeSpec = TOOLS[activeTool];
-
+  const drawing = activeTool !== 'select';
   const pickTool = (tool: DrawingTool) => {
-    setActiveTool(tool);
-    setOpen(false);
+    const store = useDrawingsStore.getState();
+    if (tool !== 'select') store.clearAllSelections();
+    store.setActiveTool(tool); setQuery(''); setOpen(false); buttonRef.current?.focus();
   };
-
-  const menu = open && anchorRect ? (
-    <div
-      ref={menuPositionRef}
-      role="menu"
-      aria-label="그리기 도구"
-      data-testid="drawing-menu"
-      onMouseDown={(event) => event.stopPropagation()}
-      className="z-50 w-[240px] rounded-lg border border-border bg-bg-card py-1 shadow-overlay"
-      style={{ position: 'fixed', left, top }}
-    >
-      {MENU_TOOLS.map((tool) => {
-        const spec = TOOLS[tool];
-        const active = activeTool === tool;
-        return (
-          <button
-            key={tool}
-            type="button"
-            role="menuitemradio"
-            aria-checked={active}
-            aria-keyshortcuts={spec.shortcut ? `${spec.shortcut.alt ? 'Alt' : 'Shift'}+${spec.shortcut.key.toUpperCase()}` : undefined}
-            onClick={() => pickTool(tool)}
-            className={itemClass(active)}
-          >
-            <DrawingToolIcon tool={tool} size={16} />
-            <span>{spec.label}</span>
-            {spec.shortcut && (
-              <span className="ml-auto font-data text-2xs text-fg-dim">
-                {shortcutLabel(spec.shortcut)}
-              </span>
-            )}
-          </button>
-        );
-      })}
-
-      <div className="my-1 border-t border-border" />
-      {/* 잠금 일괄 토글. 두 항목(잠금/해제)으로 나누지 않는 이유는 둘 중 하나가
-          항상 아무 일도 안 하는 죽은 항목이 되기 때문이다 — 라벨이 다음에 할 일을
-          말하면 그 모호함이 없다. 스토어가 **한 번의 되돌리기**로 묶는다(ADR-0164). */}
-      <button
-        type="button"
-        role="menuitem"
-        data-testid="drawing-menu-lock-all"
-        disabled={!canLockToggle}
-        onClick={() => {
-          if (canLockToggle) setLockedAll(scope, !allLocked);
-          setOpen(false);
-        }}
-        className={`${itemClass(false)} disabled:cursor-not-allowed disabled:opacity-40`}
-      >
-        <AppIcon name={allLocked ? 'unlock' : 'lock'} size={16} />
-        <span>{allLocked ? '모두 잠금 해제' : '모두 잠금'}</span>
-        {/* 부분 잠금일 때만 개수를 붙인다 — 0/N 과 N/N 은 라벨이 이미 말한다. */}
-        {lockedCount > 0 && !allLocked && (
-          <span className="ml-auto font-data text-2xs text-fg-dim">
-            {lockedCount}/{drawingCount}
-          </span>
-        )}
-      </button>
-
-      <div className="my-1 border-t border-border" />
-      {/* #761 은 확인 단계를 생략했다 — 실행취소 토스트와 Ctrl+Z 가 있으니
-          되돌리기가 한 동작이라는 근거였다. Alt+C 가 붙으면서 그 근거가 약해져
-          확인 팝업을 되살렸다: 단축키는 오타 한 번으로 발화하고, 그때 메뉴가
-          열려 있지도 않아 "방금 뭘 눌렀는지" 단서가 없다. 팝업은 오작동을,
-          토스트는 오확인을 막는다(둘 다 유지).
-
-          실제 삭제는 여기서 하지 않는다 — `requestClearAll` 이 스토어에 확인
-          요청만 남기고 `DrawingClearConfirmHost` 가 팝업을 띄운다. 단축키와
-          이 항목이 같은 게이트를 통과하게 만드는 유일한 배선이다. */}
-      <button
-        type="button"
-        role="menuitem"
-        data-testid="drawing-menu-clear"
-        disabled={scope == null}
-        onClick={() => {
-          if (scope != null) requestClearAll(scope);
-          setOpen(false);
-        }}
-        className={`${itemClass(false)} disabled:cursor-not-allowed disabled:opacity-40`}
-      >
-        <AppIcon name="close" size={16} />
-        <span>모두 지우기</span>
-        <span className="ml-auto font-data text-2xs text-fg-dim">⌥C</span>
-      </button>
+  const toolButton = (tool: DrawingTool, favorite = false) => {
+    const spec = TOOLS[tool];
+    return <button type="button" key={tool} aria-pressed={activeTool === tool}
+      aria-label={favorite ? `${spec.label} 즐겨찾기 실행` : spec.label}
+      aria-keyshortcuts={spec.shortcut ? `${spec.shortcut.alt ? 'Alt' : 'Shift'}+${spec.shortcut.key.toUpperCase()}` : undefined}
+      className={favorite ? 'drawing-favorite' : 'drawing-tool-choice'} onClick={() => pickTool(tool)}>
+      <DrawingToolIcon tool={tool} size={16} /><span>{spec.label}</span>
+      {!favorite && spec.shortcut && <kbd>{shortcutLabel(spec.shortcut)}</kbd>}
+    </button>;
+  };
+  const filtered = GROUPS.map(group => ({ ...group, tools: group.tools.filter(tool => TOOLS[tool].label.includes(query.trim())) })).filter(g => g.tools.length);
+  const menu = open && anchorRect ? <div ref={menuRef} role="dialog" aria-label="그리기 도구"
+    data-testid="drawing-menu" className="drawing-quick-menu" style={{ position: 'fixed', left, top }}
+    onKeyDown={event => {
+      if (event.key === 'Escape') { event.stopPropagation(); escape(); }
+    }} onMouseDown={e => e.stopPropagation()}>
+    <div className="drawing-menu-heading"><strong>그리기</strong><span>{code ?? '종목 미선택'} · {timeframe}</span>
+      <button type="button" aria-label="그리기 메뉴 닫기" onClick={escape}><AppIcon name="close" /></button></div>
+    <div className="drawing-menu-tabs">
+      <button type="button" aria-pressed={tab === 'tools'} onClick={() => { setTab('tools'); setQuery(''); }}>도구</button>
+      <button type="button" aria-pressed={tab === 'objects'} onClick={() => { setTab('objects'); setQuery(''); }}>그리기 목록 {drawings.length}</button>
     </div>
-  ) : null;
-
-  return (
-    <div ref={wrapRef} className="relative shrink-0">
-      <TooltipButton
-        ref={buttonRef}
-        type="button"
-        data-testid="drawing-menu-trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={drawing ? `그리기: ${activeSpec.label}` : '그리기'}
-        title={drawing ? `그리기: ${activeSpec.label} — Esc로 해제` : '그리기'}
-        onClick={() => {
-          setAnchorRect(buttonRef.current?.getBoundingClientRect() ?? null);
-          setOpen((prev) => !prev);
-        }}
-        className="inline-flex min-h-6 items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
-        style={{
-          // 테두리 없는 ghost — 비활성은 투명, 활성 도구가 있을 때만 강조
-          // (봉 컨트롤과 같은 문법, 2026-07-15 결정).
-          background: drawing ? 'var(--tint-selection)' : 'transparent',
-          color: drawing ? 'var(--accent)' : 'var(--fg-dim)',
-          // 아이콘만 남을 때 좌우 여백은 순수 낭비다 — 좁혀야 완전 접힘이
-          // MIN_W(160px)에 들어간다(#762 후속 실측). 인라인이라 클래스 px-2 를 이긴다.
-          paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE,
-        }}
-      >
-        <DrawingToolIcon tool={drawing ? activeTool : 'pencil'} />
-        {showLabel && <span className="live-action-label">{drawing ? activeSpec.label : '그리기'}</span>}
-      </TooltipButton>
-      {menu && createPortal(menu, document.body)}
+    <label className="drawing-menu-search"><AppIcon name="search" /><input type="search" autoFocus
+      aria-label={tab === 'tools' ? '그리기 도구 검색' : '그리기 목록 검색'} value={query}
+      placeholder={tab === 'tools' ? '도구 검색' : '이름 · 도구 검색'} onChange={e => setQuery(e.target.value)} /></label>
+    <div className="drawing-menu-content">
+      {tab === 'tools' ? <>
+        {!query && favorites.length > 0 && <div className="drawing-favorites" aria-label="즐겨찾기 도구">{favorites.map(t => toolButton(t, true))}</div>}
+        {filtered.map(group => <section key={group.label} aria-label={group.label}>
+          <h3>{group.label}</h3>
+          {group.tools.map(tool => <div className="drawing-tool-row" key={tool}>
+            {toolButton(tool)}
+            {tool !== 'select' && <button type="button" className="drawing-star" aria-label={`${TOOLS[tool].label} 즐겨찾기`}
+              aria-pressed={favorites.includes(tool)} onClick={() => useDrawingsStore.getState().setDefaults({ favorites: favorites.includes(tool) ? favorites.filter(t => t !== tool) : [...favorites, tool] })}>
+              <AppIcon name="star" filled={favorites.includes(tool)} /></button>}
+          </div>)}
+        </section>)}
+        {filtered.length === 0 && <p className="drawing-menu-empty">일치하는 도구가 없습니다.</p>}
+      </> : <>
+        {drawings.filter(d => `${d.name ?? ''} ${TOOLS[d.kind].label}`.includes(query.trim())).map(d => <div key={d.id} className="drawing-object-row">
+          <button type="button" className="drawing-object-name" aria-pressed={selected.includes(d.id)} onClick={() => {
+            const store = useDrawingsStore.getState(); store.setActiveTool('select');
+            if (scope) store.setSelected(scope, d.id); setOpen(false);
+          }}><DrawingToolIcon tool={d.kind} /><span>{d.name || TOOLS[d.kind].label}</span></button>
+          <button type="button" disabled={d.locked} aria-label={`${d.name || TOOLS[d.kind].label} ${d.hidden ? '표시' : '숨기기'}`}
+            onClick={() => { if (scope) useDrawingsStore.getState().update(scope, d.id, { hidden: !d.hidden }); }}><AppIcon name={d.hidden ? 'eyeOff' : 'eye'} /></button>
+          <button type="button" aria-label={`${d.name || TOOLS[d.kind].label} ${d.locked ? '잠금 해제' : '잠금'}`}
+            onClick={() => { if (scope) useDrawingsStore.getState().update(scope, d.id, { locked: !d.locked }); }}><AppIcon name={d.locked ? 'lock' : 'unlock'} /></button>
+          <button type="button" disabled={d.locked} aria-label={`${d.name || TOOLS[d.kind].label} 삭제`}
+            onClick={() => { if (scope) useDrawingsStore.getState().remove(scope, d.id); }}><AppIcon name="trash" /></button>
+        </div>)}
+        {drawings.length === 0 && <p className="drawing-menu-empty">이 종목·봉 범위에 그리기가 없습니다.</p>}
+      </>}
     </div>
-  );
+    <div className="drawing-menu-footer"><label><input type="checkbox" checked={keepDrawing}
+      onChange={e => useDrawingsStore.getState().setDefaults({ keepDrawing: e.target.checked })} />연속 그리기</label><span>Esc로 선택 모드</span></div>
+    <div className="drawing-menu-actions">
+      <button type="button" data-testid="drawing-menu-lock-all" disabled={!scope || !drawings.length} onClick={() => {
+        if (scope) useDrawingsStore.getState().setLockedAll(scope, !allLocked); setOpen(false);
+      }}><AppIcon name={allLocked ? 'unlock' : 'lock'} />{allLocked ? '모두 잠금 해제' : '모두 잠금'}{lockedCount > 0 && !allLocked && <span>{lockedCount}/{drawings.length}</span>}</button>
+      <button type="button" data-testid="drawing-menu-clear" disabled={!scope} onClick={() => {
+        if (scope) useDrawingsStore.getState().requestClearAll(scope); setOpen(false);
+      }}><AppIcon name="trash" />모두 지우기 <kbd>⌥C</kbd></button>
+    </div>
+  </div> : null;
+  return <div ref={wrapRef} className="relative shrink-0">
+    <TooltipButton ref={buttonRef} type="button" data-testid="drawing-menu-trigger"
+      aria-haspopup="dialog" aria-expanded={open} aria-label={drawing ? `그리기: ${activeSpec.label}` : '그리기'}
+      title={drawing ? `그리기: ${activeSpec.label} — Esc로 해제` : '그리기'}
+      onClick={() => { setAnchorRect(buttonRef.current?.getBoundingClientRect() ?? null); setQuery(''); setOpen(v => !v); }}
+      className="inline-flex min-h-6 items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
+      style={{ background: drawing ? 'var(--tint-selection)' : 'transparent', color: drawing ? 'var(--accent)' : 'var(--fg-dim)', paddingInline: showLabel ? undefined : COMPACT_PADDING_INLINE }}>
+      <DrawingToolIcon tool={drawing ? activeTool : 'pencil'} />{showLabel && <span className="live-action-label">{drawing ? activeSpec.label : '그리기'}</span>}
+    </TooltipButton>{menu && createPortal(menu, document.body)}
+  </div>;
 }
-
 export default DrawingMenu;
