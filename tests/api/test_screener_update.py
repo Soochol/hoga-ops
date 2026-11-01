@@ -403,14 +403,14 @@ async def test_start_update_spawns_job_and_clears_progress_on_finish(tmp_path: P
     monkeypatch.setattr(_ingest, "run", gated_run_update)
 
     res = await _screener_mod.start_update(tmp_path)
-    assert res == {"running": True, "done": 0, "total": 1}
+    assert res == {"running": True, "done": 0, "total": 1, "automatic": False}
     assert _screener_mod._progress is not None
     assert _screener_mod._progress.total == 1
     await started.wait()  # job 코루틴이 run_update 에 도달할 때까지
 
     # 진행 중 재-POST: 재계획 없이 현재 진행 상태로 join.
     res2 = await _screener_mod.start_update(tmp_path)
-    assert res2 == {"running": True, "done": 0, "total": 1}
+    assert res2 == {"running": True, "done": 0, "total": 1, "automatic": False}
     assert calls == [["005930"]]  # run_update 는 1회만
 
     gate.set()
@@ -433,7 +433,7 @@ def test_status_route_exposes_updating(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(_screener_mod, "_progress", _screener_mod._UpdateProgress(done=3, total=10, started_ms=123))
     with TestClient(app) as client:
         body = client.get("/api/screener/status").json()
-    assert body["updating"] == {"done": 3, "total": 10, "started_ms": 123, "phase": None}
+    assert body["updating"] == {"done": 3, "total": 10, "started_ms": 123, "phase": None, "automatic": None}
 
     monkeypatch.setattr(_screener_mod, "_progress", None)
     with TestClient(app) as client:
@@ -457,7 +457,7 @@ async def test_progress_events_published_per_code_with_terminal_finished(tmp_pat
     monkeypatch.setattr(_ingest, "run", fake_run)
     assert await _screener_mod.trigger_update(tmp_path, bus=bus) == 1
     progress = [e for e in bus.events if e["type"] == "screener_update_progress"]
-    assert progress[0] == {"type": "screener_update_progress", "done": 0, "total": 3}
+    assert progress[0] == {"type": "screener_update_progress", "done": 0, "total": 3, "automatic": True}
     assert [e["done"] for e in progress] == [0, 1, 2, 3]
     assert bus.events[-1] == {"type": "screener_update_finished", "updated": 1, "total": 3, "reason": None}
 
@@ -504,6 +504,10 @@ async def test_concurrent_triggers_join_single_job(tmp_path: Path, monkeypatch):
 
     t1 = asyncio.create_task(_screener_mod.trigger_update(tmp_path))
     await started.wait()
+    # A click joining a scheduled job must keep the original automatic source.
+    joined = await _screener_mod.start_update(tmp_path)
+    assert joined["automatic"] is True
+    assert _screener_mod._progress.automatic is True
     t2 = asyncio.create_task(_screener_mod.trigger_update(tmp_path))
     await asyncio.sleep(0)  # t2: instant_plan → _ensure_job join → shield await
     gate.set()
@@ -558,7 +562,7 @@ async def test_shutdown_update_job_cancels_and_publishes(tmp_path: Path, monkeyp
 
     await _screener_mod.shutdown_update_job()
     assert _screener_mod._progress is None
-    assert bus.events[-1] == {"type": "screener_update_finished", "updated": 0, "total": 1, "reason": "cancelled"}
+    assert bus.events[-1] == {"type": "screener_update_finished", "updated": 0, "total": 1, "reason": "server_shutdown"}
 
 
 # ── wire model 계약 (ADR-0004 · 동결선 배치 4) ────────────────────────────────
@@ -666,7 +670,7 @@ async def test_clicks_and_scheduler_share_preflight_and_never_schedule_deep_repa
     release_plan.set()
     results = await asyncio.gather(*clicks)
     await collecting.wait()
-    assert all(r == {"running": True, "done": 0, "total": 1} for r in results)
+    assert all(r == {"running": True, "done": 0, "total": 1, "automatic": True} for r in results)
     assert len(plans) == len(collections) == 1 and repairs == []
     release_collection.set()
     assert await scheduled == 1 and repairs == []

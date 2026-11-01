@@ -34,6 +34,7 @@ import { hasContinuousVolume } from './continuousClient';
 import { useScreenerStatus } from './useScreenerStatus';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from './useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
+import { ScreenerUpdateFeedbackText } from './ScreenerUpdateFeedbackText';
 import { intradayDegradationText } from './intradayDegradation';
 import { resultLimitText } from './resultLimitText';
 import { QuoteRow } from '../rightrail/QuoteRow';
@@ -486,7 +487,7 @@ export function ScreenerDrawer() {
             tone={visibleFeedback.tone === 'info' ? undefined : visibleFeedback.tone}
             className="p-0"
           >
-            {visibleFeedback.message}
+            <ScreenerUpdateFeedbackText feedback={visibleFeedback} />
           </RailState>
         )}
         {notSeeded && (
@@ -525,7 +526,7 @@ export function ScreenerDrawer() {
             {lastScan.rankBasis && <RailState>{rankingBasisText(lastScan.rankBasis)}</RailState>}
             {lastScan.rankBasis?.source === 'provider' && lastScan.rankBasis.message &&
               <RailState>{lastScan.rankBasis.message}</RailState>}
-            <BarVolumeCoverage coverage={lastScan.barCoverage} />
+            <BarVolumeCoverage coverage={lastScan.barCoverage} hideSummary={!!screener.preparation?.minute_date} />
             {lastScan.dailyCoverage && lastScan.dailyCoverage.complete < lastScan.dailyCoverage.total &&
               <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan.dailyCoverage.total - lastScan.dailyCoverage.complete}종목</div>}
             {limitNotice && <RailState tone="warn">{limitNotice}</RailState>}

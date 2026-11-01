@@ -30,7 +30,7 @@ export function ScreenerUpdateProgress({ updating, daily }: {
       className="inline-flex items-center gap-1.5 font-data text-xs tabular-nums text-fg-dim"
       data-tooltip={updating.phase ? "과거 데이터 복구 진행 상황입니다" : "최근 일봉을 수신해 잠정·확정·충돌 상태를 확인합니다"}
     >
-      {updating.phase ?? '갱신 중'}
+      {updating.phase ?? (updating.automatic === true ? '자동 갱신 중' : updating.automatic === false ? '수동 갱신 중' : '갱신 중')}
       {(updating.total > 0 || !updating.phase) && ` ${done.toLocaleString()}/${updating.total.toLocaleString()}`}
       <span className="relative h-1 w-24 rounded-sm bg-bg-input" aria-hidden>
         <span

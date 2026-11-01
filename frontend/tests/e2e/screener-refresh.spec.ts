@@ -57,8 +57,8 @@ test('ordinary refresh validates recent daily bars, blocks both buttons and pres
   await page.route(apiExact('screener/update'), route => {
     expect(route.request().method()).toBe('POST');
     updates += 1;
-    status = { ...status, updating: { done: 7, total: 40, started_ms: Date.now() } };
-    return route.fulfill({ json: { running: true, done: 7, total: 40 } });
+    status = { ...status, updating: { done: 7, total: 40, started_ms: Date.now(), automatic: false } };
+    return route.fulfill({ json: { running: true, done: 7, total: 40, automatic: false } });
   });
   await page.goto('/screener');
   const update = page.getByRole('button', { name: '데이터 갱신', exact: true });
@@ -67,6 +67,7 @@ test('ordinary refresh validates recent daily bars, blocks both buttons and pres
   await update.click();
   await expect(update).toBeDisabled();
   await expect(repair).toBeDisabled();
+  await expect(update).toHaveAccessibleDescription(/수동 갱신 중 7\/40.*완료 후 갱신 가능/);
   await page.reload();
   await expect(page.getByTestId('screener-update-progress')).toContainText('7/40');
   await expect(update).toBeDisabled();
@@ -87,4 +88,33 @@ test('ordinary refresh validates recent daily bars, blocks both buttons and pres
   await expect(page.getByText(/실패 987종목/)).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('daily-refresh-separated.png'), fullPage: true });
   expect(errors).toEqual([]);
+});
+
+test('scheduled refresh explains disabled actions and restores a dated shutdown result', async ({ page }, testInfo) => {
+  await installLiveMocks(page);
+  const completedMs = Date.parse('2026-11-01T18:33:59+09:00');
+  let status: ScreenerStatus = { status: 'ok', last_raw_date: '20261030',
+    updating: { done: 1700, total: 4412, started_ms: completedMs + 1000, automatic: true },
+    last_refresh: { master_refreshed: false, symbols_added: 0, written_rows: 0, checked: 0,
+      total: 0, failed: 0, unavailable: 0, completed_ms: completedMs, reason: 'cancelled' } };
+  await page.route(apiExact('screener/status'), route => route.fulfill({ json: status }));
+  await page.route(apiExact('screener/saves'), route => route.fulfill({ json: { saves: [] } }));
+  await page.goto('/screener');
+  const update = page.getByRole('button', { name: '데이터 갱신', exact: true });
+  const repair = page.getByRole('button', { name: '과거 데이터 복구', exact: true });
+  await expect(update).toBeDisabled();
+  await expect(repair).toBeDisabled();
+  await expect(update).toHaveAccessibleDescription(/자동 갱신 중 1,700\/4,412.*완료 후 갱신 가능/);
+  await expect(repair).toHaveAccessibleDescription(/자동 갱신 중 1,700\/4,412/);
+  await expect(page.getByText(/갱신 중단됨|종목 목록 갱신 실패/)).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('automatic-progress.png'), fullPage: true });
+
+  status = { ...status, updating: null, last_refresh: { ...status.last_refresh!, reason: 'server_shutdown' } };
+  await page.reload();
+  await expect(update).toBeEnabled();
+  await expect(repair).toBeEnabled();
+  await expect(page.getByText(/지난 갱신 2026-11-01 18:33.*종목 목록 갱신 미완료.*서버 종료로 갱신 중단/)).toBeVisible();
+  await expect(page.locator('time[datetime="2026-11-01T09:33:59.000Z"]')).toBeVisible();
+  await expect(page.getByText(/종목 목록 갱신 실패/)).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('shutdown-result.png'), fullPage: true });
 });

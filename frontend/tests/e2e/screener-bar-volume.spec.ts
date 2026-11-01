@@ -92,7 +92,7 @@ test('open-minute crossing refreshes the page and monitoring drawer before the p
             is_open: true, volume_is_lower_bound: true, fetched_at_ms: Date.now() } }] }] : [] } });
   });
   await page.goto('/screener');
-  await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('5');
+  await expect(page.getByText('1분봉 · 최근 5봉 이내 · 100봉 신고거래량', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect(page.getByText('실시간 감시 12/100종목 · 준비 중 36 · 연결 확인 필요 52')).toBeVisible();
   await expect.poll(() => !!socket).toBe(true);

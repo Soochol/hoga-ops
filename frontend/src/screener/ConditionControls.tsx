@@ -25,5 +25,6 @@ export function ConditionTimeframe({ value, onChange, label = '봉 주기', chil
   return <>
     <Select label={label} caption="주기" value={value} options={TIMEFRAMES} onChange={onChange} />
     {children}
+    {value.endsWith('m') && <p className="text-xs text-fg-dim">당일 분봉만 검색합니다. 주말·휴장일에는 마지막 거래일을 사용하며, 당일 비교 봉이 부족하면 판정을 보류합니다.</p>}
   </>;
 }

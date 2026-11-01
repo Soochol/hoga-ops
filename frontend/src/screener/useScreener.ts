@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { runScan, type ScanRequest, type ScreenerResponse } from '../api/screener';
-import { activeRunId, needsPreparation, preparationKey, runPreparedScan, type ScreenerRun } from '../api/screenerRuns';
+import { activeRunId, needsDailyPreparation, needsPreparation, preparationKey, runPreparedScan, type ScreenerRun } from '../api/screenerRuns';
 import { ContinuousClient, hasContinuousVolume } from './continuousClient';
 
 export const useScreener = ({ continuous = false, anchor = '', request, onProgress }: {
@@ -27,7 +27,8 @@ export const useScreener = ({ continuous = false, anchor = '', request, onProgre
     active.current?.controller.abort();
     const controller = new AbortController();
     const ownAnchor = current.current.anchor;
-    const preparing = needsPreparation(body);
+    const liveVolume = continuous && hasContinuousVolume(body) && !!body.universe.scopes?.length;
+    const preparing = needsPreparation(body) && (!liveVolume || needsDailyPreparation(body));
     active.current = { controller, anchor: ownAnchor, preparing };
     const check = () => {
       controller.signal.throwIfAborted();
@@ -35,7 +36,6 @@ export const useScreener = ({ continuous = false, anchor = '', request, onProgre
         throw new DOMException('검색 조건 변경됨', 'AbortError');
       }
     };
-    const liveVolume = continuous && hasContinuousVolume(body) && !!body.universe.scopes?.length;
     let result: ScreenerResponse;
     if (preparing) {
       result = await runPreparedScan(body, controller.signal, run => {
@@ -44,7 +44,6 @@ export const useScreener = ({ continuous = false, anchor = '', request, onProgre
         if (run.result) current.current.onProgress?.(run.result, body);
       }, activeRunId(body));
       check();
-      // Preparation must retain the existing scoped minute-monitor owner.
       if (liveVolume) result = await client.current!.scan(body);
     } else {
       setPreparation(null);

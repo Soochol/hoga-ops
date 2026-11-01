@@ -10,12 +10,15 @@ import logging
 import re
 import time
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from hoga.api import (
     screener_history_jobs as history,
+    screener_minute_run,
+    screener_minute_scope,
     screener_rankings,
     screener_runner,
     screener_series_store as store,
@@ -131,6 +134,14 @@ class ScreenerRuns:
             raise InterruptedError("종목 범위·달력·제외 목록이 변경되었습니다. 다시 조회해 주세요")
 
     async def _evaluate(self, run, codes, pending, clock):
+        if screener_minute_scope.leaves(run.request) and run.request.snapshot_id is None:
+            scope = await asyncio.to_thread(screener_minute_scope.resolve, self.data_dir, clock)
+            run.minute_date = scope.day.isoformat()
+            with screener_minute_scope.bind(replace(scope, pending=True)):
+                return await self._evaluate_ready(run, codes, pending, clock)
+        return await self._evaluate_ready(run, codes, pending, clock)
+
+    async def _evaluate_ready(self, run, codes, pending, clock):
         if run.request.calculation_policy == "separate_bases_v2":
             pinned = await asyncio.to_thread(store.load_snapshot, self.data_dir, run.request.snapshot_id)
             cache = self.results.setdefault(
@@ -179,8 +190,13 @@ class ScreenerRuns:
         workers = []
         try:
             await self._check(run.request, context, clock)
+            if (screener_minute_scope.leaves(run.request) and not daily_leaves(run.request)
+                    and run.request.snapshot_id is None):
+                await screener_minute_run.execute(self, run, codes, context, clock)
+                return
             if run.request.calculation_policy != "separate_bases_v2":
                 await self._legacy(run, codes, context, clock)
+                await self._finish_minutes(run, codes, context, clock)
                 return
             if not (self.data_dir / "screener/stocks.parquet").exists():
                 raise ValueError("스크리너 기준선 데이터가 없습니다")
@@ -191,6 +207,7 @@ class ScreenerRuns:
             await asyncio.to_thread(self._save, run, codes, context, clock)
             if not pending:
                 run.status = "partial" if run.waiting or run.failed else "complete"
+                await self._finish_minutes(run, codes, context, clock)
                 return
             events = asyncio.Queue()
             iterator = iter(gaps.items())
@@ -201,6 +218,7 @@ class ScreenerRuns:
             await self._check(run.request, context, clock)
             await self._evaluate(run, codes, set(), clock)
             run.status = "partial" if run.waiting or run.failed else "complete"
+            await self._finish_minutes(run, codes, context, clock)
         except asyncio.CancelledError:
             run.status = "interrupted"
             raise
@@ -219,6 +237,10 @@ class ScreenerRuns:
             run.next_retry_at_ms = None
             run.revision += 1
             await history._finish_disk_write(self._save, run, codes, context, clock)
+
+    async def _finish_minutes(self, run, codes, context, clock):
+        if screener_minute_scope.leaves(run.request) and run.request.snapshot_id is None:
+            await screener_minute_run.execute(self, run, codes, context, clock)
 
     async def _worker(self, iterator, clock, events):
         for code, (first, last) in iterator:

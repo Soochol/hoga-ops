@@ -19,6 +19,7 @@ from hoga.api import (
 )
 from hoga.api.models import ScanRequest, ScreenerResponse
 from hoga.api.screener_expression import active_conditions
+from hoga.api.screener_minute_scope import current as minute_scope
 from hoga.collector.orchestrator import now_kst
 from hoga.util.timeenc import KST
 
@@ -42,6 +43,7 @@ async def _run_legacy_scan(
     now: dt.datetime | None = None,
     volume_runtime=None,
     rank_eval=None,
+    codes_override=None,
 ) -> ScreenerResponse:
     sdir = data_dir / "screener"
     if not (sdir / "status.json").exists():
@@ -59,6 +61,8 @@ async def _run_legacy_scan(
     # 미충족과 구분되게 warning 을 붙인다(결과는 자연히 0행).
     scope = await asyncio.to_thread(
         screener_universe.scope_codes, data_dir, req.universe.scopes)
+    if codes_override is not None:
+        scope = set(codes_override) if scope is None else scope & set(codes_override)
     if scope is not None and not scope:
         warnings.append("scope_universe_empty")
 
@@ -132,9 +136,31 @@ async def _run_legacy_scan(
             daily_fallback_codes=set(codes) - live_codes if needs_overlay else None)
         if bar_eval.coverage.incomplete:
             warnings.append("bar_volume_partial")
+    rows = await _matching_rows(data_dir, sdir, req, codes, scope, etf_codes, intraday_rows,
+                                depth_pass, depth_eval, history_eval, bar_eval, daily_coverage, rank_eval)
+    return screener_rankings.with_basis(ScreenerResponse(
+        daily_coverage=daily_coverage,
+        history_coverage=history_eval.coverage if history_eval else None,
+        bar_coverage=bar_eval.coverage if bar_eval else None,
+        status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
+        scanned_at_ms=int(time.time() * 1000),
+        **screener_basis.evaluation_times(confirmed_at, now_value,
+            live_conditions=basis == "intraday" and (depth_eval is not None or any(
+                getattr(leaf.params, "timeframe", "D").endswith("m") for leaf in conditions)),
+            overlay_at=overlay_at,
+            partial=needs_overlay and (intraday_rows is None or intraday_rows.height < len(codes))),
+        intraday_failure=intraday_failure,
+        depth_coverage=depth_eval.coverage if depth_eval is not None else None,
+        depth_values=depth_eval.values if depth_eval is not None else None,
+    ), req, rank_eval)
+
+
+async def _matching_rows(data_dir, sdir, req, codes, scope, etf_codes, intraday_rows,
+                         depth_pass, depth_eval, history_eval, bar_eval, daily_coverage, rank_eval):
     excluded = screener_exclusions.exclusion_keys(
         await asyncio.to_thread(screener_exclusions.load_exclusions, data_dir))
     occurrence_dates = _occurrence_dates(depth_eval, history_eval)
+    truths = {} if minute_scope.get() is not None else None
     rows = await asyncio.to_thread(
         screener_scan.run_scan,
         sdir / "daily_adjusted.parquet",
@@ -151,25 +177,33 @@ async def _run_legacy_scan(
         as_of_date=rank_eval.cutoff.date() if rank_eval and rank_eval.historical else None,
         history_pass=history_eval.passing if history_eval else None,
         bar_events={**(bar_eval.events if bar_eval else {}), **(rank_eval.events if rank_eval else {})},
-        occurrence_dates=occurrence_dates, excluded=excluded,
+        occurrence_dates=occurrence_dates, excluded=excluded, condition_truths=truths,
     )
+    _minute_decisions(req, codes, truths, bar_eval, daily_coverage, history_eval)
     if history_eval:
         _attach_history(rows, history_eval)
-    return screener_rankings.with_basis(ScreenerResponse(
-        daily_coverage=daily_coverage,
-        history_coverage=history_eval.coverage if history_eval else None,
-        bar_coverage=bar_eval.coverage if bar_eval else None,
-        status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
-        scanned_at_ms=int(time.time() * 1000),
-        **screener_basis.evaluation_times(confirmed_at, now_value,
-            live_conditions=basis == "intraday" and (depth_eval is not None or any(
-                getattr(leaf.params, "timeframe", "D").endswith("m") for leaf in conditions)),
-            overlay_at=overlay_at,
-            partial=needs_overlay and (intraday_rows is None or intraday_rows.height < len(codes))),
-        intraday_failure=intraday_failure,
-        depth_coverage=depth_eval.coverage if depth_eval is not None else None,
-        depth_values=depth_eval.values if depth_eval is not None else None,
-    ), req, rank_eval)
+    return rows
+
+
+def _minute_decisions(req, codes, truths, bar_eval, daily_coverage, history_eval):
+    if truths is None or bar_eval is None:
+        return
+    from hoga.api.models import BarVolumeCoverageItem  # noqa: PLC0415
+    from hoga.api.screener_expression import parse_expression  # noqa: PLC0415
+    from hoga.api.screener_series_runner import _decision  # noqa: PLC0415
+    problems = list(bar_eval.coverage.incomplete)
+    problems.extend(daily_coverage.incomplete if daily_coverage else [])
+    if history_eval:
+        problems.extend(BarVolumeCoverageItem(code=item.code, condition_id=item.condition_id, reason=item.reason)
+                        for item in history_eval.coverage.incomplete)
+    unknown = {}
+    for item in problems:
+        unknown.setdefault(item.code, set()).add(item.condition_id)
+    tokens = parse_expression(req.expression, len(req.conditions))
+    decided = {code for code in codes if _decision(tokens, truths.get(code, set()),
+               unknown.get(code, set()), req.conditions) is not None}
+    bar_eval.coverage.incomplete = [item for item in problems if item.code not in decided]
+    bar_eval.coverage.complete = len(codes) - len({item.code for item in bar_eval.coverage.incomplete})
 
 
 def _rank_inputs(req, codes, scope, now, evaluation):

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
-import { apiExact } from './helpers/apiRoutes';
+import { apiExact, apiPrefix } from './helpers/apiRoutes';
 
 const observed = Date.parse('2026-10-30T14:03:12+09:00');
 const basis = { session: 'holiday', source: 'stored', trading_date: '2026-10-30',
@@ -113,15 +113,19 @@ test('screener distinguishes missing minute history and unavailable ranks from a
     ], universe: {}, expression: 'A AND B', created_at_ms: 1, updated_at_ms: 1,
   }] } }));
   let requests = 0;
-  await page.route(apiExact('screener/scan'), route => {
+  await page.route(apiPrefix('screener/runs'), route => {
     requests += 1;
     return requests === 1 ? route.fulfill({ json: {
-      status: 'ok', rows: [], warnings: ['bar_volume_partial'], rank_basis: basis,
-      basis_at_ms: observed, scanned_at_ms: Date.now(),
-      bar_coverage: { total: 2, complete: 0, incomplete: [
-        { code: '005930', condition_id: 'a', reason: 'minute_date_mismatch' },
-        { code: '000660', condition_id: 'a', reason: 'historical_open_bar_unavailable' },
-      ] },
+      id: 'a'.repeat(32), request: route.request().postDataJSON(), status: 'partial',
+      total: 2, evaluated: 0, preparing: 0, waiting: 2, failed: 0, errors: {}, next_retry_at_ms: null,
+      revision: 1, result_revision: 1, started_at_ms: Date.now(), updated_at_ms: Date.now(), minute_date: '2026-10-30',
+      result: { status: 'ok', rows: [], warnings: ['bar_volume_partial'], rank_basis: basis,
+        basis_at_ms: observed, scanned_at_ms: Date.now(),
+        bar_coverage: { total: 2, complete: 0, trading_date: '2026-10-30', incomplete: [
+          { code: '005930', condition_id: 'a', reason: 'minute_date_mismatch' },
+          { code: '000660', condition_id: 'a', reason: 'historical_open_bar_unavailable' },
+        ] },
+      },
     } }) : route.fulfill({ status: 409, json: { detail: {
       code: 'screener_rank_history_unavailable', message: '최근 거래일의 저장된 순위가 없습니다.',
     } } });
@@ -129,7 +133,9 @@ test('screener distinguishes missing minute history and unavailable ranks from a
   await page.goto('/screener');
   const run = page.getByRole('button', { name: '조회', exact: true });
   await run.click();
-  await expect(page.getByText('데이터 부족으로 조건을 평가할 수 없습니다', { exact: true })).toBeVisible();
+  await expect(page.getByText('확인된 일치 종목이 없습니다 · 준비·검증 대기 중인 종목은 아직 판정하지 않았습니다',
+    { exact: true })).toBeVisible();
+  await page.getByText('상세 사유 · 2종목 확인 대기·보류', { exact: true }).click();
   await expect(page.getByText('순위 기준일의 분봉 없음: 1종목', { exact: true })).toBeVisible();
   await expect(page.getByText('조건에 맞는 종목이 없습니다', { exact: true })).toHaveCount(0);
   await run.click();

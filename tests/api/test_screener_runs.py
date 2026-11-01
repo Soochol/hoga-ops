@@ -659,3 +659,215 @@ async def test_new_day_rebases_complete_prices_before_the_next_warm_reuse(corpus
     assert changed.result.calculation.adjusted_as_of == NOW.date().isoformat()
     await search()
     assert len(calls) == len(CODES) * 2
+
+
+def seed_minutes(corpus, codes):
+    from types import SimpleNamespace
+    sd = corpus / 'screener'
+    original = [{**row(code, day), 'date': day} for code in codes for day in DAYS]
+    frame = pl.DataFrame(original).select(list(_DAILY_PL_SCHEMA)).cast(_DAILY_PL_SCHEMA)
+    for name in ('daily_adjusted.parquet', 'daily_unadjusted.parquet'):
+        frame.write_parquet(sd / name)
+    pl.DataFrame(dict(code=codes, seg_start=[DAYS[0]] * len(codes), factor=[1.] * len(codes))).write_parquet(
+        sd / 'factors.parquet')
+    pl.DataFrame(dict(code=codes, name=codes, market=['KOSPI'] * len(codes),
+        is_etf=[False] * len(codes), is_halted=[False] * len(codes))).write_parquet(sd / 'stocks.parquet')
+    payloads = [candidate(SimpleNamespace(code=code, first=DAYS[0], last=DAYS[-1]), NOW.date()) for code in codes]
+    store.publish_pairs(corpus, payloads, adjusted_as_of=NOW.date().isoformat())
+
+
+def minute_request(**changes):
+    return ScanRequest.model_validate({**dict(calculation_policy='separate_bases_v2', basis='eod',
+        conditions=[dict(id='minute', type='volume_range', params=dict(timeframe='1m', min_volume=1,
+            include_open_bar=False))]), **changes})
+
+
+@pytest.fixture
+def day_vendor(monkeypatch):
+    from types import SimpleNamespace
+
+    from hoga.api import screener_bar_volume as bars
+    bars._CACHE.clear()
+    bars._FLIGHTS.clear()
+    calls = []
+    rows = [dict(cntr_tm='20261030' + clock, trde_qty='100', cur_prc='100', open_pric='100',
+                 high_pric='100', low_pric='100') for clock in ('090000', '090100', '090200')]
+    # This older extreme must neither count nor trigger an extra page.
+    rows.append(dict(rows[0], cntr_tm='20261029153000', trde_qty='999999'))
+
+    class Client:
+        async def call(self, api_id, params):
+            assert api_id == 'ka10080'
+            assert params['base_dt'] == '20261030'
+            calls.append(params)
+            await asyncio.sleep(0)
+            return SimpleNamespace(rows=rows)
+
+    async def capacity(_, *, client, fetch_fn, **kwargs):
+        return await fetch_fn(client)
+
+    monkeypatch.setattr(bars.kiwoom_rest_runtime, 'ensure_rest_client', lambda _: Client())
+    monkeypatch.setattr(bars.kiwoom_rest_runtime, 'ensure_scheduler', lambda _: object())
+    monkeypatch.setattr(bars.kiwoom_access, 'run_with_capacity', capacity)
+    return calls
+
+
+@pytest.mark.parametrize('policy', ['legacy_v1', 'separate_bases_v2'])
+async def test_minute_click_finishes_130_codes_and_shares_conditions_despite_cache_eviction(corpus, monkeypatch,
+                                                                                        day_vendor, policy):
+    from hoga.api import screener_bar_volume as bars
+    codes = [f'{index:06d}' for index in range(1, 131)]
+    seed_minutes(corpus, codes)
+    monkeypatch.setattr(bars, 'MAX_CACHE_ENTRIES', 1)
+    req = minute_request(calculation_policy=policy, limit=1)
+    second = req.conditions[0].model_copy(update={'id': 'second'})
+    req = req.model_copy(update={'conditions': [req.conditions[0], second]})
+    owner = ScreenerRuns(corpus, clock=lambda: NOW)
+    try:
+        done = await finish(owner, await owner.start(req))
+        assert done.status == 'complete', done.errors
+        assert done.evaluated == done.total == 130
+        assert done.preparing == done.waiting == done.failed == 0
+        assert done.minute_date == done.result.bar_coverage.trading_date == '2026-10-30'
+        assert done.result.bar_coverage.complete == 130
+        assert len(day_vendor) == 130
+        assert len(done.result.rows) == 1 and done.result.has_more
+        assert all(event.date == '2026-10-30' for event in done.result.rows[0].occurrences)
+        app = FastAPI()
+        app.include_router(build_router(owner))
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+            body = (await client.get(f'/runs/{done.id}')).json()
+        assert body['minute_date'] == body['result']['bar_coverage']['trading_date'] == '2026-10-30'
+        checkpoint = json.loads((corpus / 'screener/runs' / f'{done.id}.minutes.json').read_text())
+        assert len(checkpoint['done']) == 130
+        assert 'bars' not in checkpoint
+    finally:
+        await owner.close()
+
+
+async def test_day_only_short_history_is_deferred_without_previous_day_fetch(corpus, day_vendor):
+    seed_minutes(corpus, CODES)
+    req = minute_request(conditions=[dict(id='minute', type='new_high_vol_today',
+        params=dict(timeframe='1m', period=100, include_open_bar=False))])
+    owner = ScreenerRuns(corpus, clock=lambda: NOW)
+    try:
+        done = await finish(owner, await owner.start(req))
+        assert done.status == 'partial', done.errors
+        assert done.waiting == 2 and done.evaluated == 0
+        assert len(day_vendor) == 2
+        assert {item.reason for item in done.result.bar_coverage.incomplete} == {'insufficient_day_bars'}
+        assert done.result.rows == []
+    finally:
+        await owner.close()
+
+
+@pytest.mark.parametrize('policy', ['legacy_v1', 'separate_bases_v2'])
+@pytest.mark.parametrize('expression,expected', [('A OR B', 'complete'), ('A AND B', 'partial')])
+async def test_minute_unknown_is_not_false_and_or_can_be_decided(corpus, day_vendor, expression, expected, policy):
+    seed_minutes(corpus, CODES)
+    req = minute_request(calculation_policy=policy, expression=expression, conditions=[
+        dict(id='known', type='volume_range', params=dict(timeframe='1m', min_volume=1, include_open_bar=False)),
+        dict(id='unknown', type='new_high_vol_today', params=dict(timeframe='1m', period=100, include_open_bar=False))])
+    owner = ScreenerRuns(corpus, clock=lambda: NOW)
+    try:
+        done = await finish(owner, await owner.start(req))
+        assert done.status == expected, done.errors
+        assert done.evaluated == (2 if expected == 'complete' else 0)
+    finally:
+        await owner.close()
+
+
+@pytest.mark.parametrize('stamp,expected', [
+    ('2026-10-30T10:00:00+09:00', '2026-10-30'), ('2026-10-30T18:00:00+09:00', '2026-10-30'),
+    ('2026-11-01T10:00:00+09:00', '2026-10-30'), ('2026-10-30T08:00:00+09:00', '2026-10-30'),
+    ('2026-10-29T10:00:00+09:00', '2026-10-28'),
+])
+def test_minute_search_day_uses_calendar_and_never_previous_day_before_open(corpus, monkeypatch, stamp, expected):
+    from hoga.api.screener_minute_scope import resolve
+    monkeypatch.setattr(trading_days, 'trading_days', lambda _: {'20261028', '20261030'})
+    assert resolve(corpus, dt.datetime.fromisoformat(stamp)).day.isoformat() == expected
+
+
+def test_minute_search_refuses_unknown_weekday(corpus):
+    from hoga.api.screener_minute_scope import resolve
+    with pytest.raises(ValueError, match='달력이 부족'):
+        resolve(corpus, dt.datetime(2026, 11, 2, 10, tzinfo=KST))
+
+
+async def test_minute_restart_resumes_judgments_without_refetching_finished_codes(corpus, monkeypatch, day_vendor):
+    from hoga.api import screener_bar_volume as bars
+    from hoga.api.screener_minute_run import MinuteSearch
+    codes = [f'{index:06d}' for index in range(1, 131)]
+    seed_minutes(corpus, codes)
+    owner = ScreenerRuns(corpus, clock=lambda: NOW)
+    original = MinuteSearch.batch
+
+    async def interrupted(self, batch):
+        if len(self.done) >= 64:
+            raise InterruptedError('서버 재시작 모의')
+        await original(self, batch)
+
+    monkeypatch.setattr(MinuteSearch, 'batch', interrupted)
+    req = minute_request(limit=1)
+    first = await finish(owner, await owner.start(req))
+    assert first.status == 'interrupted' and len(day_vendor) == 64
+    await owner.close()
+    bars._CACHE.clear()
+    monkeypatch.setattr(MinuteSearch, 'batch', original)
+    resumed_owner = ScreenerRuns(corpus, clock=lambda: NOW)
+    try:
+        done = await finish(resumed_owner, await resumed_owner.start(req))
+        assert done.id == first.id
+        assert done.status == 'complete' and done.evaluated == 130
+        assert len(day_vendor) == 130
+        assert done.result.has_more and done.result.rows[0].code == '000001'
+    finally:
+        await resumed_owner.close()
+
+
+async def test_live_open_bar_uses_observed_value_instead_of_defering_every_code(corpus, monkeypatch, day_vendor):
+    from hoga.api import screener_bar_volume as bars
+    seed_minutes(corpus, CODES)
+    clock = dt.datetime(2026, 10, 30, 9, 2, 30, tzinfo=KST)
+    monkeypatch.setattr(bars.time, 'time', lambda: clock.timestamp())
+    req = minute_request(conditions=[dict(id='minute', type='volume_range',
+        params=dict(timeframe='1m', min_volume=1, include_open_bar=True))])
+    owner = ScreenerRuns(corpus, clock=lambda: clock)
+    try:
+        done = await finish(owner, await owner.start(req))
+        assert done.status == 'complete', done.errors
+        assert done.evaluated == len(CODES) and len(done.result.rows) == len(CODES)
+        assert all(row.occurrences[0].bar_volume_condition_match.is_open for row in done.result.rows)
+        assert done.result.basis_at_ms == int(clock.timestamp() * 1000)
+    finally:
+        await owner.close()
+
+
+async def test_preopen_does_not_fetch_previous_day_or_call_vendor(corpus, day_vendor):
+    seed_minutes(corpus, CODES)
+    clock = dt.datetime(2026, 10, 30, 8, 30, tzinfo=KST)
+    owner = ScreenerRuns(corpus, clock=lambda: clock)
+    try:
+        done = await finish(owner, await owner.start(minute_request()))
+        assert done.minute_date == '2026-10-30'
+        assert done.status == 'partial' and day_vendor == []
+        assert {item.reason for item in done.result.bar_coverage.incomplete} == {'minute_session_not_started'}
+    finally:
+        await owner.close()
+
+
+@pytest.mark.parametrize('expression,expected_calls', [('A AND B', 0), ('A OR B', 2)])
+async def test_daily_false_branch_prunes_only_safe_minute_candidates(corpus, day_vendor, expression, expected_calls):
+    seed_minutes(corpus, CODES)
+    req = minute_request(expression=expression, conditions=[
+        dict(id='daily_false', type='price_compare', params=dict(timeframe='D',
+            left=dict(offset=0, source='close'), right=dict(offset=0, source='high'), relation='gt')),
+        dict(id='minute', type='volume_range', params=dict(timeframe='1m', min_volume=1, include_open_bar=False))])
+    owner = ScreenerRuns(corpus, clock=lambda: NOW)
+    try:
+        done = await finish(owner, await owner.start(req))
+        assert done.status == 'complete', done.errors
+        assert len(day_vendor) == expected_calls
+        assert len(done.result.rows) == (2 if expression == 'A OR B' else 0)
+    finally:
+        await owner.close()

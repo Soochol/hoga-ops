@@ -81,11 +81,13 @@ export function finishedMessage(e: { updated: number; reason: string | null; ref
   const source = 'update' as const;
   if (e.refresh) {
     const r = e.refresh;
-    const parts = [r.master_refreshed ? '종목 목록 반영' : '종목 목록 갱신 실패',
+    const interrupted = r.reason === 'cancelled' || r.reason === 'server_shutdown';
+    const parts = [r.master_refreshed ? '종목 목록 반영' : interrupted ? '종목 목록 갱신 미완료' : '종목 목록 갱신 실패',
       `신규 ${r.symbols_added.toLocaleString()}종목`, `일봉 ${r.written_rows.toLocaleString()}개 보충`];
     if (r.failed) parts.push(`실패 ${r.failed.toLocaleString()}종목`);
     if (r.unavailable) parts.push(`공급자 이력 미확인 ${r.unavailable.toLocaleString()}종목`);
-    if (r.reason === 'cancelled') parts.push('갱신 중단됨');
+    if (r.reason === 'server_shutdown') parts.push('서버 종료로 갱신 중단');
+    else if (r.reason === 'cancelled') parts.push('갱신 중단됨');
     else if (r.reason === 'calendar_coverage_behind') parts.push(SKIP_REASON_MESSAGES.calendar_coverage_behind);
     else if (r.reason === 'calendar_source_missing') parts.push(SKIP_REASON_MESSAGES.calendar_source_missing);
     else if (r.reason === 'error') parts.push('갱신 실패');
@@ -93,6 +95,7 @@ export function finishedMessage(e: { updated: number; reason: string | null; ref
       atMs: r.completed_ms ?? atMs, source };
   }
   if (e.reason === 'error') return { message: '갱신 실패', tone: 'error', atMs, source };
+  if (e.reason === 'server_shutdown') return { message: '서버 종료로 갱신 중단', tone: 'warn', atMs, source };
   if (e.reason === 'cancelled') return { message: '갱신 중단됨', tone: 'warn', atMs, source };
   if (e.updated > 0) return { message: `${e.updated}거래일 추가됨`, tone: 'info', atMs, source };
   return { message: '추가된 확정분 없음', tone: 'info', atMs, source };
@@ -122,6 +125,7 @@ export function useScreenerUpdateSync(): void {
                   total: e.total,
                   started_ms: prev.updating?.started_ms ?? Date.now(),
                   phase: e.phase,
+                  automatic: e.automatic ?? prev.updating?.automatic,
                 },
               }
             : prev);

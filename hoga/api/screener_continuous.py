@@ -133,7 +133,7 @@ class ContinuousMonitors:
     def __init__(self, data_dir, bus, buffer, set_targets, *, loader=None, now=None):
         self.data_dir, self.bus, self.buffer, self.set_targets = data_dir, bus, buffer, set_targets
         self.replica: VolumeReplica = buffer.volume_replica
-        self.loader = loader or volume.minute_snapshot
+        self.loader = loader or volume.monitor_day_snapshot
         self.now = now or (lambda: int(time.time() * 1000))
         self.monitors: dict[str, Monitor] = {}
         self.histories: dict[str, History] = {}

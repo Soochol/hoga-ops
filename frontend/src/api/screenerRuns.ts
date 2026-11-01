@@ -20,15 +20,18 @@ export interface ScreenerRun {
   result: ScreenerResponse | null;
   started_at_ms: number;
   updated_at_ms: number;
+  minute_date?: string | null;
 }
 
 const STORAGE_KEY = 'screener.active-runs.v1';
 export const preparationKey = (body: ScanRequest) => JSON.stringify([screenerRequestKey(body), body.venue ?? 'KRX']);
-export const needsPreparation = (body: ScanRequest) => !body.snapshot_id && (
+export const needsDailyPreparation = (body: ScanRequest) => !body.snapshot_id && (
   body.calculation_policy === 'separate_bases_v2'
     ? body.conditions.some(leaf => !leaf.type.includes('depth') && !isRankCondition(leaf)
       && !('timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')))
     : body.conditions.some(isHistoricalCondition));
+export const needsPreparation = (body: ScanRequest) => !body.snapshot_id && (
+  body.conditions.some(leaf => 'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')) || needsDailyPreparation(body));
 
 function activeRuns(): Record<string, string> {
   try { return JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? '{}') as Record<string, string>; }

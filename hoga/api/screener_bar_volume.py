@@ -25,6 +25,7 @@ from hoga.api import (
     screener_exclusions,
     screener_history_evidence,
     screener_ma,
+    screener_minute_scope,
     screener_price_compare,
     screener_volume_conditions,
     trading_days,
@@ -304,6 +305,9 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
             api_id="ka10080", priority="background", client=client,
             fetch_fn=lambda c, cur=cursor: c.call("ka10080", {
                 "stk_cd": code, "tic_scope": scope, "upd_stkpc_tp": "0", "base_dt": cur}))
+        observation = screener_minute_scope.current.get()
+        if observation is not None and observation.live and observation.clock:
+            as_of = min(observation.clock(), dt.datetime.combine(observation.day, dt.time(15, 30), KST))
         parsed = [kiwoom_minute_candles.parse_row(row) for row in page.rows]
         if any(row is None for row in parsed) or any(
             not str(row.get("trde_qty", "")).strip().lstrip("+-").isdigit() for row in page.rows
@@ -338,6 +342,28 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
     return MinuteSnapshot([bars_by_ms[ms] for ms in sorted(bars_by_ms)], fetched_at, reason)
 
 
+async def _day_snapshot(data_dir, code, timeframe, scope):
+    # A day response is shared by all lookbacks/conditions at the same cutoff.
+    key = (data_dir, code, timeframe, "single-day", scope.day, scope.cutoff)
+    if key in scope.snapshots:
+        return scope.snapshots[key]
+    cached = _CACHE.get(key)
+    if _fresh_snapshot(cached, True):
+        _CACHE.move_to_end(key)
+        scope.snapshots[key] = cached
+        return cached
+    if settings.rest_bypass_enabled(data_dir):
+        return MinuteSnapshot([], int(time.time() * 1000), "rest_bypassed")
+    task = _FLIGHTS.get(key)
+    if task is None:
+        with screener_minute_scope.bind(scope):
+            task = asyncio.create_task(_load_minutes(key, data_dir, code, timeframe, 1, None, scope.cutoff))
+        _FLIGHTS[key] = task
+    result = await asyncio.shield(task)
+    scope.snapshots[key] = result
+    return result
+
+
 async def minute_snapshot(data_dir, code, timeframe, needed, lower, as_of, *, historical=False):
     key = (data_dir, code, timeframe, needed, lower, as_of if historical else as_of.date())
     cached = _CACHE.get(key)
@@ -355,6 +381,13 @@ async def minute_snapshot(data_dir, code, timeframe, needed, lower, as_of, *, hi
     return await asyncio.shield(task)
 
 
+async def monitor_day_snapshot(data_dir, code, timeframe, needed, lower, as_of):
+    """Live monitoring prepares the same one-day baseline as manual searches."""
+    scope = screener_minute_scope.resolve(data_dir, as_of)
+    with screener_minute_scope.bind(scope):
+        return await _day_snapshot(data_dir, code, timeframe, scope)
+
+
 def _fresh_snapshot(snapshot, historical):
     ttl = HISTORICAL_MINUTE_TTL_MS if historical and snapshot is not None and snapshot.reason is None else MINUTE_TTL_MS
     return snapshot is not None and int(time.time() * 1000) - snapshot.fetched_at_ms < ttl
@@ -362,7 +395,16 @@ def _fresh_snapshot(snapshot, historical):
 
 async def _load_minutes(key, data_dir, code, timeframe, needed, lower, as_of):
     try:
-        result = await _fetch_minutes(data_dir, code, timeframe, needed, lower, as_of)
+        scope = screener_minute_scope.current.get()
+        if scope is not None:
+            # needed=1 stops after the first page. Previous dates are never
+            # fetched to satisfy a lookback; filtering happens before evaluation.
+            result = await _fetch_minutes(data_dir, code, timeframe, 0, None, as_of)
+            result = MinuteSnapshot([bar for bar in result.bars
+                if dt.datetime.fromtimestamp(bar.start_ms / 1000, KST).date() == scope.day],
+                int(time.time() * 1000), result.reason)
+        else:
+            result = await _fetch_minutes(data_dir, code, timeframe, needed, lower, as_of)
     except Exception as exc:
         policy = classify_live_error(exc)
         log.exception("분봉 신고거래량 평가 불가 → %s (%s)", code, policy.reason)
@@ -431,8 +473,60 @@ def _calendar_complete(leaf, windows, days, as_of):
     return len(windows) >= needed
 
 
+async def _evaluate_day_leaf(leaf, code, data_dir, now, sem, scope):
+    p = leaf.params
+    if scope.pending:
+        return leaf, code, [], False, "minute_preparation_pending"
+    if isinstance(p, RANGE_PARAMS) and (
+            p.start_date != scope.day.isoformat() or p.end_date != scope.day.isoformat()):
+        return leaf, code, [], False, "minute_range_outside_day"
+    if scope.cutoff.time() < dt.time(9):
+        return leaf, code, [], False, "minute_session_not_started"
+    try:
+        observed = scope.live and p.include_open_bar
+        async with sem:
+            if observed:
+                key = (code, p.timeframe)
+                scope.cutoffs.setdefault(key, min(scope.clock() if scope.clock else now,
+                    dt.datetime.combine(scope.day, dt.time(15, 30), KST)))
+                scope = replace(scope, cutoff=scope.cutoffs[key])
+            else:
+                scope = replace(scope, live=False)
+            # Queue wait is not a vendor timeout. The shared request owns
+            # its transport timeout, so a busy foreground cannot starve it.
+            snapshot = await _day_snapshot(data_dir, code, p.timeframe, scope)
+        if observed:
+            data, reason = snapshot.bars, None
+            scope.observations.append(snapshot.fetched_at_ms)
+        else:
+            data, reason = _historical_minutes(snapshot.bars, p.include_open_bar, scope.cutoff)
+        if leaf.type not in VOLUME_TYPES:
+            data, price_reason = await screener_bar_threshold.prepare_minutes(
+                leaf, data, data_dir, code, now.astimezone(KST).strftime("%Y%m%d"))
+            reason = reason or price_reason
+        events, complete = await asyncio.to_thread(records, leaf, data, fetched_at_ms=snapshot.fetched_at_ms)
+        reason = snapshot.reason or reason
+        if not data and reason is None:
+            reason = "minute_day_unavailable"
+        if not complete and reason is None:
+            reason = "insufficient_day_bars"
+        return leaf, code, events, complete and reason is None, reason
+    except Exception as exc:
+        log.exception("single-day minute evaluation failed: %s", code)
+        return leaf, code, [], False, classify_live_error(exc).reason
+
+
 async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetch_codes, sem, volume_runtime,
                                 historical=False):
+    scope = screener_minute_scope.current.get()
+    if scope is not None:
+        return await _evaluate_day_leaf(leaf, code, data_dir, now, sem, scope)
+    return await _evaluate_minute_window(leaf, code, data_dir=data_dir, as_of=as_of, now=now,
+        basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime, historical=historical)
+
+
+async def _evaluate_minute_window(leaf, code, *, data_dir, as_of, now, basis, fetch_codes, sem, volume_runtime,
+                                  historical=False):
     p = leaf.params
     lower = dt.date.fromisoformat(p.start_date) if isinstance(p, RANGE_PARAMS) else None
     needed = comparison_period(leaf) + (0 if lower else lookback(leaf) - 1) + (not p.include_open_bar)

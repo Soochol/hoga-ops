@@ -16,7 +16,7 @@ export function useScreenerUpdate() {
       if (res.running) {
         queryClient.setQueryData<ScreenerStatus>(['screener-status'], (prev) =>
           prev
-            ? { ...prev, updating: { done: res.done, total: res.total, started_ms: Date.now(),
+            ? { ...prev, updating: { done: res.done, total: res.total, started_ms: Date.now(), automatic: res.automatic,
               ...(operation === 'repair-history' ? { phase: '종목 목록 확인 중' } : {}) } }
             : prev);
       } else {

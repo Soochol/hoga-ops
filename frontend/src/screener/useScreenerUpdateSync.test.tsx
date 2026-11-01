@@ -65,10 +65,10 @@ describe('useScreenerUpdateSync', () => {
     qc.setQueryData(['screener-status'], OK_STATUS);
     renderHook(() => useScreenerUpdateSync(), { wrapper: makeWrapper(qc) });
 
-    fireEvent_({ type: 'screener_update_progress', done: 120, total: 3561 });
+    fireEvent_({ type: 'screener_update_progress', done: 120, total: 3561, automatic: true });
 
     const status = qc.getQueryData<ScreenerStatus>(['screener-status']);
-    expect(status?.updating).toMatchObject({ done: 120, total: 3561 });
+    expect(status?.updating).toMatchObject({ done: 120, total: 3561, automatic: true });
   });
 
   it('finished(updated>0) → 피드백 + dataStale + invalidate', async () => {
@@ -201,6 +201,14 @@ describe('manual history refresh feedback', () => {
     master_refreshed: true, symbols_added: 2, written_rows: 258,
     checked: 20, total: 20, failed: 1, unavailable: 3, completed_ms: 1000, reason: 'partial',
   };
+  it.each(['cancelled', 'server_shutdown'])('distinguishes %s from a master fetch failure', reason => {
+    const result = finishedMessage({ updated: 0, reason, refresh: { ...refresh,
+      master_refreshed: false, reason } });
+    expect(result.message).toContain('종목 목록 갱신 미완료');
+    expect(result.message).not.toContain('종목 목록 갱신 실패');
+    expect(result.message).toContain(reason === 'server_shutdown' ? '서버 종료로 갱신 중단' : '갱신 중단됨');
+    expect(result.atMs).toBe(refresh.completed_ms);
+  });
   it('reports actual rows and residual problems when no global date was added', () => {
     const feedback = finishedMessage({ updated: 0, reason: 'partial', refresh });
     expect(feedback.message).toContain('일봉 258개 보충');

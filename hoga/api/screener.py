@@ -59,6 +59,7 @@ class _UpdateProgress:
     total: int
     started_ms: int
     phase: str | None = None
+    automatic: bool | None = None
 
 
 @dataclass
@@ -218,13 +219,13 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
     return _UpdatePlan(sdir=sdir, codes=codes, days=days)
 
 
-def _ensure_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> asyncio.Task[int]:
+def _ensure_job(data_dir: Path, plan: _UpdatePlan, *, bus, automatic: bool = False) -> asyncio.Task[int]:
     """살아있는 job 이 있으면 join, 없으면 스폰. await 없는 동기 함수라 race-free."""
     global _job_task, _progress  # noqa: PLW0603
     if _job_task is not None and not _job_task.done():
         return _job_task
     _progress = _UpdateProgress(
-        done=0, total=len(plan.codes), started_ms=int(time.time() * 1000))
+        done=0, total=len(plan.codes), started_ms=int(time.time() * 1000), automatic=automatic)
     _job_task = asyncio.create_task(
         _run_update_job(data_dir, plan, bus=bus), name="screener-update")
     return _job_task
@@ -242,7 +243,8 @@ async def _run_eod_update(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
         if _progress is not None:
             _progress.done = done
         if bus is not None:
-            bus.publish({"type": "screener_update_progress", "done": done, "total": total})
+            bus.publish({"type": "screener_update_progress", "done": done, "total": total,
+                         "automatic": _progress.automatic if _progress else None})
     progress(0, len(plan.codes))
     return await ingest.run(data_dir, codes=plan.codes, days=plan.days,
                             fetch=collector(client, scheduler, runner=kiwoom_access.run_with_capacity),
@@ -257,8 +259,10 @@ async def _run_update_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
     def refresh_progress(done, total, phase):
         if _progress is not None:
             _progress.done, _progress.total, _progress.phase = done, total, phase
+            _progress.automatic = False
         if bus is not None:
-            bus.publish({"type": "screener_update_progress", "done": done, "total": total, "phase": phase})
+            bus.publish({"type": "screener_update_progress", "done": done, "total": total,
+                         "phase": phase, "automatic": False})
 
     try:
         n = 0 if plan.manual else await _run_eod_update(data_dir, plan, bus=bus)
@@ -273,10 +277,11 @@ async def _run_update_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
                          "updated": n, "total": total, "reason": refresh.reason if refresh else None,
                          **({"refresh": refresh.model_dump(mode="json")} if refresh else {})})
         return n
-    except asyncio.CancelledError:
+    except asyncio.CancelledError as exc:
         if bus is not None:
             bus.publish({"type": "screener_update_finished",
-                         "updated": 0, "total": total, "reason": "cancelled",
+                         "updated": 0, "total": total,
+                         "reason": "server_shutdown" if exc.args == ("server_shutdown",) else "cancelled",
                          **({"refresh": report.summary.model_dump(mode="json")} if report else {})})
         raise
     except Exception:
@@ -298,7 +303,7 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     작업이 없으면(unseeded/no-gap/creds/calendar) 0 — 기존 계약 유지. 동시
     트리거(스케줄러 EOD + 수동 POST)는 _ensure_job 이 단일 job 으로 join 한다.
     """
-    task = await _prepare_update(data_dir, bus=bus)
+    task = await _prepare_update(data_dir, bus=bus, automatic=True)
     if isinstance(task, str):
         return 0
     # shield: awaiter(스케줄러 셧다운, 버려진 caller) 취소가 공유 job 을 죽이지
@@ -316,10 +321,11 @@ async def start_update(data_dir: Path, *, bus=None, repair_history: bool = False
     if isinstance(task, str):
         return {"running": False, "updated": 0, "reason": task}
     assert _progress is not None
-    return {"running": True, "done": _progress.done, "total": _progress.total}
+    return {"running": True, "done": _progress.done, "total": _progress.total,
+            "automatic": _progress.automatic}
 
 
-async def _prepare_update(data_dir: Path, *, bus=None, repair_history=False):
+async def _prepare_update(data_dir: Path, *, bus=None, repair_history=False, automatic=False):
     """One admission gate for scheduler, refresh clicks and explicit historical repair."""
     global _start_lock, _manual_requested  # noqa: PLW0603
     if _start_lock is None:
@@ -341,14 +347,14 @@ async def _prepare_update(data_dir: Path, *, bus=None, repair_history=False):
             plan = await _plan_update(data_dir)
             if isinstance(plan, str):
                 return plan
-        return _ensure_job(data_dir, plan, bus=bus if bus is not None else _module_bus)
+        return _ensure_job(data_dir, plan, bus=bus if bus is not None else _module_bus, automatic=automatic)
 
 
 async def shutdown_update_job() -> None:
     """lifespan 셧다운: 벤더 클라이언트 teardown 전에 detached job 을 cancel+await."""
     task = _job_task
     if task is not None and not task.done():
-        task.cancel()
+        task.cancel("server_shutdown")
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await task
 
@@ -389,6 +395,7 @@ class ScreenerUpdatingProgress(BaseModel):
     total: int
     started_ms: int
     phase: str | None = None
+    automatic: bool | None = None
 
 
 class ScreenerStatusResponse(BaseModel):
@@ -437,6 +444,7 @@ class ScreenerUpdateResponse(BaseModel):
     total: int | None = None
     updated: int | None = None
     reason: ScreenerUpdateSkipReason | None = None
+    automatic: bool | None = None
 
 
 def _build_pattern_saves_router(data_dir: Path, bus) -> APIRouter:
@@ -591,6 +599,7 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
             "updating": (
                 {"done": _progress.done, "total": _progress.total,
                  "started_ms": _progress.started_ms,
+                 "automatic": _progress.automatic,
                  **({"phase": _progress.phase} if _progress.phase else {})}
                 if _progress is not None else None
             ),

@@ -32,6 +32,7 @@ from hoga.api.models import (
 )
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR
 from hoga.api.screener_expression import active_conditions, parse_expression
+from hoga.api.screener_minute_scope import current as minute_scope
 from hoga.util.timeenc import KST
 
 
@@ -44,6 +45,42 @@ def _matches(tokens, passing: set[str], conditions) -> bool:
             right, left = stack.pop(), stack.pop()
             stack.append(left and right if token == "AND" else left or right)
     return stack[0] if stack else True
+
+
+def _decision(tokens, passing, unknown, conditions):
+    """Positive evidence can decide OR; a proven false branch can decide AND."""
+    stack = []
+    for token in tokens:
+        if isinstance(token, int):
+            identity = conditions[token].id
+            stack.append(True if identity in passing else None if identity in unknown else False)
+        else:
+            right, left = stack.pop(), stack.pop()
+            if token == "AND":
+                stack.append(False if left is False or right is False else
+                             True if left is True and right is True else None)
+            else:
+                stack.append(True if left is True or right is True else
+                             False if left is False and right is False else None)
+    return stack[0] if stack else True
+
+
+def _minute_candidates(req, codes, events, failures, rank_eval):
+    scope = minute_scope.get()
+    if scope is None or scope.pending:
+        return codes
+    selected = active_conditions(req.conditions, req.expression)
+    unknown_leaves = {leaf.id for leaf in selected if getattr(leaf.params, "timeframe", "D").endswith("m")
+                      or leaf.type in screener_depth.DEPTH_TYPES}
+    passing, unavailable = {}, {}
+    for identity, items in {**events, **(rank_eval.events if rank_eval else {})}.items():
+        for code, _event in items:
+            passing.setdefault(code, set()).add(identity)
+    for item in failures:
+        unavailable.setdefault(item.code, set()).add(item.condition_id)
+    tokens = parse_expression(req.expression, len(req.conditions))
+    return [code for code in codes if _decision(tokens, passing.get(code, set()),
+        unknown_leaves | unavailable.get(code, set()), req.conditions) is not False]
 
 
 def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallback_clock=None, blocked_conditions=None):
@@ -256,10 +293,22 @@ def _rows(req, inputs, series, events, failures, days, clock):
     tokens = parse_expression(req.expression, len(req.conditions))
     labels = {row["code"]: row for row in inputs["labels"]}
     rows = []
+    decided = set()
+    unknown_by_code = {}
+    for item in failures:
+        unknown_by_code.setdefault(item.code, set()).add(item.condition_id)
     for code, occurrences in by_code.items():
         if inputs.get("ready_codes") is not None and code not in inputs["ready_codes"]:
             continue
-        if not _matches(tokens, {event.condition_id for event in occurrences}, req.conditions):
+        passing = {event.condition_id for event in occurrences}
+        if minute_scope.get() is not None:
+            unknown = unknown_by_code.get(code, set())
+            decision = _decision(tokens, passing, unknown, req.conditions)
+            if decision is not None:
+                decided.add(code)
+        else:
+            decision = _matches(tokens, passing, req.conditions)
+        if decision is not True:
             continue
         item = series[code]
         available = sorted(day for day in item.prices if day <= clock.date())
@@ -293,6 +342,9 @@ def _rows(req, inputs, series, events, failures, days, clock):
                 occurrences=occurrences,
             )
         )
+    if minute_scope.get() is not None:
+        leaf_ids = {leaf.id for leaf in req.conditions}
+        failures[:] = [item for item in failures if item.code not in decided or item.condition_id not in leaf_ids]
     return sorted(rows, key=lambda row: (-row.trade_value_won, row.code))
 
 
@@ -332,7 +384,9 @@ async def run_scan(
         reasons = blocked_by_code.get(code, [])
         failures.extend(BarVolumeCoverageItem(code=code, condition_id=condition, reason=reason)
                         for condition, reason in reasons or [("preparation", "daily_preparation_pending")])
-    depth = await _auxiliary(data_dir, req, available, now, volume_runtime, events, failures, rank_eval)
+    candidates = _minute_candidates(req, available["codes"], events, failures, rank_eval)
+    depth = await _auxiliary(data_dir, req, {**available, "codes": candidates},
+                             now, volume_runtime, events, failures, rank_eval)
     events.update(rank_eval.events if rank_eval else {})
     days = [dt.datetime.strptime(day, "%Y%m%d").date() for day in store.snapshot_calendar(data_dir, manifest)]
     rows = await asyncio.to_thread(_rows, req, inputs, series, events, failures, days, clock)

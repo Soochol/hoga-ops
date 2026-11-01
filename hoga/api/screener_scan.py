@@ -176,6 +176,13 @@ def _condition_source(con, leaf, i, *, bar_events, history_pass, depth_pass, occ
         return cte.replace(f"cond_{i} AS (", f"cond_{i}_raw AS ("), p
 
 
+def _collect_truths(con, ctes, params, conditions, indices, condition_truths):
+    if condition_truths is not None and indices:
+        truth_sql = " UNION ALL ".join(f"SELECT '{conditions[i].id}' condition_id, code FROM cond_{i}" for i in indices)
+        for identity, code in con.execute(f"WITH {', '.join(ctes)} {truth_sql}", params).fetchall():
+            condition_truths.setdefault(code, set()).add(identity)
+
+
 def run_scan(adjusted_path: Path, stocks_path: Path, *,
              conditions: list[ConditionLeaf], universe: ScreenerUniverse,
              expression: str | None = None,
@@ -189,7 +196,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              excluded: set[tuple] | None = None,
              scope_codes: set[str] | None = None,
              etf_codes: frozenset[str] | None = None,
-             as_of_date: date | None = None) -> list[ScreenerRow]:
+             as_of_date: date | None = None, condition_truths: dict | None = None) -> list[ScreenerRow]:
     tokens = parse_expression(expression, len(conditions))
     indices = sorted({token for token in tokens if isinstance(token, int)})
     active_ids = {conditions[i].id for i in indices}
@@ -266,6 +273,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         if expression is None:
             joins.append(f"SEMI JOIN cond_{i} ON cond_{i}.code = base.code")
 
+    _collect_truths(con, ctes, params, conditions, indices, condition_truths)
     uwheres, uparams = screener_universe.duckdb_wheres(universe)
     params += uparams
     # 코퍼스 계약 가드(항상 적용): ScreenerRow.market 은 Literal["KOSPI","KOSDAQ"],

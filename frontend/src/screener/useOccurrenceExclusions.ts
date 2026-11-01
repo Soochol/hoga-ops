@@ -6,6 +6,7 @@ import {
 } from '../api/screener';
 import { useScreenerPanelStore, type PanelScan } from '../state/screenerPanel';
 import { evaluateExpression, parseExpression } from './conditionExpression';
+import { runPreparedScan } from '../api/screenerRuns';
 
 const KEY = ['screener-occurrence-exclusions'];
 
@@ -65,7 +66,11 @@ async function refreshResults() {
   const generation = ++refreshGeneration;
   try {
     const request = { ...JSON.parse(requestJson), basis: 'auto' as const };
-    const response = await runScan(request);
+    const minuteSearch = !request.snapshot_id && request.conditions?.some((leaf: ConditionLeaf) =>
+      'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m'));
+    const response = minuteSearch
+      ? await runPreparedScan(request, new AbortController().signal, () => {})
+      : await runScan(request);
     if (generation !== refreshGeneration || useScreenerPanelStore.getState().lastScan !== before) return;
     store.setLastScan({ ...before, basis: 'auto', requestJson: JSON.stringify(request),
       scanKey: before.scanKey === null ? null : JSON.stringify(request),
@@ -100,6 +105,11 @@ export function useOccurrenceExclusions(scan: PanelScan | null) {
     if (query.data) pruneCurrent(query.data.exclusions);
     // Initial hydration also refreshes persisted occurrence-aware results.
     const current = useScreenerPanelStore.getState().lastScan;
+    // A completed/active full minute search already owns its server results.
+    // Hydration can prune exclusions locally; it must not replace the result
+    // with another bounded scan or launch an unrequested whole-market search.
+    if (!hadPrevious && (current?.barCoverage?.trading_date || scanConditions(current).some(leaf =>
+      'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')))) return;
     if (changed && current && (hadPrevious || current.rows.length === 0 || current.rows.some(row => row.occurrences !== undefined)) && !pending.current) {
       void refreshResults().catch(() => setError('제외 목록은 저장되어 있지만 결과 갱신에 실패했습니다. 다시 조회해 주세요.'));
     }

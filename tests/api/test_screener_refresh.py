@@ -200,7 +200,7 @@ def test_status_serializes_saved_manual_summary_and_phase(tmp_path, monkeypatch)
     seed(tmp_path, [frame("000001", DAYS)])
     summary = ScreenerRefreshSummary(master_refreshed=True, written_rows=17, completed_ms=10)
     refresh._save(tmp_path, refresh.RefreshReport(summary=summary))
-    monkeypatch.setattr(screener, "_progress", screener._UpdateProgress(3, 10, 1, "과거 일봉 보충 중"))
+    monkeypatch.setattr(screener, "_progress", screener._UpdateProgress(3, 10, 1, "과거 일봉 보충 중", False))
     app = FastAPI()
     app.include_router(screener.build_router(data_dir=tmp_path, bus=None))
     with TestClient(app) as client:
@@ -208,6 +208,37 @@ def test_status_serializes_saved_manual_summary_and_phase(tmp_path, monkeypatch)
     assert response.status_code == 200
     assert response.json()["last_refresh"] == summary.model_dump()
     assert response.json()["updating"]["phase"] == "과거 일봉 보충 중"
+    assert response.json()["updating"]["automatic"] is False
+
+
+async def test_server_shutdown_persists_interruption_reason_before_master_completes(tmp_path, monkeypatch):
+    seed(tmp_path, [frame("000001", DAYS)])
+    started = asyncio.Event()
+
+    async def waiting_master(**_):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(refresh.symbols, "refresh", waiting_master)
+    screener.reset_update_job_for_tests()
+    try:
+        job = screener._ensure_job(tmp_path, screener._UpdatePlan(tmp_path, [], [], manual=True), bus=None)
+        await started.wait()
+        await screener.shutdown_update_job()
+        assert job.cancelled()
+        summary = refresh.last_summary(tmp_path)
+        assert summary.reason == "server_shutdown"
+        assert not summary.master_refreshed and summary.completed_ms is not None
+        app = FastAPI()
+        app.include_router(screener.build_router(data_dir=tmp_path, bus=None))
+        with TestClient(app) as client:
+            body = client.get("/api/screener/status").json()
+        assert body["updating"] is None
+        assert body["last_refresh"]["reason"] == "server_shutdown"
+        assert body["last_refresh"]["completed_ms"] == summary.completed_ms
+    finally:
+        await screener.shutdown_update_job()
+        screener.reset_update_job_for_tests()
 
 
 async def test_listing_prefix_before_calendar_is_fetched_once_without_guessing_sessions(tmp_path, monkeypatch):

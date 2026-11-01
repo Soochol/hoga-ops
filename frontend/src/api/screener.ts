@@ -69,6 +69,7 @@ export interface ContinuousStatus {
   last_verified_ms: number | null; error: string | null;
 }
 export interface BarVolumeCoverage {
+  trading_date?: string | null;
   total: number; complete: number; incomplete: BarVolumeCoverageItem[];
   realtime?: BarRealtimeCoverage | null;
 }
@@ -372,6 +373,8 @@ export interface ScreenerUpdating {
   total: number;
   started_ms: number;
   phase?: string | null;
+  /** 구버전 서버의 미제공은 시작 경로 미확인. */
+  automatic?: boolean | null;
 }
 
 export interface ScreenerDailyIngestStatus {
@@ -410,7 +413,7 @@ export type ScreenerUpdateSkipReason =
   | 'calendar_coverage_behind';
 
 export type ScreenerUpdateResponse =
-  | { running: true; done: number; total: number }
+  | { running: true; done: number; total: number; automatic?: boolean | null }
   | { running: false; updated: 0; reason: ScreenerUpdateSkipReason };
 
 // All scan entry points share this revision, including page and drawer scans.

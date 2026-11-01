@@ -3,6 +3,10 @@ import { render, screen } from '@testing-library/react';
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
 
 describe('ScreenerUpdateProgress', () => {
+  it.each([[true, '자동 갱신 중'], [false, '수동 갱신 중']] as const)('labels automatic=%s from the server', (automatic, label) => {
+    render(<ScreenerUpdateProgress updating={{ done: 1700, total: 4412, started_ms: 1, automatic }} />);
+    expect(screen.getByTestId('screener-update-progress')).toHaveTextContent(`${label} 1,700/4,412`);
+  });
   it('updating 이 없으면 아무것도 그리지 않는다', () => {
     const { container } = render(<ScreenerUpdateProgress updating={null} />);
     expect(container.firstChild).toBeNull();

@@ -349,7 +349,7 @@ export type PushEvent =
   | { type: 'study_views_changed' }
   | { type: 'live_layout_presets_changed' }
   | { type: 'study_layout_presets_changed' }
-  | { type: 'screener_update_progress'; done: number; total: number; phase?: string }
+  | { type: 'screener_update_progress'; done: number; total: number; phase?: string; automatic?: boolean | null }
   | { type: 'screener_update_finished'; updated: number; total: number; reason: string | null; refresh?: ScreenerRefreshSummary }
   // 키움 표시(온디맨드) 슬롯 만석 — 이 탭의 구독이 보류됐다(hoga/api/ws.py).
   // 등록은 보류 상태로 장부에 남아 슬롯이 반환되면 watchdog 이 자동 배정하므로,
