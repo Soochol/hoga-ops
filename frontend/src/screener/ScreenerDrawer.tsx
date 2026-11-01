@@ -1,6 +1,7 @@
 import { rankingBasisText } from '../api/rankingBasis';
 import { emptyResultText } from './emptyResultText';
 import { isRankCondition, hasRankEvidence } from './rankConditions';
+import { PeriodChangeButton, usePeriodChangeDetails, type PeriodChangeDetailsProps } from './PeriodChangeDetails';
 import { MarketRankEvidence } from './MarketRankEvidence';
 import { CalculationNotice } from "./CalculationNotice";
 import { useScreenerJump } from "./useScreenerJump";
@@ -75,8 +76,8 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
   flash,
   onActivate,
   onOpenMenu,
-  columnLayout,
-}: {
+  columnLayout, periodConditionIds, onPeriodDetails,
+}: PeriodChangeDetailsProps & {
   columnLayout: React.CSSProperties;
   row: ScreenerRowLive;
   active: boolean;
@@ -96,8 +97,8 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
       columnLayout={columnLayout}
       name={row.name} code={row.code}
       nameTooltip=""
-      nameDetail={row.occurrences?.some(hasRankEvidence)
-        ? <MarketRankEvidence row={row} /> : undefined}
+      nameDetail={row.occurrences?.some(e => hasRankEvidence(e) || periodConditionIds?.has(e.condition_id))
+        ? <><MarketRankEvidence row={row} /><PeriodChangeButton row={row} periodConditionIds={periodConditionIds} onPeriodDetails={onPeriodDetails} /></> : undefined}
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
@@ -168,6 +169,7 @@ export function ScreenerDrawer() {
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
   const openLive = useScreenerJump(lastScan?.calculation);
   const occurrenceController = useOccurrenceExclusions(lastScan);
+  const periodDetails = usePeriodChangeDetails(lastScan?.rows ?? [], occurrenceController);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const clearLastScan = useScreenerPanelStore((s) => s.clearLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
@@ -543,6 +545,7 @@ export function ScreenerDrawer() {
                     <DraggableScreenerRow key={r.code}
                       columnLayout={columns.layout}
                       row={r}
+                      periodConditionIds={periodDetails.conditionIds} onPeriodDetails={periodDetails.onOpen}
                       active={r.code === activeCode}
                       flash={monitoringActive && flashCodes.has(r.code)}
                       onActivate={onActivateRow}
@@ -570,6 +573,7 @@ export function ScreenerDrawer() {
 
 
 
+      {periodDetails.modal}
       {rowMenu && (
         <QuoteRowGroupMenu
           code={rowMenu.code}

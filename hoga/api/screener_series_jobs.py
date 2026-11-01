@@ -14,7 +14,7 @@ from hoga.api import (
     trading_days,
 )
 from hoga.api.models import HistoryCoverage, HistoryCoverageItem, HistoryJob
-from hoga.api.screener_bar_policy import RANK_TYPES
+from hoga.api.screener_bar_policy import CHANGE_TYPES, RANK_TYPES
 from hoga.api.screener_calendar import completed_day
 from hoga.api.screener_depth import DEPTH_TYPES
 from hoga.api.screener_expression import active_conditions
@@ -38,7 +38,7 @@ def plans(data_dir, req):
     if not expected:
         raise ValueError("준비할 일/주/월봉 비교 구간이 없습니다")
     first = min(expected)
-    if any(leaf.type == "change_pct" for leaf in active_conditions(req.conditions, req.expression)):
+    if any(leaf.type in CHANGE_TYPES for leaf in active_conditions(req.conditions, req.expression)):
         prior = [day for day in days if day < first]
         first = prior[-1] if prior else first
     return first, max(expected)

@@ -153,6 +153,10 @@ def test_change_live_can_enter_leave_and_closed_only_uses_previous_completed_pai
 
 @pytest.fixture
 def corpus(tmp_path, monkeypatch):
+    return seed_threshold_corpus(tmp_path, monkeypatch)
+
+
+def seed_threshold_corpus(tmp_path, monkeypatch):
     sdir = tmp_path / "screener"
     sdir.mkdir()
     (sdir / "status.json").write_text("{}")

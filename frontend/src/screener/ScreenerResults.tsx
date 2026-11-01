@@ -3,6 +3,8 @@ import { emptyResultText } from './emptyResultText';
 import type { PanelScan } from '../state/screenerPanel';
 import { EmptyState } from '../ui/DataSurface';
 import { SegmentedControl, ToolbarButton } from '../ui/PageShell';
+import { usePeriodChangeDetails } from './PeriodChangeDetails';
+import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { ResultTable, type DepthSides } from './ResultTable';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 import { sortScreenerRows, type ScreenerResultSortMode } from './sortResults';
@@ -25,13 +27,15 @@ function depthSidesForScan(scan: PanelScan): DepthSides {
 }
 
 /** 부모는 새 조회마다 key를 바꾼다. 검색은 한 조회에만 속하며 시세 갱신과는 독립. */
-export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActivate }: {
+export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActivate, occurrenceController }: {
+  occurrenceController?: OccurrenceExclusions;
   scan: PanelScan;
   liveRows: ScreenerRowLive[];
   sortMode: ScreenerResultSortMode;
   onSortChange: (mode: ScreenerResultSortMode) => void;
   onActivate: (code: string, name?: string, e?: JumpModifiers) => void;
 }) {
+  const details = usePeriodChangeDetails(scan.rows, occurrenceController);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'live' | 'snapshot'>('live');
   const snapshotRows = useMemo(() => scan.rows.map((r) => ({ ...r, change_won: null })), [scan.rows]);
@@ -74,8 +78,10 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
         </EmptyState>
       ) : (
         <ResultTable rows={filtered} onActivate={onActivate} sortMode={sortMode} onSortChange={onSortChange}
+          periodConditionIds={details.conditionIds} onPeriodDetails={details.onOpen}
           embedded depthValues={scan.depthValues} depthSides={depthSides} quoteMode={mode} />
       )}
+      {details.modal}
     </>
   );
 }

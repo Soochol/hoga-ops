@@ -38,6 +38,7 @@ from hoga.api.models import (
 from hoga.api.screener_bar_policy import (
     BOLLINGER_TYPES,
     CANDLE_TYPES,
+    CHANGE_TYPES,
     RANGE_PARAMS,
     RANK_TYPES,
     TRADE_VALUE_TYPES,
@@ -101,7 +102,7 @@ class Evaluation:
 _SPECIAL_RECORDS = {
     **dict.fromkeys(BOLLINGER_TYPES, screener_bollinger.records),
     **dict.fromkeys(TRADE_VALUE_TYPES, screener_bar_threshold.turnover_records),
-    "change_pct": screener_bar_threshold.change_records,
+    **dict.fromkeys(CHANGE_TYPES, screener_bar_threshold.change_records),
 }
 
 
