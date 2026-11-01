@@ -4,6 +4,7 @@ import type { ScanRequest, ScreenerResponse, VolumePeriodParams } from '../../sr
 import { apiExact } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
 import { installScreenerRunsMock } from './helpers/screenerRuns';
+import { closeConditionSettings, openConditionSettings } from './helpers/screenerEditor';
 
 const old: SavedScreener = { id: 'legacy', name: '기존 거래량', universe: {}, created_at_ms: 1, updated_at_ms: 1,
   conditions: [{ id: 'v', type: 'new_high_vol_today', params: { period: 3 } }] };
@@ -52,11 +53,15 @@ test('copy preserves the old save, makes volume basis explicit, and carries char
   await expect(page.getByText('기존 계산 기준', { exact: true })).toBeVisible();
   await expect(page.getByRole('combobox', { name: '거래량 기준', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '새 기준으로 복사', exact: true }).click();
+  await openConditionSettings(page, '신고거래량');
   const basis = page.getByRole('combobox', { name: '거래량 기준', exact: true });
   await expect(basis).toHaveValue('share_adjusted');
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect(page.getByLabel('계산 기준 안내').getByText('주식 수 변환 이력 미확인: 1종목')).toBeVisible();
+  await openConditionSettings(page, '신고거래량');
   await basis.selectOption('raw');
+  await closeConditionSettings(page);
   await page.getByRole('button', { name: '저장', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('조건검색 이름').fill('새 실제 거래량');
