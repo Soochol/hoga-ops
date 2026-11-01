@@ -42,6 +42,11 @@ def resolve(data_dir, now):
     known = trading_days.trading_days(data_dir)
     if not known:
         raise ValueError("분봉 검색일을 확인할 거래일 달력이 없습니다")
+    # Before opening, only prior dates need calendar coverage. Today's daily
+    # calendar refresh may not have run yet (e.g. Monday just after midnight).
+    # The loop still rejects an unknown weekday among those prior dates.
+    if now.time() < dt.time(9):
+        day -= dt.timedelta(days=1)
     # Weekends are known closed; never jump over an unknown weekday.
     while day.weekday() >= 5 or day.strftime("%Y%m%d") not in known:  # noqa: PLR2004 — weekend
         if day.weekday() < 5 and day.strftime("%Y%m%d") > max(known):  # noqa: PLR2004 — weekday
