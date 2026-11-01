@@ -1,0 +1,66 @@
+[
+  {
+    "concurrency": 3,
+    "accounts": 6,
+    "pages_per_code": 1,
+    "synthetic_latency_ms": 80.0,
+    "codes": 48,
+    "calls": 48,
+    "elapsed_ms": 1922.53,
+    "peak_transport_calls": 3,
+    "runs_ms": [
+      1922.53,
+      1915.49,
+      1915.82
+    ],
+    "median_ms": 1915.82
+  },
+  {
+    "concurrency": 4,
+    "accounts": 6,
+    "pages_per_code": 1,
+    "synthetic_latency_ms": 80.0,
+    "codes": 48,
+    "calls": 48,
+    "elapsed_ms": 1917.37,
+    "peak_transport_calls": 4,
+    "runs_ms": [
+      1917.37,
+      1919.04,
+      1917.51
+    ],
+    "median_ms": 1917.51
+  },
+  {
+    "concurrency": 3,
+    "accounts": 6,
+    "pages_per_code": 1,
+    "synthetic_latency_ms": 200.0,
+    "codes": 48,
+    "calls": 48,
+    "elapsed_ms": 3210.57,
+    "peak_transport_calls": 3,
+    "runs_ms": [
+      3210.57,
+      3209.62,
+      3211.21
+    ],
+    "median_ms": 3210.57
+  },
+  {
+    "concurrency": 4,
+    "accounts": 6,
+    "pages_per_code": 1,
+    "synthetic_latency_ms": 200.0,
+    "codes": 48,
+    "calls": 48,
+    "elapsed_ms": 2461.08,
+    "peak_transport_calls": 4,
+    "runs_ms": [
+      2461.08,
+      2461.02,
+      2461.32
+    ],
+    "median_ms": 2461.08
+  }
+]

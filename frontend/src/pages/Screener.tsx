@@ -8,7 +8,8 @@ import { BarVolumeCoverage } from '../screener/BarVolumeCoverage';
 import { StatusChip } from '../ui/StatusChip';
 import { useOccurrenceExclusions } from '../screener/useOccurrenceExclusions';
 import { OccurrenceExclusionToolbar } from '../screener/OccurrenceExclusions';
-import { HistoryCollection } from '../screener/HistoryCollection';
+import { ScreenerPreparationStatus } from '../screener/ScreenerPreparationStatus';
+import type { ScanRequest, ScreenerResponse } from '../api/screener';
 import { useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
 import { useScreener } from '../screener/useScreener';
@@ -195,7 +196,36 @@ export function Screener() {
     [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe, venue],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
-  const screener = useScreener({ continuous: !volumeRefreshStopped && !invalidEditor, anchor: scanKey });
+  const publishScan = (res: ScreenerResponse, body: ScanRequest) => {
+    const anchored = !editor.dirty && editor.anchorId != null;
+    const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
+    const savedId = anchored ? editor.anchorId : null;
+    const savedName = anchored ? editor.anchorName : null;
+    setLastScan({
+      savedId,
+      savedName,
+      savedUpdatedAtMs: saved?.updated_at_ms ?? null,
+      scanKey,
+      requestJson: JSON.stringify(body),
+      rows: res.rows,
+      hasMore: res.has_more,
+      scanStatus: res.status,
+      intradayFailure: res.intraday_failure,
+      warnings: res.warnings,
+      historyCoverage: res.history_coverage,
+      rankBasis: res.rank_basis,
+      barCoverage: res.bar_coverage, dailyCoverage: res.daily_coverage,
+      calculation: res.calculation,
+      depthValues: res.depth_values ?? null,
+      scannedAtMs: res.scanned_at_ms ?? Date.now(),
+      basisAtMs: res.basis_at_ms,
+      fallbackBasisAtMs: res.fallback_basis_at_ms,
+      basis: 'auto',
+      dataStale: false,
+    });
+  };
+  const screener = useScreener({ continuous: !volumeRefreshStopped && !invalidEditor, anchor: scanKey,
+    request: scanBody, onProgress: publishScan });
   // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
   // 드로어 스캔은 scanKey null → 비교 불가 시 stale 판정하지 않는다.
   const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
@@ -217,38 +247,12 @@ export function Screener() {
   const runScan = async (background = false): Promise<boolean> => {
     if (invalidEditor || !hasConditions || screener.isPending) return false;
     if (!background) setVolumeRefreshStopped(false);
-    const requestJson = JSON.stringify(scanBody);
-    const anchored = !editor.dirty && editor.anchorId != null;
-    const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
-    const savedId = anchored ? editor.anchorId : null;
-    const savedName = anchored ? editor.anchorName : null;
     try {
       await screener.mutateAsync(scanBody, {
         onSuccess: (res) => {
           // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
           // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
-          setLastScan({
-            savedId,
-            savedName,
-            savedUpdatedAtMs: saved?.updated_at_ms ?? null,
-            scanKey,
-            requestJson,
-            rows: res.rows,
-            hasMore: res.has_more,
-            scanStatus: res.status,
-            intradayFailure: res.intraday_failure,
-            warnings: res.warnings,
-            historyCoverage: res.history_coverage,
-            barCoverage: res.bar_coverage, dailyCoverage: res.daily_coverage,
-            rankBasis: res.rank_basis,
-            calculation: res.calculation,
-            depthValues: res.depth_values ?? null,
-            scannedAtMs: res.scanned_at_ms ?? Date.now(),
-            basisAtMs: res.basis_at_ms,
-            fallbackBasisAtMs: res.fallback_basis_at_ms,
-            basis: 'auto',
-            dataStale: false,
-          });
+          publishScan(res, scanBody);
           if (!background) setSortMode('default');
         },
       });
@@ -371,7 +375,7 @@ export function Screener() {
           <ConditionBuilder key={`${editor.anchorId}:${formRevision}`} calculationPolicy={editor.calculationPolicy} conditions={editor.conditions} universe={editor.universe}
             onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse}
             expression={editor.expression} onExpressionChange={editor.editExpression} expressionScope={editor.anchorId}>
-            {!invalidEditor && <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />}
+            {!invalidEditor && <ScreenerPreparationStatus run={screener.preparation} />}
           </ConditionBuilder>
           {!editor.universe.scopes?.length && editor.conditions.some(leaf =>
             (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
@@ -484,12 +488,14 @@ export function Screener() {
               {lastScan == null ? (
                 // "조회 전"과 "조건에 맞는 종목 없음"은 다른 상태다 — 30분 TTL 로 결과가
                 // 만료된 직후를 0건으로 오독하면 사용자는 조건이 틀렸다고 착각한다.
-                <EmptyState className="flex-1" title="아직 조회하지 않았습니다">
-                  조건을 확인하고 조회를 누르면 결과가 여기 표시됩니다 · 결과는 30분 뒤 만료됩니다
+                <EmptyState className="flex-1" title={screener.isPending ? '데이터를 준비하고 있습니다' : '아직 조회하지 않았습니다'}>
+                  {screener.isPending ? '준비된 종목부터 결과를 자동으로 표시합니다' : '조건을 확인하고 조회를 누르면 결과가 여기 표시됩니다 · 결과는 30분 뒤 만료됩니다'}
                 </EmptyState>
               ) : (
                 <div className={`flex min-h-0 flex-1 flex-col ${screener.isPending ? 'opacity-60' : ''}`}>
-                  <ScreenerResults
+                  {rows.length === 0 && screener.preparation && screener.preparation.status !== 'complete'
+                    ? <InlineState>확인된 일치 종목이 없습니다 · 준비·검증 대기 중인 종목은 아직 판정하지 않았습니다</InlineState>
+                    : <ScreenerResults
                     key={`${lastScan.interactionStartedAtMs ?? lastScan.scannedAtMs}:${lastScan.requestJson ?? lastScan.scanKey ?? ''}`}
                     scan={lastScan}
                     occurrenceController={occurrenceController}
@@ -497,7 +503,7 @@ export function Screener() {
                     onActivate={openLive}
                     sortMode={sortMode}
                     onSortChange={setSortMode}
-                  />
+                  />}
                 </div>
               )}
             </>

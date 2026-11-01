@@ -101,6 +101,9 @@ from hoga.trading import contracts as broker_contracts, models as trading_models
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
+    "ScreenerRun": frozenset({"id", "status", "request", "total", "evaluated", "preparing", "waiting", "failed",
+                              "errors", "revision", "result_revision", "result", "started_at_ms", "updated_at_ms",
+                              "next_retry_at_ms"}),
     "CaptureCountKey": frozenset({"code", "date"}),
     "CaptureCountsRequest": frozenset({"items"}),
     "CaptureCount": frozenset({"code", "date", "full_capture_count"}),
@@ -666,6 +669,7 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     "RankingSessionState": (
         frozenset(get_args(ranking_session.RankingSessionState)), "frontend/src/api/rankingBasis.ts"),
     "RankingBasisSource": (frozenset(get_args(ranking_session.RankingBasisSource)), "frontend/src/api/rankingBasis.ts"),
+    "ScreenerRunStatus": (frozenset(get_args(m.ScreenerRunStatus)), "frontend/src/api/screenerRuns.ts"),
     "BrokerOrderType": (frozenset(get_args(broker_contracts.BrokerOrderType)), "frontend/src/api/trading.ts"),
     "ExecutionPriceBasis": (
         frozenset(get_args(broker_contracts.ExecutionHistoryRow.model_fields["price_basis"].annotation)),

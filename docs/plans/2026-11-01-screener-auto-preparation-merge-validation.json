@@ -1,0 +1,73 @@
+{
+  "checked_at_utc": "2026-11-01T11:49:44.473192+00:00",
+  "original_feature_commit": "3404d3dae08c30db222540a1f894c432adf9c2af",
+  "latest_main_commit": "c25c83abc565716e696025f6aab6f80695372484",
+  "verified_source_commit": "f5ac78cac2b6412406c78f1536a5cc3121e2d89d",
+  "subsequent_changes": "This record only; product, test, dependency and verification configuration inputs stay identical.",
+  "inputs": {
+    "file_count": 5610,
+    "sha256": "2ec012da864ce369e572aa308a789682be3996aaab6704b72620b10b5855fbb9",
+    "algorithm": "SHA256 of compact UTF-8 sorted JSON map path->SHA256(bytes); git ls-files -co --exclude-standard; exclude this record itself."
+  },
+  "merge_impact": "Main #2366 added frontend drawing tools, AppIcon SVGs, tests and documentation. Merged without conflicts; reran all frontend unit/type checks, build and related drawing/screener browser flows.",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "log": "/tmp/hoga-auto-merge-typecheck.log",
+      "normalized_text_log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+      "result": "app/unit/E2E TypeScript projects passed"
+    },
+    {
+      "command": "npx vitest run",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "log": "/tmp/hoga-auto-merge-vitest.log",
+      "normalized_text_log_sha256": "72d69dccac64afa852faeaa9ed7307c9142d48137011dfb3267e2b618cee986b",
+      "result": "760 files, 9702 tests passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/screener-automatic-preparation.spec.ts tests/e2e/screener-drawer-occurrence-layout.spec.ts tests/e2e/screener-history.spec.ts tests/e2e/screener-trade-value-history.spec.ts tests/e2e/screener-calculation-bases.spec.ts tests/e2e/screener-refresh.spec.ts tests/e2e/drawing-advanced.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "log": "/tmp/hoga-auto-merge-e2e.log",
+      "normalized_text_log_sha256": "07a162c522d5be32e833b1eac23a76c77f8039640b24f11c6a0362cdde008551",
+      "result": "14 passed, one worker; isolated ports/data/dist and blank credentials"
+    },
+    {
+      "command": "npx vite build (Playwright webServer prerequisite)",
+      "exit_code": 0,
+      "result": "passed, 14.58s; existing large chunk warning"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "exit_code": 0,
+      "result": "passed, zero violations"
+    },
+    {
+      "command": "git diff origin/main...HEAD --check",
+      "exit_code": 0,
+      "result": "passed"
+    }
+  ],
+  "backend_reuse": {
+    "record": "2026-11-01-screener-auto-preparation-validation.json",
+    "areas_backend_sha256": "896c4a8f755d3d44596328ff977db45cae7184bfa0fbe41bd502d2f3009f5865",
+    "reason": "hoga/, tests/, pyproject.toml, uv.lock and ruff.toml hashes exactly match the original record; API mirrors/dependencies/fixtures and runtime tools are unchanged. Original source and normalized-text log hashes were rechecked before the merge.",
+    "results": "Final screener scope 1437 passed. Broad backend: 8005 passed, 2 skipped, 13 deselected; the same 2 PREOPEN_CLOSE baseline failures remain, reproduced on the original unmodified main. Do not claim the whole backend suite passed."
+  },
+  "browser_reuse": "Original 38 related screener cases remain recorded. On the combined tree, reran 14 cases covering automatic preparation/reload, drawer compactness, history, calculation policies, ordinary refresh and newly merged advanced drawings.",
+  "runtime_reference": "2026-11-01-screener-auto-preparation-validation.json environment (unchanged)",
+  "e2e_environment": {
+    "workers": 1,
+    "backend_port": 20244,
+    "frontend_port": 21244,
+    "data": "/tmp/hoga-e2e-data-244",
+    "dist": "/tmp/hoga-e2e-dist-244",
+    "real_vendor_credentials": false
+  },
+  "limits": [
+    "No production data mutation or user server restart. Real-vendor speed/load is not benchmarked."
+  ]
+}

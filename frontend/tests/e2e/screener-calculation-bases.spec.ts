@@ -3,6 +3,7 @@ import type { SavedScreener } from '../../src/api/savedScreeners';
 import type { ScanRequest, ScreenerResponse, VolumePeriodParams } from '../../src/api/screener';
 import { apiExact } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
+import { installScreenerRunsMock } from './helpers/screenerRuns';
 
 const old: SavedScreener = { id: 'legacy', name: '기존 거래량', universe: {}, created_at_ms: 1, updated_at_ms: 1,
   conditions: [{ id: 'v', type: 'new_high_vol_today', params: { period: 3 } }] };
@@ -29,6 +30,7 @@ test('copy preserves the old save, makes volume basis explicit, and carries char
   await page.route(apiExact('screener/status'), route => route.fulfill({ json: {
     status: 'ok', calculation_policies: ['legacy_v1', 'separate_bases_v2'] } }));
   await page.route(apiExact('screener/history/jobs/current'), route => route.fulfill({ json: null }));
+  await installScreenerRunsMock(page, answer, () => false, request => scans.push(request));
   await page.route(apiExact('screener/saves'), route => {
     if (route.request().method() === 'POST') {
       const created = { ...route.request().postDataJSON(), id: 'new', created_at_ms: 2, updated_at_ms: 2 } as SavedScreener;

@@ -6,6 +6,7 @@ import datetime as dt
 from dataclasses import asdict
 
 from hoga.api.screener_daily_ingest import MAX_PAGES, RawSample
+from hoga.api.screener_daily_requests import page_key
 from hoga.live import kiwoom_access, kiwoom_daily_candles
 from hoga.util.timeenc import KST
 
@@ -16,6 +17,7 @@ def collector(client, scheduler, *, runner=None):
     async def fetch(code, first, last, round_index):
         started = dt.datetime.now(KST)
         pages = 0
+        independent = object()
 
         def page(fetch_fn, index):
             nonlocal pages
@@ -24,7 +26,8 @@ def collector(client, scheduler, *, runner=None):
             pages += 1
             return capacity(
                 scheduler,
-                key=("daily-ingest", code, first, last, round_index, started.isoformat(), index),
+                key=page_key(fetch_fn, ("daily-ingest", code, first, last, round_index, started.isoformat(), index),
+                             observation="initial" if round_index == 0 else ("recheck", independent)),
                 api_id="ka10081",
                 priority="background",
                 client=client,

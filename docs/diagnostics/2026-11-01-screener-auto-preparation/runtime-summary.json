@@ -1,0 +1,35 @@
+{
+  "captured_on_kst": "2026-11-01",
+  "source": "read-only stored status and immutable manifest; no new provider run",
+  "source_status_sha256": "7c8a4060aae934ad597143633315677585ddd7a926d4065ebee400003adc928e",
+  "daily_ingest": {
+    "last_attempt_at": "2026-10-31T23:34:25.852227+09:00",
+    "last_trading_day": "20261030",
+    "codes": 4412,
+    "provider_pages": 4311,
+    "elapsed_ms": 206732,
+    "reused_samples": 0,
+    "skipped_codes": 88,
+    "retired_codes": 88,
+    "failed_codes": 13,
+    "unavailable_codes": 22,
+    "provisional": 79,
+    "confirmed": 21541,
+    "quarantined": 0,
+    "commit_pending": false
+  },
+  "error_categories": {
+    "KiwoomTransportError": 5,
+    "KiwoomApiError": 8
+  },
+  "series_snapshot": "23cdd0a6812610dc3c77bea05626c6d88a8fec2a05cda4a3ffe59a6087311cbb",
+  "adjusted_as_of": "2026-10-30",
+  "observations": 499,
+  "quantity_evidence": 0,
+  "governor_observation": {
+    "accounts": 6,
+    "workers": 12,
+    "background_limit_from_code": 4
+  },
+  "elapsed_scope": "_finish_state before final _publish and _commit_pending; not full UI completion"
+}

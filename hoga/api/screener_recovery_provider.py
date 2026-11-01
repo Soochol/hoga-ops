@@ -7,6 +7,7 @@ import datetime as dt
 from dataclasses import asdict
 
 from hoga.api import screener_daily_confirmation as confirmation
+from hoga.api.screener_daily_requests import page_key
 from hoga.api.screener_history_jobs import _candles_frame
 from hoga.api.screener_recovery import RecoveryStop
 from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime
@@ -35,12 +36,16 @@ def collector(data_dir, *, client=None, scheduler=None, clock=None, pause=None):
 
         async def sample(round_index):
             started_at = clock()
+            independent = object()
             results = []
             for adjust in (False, True):
                 async def page(fetch_fn, index, adjusted=adjust):
                     check()
                     result = await kiwoom_access.run_with_capacity(
-                        capacity, key=("screener-recovery", target.code, anchor, round_index, adjusted, index),
+                        capacity, key=page_key(
+                            fetch_fn, ("screener-recovery", target.code, anchor, round_index, adjusted, index),
+                            observation="initial" if round_index == 0 else ("recheck", independent),
+                        ),
                         api_id=kiwoom_daily_candles.API_ID, priority="background", client=chosen, fetch_fn=fetch_fn,
                     )
                     check()

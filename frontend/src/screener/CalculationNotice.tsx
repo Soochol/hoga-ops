@@ -29,7 +29,8 @@ export function CalculationNotice({ scan }: { scan: PanelScan | null }) {
     setBusy(true); setError(null);
     try {
       const response = await apiCall<ScreenerResponse>('/api/screener/executions', {
-        method: 'POST', body: JSON.stringify({ ...request, basis: 'eod', snapshot_id: calculation.snapshot_id }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...request, basis: 'eod', snapshot_id: calculation.snapshot_id }),
       });
       const id = response.calculation?.execution_id;
       if (id && response.calculation?.snapshot_id) setSaved({ execution: id, snapshot: response.calculation.snapshot_id });
@@ -38,11 +39,11 @@ export function CalculationNotice({ scan }: { scan: PanelScan | null }) {
   };
   return <div className="flex flex-col gap-1 text-xs text-fg-dim" aria-label="계산 기준 안내">
     <p>{calculationLabel(calculation.policy)} · 수정 가격 기준일 {calculation.adjusted_as_of ?? '미준비'}</p>
-    {scan.warnings.includes('separate_bases_not_prepared') && <p>새 기준 일봉을 먼저 준비해 주세요.</p>}
+    {scan.warnings.includes('separate_bases_not_prepared') && <p>검색에 필요한 일봉을 자동으로 준비합니다.</p>}
     {scan.barCoverage && <p>대상 {scan.barCoverage.total}종목 · 평가 가능 {scan.barCoverage.complete}종목
       {' · '}확인 필요 {scan.barCoverage.total - scan.barCoverage.complete}종목</p>}
     {[...counts].map(([reason, codes]) => <p key={reason}>{coverageReasonText(reason)}: {codes.size}종목</p>)}
-    {counts.has('share_evidence_unavailable') && <p>검증된 수량 이력 등록이 필요합니다. 실제 거래량을 선택하면 수량 환산 없이 비교합니다.</p>}
+    {counts.has('share_evidence_unavailable') && <p>검증된 수량 이력이 없어 일부 종목의 판정을 보류합니다.</p>}
     <p>차트는 현재 기준으로 열리며, 이 조회의 가격 버전과 다를 수 있습니다.</p>
     {archivable && calculation.snapshot_id && <div>
       <ToolbarButton disabled={busy} onClick={() => void save()}>{busy ? '보존 중…' : '이 스냅샷으로 확정 일봉 결과 보존'}</ToolbarButton>

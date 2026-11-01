@@ -1260,6 +1260,12 @@ Ctrl+Z(⌘Z)로 되돌리고 Ctrl+Shift+Z(⌘⇧Z) 또는 Ctrl+Y로 다시 실�
 확정 데이터로 대체되면 실제 두 기준 시각을 범위로 표시한다. 빈 결과와 새로고침 후에도
 서버 기준을 유지한다. 조회 모드 안내 문구와 별도의 일봉 기준일 표시는 제거한다.
 
+2026-11-01 사용자 요청: 조회 시 필요한 일봉을 자동 준비한다. 별도 수집 체크와
+`새 기준 일봉 준비` 버튼은 제거하며 편집·저장 조건 선택만으로 수집하지 않는다.
+준비 중에도 확인된 결과를 먼저 보여주고 평가 완료/전체·준비 중·검증 대기·실패 수를
+기존 보조 텍스트와 상태 영역에 표시한다. 검증 대기는 불일치 0건과 구분한다.
+브라우저 새로고침은 이미 시작한 작업에 다시 연결하고 조건 변경 후 이전 결과는 붙이지 않는다.
+
 > **Scale note:** All px values in this section are **1.0× base intent**.
 > Default rendering = × 1.0 as of 2026-08-07, so these px values *are* what ships
 > today. That equality is a property of the current dial, not a permanent fact —

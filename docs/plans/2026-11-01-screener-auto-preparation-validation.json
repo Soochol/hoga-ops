@@ -1,0 +1,237 @@
+{
+  "recorded_at_utc": "2026-11-01T11:40:34.764003+00:00",
+  "base_commit": "f5f24862fda4952281cd2da85278bdc5907e665f",
+  "branch": "codex/screener-auto-preparation-study",
+  "validated_state": "Working tree contents, including new files; source hashes exclude this self-referential record.",
+  "input_algorithm": "SHA256 of UTF-8 compact JSON mapping sorted git ls-files -co --exclude-standard paths to SHA256(file bytes); exclude this record and missing/non-file paths.",
+  "inputs": {
+    "file_count": 5597,
+    "sha256": "055d66b9eac5b317c4835f49657e59aa4740a4a5c565d980f8f4e58870c91046"
+  },
+  "initial_full_suite_inputs": {
+    "file_count": 5597,
+    "sha256": "991935cfc4dede2fed588f504222e7e72fbe592c9716c0b1fb202d00b4e1c8a5"
+  },
+  "initial_full_suite_to_final_changed_files": [
+    "docs/plans/2026-11-01-screener-auto-preparation-implementation.md",
+    "frontend/src/pages/Screener.tsx",
+    "frontend/src/screener/ScreenerDrawer.tsx",
+    "frontend/src/screener/useScreener.preparation.test.tsx",
+    "frontend/src/screener/useScreener.ts",
+    "frontend/tests/e2e/screener-drawer-occurrence-layout.spec.ts",
+    "frontend/tests/e2e/screener-volume-conditions.spec.ts",
+    "hoga/api/screener_preparation_plan.py",
+    "tests/api/test_screener_runs.py"
+  ],
+  "changed_file_sha256": {
+    "CONTEXT.md": "6a09fb046c6d925b6ff364efe03e4e83a0912ebc2e3e46f8d61807be870db8c8",
+    "DESIGN.md": "31efd7edf81a8c6cf398472c11cf25e56843e4fca5b5a32d0bf38a30518d6d5b",
+    "docs/adr/0057-screener-kis-authoritative-factor-store.md": "12ac62923631a9568a6701b476991bad96fe0ad027638135ad5623ce45ec63b0",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/README.md": "17a7218c81d1c6696fc21ee3f90ef318b2a97b4ed8e31d4f411c746c5a4322bf",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/contract-tests.txt": "cb1e3167f4948a5127fa29b388bd2ac427781fc2bfc76664ac87090d54291f61",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/probe.py": "33145f6dff5bcdfbed415e9e3a0ba0a4be4bab4fee4f03301c10f72c687b5b22",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/raw-update-results.json": "d422152e9f2f989635513b565a250bd6377bf5ac27b5a258d2e7a986c5e3f252",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/regression-tests.txt": "14a7b6e4e89a6ec8b7368196d53813ea1ec66cd6323e0846c82aa7732bcd237e",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/results.json": "5f5f8ca2f88ded895171a55b3c69199e1950859ba21f6741a8cf0df21bb9c1fa",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/runtime-summary.json": "48a0bef2661a503082597b03e99521d260a105322fae8baf3dc07adbf5b8a06c",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/storage-final-run.txt": "a430a949a7f3264ada7b4de7ca3a83eb900e138f19ecc12a965aefdf6c9332c6",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/test_probe_contracts.py": "fc5105e0f84acde40cec5f31c0c1473ccd87825ce9cb52f1c43dd19681cc34c8",
+    "docs/diagnostics/2026-11-01-screener-auto-preparation/verification.json": "1d0c185d0b228446156ae32ced2244e3ffa81bc981ceff838957664749b989a5",
+    "docs/plans/2026-11-01-screener-auto-preparation-implementation.md": "683194e58b2e0179c0d15ab35d47d2085a426006e21586377d71062f4bd07ecc",
+    "frontend/src/api/screenerRuns.test.ts": "7222cb280f2e870145eafd6f97e88c67133aec068fd5915952391c0846daa0a9",
+    "frontend/src/api/screenerRuns.ts": "21cb9585947c2bb9839f8685f206068945bd38c6cc24a12c5105520ab7c73c7d",
+    "frontend/src/pages/Screener.tsx": "29735ded7dc84bbeefad8244731e9bfa27233d25d4e118f5539542c07afa9afe",
+    "frontend/src/screener/CalculationNotice.tsx": "ab883d31c68a91372626fcfb1aba07d7abf2f1291f08358f2c5a1e2499d7bff0",
+    "frontend/src/screener/ScreenerDrawer.tsx": "550dd2179fbef6423d9741de94726df842b2c17a2605fc1ccd9314d27797a1cd",
+    "frontend/src/screener/ScreenerPreparationStatus.tsx": "b068d4757dd261f67ed32a89429df59f10e1a2de54a318023e58b1447aa99767",
+    "frontend/src/screener/coverageReasonText.ts": "aa606e6952c44305198742771014e661f49b9751ff485a0c3840e0827cbd4ec6",
+    "frontend/src/screener/useScreener.preparation.test.tsx": "22c4e4e39394a804462a19f61d79679ea82a2a10179fe06bb354ba21a80dacc0",
+    "frontend/src/screener/useScreener.ts": "fbd79eb6db5a33595fffe38aaefe1a249e4b1844bebc5750ee86f33b2b249d76",
+    "frontend/src/state/persistencePolicy.ts": "0b52e6e5dde7d199204e39dc714c8bdb27726824546781ebc1abefaa4444e099",
+    "frontend/tests/e2e/helpers/screenerRuns.ts": "890a57ddefddf3ffebd0433d4752a9fd657f1f98aabbd181bf43181c6a014b4c",
+    "frontend/tests/e2e/screener-automatic-preparation.spec.ts": "334a02fb685593d5cc2b147ef01240b8f060fd3ee6097deb7a9e51cfe2c997fe",
+    "frontend/tests/e2e/screener-calculation-bases.spec.ts": "7467265552532a44b67b4bd73d58c68195f56893f2c97972d199c1f5b1ddea01",
+    "frontend/tests/e2e/screener-drawer-occurrence-layout.spec.ts": "ff06cd20ea46df126873d9cca2891909218994ad219e007f2b09a6110669fa51",
+    "frontend/tests/e2e/screener-history.spec.ts": "b0be8873434dca8bc28040453102bd82bd0abf1f017af100f1bf4987068b6f3d",
+    "frontend/tests/e2e/screener-trade-value-history.spec.ts": "6235c97dbc5c1db8db18dbb23cf7720728feeea37a576d766b4401b3141a59b8",
+    "frontend/tests/e2e/screener-volume-conditions.spec.ts": "de08b87282fd8ee2321ec73c6a135d622e9debd3dc4f5c6f0aee8b2d6ba911eb",
+    "hoga/api/models.py": "ba24a5bfa3c667087884e9aabafe21ddeba0d85eef01023dc8c953ae6aaa20d8",
+    "hoga/api/screener.py": "c53692284dadb438d77f697d005c498f4a1941737dfc53e2e5512e605fd328d6",
+    "hoga/api/screener_daily_ingest_provider.py": "cd1dc01acf39343a3a65746ab943f614ba54e703586bba5698806c962670eeb3",
+    "hoga/api/screener_daily_requests.py": "bd663b3b1a88c61bfc24efbcd8091f867c04a6de009e0f2c816ed0b2eb84dce4",
+    "hoga/api/screener_history_jobs.py": "80ecd2fef8f531658573601a1381914c456e2e385b384a8f652b56b97d9bd110",
+    "hoga/api/screener_preparation.py": "c1e83c7ff9a640c93fcd12e23aae9df48cb711f7554c88d0178cdad9e24ffca3",
+    "hoga/api/screener_preparation_plan.py": "9bf0facf021f2d28707ad5969d3aebf7cef80c01b12fa6eed1ff9906d4cec7ae",
+    "hoga/api/screener_rankings.py": "c66f19c90cef41a4c685ed2910c651ebcc03d91aa81f8fe44ef83e0794633430",
+    "hoga/api/screener_recovery_provider.py": "5665c5a8f84bc91b4c132d2e6ebebb07724611214fd34a885ce126e74ba6e834",
+    "hoga/api/screener_run_results.py": "85ede3d11df7825fbbe14bf1d1ca9b950c0eb148358a1bae3e360c7c601fc1cc",
+    "hoga/api/screener_runs.py": "28f472b745fb6cd8fe247132334aef021cccc915c46f8346b9e3d76652ea7b13",
+    "hoga/api/screener_series_runner.py": "0128e0e3d76e2161d32e19ddf593f00f559dc7dca1451c86f55ec16a8f09f3a1",
+    "hoga/api/screener_series_store.py": "54caba20c3c9282a942ad9cb1df34f8e23a7f3cd2d19588ce2f52a25cacd6aea",
+    "hoga/live/api.py": "a603cb96d0da95972dd66fcafe0a62e0b14c4d1b6e64fdffc3aa330d44ad25b0",
+    "hoga/live/kiwoom_rankings_access.py": "d58b595f789d5fcdf84421fd21ccd9f253fd56ca08c093f9009a74f5895e5ac1",
+    "hoga/live/kiwoom_rest.py": "5a1a514c44181af08f0dc2197df2b97933de9df15a1e20058c8b824089e164d2",
+    "tests/api/test_screener_daily_requests.py": "c4c7eb0107c0668ac9fc83e26e886e4d4e1e475d23441b807fca6f38b7539ec2",
+    "tests/api/test_screener_rankings.py": "7ede35b6bb6a425bcb4c68194f9db679621301c229e183581476801e940001fa",
+    "tests/api/test_screener_runs.py": "48b9e29048b5d2cfb62fae530611c63aaeed65ae8d112fa349644f92a931d30d",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "d3f65a4a50281e499f21dba6a0d1a6ffad1649bf1bdb000f4774af699ae6e9b1"
+  },
+  "areas": {
+    "backend": {
+      "file_count": 879,
+      "sha256": "896c4a8f755d3d44596328ff977db45cae7184bfa0fbe41bd502d2f3009f5865"
+    },
+    "frontend_unit_and_app": {
+      "file_count": 1858,
+      "sha256": "a933958eacf4eae3105b7ae941b635ffb68ecb7a5d6a0de9d22d1e3ad1fd470c"
+    },
+    "e2e": {
+      "file_count": 207,
+      "sha256": "b16c47d9b45f640cd06924b74375605440acdeb667a5fde56651d4e60804f13a"
+    },
+    "documentation": {
+      "file_count": 2470,
+      "sha256": "03311bbf92800a496c35f68a8fee165129f92ff28f70df4dc47b51b5e4f2a166"
+    }
+  },
+  "environment": {
+    "os": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+    "timezone": "Asia/Seoul",
+    "python": "3.14.7",
+    "uv": "0.11.8",
+    "pytest": "9.0.3",
+    "ruff": "0.15.13",
+    "polars": "1.41.0",
+    "fastapi": "0.136.1",
+    "pydantic": "2.13.4",
+    "httpx": "0.28.1",
+    "pytest_asyncio": "1.3.0",
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "react": "18.3.1",
+    "chrome": "156.0.8078.79",
+    "credentials": "Blank worktree .env and E2E vendor credential overrides; fake providers only.",
+    "e2e": {
+      "workers": 1,
+      "backend_port": 20244,
+      "frontend_port": 21244,
+      "data": "/tmp/hoga-e2e-data-244",
+      "dist": "/tmp/hoga-e2e-dist-244"
+    }
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops",
+      "outcome": "8005 passed, 2 baseline failures, 2 skipped, 13 deselected",
+      "log": "/tmp/hoga-auto-release-backend.log",
+      "log_sha256": "c7c057e8f0d1868ea235ca42b9cb0a7bc5cb9f5dd744a292777b95b67d8cd315",
+      "summary": [
+        "collected 8022 items / 13 deselected / 8009 selected",
+        "= 2 failed, 8005 passed, 2 skipped, 13 deselected, 79 warnings in 500.15s (0:08:20) ="
+      ]
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener_*.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/test_screener_no_kis_dependency.py docs/diagnostics/2026-11-01-screener-auto-preparation/test_probe_contracts.py",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops",
+      "purpose": "Final affected-area revalidation after adding next-day price-basis invalidation; all other backend sources/tests unchanged.",
+      "log": "/tmp/hoga-auto-release-screener-final.log",
+      "log_sha256": "d0b934edb08573a110a272db459dbf0b2edc1f91e4247c31888de89f27a790bc",
+      "summary": [
+        "================ 1437 passed, 65 warnings in 105.97s (0:01:45) ================="
+      ]
+    },
+    {
+      "command": "npx vitest run",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops/frontend",
+      "outcome": "759 files, 9677 tests passed",
+      "log": "/tmp/hoga-auto-release-frontend-final2.log",
+      "log_sha256": "5d53cde1e32491e155fa0923072468adced4462d039ac77d07499f765ccfc1e3",
+      "summary": [
+        "Error: Importing a module script failed.",
+        "Error: Importing a module script failed.",
+        " Test Files  759 passed (759)",
+        "      Tests  9677 passed (9677)"
+      ]
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops/frontend",
+      "outcome": "exit 0; app, unit-test and E2E TypeScript projects",
+      "log": "/tmp/hoga-auto-release-typecheck-final.log"
+    },
+    {
+      "command": "npx tsc -p tsconfig.e2e.json --noEmit",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops/frontend",
+      "outcome": "exit 0; rechecked after final drawer fixture update",
+      "log": "/tmp/hoga-auto-release-e2e-typecheck.log"
+    },
+    {
+      "command": "npx vite build",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops/frontend",
+      "outcome": "passed; existing >700kB chunk warning remains",
+      "log": "/tmp/hoga-auto-release-build-final.log",
+      "log_sha256": "aa9bf3cb53a35422f5429229e8b9c359225106044302ff0d59617e1581a671cc",
+      "summary": []
+    },
+    {
+      "command": "npx playwright test screener- --reporter=list",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops/frontend",
+      "outcome": "37 passed; 1 obsolete fixture failed. See focused rerun; combined final coverage 38/38.",
+      "log": "/tmp/hoga-auto-release-e2e-broad.log",
+      "log_sha256": "61033b39c60158edece8f7e75217b359fcfb2cfedebbce20eacffda9b25a91bd",
+      "summary": [
+        "    Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveCount\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed",
+        "    test-results/screener-drawer-occurrence-9a038-sting-exclusions-restorable-chromium/test-failed-1.png",
+        "  1 failed",
+        "  37 passed (3.0m)"
+      ]
+    },
+    {
+      "command": "npx playwright test tests/e2e/screener-drawer-occurrence-layout.spec.ts --reporter=list",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops/frontend",
+      "outcome": "1 passed after mocking runs and replacing an invalid 2031 end date with a completed historical date.",
+      "log": "/tmp/hoga-auto-release-e2e-drawer-final.log",
+      "log_sha256": "d8f421b06cd934a4b766179a31b1bfb97975b9de9ba07ce605f7cac1dd1aeb2a",
+      "summary": [
+        "  1 passed (19.0s)"
+      ]
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops",
+      "outcome": "passed, 0 violations"
+    },
+    {
+      "command": "git diff --check",
+      "cwd": "/home/dev/.codex/worktrees/b24e/hoga-ops",
+      "outcome": "passed"
+    }
+  ],
+  "reuse_basis": "The full backend run preceded only a preparation-plan/date-boundary regression fix and related tests/docs. The final screener suite revalidates that whole affected area and wire/static-dependency contracts. Final frontend unit/app inputs are unchanged since its passing run; only the E2E fixture and backend/docs changed later. Rechecked the E2E TypeScript project and failed browser case separately. Unchanged passing E2E results are retained.",
+  "known_baseline_failures": {
+    "base_commit": "f5f24862fda4952281cd2da85278bdc5907e665f",
+    "isolated_archive": "/tmp/hoga-auto-baseline-n436vquk",
+    "command": "uv run --extra dev pytest -q tests/unit/api/test_broker_trading.py -k preopen_exact_wire_dedup_terms_modify_rejection_and_cancel",
+    "tests": [
+      "test_preopen_exact_wire_dedup_terms_modify_rejection_and_cancel[BUY]",
+      "test_preopen_exact_wire_dedup_terms_modify_rejection_and_cancel[SELL]"
+    ],
+    "reason": "StopIteration while locating the accepted PREOPEN_CLOSE order after reloading AccountRegistry.",
+    "log": "/tmp/hoga-auto-latest-main-baseline-repro.log",
+    "log_sha256": "6ee622fe34edd2137d693d7e1ed34ffd15a18baf772002434391a5ae390a6180",
+    "summary": [
+      "collected 65 items / 63 deselected / 2 selected",
+      "======================= 2 failed, 63 deselected in 0.99s ======================="
+    ]
+  },
+  "limitations": [
+    "No real-vendor speed, rate-limit, foreground contention or production benchmark.",
+    "No deployment, production data mutation, user server restart or new-feature PR merge.",
+    "Quantity evidence and conflicts remain unresolved when the required verified evidence is unavailable."
+  ]
+}

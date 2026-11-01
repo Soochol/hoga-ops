@@ -1,55 +1,34 @@
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
-import type { HistoryJob, ScanRequest } from '../../src/api/screener';
+import { installScreenerRunsMock } from './helpers/screenerRuns';
 
-test('historical trade value collects and rescans historical results', async ({ page }, testInfo) => {
+test('historical trade value prepares automatically from a single search', async ({ page }) => {
   await installLiveMocks(page);
-  await page.route(apiExact('screener/saves'), r => r.fulfill({ json: { saves: [{
+  await page.route(apiExact('screener/saves'), route => route.fulfill({ json: { saves: [{
     id: 'money', name: '거래대금 검색', conditions: [{ id: 'tv', type: 'trade_value_period',
       params: { lookback: 60, min_eok: 1000 } }], universe: {}, created_at_ms: 1, updated_at_ms: 1,
   }] } }));
-  await page.route(apiExact('screener/status'), r => r.fulfill({ json: { status: 'ok', warnings: [] } }));
-  let job: HistoryJob | null = null;
-  let allowCompletion = false;
-  let collected = false;
-  await page.route(apiExact('screener/history/jobs/current'), r => {
-    if (job && allowCompletion) {
-      collected = true;
-      job = { ...job, status: 'complete', done: 1, written_rows: 984, current_code: null };
-    }
-    return r.fulfill({ json: job });
-  });
-  await page.route(apiExact('screener/history/jobs'), r => {
-    const request: ScanRequest = r.request().postDataJSON();
-    expect(request.conditions[0]).toMatchObject({ type: 'trade_value_period', params: {
-      mode: 'date_range', start_date: '2019-01-01', end_date: '2022-12-31', min_eok: 1000,
-    } });
-    job = { id: 'money-job', status: 'collecting', request, codes: ['005930'], total: 1, done: 0,
-      written_rows: 0, errors: {}, current_code: '005930', started_at_ms: Date.now(),
-      cancel_requested: false, coverage: null };
-    return r.fulfill({ json: job });
-  });
-  await page.route(apiExact('screener/scan'), r => r.fulfill({ json: {
-    status: 'ok', warnings: [], history_coverage: { total: 1, complete: collected ? 1 : 0,
-      incomplete: collected ? [] : [{ code: '005930', condition_id: 'tv', missing_days: 100,
-        required_from: '2019-01-01', required_to: '2022-12-31', reason: 'missing_history' }] },
-    rows: collected ? [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 70000,
-      change_pct: 0, trade_value_won: 100000000, occurrences: [{ condition_id: 'tv', condition_key: 'history-tv', date: '2020-03-19' }], history_matches: [{ condition_id: 'tv',
-        date: '2020-03-19', trade_value_won: 150000000000 }] }] : [],
-  } }));
+  await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok' } }));
+  let completed = false;
+  const runs = await installScreenerRunsMock(page, () => ({ status: 'ok', warnings: [],
+    history_coverage: { total: 1, complete: completed ? 1 : 0, incomplete: completed ? [] : [{
+      code: '005930', condition_id: 'tv', missing_days: 100, required_from: '2019-01-01',
+      required_to: '2022-12-31', reason: 'missing_history',
+    }] },
+    rows: completed ? [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 70000,
+      change_pct: 0, trade_value_won: 100000000, occurrences: [{ condition_id: 'tv', condition_key: 'history-tv',
+        date: '2020-03-19' }], history_matches: [{ condition_id: 'tv', date: '2020-03-19',
+        trade_value_won: 150000000000 }] }] : [],
+  }), () => !completed);
   await page.goto('/screener');
-  await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('60');
   await page.getByRole('combobox', { name: '거래대금 검색 기간', exact: true }).selectOption('date_range');
-  await expect(page.getByLabel('거래대금 발생 시작일')).toHaveValue('2019-01-01');
-  await expect(page.getByLabel('거래대금 발생 종료일')).toHaveValue('2022-12-31');
   await page.getByRole('button', { name: '조회', exact: true }).click();
-  await expect(page.getByText('이력 확인 필요 1종목', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: '과거 일봉 수집', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: '일봉 수집 · 0/1종목' })).toBeVisible();
-  allowCompletion = true;
+  await expect(page.getByRole('status', { name: '조건검색 데이터 준비' })).toContainText('데이터 준비 중 1');
+  completed = true;
   await expect(page.getByRole('button', { name: '삼성전자 005930 호가창 열기', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /삼성전자 발생/ })).toHaveCount(0);
-  await expect(page.getByText('전체 기간 평가 가능 1종목', { exact: false })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('trade-value-history.png'), fullPage: true });
+  expect(runs.starts).toHaveLength(1);
+  expect(runs.starts[0].conditions[0]).toMatchObject({ type: 'trade_value_period', params: {
+    mode: 'date_range', start_date: '2019-01-01', end_date: '2022-12-31', min_eok: 1000,
+  } });
 });
