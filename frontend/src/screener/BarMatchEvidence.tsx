@@ -2,12 +2,24 @@ import { maOperandLabel } from './maLabels';
 import { operandLabel, PRICE_COMPARE_SYMBOLS } from './priceCompareLabels';
 import { CHANGE_REFERENCE_LABELS } from './candleLabels';
 import type { ScreenerOccurrence } from '../api/screener';
+import type { RankingBasis } from '../api/rankingBasis';
 import { MARKET_RANK_LABELS } from './rankConditions';
 
 import { VolumeConditionEvidence } from './VolumeConditionEvidence';
 
 const PRICE = { open: '시가', high: '고가', low: '저가', close: '종가' };
 const won = (value: number) => value.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+
+function RankObservation({ basis, date, fetchedAtMs }: {
+  basis?: RankingBasis | null; date: string; fetchedAtMs: number;
+}) {
+  const received = new Date(fetchedAtMs + 9 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+  if (basis?.source === 'provider') return <span>
+    {' · '}평가 기준일 {date} · 순위 거래일 미확인 · {received} 조회
+  </span>;
+  return <span>{basis?.trading_date && ` · 기준일 ${basis.trading_date}`}
+    {' · '}{received} {basis?.source === 'stored' ? '관측 · 저장된 순위' : '조회'}</span>;
+}
 
 export function BarMatchEvidence({ event }: { event: ScreenerOccurrence }) {
   if (event.bar_volume_condition_match) return <VolumeConditionEvidence match={event.bar_volume_condition_match} />;
@@ -16,7 +28,7 @@ export function BarMatchEvidence({ event }: { event: ScreenerOccurrence }) {
     {{ all: '전체', kospi: '코스피', kosdaq: '코스닥' }[changeRank.market]}
     {' · '}{changeRank.venue === 'UN' ? '통합' : changeRank.venue} · {changeRank.direction === 'down' ? '하락률' : '등락률'} {changeRank.rank}위
     {' · '}전일 종가 대비 {changeRank.change_pct > 0 ? '+' : ''}{won(changeRank.change_pct)}%
-    {' · '}{new Date(changeRank.fetched_at_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} 조회
+    <RankObservation basis={changeRank.basis} date={event.date} fetchedAtMs={changeRank.fetched_at_ms} />
   </span>;
   const marketRank = event.market_rank_match;
   if (marketRank) return <span className="font-data text-xs text-fg-dim">
@@ -29,15 +41,15 @@ export function BarMatchEvidence({ event }: { event: ScreenerOccurrence }) {
     {marketRank.kind === 'volume' && ` · 당일 거래량 ${marketRank.volume == null ? '—' : won(marketRank.volume)}주`}
     {['program', 'institution', 'foreign'].includes(marketRank.kind) &&
       ` · ${marketRank.kind === 'program' ? '' : '장중 추정 ' }순매수금액 ${marketRank.net_buy_won == null ? '—' : `${won(marketRank.net_buy_won / 1e8)}억`}`}
-    {' · '}기준일 {event.date}
-    {' · '}{new Date(marketRank.fetched_at_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} 관측
+    {marketRank.basis?.source !== 'provider' && !marketRank.basis?.trading_date && <> · 기준일 {event.date}</>}
+    <RankObservation basis={marketRank.basis} date={event.date} fetchedAtMs={marketRank.fetched_at_ms} />
   </span>;
   const rank = event.trade_value_rank_match;
   if (rank) return <span className="font-data text-xs text-fg-dim">
     {{ all: '전체', kospi: '코스피', kosdaq: '코스닥' }[rank.market]}
     {' · '}{rank.venue === 'UN' ? '통합' : rank.venue} · 거래대금 {rank.rank}위
     {rank.trade_value_won != null ? ` · ${won(rank.trade_value_won / 1e8)}억` : ''}
-    {' · '}{new Date(rank.fetched_at_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} 조회
+    <RankObservation basis={rank.basis} date={event.date} fetchedAtMs={rank.fetched_at_ms} />
   </span>;
   const quantity = event.volume_evidence;
   if (quantity) return <span className="font-data text-xs text-fg-dim">

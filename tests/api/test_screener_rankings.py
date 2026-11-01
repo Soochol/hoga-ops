@@ -156,12 +156,22 @@ async def test_unverified_snapshot_is_an_error(corpus, monkeypatch, changes):
     assert error.value.status_code == 502
 
 
+async def test_undated_panel_rows_are_rejected_even_with_a_current_receipt_time(corpus, monkeypatch):
+    async def fetch(*_):
+        return snapshot(basis=ranking_session.RankingBasis(session="holiday", source="provider"))
+    monkeypatch.setattr(ranking, "_fetch", fetch)
+    with pytest.raises(HTTPException) as error:
+        await ranking.evaluate(corpus, request(), NOW, ["000001"])
+    assert error.value.status_code == 502
+    assert error.value.detail["code"] == "screener_rank_snapshot_unverified"
+
+
 @pytest.mark.parametrize("trading,hour", [(False, 10), (None, 10), (True, 8)])
 async def test_closed_or_unknown_day_never_uses_old_ranks(corpus, monkeypatch, trading, hour):
     monkeypatch.setattr(trading_days, "is_trading_day", lambda *_: trading)
     with pytest.raises(HTTPException) as error:
         await ranking.evaluate(corpus, request(), NOW.replace(hour=hour), [])
-    assert error.value.status_code == 409
+    assert error.value.status_code == (503 if hour == 8 else 409)
 
 
 def test_http_scan_and_save_preserve_rank_evidence(corpus):
@@ -176,7 +186,8 @@ def test_http_scan_and_save_preserve_rank_evidence(corpus):
     response = client.post("/api/screener/scan", json=req)
     assert response.status_code == 200
     evidence = response.json()["rows"][0]["occurrences"][0]["trade_value_rank_match"]
-    assert evidence == dict(rank=199, trade_value_won=500_000_000, market="all", venue="KRX", fetched_at_ms=STAMP)
+    assert evidence == dict(rank=199, trade_value_won=500_000_000, market="all", venue="KRX",
+                            fetched_at_ms=STAMP, basis=None)
 
 
 def test_provider_failure_is_http_error_instead_of_empty_success(corpus, monkeypatch):
@@ -288,7 +299,7 @@ def test_change_rank_http_save_and_evidence(corpus):
     assert response.status_code == 200
     assert [row["code"] for row in response.json()["rows"]] == ["000002"]
     assert response.json()["rows"][0]["occurrences"][0]["change_pct_rank_match"] == dict(
-        rank=199, change_pct=11.34, market="all", venue="UN", fetched_at_ms=STAMP, direction="up")
+        rank=199, change_pct=11.34, market="all", venue="UN", fetched_at_ms=STAMP, direction="up", basis=None)
 
 
 @pytest.mark.parametrize("change", [None, float("nan"), float("inf")])
@@ -392,15 +403,16 @@ async def test_holiday_minute_and_rank_use_same_cutoff_and_only_rank_candidates(
     assert {event.date for event in result.rows[0].occurrences} == {"2026-10-30"}
 
 
-def test_missing_holiday_history_is_http_409_not_a_successful_zero(corpus, monkeypatch):
+def test_missing_history_and_credentials_is_http_error_not_a_successful_zero(corpus, monkeypatch):
+    monkeypatch.setattr(ranking, "rankings_fetcher", lambda: None)
     monkeypatch.setattr(screener_runner, "now_kst", lambda: NOW.replace(month=11, day=1))
     app = FastAPI()
     app.include_router(build_router(data_dir=corpus))
     result = TestClient(app).post("/api/screener/scan", json=request(
         calculation_policy="separate_bases_v2", rank_type="change_pct_rank").model_dump(mode="json"))
-    assert result.status_code == 409
-    assert result.json()["detail"]["code"] == "screener_rank_history_unavailable"
-    assert "저장된 순위" in result.json()["detail"]["message"]
+    assert result.status_code == 503
+    assert result.json()["detail"]["code"] == "screener_rank_not_wired"
+    assert "키움 API" in result.json()["detail"]["message"]
 
 
 async def test_unknown_weekday_is_distinct_from_missing_holiday_history(corpus, monkeypatch):
@@ -427,7 +439,7 @@ async def test_missing_history_in_or_branch_is_unknown_not_false(corpus):
     with pytest.raises(HTTPException) as error:
         await screener_runner.run_screener_scan(data_dir=corpus, now=NOW.replace(month=11, day=1),
                                                req=ScanRequest.model_validate(req))
-    assert error.value.detail["code"] == "screener_rank_history_unavailable"
+    assert error.value.detail["code"] == "screener_rank_not_wired"
 
 
 async def test_two_saved_rank_types_report_the_earliest_common_cutoff(corpus):
@@ -526,7 +538,7 @@ def test_new_rank_http_save_and_actual_wire_evidence(corpus, monkeypatch, rank_t
     assert result.status_code == 200
     match = result.json()['rows'][0]['occurrences'][0]['market_rank_match']
     assert set(match) == {'kind', 'rank', 'market', 'venue', 'quote_venue', 'fetched_at_ms',
-                          'volume', 'volume_surge_pct', 'net_buy_won'}
+                          'volume', 'volume_surge_pct', 'net_buy_won', 'basis'}
     assert match['kind'] == kind
 
 
@@ -603,3 +615,224 @@ def test_old_upward_rank_exclusion_identity_and_new_direction_are_distinct():
     assert condition_key(old) == expected
     down = old.model_copy(update={'params': old.params.model_copy(update={'direction': 'down'})})
     assert condition_key(down) != expected
+
+
+SUNDAY = NOW.replace(month=11, day=1)
+FRIDAY_END = NOW.replace(hour=23, minute=59, second=59, microsecond=999000)
+ALL_RANKS = [("trade_value_rank", "value"), ("change_pct_rank", "change"), *NEW_RANKS]
+
+
+@pytest.fixture
+def last_provider(corpus, monkeypatch):
+    fetcher = KiwoomRankingsFetcher(object(), data_dir=corpus, _now=lambda: SUNDAY)
+    calls = []
+
+    def rows(kind):
+        return (snapshot() if kind == "value" else change_snapshot() if kind == "change"
+                else new_rank_snapshot(kind)).rows
+
+    async def general(kind, market, direction, venue, limit):
+        calls.append((kind, market, direction, venue, limit))
+        return rows(kind), 3, False
+
+    async def program(market, venue, limit):
+        calls.append(("program", market, "up", venue, limit))
+        return rows("program"), False
+
+    async def investor(kind, market, venue):
+        calls.append((kind, market, "up", venue, 100))
+        return rows(kind)
+
+    monkeypatch.setattr(fetcher, "_fetch_rankings", general)
+    monkeypatch.setattr(fetcher, "_fetch_program", program)
+    monkeypatch.setattr(fetcher, "_fetch_investor", investor)
+    monkeypatch.setattr(ranking, "rankings_fetcher", lambda: fetcher)
+    return fetcher, calls
+
+
+@pytest.mark.parametrize("rank_type,kind", ALL_RANKS)
+@pytest.mark.parametrize("policy", ["legacy_v1", "separate_bases_v2"])
+@pytest.mark.parametrize("venue", ["KRX", "NXT", "UN"])
+async def test_holiday_without_history_uses_last_ranks_and_keeps_receipt_separate_from_cutoff(
+    corpus, last_provider, monkeypatch, rank_type, kind, policy, venue,
+):
+    async def forbidden(**_):
+        raise AssertionError("Holiday predicates must not request current daily quotes")
+    monkeypatch.setattr(screener_runner.screener_intraday, "build_intraday_overlay", forbidden)
+    limit = 100 if (rank_type, kind) in NEW_RANKS else 200
+    req = request(limit, rank_type=rank_type, calculation_policy=policy, venue=venue, basis="auto")
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=SUNDAY, req=req)
+    assert {row.code for row in result.rows} == {"000001", "000002"}
+    assert {row.price_date for row in result.rows} == {"2026-10-30"}
+    assert result.rank_basis.source == "provider" and result.rank_basis.trading_date is None
+    assert result.rank_basis.observed_at_ms is None
+    assert "2026-10-30 완료 데이터" in result.rank_basis.message
+    assert result.basis_at_ms == int(FRIDAY_END.timestamp() * 1000)
+    for row in result.rows:
+        event = row.occurrences[0]
+        evidence = event.trade_value_rank_match or event.change_pct_rank_match or event.market_rank_match
+        assert event.date == "2026-10-30"
+        assert evidence.basis.source == "provider" and evidence.basis.trading_date is None
+        assert evidence.fetched_at_ms == int(SUNDAY.timestamp() * 1000)
+    assert len(last_provider[1]) == 1
+    assert not (corpus / "rankings").exists()
+
+
+@pytest.mark.parametrize("policy", ["legacy_v1", "separate_bases_v2"])
+@pytest.mark.parametrize("expression,expected", [("A AND B", {"000002"}), ("A OR B", {"000001", "000002", "000003"})])
+async def test_provider_rank_and_daily_condition_use_completed_friday_for_and_and_or(
+    corpus, last_provider, policy, expression, expected,
+):
+    req = request(rank_type="change_pct_rank", calculation_policy=policy, basis="auto").model_dump()
+    req["conditions"].append({"id": "price", "type": "price_range", "params": {"min": 200}})
+    req["expression"] = expression
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=SUNDAY, req=ScanRequest.model_validate(req))
+    assert {row.code for row in result.rows} == expected
+    assert {row.price_date for row in result.rows} == {"2026-10-30"}
+
+
+@pytest.mark.parametrize("policy", ["legacy_v1", "separate_bases_v2"])
+@pytest.mark.parametrize("missing", [False, True])
+async def test_provider_rank_and_minutes_use_completed_friday_and_report_missing_date(
+    corpus, last_provider, monkeypatch, policy, missing,
+):
+    from hoga.api import screener_bar_volume as bars
+
+    seen = []
+    async def fetch(data_dir, code, timeframe, needed, lower, as_of):
+        seen.append((code, as_of))
+        day = NOW - dt.timedelta(days=missing)
+        return bars.MinuteSnapshot([
+            bars.VolumeBar(int(day.replace(hour=15, minute=24).timestamp() * 1000), 10),
+            bars.VolumeBar(int(day.replace(hour=15, minute=27).timestamp() * 1000),
+                           20 if code == "000001" else 5),
+        ], int(SUNDAY.timestamp() * 1000))
+    monkeypatch.setattr(bars, "_fetch_minutes", fetch)
+    req = request(rank_type="change_pct_rank", calculation_policy=policy, basis="auto").model_dump()
+    req["conditions"].append({"id": "minute", "type": "new_high_vol", "params": {
+        "timeframe": "3m", "period": 2, "lookback": 1,
+        "volume_basis": "raw" if policy == "separate_bases_v2" else None}})
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=SUNDAY, req=ScanRequest.model_validate(req))
+    assert {code for code, _ in seen} == {"000001", "000002"}
+    assert all(clock == FRIDAY_END for _, clock in seen)
+    assert [row.code for row in result.rows] == ([] if missing else ["000001"])
+    assert result.bar_coverage.complete == (0 if missing else 2)
+    if missing:
+        assert {item.reason for item in result.bar_coverage.incomplete} == {"minute_date_mismatch"}
+
+
+async def test_mixed_stored_and_provider_ranks_keep_each_source_and_use_day_end_for_other_conditions(
+    corpus, last_provider,
+):
+    archive_rank(corpus, "change", NOW.replace(hour=14))
+    req = request(rank_type="change_pct_rank", calculation_policy="separate_bases_v2").model_dump()
+    req["conditions"] += [{"id": "value", "type": "trade_value_rank", "params": {"top_n": 200}},
+                          {"id": "price", "type": "price_range", "params": {"min": 100}}]
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=SUNDAY, req=ScanRequest.model_validate(req))
+    assert result.rank_basis.source == "provider" and result.basis_at_ms == int(FRIDAY_END.timestamp() * 1000)
+    assert {row.code for row in result.rows} == {"000001", "000002"}
+    for row in result.rows:
+        evidence = {event.condition_id: event for event in row.occurrences}
+        assert evidence["rank"].change_pct_rank_match.basis.source == "stored"
+        assert evidence["value"].trade_value_rank_match.basis.source == "provider"
+    assert last_provider[1] == [("value", "all", "up", "KRX", 200)]
+
+
+def test_holiday_provider_rank_http_preserves_evidence_and_day_end(corpus, last_provider, monkeypatch):
+    monkeypatch.setattr(screener_runner, "now_kst", lambda: SUNDAY)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=corpus))
+    response = TestClient(app).post("/api/screener/scan", json=request(
+        rank_type="change_pct_rank", calculation_policy="separate_bases_v2").model_dump(mode="json"))
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["rank_basis"]["source"] == "provider" and payload["rank_basis"]["trading_date"] is None
+    assert payload["basis_at_ms"] == int(FRIDAY_END.timestamp() * 1000)
+    evidence = payload["rows"][0]["occurrences"][0]["change_pct_rank_match"]
+    assert evidence["basis"]["source"] == "provider" and evidence["basis"]["observed_at_ms"] is None
+
+
+async def test_holiday_provider_failure_and_rest_bypass_are_errors_not_empty_results(
+    corpus, last_provider, monkeypatch,
+):
+    async def fail(*args):
+        raise KiwoomRankingsError("temporary provider failure")
+    monkeypatch.setattr(last_provider[0], "_fetch_rankings", fail)
+    with pytest.raises(HTTPException) as error:
+        await ranking.evaluate(corpus, request(), SUNDAY, None)
+    assert error.value.status_code == 502 and error.value.detail["code"] == "screener_rank_upstream_failed"
+    monkeypatch.setattr(ranking.settings, "rest_bypass_enabled", lambda *_: True)
+    with pytest.raises(HTTPException) as error:
+        await ranking.evaluate(corpus, request(), SUNDAY, None)
+    assert error.value.detail["code"] == "screener_rank_rest_bypassed"
+    archive_rank(corpus, "value")
+    assert (await ranking.evaluate(corpus, request(), SUNDAY, None)).stored
+
+
+async def test_preopen_provider_rank_uses_previous_day_and_downward_direction(corpus, last_provider):
+    now = NOW.replace(hour=8)
+    last_provider[0]._now = lambda: now
+    req = request(rank_type="change_pct_rank").model_dump()
+    req["conditions"][0]["params"]["direction"] = "down"
+    result = await ranking.evaluate(corpus, ScanRequest.model_validate(req), now, None)
+    assert result.cutoff.date().isoformat() == "2026-10-29" and result.historical
+    assert result.basis.source == "provider" and result.basis.session == "preopen"
+    assert last_provider[1][0][2] == "down"
+
+
+@pytest.mark.parametrize("policy", ["legacy_v1", "separate_bases_v2"])
+async def test_provider_rank_does_not_substitute_thursday_for_missing_friday_daily_data(
+    corpus, last_provider, policy,
+):
+    import shutil
+
+    for filename in ("daily_adjusted.parquet", "daily_unadjusted.parquet"):
+        path = corpus / "screener" / filename
+        frame = pl.read_parquet(path).filter(~((pl.col("code") == "000001") & (pl.col("date") == NOW.date())))
+        frame.write_parquet(path)
+    # Start the fixture without Friday, rather than publishing a partial update
+    # that correctly retains the previously verified Friday observation.
+    shutil.rmtree(store.root(corpus))
+    for code in ("000001", "000002", "000003"):
+        remaining = [{**row, "date": row["date"].isoformat()}
+                     for row in frame.filter(pl.col("code") == code).drop("code").to_dicts()]
+        store.publish_pair(corpus, code, remaining, remaining, adjusted_as_of="2026-10-30",
+                           observed_at=SUNDAY.isoformat(), price_events=[])
+    req = request(rank_type="change_pct_rank", calculation_policy=policy).model_dump()
+    req["conditions"].append({"id": "price", "type": "price_range", "params": {"min": 100}})
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=SUNDAY, req=ScanRequest.model_validate(req))
+    assert [row.code for row in result.rows] == ["000002"]
+    coverage = result.daily_coverage if policy == "legacy_v1" else result.bar_coverage
+    assert coverage.complete < coverage.total
+    assert any(item.code == "000001" and item.condition_id == "price" for item in coverage.incomplete)
+
+
+@pytest.mark.parametrize("changes", [
+    {"fetched_at_ms": int(SUNDAY.timestamp() * 1000) - 91_000},
+    {"market": "kosdaq"}, {"venue": "UN"}, {"direction": "down"},
+    {"basis": ranking_session.RankingBasis(session="holiday", source="provider", trading_date="2026-10-30")},
+    {"basis": ranking_session.RankingBasis(session="preopen", source="provider")},
+])
+async def test_invalid_provider_scope_or_receipt_is_not_accepted(corpus, last_provider, monkeypatch, changes):
+    snap = await last_provider[0].get("value", "all", "up", limit=200, allow_last_available=True)
+    async def bad(*args, **kwargs):
+        return replace(snap, **changes)
+    monkeypatch.setattr(ranking, "_fetch_kind", bad)
+    with pytest.raises(HTTPException) as error:
+        await ranking.evaluate(corpus, request(), SUNDAY, None)
+    assert error.value.detail["code"] == "screener_rank_snapshot_unverified"
+
+
+async def test_unknown_weekday_cannot_fetch_last_provider_rows(corpus, last_provider, monkeypatch):
+    monkeypatch.setattr(trading_days, "is_trading_day", lambda *_: None)
+    with pytest.raises(HTTPException) as error:
+        await ranking.evaluate(corpus, request(), SUNDAY + dt.timedelta(days=1), None)
+    assert error.value.detail["code"] == "screener_rank_calendar_unavailable" and last_provider[1] == []
+
+
+async def test_valid_empty_provider_ranking_is_distinct_from_a_failed_fetch(corpus, last_provider, monkeypatch):
+    async def empty(*args):
+        return (), 0, False
+    monkeypatch.setattr(last_provider[0], "_fetch_rankings", empty)
+    result = await screener_runner.run_screener_scan(data_dir=corpus, now=SUNDAY, req=request())
+    assert result.status == "ok" and result.rows == [] and result.rank_basis.source == "provider"

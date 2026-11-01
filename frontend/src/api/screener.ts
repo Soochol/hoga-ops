@@ -732,15 +732,18 @@ export const deletePatternSave = (id: string) =>
   apiAction(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });
 
 export interface TradeValueRankMatch {
+  basis?: RankingBasis | null;
   rank: number; trade_value_won: number | null; market: 'all' | 'kospi' | 'kosdaq';
   venue: 'KRX' | 'NXT' | 'UN'; fetched_at_ms: number;
 }
 export interface ChangePctRankMatch {
+  basis?: RankingBasis | null;
   direction?: ScreenerRankDirection;
   rank: number; change_pct: number; market: 'all' | 'kospi' | 'kosdaq';
   venue: 'KRX' | 'NXT' | 'UN'; fetched_at_ms: number;
 }
 export interface MarketRankMatch {
+  basis?: RankingBasis | null;
   kind: MarketRankKind; rank: number; market: 'all' | 'kospi' | 'kosdaq';
   venue: 'KRX' | 'NXT' | 'UN' | null; quote_venue: 'KRX' | 'NXT' | 'UN' | null;
   fetched_at_ms: number; volume_surge_pct: number | null; volume: number | null; net_buy_won: number | null;

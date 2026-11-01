@@ -462,6 +462,8 @@ export function Screener() {
 
           <CalculationNotice scan={lastScan} />
           {lastScan?.rankBasis && <p className="text-xs text-fg-dim">{rankingBasisText(lastScan.rankBasis)}</p>}
+          {lastScan?.rankBasis?.source === 'provider' && lastScan.rankBasis.message &&
+            <p className="text-xs text-fg-dim">{lastScan.rankBasis.message}</p>}
           {notSeeded ? (
             <InlineState tone="warn" className="text-sm">
               <span className="font-semibold">시드 필요</span> 스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요

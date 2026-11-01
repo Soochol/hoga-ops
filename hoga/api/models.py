@@ -2869,6 +2869,7 @@ class BarVolumeCoverage(BaseModel):
 
 
 class TradeValueRankMatch(BaseModel):
+    basis: RankingBasis | None = None
     rank: int
     trade_value_won: int | None
     market: Literal["all", "kospi", "kosdaq"]
@@ -2877,6 +2878,7 @@ class TradeValueRankMatch(BaseModel):
 
 
 class ChangePctRankMatch(BaseModel):
+    basis: RankingBasis | None = None
     direction: ScreenerRankDirection = "up"
     rank: int
     change_pct: float = Field(allow_inf_nan=False)
@@ -2886,6 +2888,7 @@ class ChangePctRankMatch(BaseModel):
 
 
 class MarketRankMatch(BaseModel):
+    basis: RankingBasis | None = None
     kind: MarketRankKind
     rank: int
     market: Literal["all", "kospi", "kosdaq"]

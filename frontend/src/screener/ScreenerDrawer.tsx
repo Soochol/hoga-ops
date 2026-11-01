@@ -523,6 +523,8 @@ export function ScreenerDrawer() {
           <>
             <CalculationNotice scan={lastScan} />
             {lastScan.rankBasis && <RailState>{rankingBasisText(lastScan.rankBasis)}</RailState>}
+            {lastScan.rankBasis?.source === 'provider' && lastScan.rankBasis.message &&
+              <RailState>{lastScan.rankBasis.message}</RailState>}
             <BarVolumeCoverage coverage={lastScan.barCoverage} />
             {lastScan.dailyCoverage && lastScan.dailyCoverage.complete < lastScan.dailyCoverage.total &&
               <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan.dailyCoverage.total - lastScan.dailyCoverage.complete}종목</div>}

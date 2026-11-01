@@ -84,6 +84,18 @@ afterEach(() => {
 });
 
 describe('RankingDrawer', () => {
+  it('휴장일 저장 기록이 없어도 공급자 마지막 순위를 표시하고 날짜 미제공을 알린다', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({ ...OPEN_RESPONSE, market_open: false,
+      basis: { session: 'holiday', source: 'provider', trading_date: null, observed_at_ms: null,
+        message: '최근 거래일은 2026-10-30입니다. 공급자 마지막 순위의 거래일·관측 시각은 제공되지 않습니다.' },
+    } as never);
+    renderDrawer();
+    expect(await screen.findByText('공급자 마지막 순위 · 거래일 미제공')).toBeInTheDocument();
+    expect(screen.getByText(/최근 거래일은 2026-10-30입니다/)).toBeInTheDocument();
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+    expect(screen.queryByText('순위를 조회할 수 없습니다')).not.toBeInTheDocument();
+  });
+
   it('휴장일에는 저장된 순위의 기준일과 원래 관측 시각을 표시한다', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({ ...OPEN_RESPONSE, market_open: false,
       basis: { session: 'holiday', source: 'stored', trading_date: '2026-10-30',

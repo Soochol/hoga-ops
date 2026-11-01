@@ -3487,7 +3487,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         우측 RightRail "순위" 드로어 소스. kind=change 만 direction(상승/하락)이
         의미 있고 나머지는 무시된다. 일반 순위는 10초, 순매수는 30초 폴링이다.
         market_open=False면 60초로 낮추고 "장 외" 라벨을 단다.
-        비거래일엔 상류를 건너뛰며, 순매수는 전일 목록을 재사용하지 않는다.
+        휴장·장전에는 최근 거래일 저장 기록을 우선한다. 기록이 없으면 공급자 마지막
+        순위를 열람하되 거래일 미제공으로 구분하고 날짜가 확인된 기록으로 저장하지 않는다.
 
         limit는 일반 순위 기본 100, 프로그램 기본 50, 최대 5,000이다. 매 조회마다 첫 페이지부터
         해당 범위를 조회한다. queried_count는 ETF 제외 전 범위이고 has_more는
@@ -3505,7 +3506,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if kiwoom_rankings_fetcher_instance is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
         try:
-            snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction, venue, limit=limit)
+            snap = await kiwoom_rankings_fetcher_instance.get(
+                kind, market, direction, venue, limit=limit, allow_last_available=True)
         except KiwoomRankingsError as e:
             raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_API_ERROR, "message": str(e)}) from e
         except httpx.HTTPError as e:
