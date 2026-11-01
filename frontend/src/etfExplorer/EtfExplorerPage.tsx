@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { PanelCard, PageState, ToolbarButton } from '../ui/PageShell';
 import { persistJson, readJsonObject } from '../state/persist';
 import { EtfLibrary } from './EtfLibrary';
 import { EtfSummary, HoldingBars, StockHoldings } from './EtfHoldings';
 import { EtfComparison } from './EtfComparison';
-import { buildIndex, loadSnapshot, MAX_COMPARE, PREFS_KEY, restorePrefs, searchFunds, type EtfSnapshot, type ExplorerPrefs } from './model';
+import { buildIndex, exactFundMatch, loadSnapshot, MAX_COMPARE, PREFS_KEY, restorePrefs, searchFunds, type EtfSnapshot, type ExplorerPrefs } from './model';
 import './etfExplorer.css';
 
 export default function EtfExplorerPage() {
@@ -19,16 +19,40 @@ export default function EtfExplorerPage() {
 
 function ExplorerContent({ snapshot }: { snapshot: EtfSnapshot }) {
   const index = useMemo(() => buildIndex(snapshot), [snapshot]);
-  const [prefs, setPrefs] = useState(() => restorePrefs(readJsonObject(PREFS_KEY), index));
+  const [prefs, setPrefs] = useState(() => {
+    const saved = restorePrefs(readJsonObject(PREFS_KEY), index);
+    const exact = exactFundMatch(searchFunds(index, saved), saved.query);
+    return exact ? { ...saved, code: exact.code } : saved;
+  });
   const [page, setPage] = useState(0), [stock, setStock] = useState<string | null>(null), [notice, setNotice] = useState('');
+  const [reveal, setReveal] = useState({ id: 0, focus: false });
+  const [announcement, setAnnouncement] = useState('');
   useEffect(() => persistJson(PREFS_KEY, prefs), [prefs]);
   const funds = useMemo(() => searchFunds(index, { style: prefs.style, issuer: prefs.issuer, query: prefs.query }), [index, prefs.style, prefs.issuer, prefs.query]);
   const detail = useRef<HTMLDivElement>(null);
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => {
+    if (!reveal.focus) return;
+    detail.current?.scrollIntoView({ block: 'start' });
+    detailHeading.current?.focus({ preventScroll: true });
+  }, [reveal]);
   const selected = index.funds.get(prefs.code)!;
   const active = snapshot.funds.filter(f => f.style === 'active');
   const ready = snapshot.funds.filter(f => f.status === 'ready');
-  const filter = (patch: Partial<ExplorerPrefs>) => { setPrefs(p => ({ ...p, ...patch })); setPage(0); };
-  const pick = (code: string) => { setPrefs(p => ({ ...p, code })); setStock(null); setNotice(''); };
+  const filter = (patch: Partial<ExplorerPrefs>, autoSelect = true) => {
+    const next = { ...prefs, ...patch };
+    const exact = autoSelect ? exactFundMatch(searchFunds(index, next), next.query) : null;
+    setPrefs(exact ? { ...next, code: exact.code } : next); setPage(0);
+    if (exact && (prefs.code !== exact.code || prefs.query !== next.query)) {
+      setStock(null); setNotice(''); setReveal(value => ({ id: value.id + 1, focus: false }));
+      setAnnouncement(`${exact.name} 상세를 열었습니다.`);
+    } else if (!exact) setAnnouncement('');
+  };
+  const pick = (code: string) => {
+    setPrefs(p => ({ ...p, code })); setStock(null); setNotice('');
+    setReveal(value => ({ id: value.id + 1, focus: true }));
+    setAnnouncement(`${index.funds.get(code)!.name} 상세를 열었습니다.`);
+  };
   const change = (patch: Partial<ExplorerPrefs>) => { setPrefs(p => ({ ...p, ...patch })); setNotice(''); };
   const toggleCompare = (code: string) => {
     if (!prefs.compare.includes(code) && prefs.compare.length >= MAX_COMPARE) {
@@ -43,10 +67,11 @@ function ExplorerContent({ snapshot }: { snapshot: EtfSnapshot }) {
     <div className="etf-workspace">
       <EtfLibrary funds={funds} allFunds={snapshot.funds} prefs={prefs} page={page} onPage={setPage} onFilter={filter} onPick={pick} />
       <div className="etf-detail" ref={detail} aria-label="선택 ETF 상세">
-        <EtfSummary fund={selected} selected={prefs.compare.includes(selected.code)} priceAsOf={snapshot.priceAsOf} largestName={snapshot.stocks[selected.holdings[0].code].name} onCompare={() => toggleCompare(selected.code)} />
+        <p className="etf-selection-announcement" aria-live="polite">{announcement}</p>
+        <EtfSummary fund={selected} selected={prefs.compare.includes(selected.code)} priceAsOf={snapshot.priceAsOf} largestName={snapshot.stocks[selected.holdings[0].code].name} onCompare={() => toggleCompare(selected.code)} reveal={reveal.id} headingRef={detailHeading} />
         {notice && <p className="etf-note" role="status">{notice}</p>}
         <HoldingBars fund={selected} index={index} onStock={setStock} />
-        <StockHoldings key={selected.code} fund={selected} index={index} stock={stock} onStock={setStock} onPick={code => { pick(code); detail.current?.scrollIntoView({ block: 'start' }); }} />
+        <StockHoldings key={selected.code} fund={selected} index={index} stock={stock} onStock={setStock} onPick={pick} />
       </div>
     </div>
     <EtfComparison index={index} prefs={prefs} onChange={change} onToggle={toggleCompare} />

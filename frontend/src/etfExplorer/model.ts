@@ -79,13 +79,23 @@ export function buildIndex(snapshot: EtfSnapshot): EtfIndex {
 }
 
 const PRIORITY = ['444200', '091160', '445290', '0221Z0', '422420', '385710'];
+const searchText = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/gu, '');
+
+/** Only an unambiguous exact ETF identity opens automatically, never a stock match. */
+export function exactFundMatch(funds: EtfFund[], query: string): EtfFund | null {
+  const q = searchText(query);
+  if (!q) return null;
+  const matches = funds.filter(f => searchText(f.name) === q || searchText(f.code) === q);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export function searchFunds(index: EtfIndex, filter: Pick<ExplorerPrefs, 'style' | 'issuer' | 'query'>): EtfFund[] {
-  const q = filter.query.trim().toLocaleLowerCase(), stocks = Object.entries(index.snapshot.stocks);
-  const exact = q ? stocks.filter(([code, s]) => code.toLocaleLowerCase() === q || s.name.toLocaleLowerCase() === q) : [];
-  const matches = new Set((exact.length ? exact : q ? stocks.filter(([code, s]) => `${s.name} ${code}`.toLocaleLowerCase().includes(q)) : []).map(([code]) => code));
+  const q = searchText(filter.query), stocks = Object.entries(index.snapshot.stocks);
+  const exact = q ? stocks.filter(([code, s]) => searchText(code) === q || searchText(s.name) === q) : [];
+  const matches = new Set((exact.length ? exact : q ? stocks.filter(([code, s]) => searchText(`${s.name} ${code}`).includes(q)) : []).map(([code]) => code));
   return index.snapshot.funds.filter(f => (filter.style === 'all' || f.style === filter.style)
     && (!filter.issuer || f.issuer === filter.issuer)
-    && (!q || `${f.name} ${f.code}`.toLocaleLowerCase().includes(q) || f.holdings.some(h => matches.has(h.code))))
+    && (!q || searchText(`${f.name} ${f.code}`).includes(q) || f.holdings.some(h => matches.has(h.code))))
     .sort((a, b) => {
       const pa = PRIORITY.indexOf(a.code), pb = PRIORITY.indexOf(b.code);
       return (pa < 0 ? PRIORITY.length : pa) - (pb < 0 ? PRIORITY.length : pb) || a.name.localeCompare(b.name, 'ko');

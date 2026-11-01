@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { PanelCard, ToolbarButton } from '../ui/PageShell';
 import { percent, scoreLabel, styleLabel, totalBps, type EtfFund, type EtfIndex, type MaState } from './model';
 
@@ -6,9 +6,9 @@ function MaLabel({ value }: { value: MaState | undefined }) {
   return <span className={`etf-ma ${value ?? ''}`}>{value === 'above' ? '상회' : value === 'below' ? '하회' : value === 'equal' ? '동일' : '—'}</span>;
 }
 
-export function EtfSummary({ fund, selected, priceAsOf, largestName, onCompare }: { fund: EtfFund; selected: boolean; priceAsOf: string; largestName: string; onCompare: () => void }) {
+export function EtfSummary({ fund, selected, priceAsOf, largestName, onCompare, reveal = 0, headingRef }: { fund: EtfFund; selected: boolean; priceAsOf: string; largestName: string; onCompare: () => void; reveal?: number; headingRef?: RefObject<HTMLHeadingElement> }) {
   return <PanelCard as="section" className="etf-panel" aria-label="ETF 요약">
-    <div className="etf-between"><div><small className={`etf-style ${fund.style}`}>{styleLabel(fund)} · {fund.code}</small><h2>{fund.name}</h2></div><ToolbarButton tone={selected ? 'secondary' : 'primary'} aria-pressed={selected} onClick={onCompare}>{selected ? '비교에 담김 ✓' : '비교에 추가 ＋'}</ToolbarButton></div>
+    <div className="etf-between"><div><small className={`etf-style ${fund.style}`}>{styleLabel(fund)} · {fund.code}</small><h2 key={reveal} ref={headingRef} tabIndex={-1} className={reveal > 0 ? 'etf-revealed-name' : undefined}>{fund.name}</h2></div><ToolbarButton tone={selected ? 'secondary' : 'primary'} aria-pressed={selected} onClick={onCompare}>{selected ? '비교에 담김 ✓' : '비교에 추가 ＋'}</ToolbarButton></div>
     <div className="etf-meta"><span>{fund.issuer}</span><span>{fund.benchmark || '비교지수 미제공'}</span><span>{fund.issuerMatched ? '운용사 원본 대조 완료' : '공통 API 확인 · 원본 대조 대기'}</span></div>
     <div className="etf-stats">
       <div><span>직접 편입 국내 주식</span><b>{fund.holdings.length}<em> 종목</em></b><small>공시 비중 합계 {percent(totalBps(fund.holdings))}</small></div>

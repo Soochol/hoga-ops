@@ -41,6 +41,87 @@ test('stock reverse lookup follows the selected fund and lists original constitu
   await expect(stocks.getByRole('row', { name: /삼성전자/ })).toContainText('34.54%');
 });
 
+test('exact ETF searches open details immediately while stock searches retain the inclusion list', async ({ page }) => {
+  const search = page.getByRole('searchbox', { name: 'ETF 또는 구성종목 검색' });
+  const library = page.getByRole('region', { name: 'ETF 목록' });
+  const summary = page.getByRole('region', { name: 'ETF 요약' });
+  await search.fill('ace k바이오코스닥액티브');
+  await expect(library.getByText('1개 ETF', { exact: true })).toBeVisible();
+  await expect(summary.getByRole('heading', { name: 'ACE K바이오코스닥액티브', exact: true })).toBeVisible();
+  await expect(search).toBeFocused();
+  await expect(page.getByRole('heading', { name: '구성종목 18개' })).toBeVisible();
+  await search.fill('091160');
+  await expect(summary.getByRole('heading', { name: 'KODEX 반도체', exact: true })).toBeVisible();
+  // IME composition must not select a result or consume the Enter used to commit it.
+  await search.dispatchEvent('compositionstart');
+  await search.fill(' ACE K 바이오 코스닥 액티브 ');
+  await search.press('Enter');
+  await expect(summary.getByRole('heading', { name: 'KODEX 반도체', exact: true })).toBeVisible();
+  await search.dispatchEvent('compositionend');
+  await expect(summary.getByRole('heading', { name: 'ACE K바이오코스닥액티브', exact: true })).toBeVisible();
+  await expect(search).toBeFocused();
+  await search.fill('삼성전자');
+  await expect(library.getByText('46개 ETF', { exact: true })).toBeVisible();
+  await expect(summary.getByRole('heading', { name: 'ACE K바이오코스닥액티브', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(search).toHaveValue('삼성전자');
+  await expect(library.getByText('46개 ETF', { exact: true })).toBeVisible();
+  await expect(summary.getByRole('heading', { name: 'ACE K바이오코스닥액티브', exact: true })).toBeVisible();
+});
+
+test('keyboard result selection crosses pagination and reveals/focuses the chosen details', async ({ page }) => {
+  const search = page.getByRole('searchbox', { name: 'ETF 또는 구성종목 검색' });
+  const library = page.getByRole('region', { name: 'ETF 목록' });
+  await search.fill('ace');
+  await search.press('ArrowDown');
+  await expect(library.getByRole('button', { name: 'ACE K바이오코스닥액티브 선택' })).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  const second = library.getByRole('button', { name: 'ACE 2차전지&친환경차액티브 선택' });
+  await expect(second).toBeFocused();
+  await second.press('Enter');
+  const heading = page.getByRole('heading', { name: 'ACE 2차전지&친환경차액티브', exact: true });
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+  await expect(heading).toHaveClass('etf-revealed-name');
+  await search.fill('');
+  await search.press('ArrowDown');
+  for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowDown');
+  await expect(library.getByText('2 / 15', { exact: true })).toBeVisible();
+  await expect(library.locator('.etf-fund').first()).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(library.getByText('15 / 15', { exact: true })).toBeVisible();
+  await expect(library.locator('.etf-fund').last()).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(library.getByText('1 / 15', { exact: true })).toBeVisible();
+  await expect(library.getByRole('button', { name: 'SOL 코리아메가테크액티브 선택' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(search).toBeFocused();
+  await search.fill('0221z0');
+  await search.press('Enter');
+  await expect(page.getByRole('heading', { name: 'ACE K바이오코스닥액티브', exact: true })).toBeFocused();
+  await page.screenshot({ path: test.info().outputPath('etf-search-selected.png') });
+});
+
+test('no results explain filters and resetting filters preserves the query then opens the exact ETF', async ({ page }) => {
+  const search = page.getByRole('searchbox', { name: 'ETF 또는 구성종목 검색' });
+  const library = page.getByRole('region', { name: 'ETF 목록' });
+  await library.getByRole('button', { name: '패시브 38', exact: true }).click();
+  await search.fill('0221z0');
+  await expect(library.getByRole('status')).toContainText('패시브 · 전체 운용사');
+  await expect(page.getByRole('region', { name: 'ETF 요약' })).toContainText('SOL 코리아메가테크액티브');
+  await library.getByRole('button', { name: '필터 초기화', exact: true }).click();
+  await expect(search).toHaveValue('0221z0');
+  await expect(library.getByRole('button', { name: '전체 119' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('region', { name: 'ETF 요약' })).toContainText('ACE K바이오코스닥액티브');
+  await library.getByRole('combobox', { name: '운용사', exact: true }).selectOption('삼성자산운용');
+  await expect(library.getByRole('status')).toContainText('삼성자산운용');
+  await library.getByRole('button', { name: '필터 초기화' }).click();
+  await expect(library.getByText('1개 ETF', { exact: true })).toBeVisible();
+  await search.fill('없는ETF이름');
+  await expect(library.getByRole('status')).toContainText('조사한 119개 ETF');
+  await expect(library.getByRole('button', { name: '필터 초기화' })).toHaveCount(0);
+});
+
 test('pairwise overlap uses disclosed weights, supports six pairs, and preserves clear-all', async ({ page }) => {
   const comparison = page.getByRole('region', { name: 'ETF 겹침 비교' });
   const pairs = comparison.getByRole('group', { name: 'ETF 조합 선택' });
