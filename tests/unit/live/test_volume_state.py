@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 
 import pytest
 
@@ -120,3 +121,27 @@ def test_invalid_trade_shape_cannot_break_the_capture_publisher(trades):
     payload['trades'] = trades
     s.ingest('005930', payload, START + 1000)
     assert not s.streams['005930'].bars[-1].valid
+
+
+@pytest.mark.parametrize('code', ['0158S0', '0001A0', 'Q500093'])
+def test_alphanumeric_stock_code_survives_source_to_replica_wire(code):
+    producer = VolumeSource('alpha')
+    producer.configure({'005930', code})
+    producer.health({'005930': 'a:1', code: 'a:1'}, START)
+    producer.ingest(code, tick(100, 10, START), START)
+    replica = VolumeReplica()
+    replica.reset('alpha')
+    for frame in producer.frames(START):
+        replica.apply(json.loads(encode(frame)[4:]), START)
+    assert replica.get(code, START)['bars'] == [[START, 10, True]]
+    assert '005930' in replica.streams
+
+
+@pytest.mark.parametrize('code', ['../foo', '12345', '1234567', '0158s0', '０１５８Ｓ０', '00593!', 'Q50A093'])
+def test_replica_rejects_malformed_codes_without_relaxing_frame_quality(code):
+    producer = VolumeSource('invalid')
+    producer.configure({code})
+    replica = VolumeReplica()
+    replica.reset('invalid')
+    with pytest.raises(ValueError, match='invalid volume state'):
+        replica.apply(producer.frames(START)[0], START)

@@ -5,11 +5,13 @@ files, dataframes, broker subscriptions or awaited work on the ingest path.
 """
 from __future__ import annotations
 
+import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from hoga.api.params import CODE_PATTERN
 from hoga.util.timeenc import KST
 
 from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, encode
@@ -20,6 +22,7 @@ MAX_STREAMS = 512
 MAX_REPLAY_BARS = 16
 FRESH_MS = 5000
 PROTOCOL = 1
+_STOCK_CODE = re.compile(CODE_PATTERN)
 
 
 @dataclass(slots=True)
@@ -177,7 +180,8 @@ class VolumeReplica:
         if not isinstance(streams, dict) or len(streams) > 64:  # noqa: PLR2004 — IPC chunk budget
             raise ValueError('invalid volume chunk')
         for code, state in streams.items():
-            if (len(code) != 6 or not code.isdigit() or type(state['revision']) is not int  # noqa: PLR2004
+            if (not isinstance(code, str) or _STOCK_CODE.fullmatch(code) is None
+                    or type(state['revision']) is not int
                     or not isinstance(state['generation'], str) or type(state['ready']) is not bool
                     or type(state['tick_ms']) is not int or type(state['since_ms']) is not int
                     or len(state['bars']) > MAX_REPLAY_BARS):

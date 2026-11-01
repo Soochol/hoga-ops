@@ -625,3 +625,26 @@ async def test_cancelled_view_command_reconciles_full_desired_refs(tmp_path, mon
         await worker.manager.stop()
         from hoga.live.kiwoom_diagnostics import configure_failure_context
         configure_failure_context(None)
+
+
+async def test_spawn_volume_monitor_accepts_registered_alphanumeric_stock_without_ipc_retirement(tmp_path, monkeypatch):
+    from hoga.api import symbols
+    from hoga.live import session_gate
+
+    monkeypatch.setattr(symbols, 'nxt_enabled_by_code', lambda: {})
+    monkeypatch.setattr(session_gate, 'is_trading_day_now', lambda _: True)
+    buffer = LiveBuffer()
+    owner = CaptureProcessSession(buffer=buffer, data_dir=tmp_path, process_target=fake_entry)
+    try:
+        await owner.sync(('005930',), n_accounts=1)
+        await until(owner.fresh)
+        epoch, pid = owner.epoch, owner.process.pid
+        await owner.set_volume_targets({'005930', '0158S0', 'Q500093'})
+        await until(lambda: all(code in buffer.volume_replica.streams for code in ['0158S0', 'Q500093']))
+        first = buffer.volume_replica.streams['0158S0']['observed_ms']
+        await until(lambda: buffer.volume_replica.streams['0158S0']['observed_ms'] > first)
+        assert owner.fresh() and all(not task.done() for task in owner.tasks)
+        assert owner.epoch == epoch and owner.process.pid == pid and owner.restarts == 0
+        assert owner.status()['collector']['state_reason'] == 'ready'
+    finally:
+        await owner.stop()

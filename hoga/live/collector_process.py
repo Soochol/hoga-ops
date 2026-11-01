@@ -272,7 +272,12 @@ class CaptureProcessSession:
             frame = await read_frame(reader, limit=DISPLAY_MAX_FRAME_BYTES)
             if epoch != self.epoch:
                 raise ValueError('old volume epoch')
-            self.buffer.volume_replica.apply(frame)
+            try:
+                self.buffer.volume_replica.apply(frame)
+            except (TypeError, ValueError):
+                # Frame contents may be large: log the failure, never the payload.
+                log.exception('collector.volume_frame_invalid epoch=%s', epoch)
+                raise
 
     async def _states(self, reader: asyncio.StreamReader, epoch: str) -> None:
         while True:
