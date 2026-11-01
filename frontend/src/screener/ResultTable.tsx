@@ -24,6 +24,7 @@ interface Props extends PriceOccurrenceDetailsProps {
   /** 활성 총잔량 조건의 side. 배지가 통과를 좌우한 side만 표시하도록. */
   depthSides?: DepthSides;
   quoteMode?: 'live' | 'snapshot';
+  exitedCodes?: ReadonlySet<string>;
 }
 
 /** 활성화된 총잔량 조건의 side(매도/매수). evaluate 는 code 마다 양쪽을 모두 채우므로,
@@ -151,7 +152,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
 
 /** 행 하나 — 평면 렌더와 가상 렌더가 **같은 마크업**을 쓰도록 뽑아냈다.
  *  둘이 갈라지면 가상화가 켜지는 임계(200행) 위아래에서 화면이 달라진다. */
-function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index, quoteMode, occurrenceKinds, onOccurrenceDetails }: PriceOccurrenceDetailsProps & {
+function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index, quoteMode, occurrenceKinds, onOccurrenceDetails, shaded }: PriceOccurrenceDetailsProps & {
   r: ScreenerRowLive;
   isMember: (code: string) => boolean;
   onActivate: Props['onActivate'];
@@ -161,6 +162,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
   measureRef?: (el: HTMLElement | null) => void;
   index?: number;
   quoteMode?: Props['quoteMode'];
+  shaded?: boolean;
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
@@ -168,7 +170,8 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
   };
   return (
     <DataTableRow role="button" tabIndex={0} aria-label={`${r.name} ${r.code} 호가창 열기`}
-      rowRef={measureRef} data-index={index} style={style}
+      rowRef={measureRef} data-index={index} data-shaded={shaded ? 'true' : undefined}
+      style={{ ...style, backgroundImage: shaded ? 'linear-gradient(var(--tint-neutral), var(--tint-neutral))' : undefined }}
       onClick={(e) => onActivate(r.code, r.name, e)} onKeyDown={onKeyDown}
       columns={COLS}
       className="cursor-pointer outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover">
@@ -215,7 +218,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
   );
 }
 
-export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides, quoteMode = 'live', occurrenceKinds, onOccurrenceDetails }: Props) {
+export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides, quoteMode = 'live', occurrenceKinds, onOccurrenceDetails, exitedCodes }: Props) {
   // 훅은 표 전체에서 **한 번만** 부른다(useWatchlistMembership 계약: "ONCE per component,
   // not per row"). 행마다 부르던 시절엔 1,000행 = react-query 옵저버 1,000개였다.
   // 실측(재렌더): 500행 44 → 30 ms, 1,000행 65 → 59 ms.
@@ -277,6 +280,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
             <ResultRow
               key={rows[vi.index].code}
               r={rows[vi.index]}
+              shaded={exitedCodes?.has(rows[vi.index].code)}
               isMember={isMember}
               onActivate={onActivate}
               depthValues={depthValues}
@@ -295,6 +299,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
         <div data-testid="screener-result-rows" data-virtualized="false" className="flex-1 min-h-0">
           {rows.map((r) => (
             <ResultRow key={r.code} r={r} isMember={isMember} onActivate={onActivate}
+              shaded={exitedCodes?.has(r.code)}
               quoteMode={quoteMode} occurrenceKinds={occurrenceKinds} onOccurrenceDetails={onOccurrenceDetails}
               depthValues={depthValues} depthSides={depthSides} />
           ))}

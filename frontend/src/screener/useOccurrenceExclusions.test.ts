@@ -48,6 +48,12 @@ describe('cached/in-flight occurrence filtering', () => {
   it('removes the stock when one required condition has no remaining occurrences', () => {
     expect(pruneExcludedRows(scan, [excluded, { ...excluded, id: '2', date: '2026-09-08' }]).rows).toEqual([]);
   });
+  it('explicit occurrence removal also clears retained shading for the removed stock', () => {
+    const result = pruneExcludedRows({ ...scan, exitedCodes: ['005930'] },
+      [excluded, { ...excluded, id: '2', date: '2026-09-08' }]);
+    expect(result.rows).toEqual([]);
+    expect(result.exitedCodes).toEqual([]);
+  });
   it('preserves object identity when another stock or condition was excluded', () => {
     expect(pruneExcludedRows(scan, [{ ...excluded, code: '000660' }])).toBe(scan);
     expect(pruneExcludedRows(scan, [{ ...excluded, condition_key: 'other' }])).toBe(scan);

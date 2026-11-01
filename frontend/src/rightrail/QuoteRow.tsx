@@ -90,6 +90,8 @@ export interface QuoteRowProps {
   indented?: boolean;
   // 스크리너 모니터링 전용: 재조회로 새로 편입된 행이면 한 번 accent tint 플래시.
   flash?: boolean;
+  /** Neutral shading without changing the row's layout, text, or interactions. */
+  shaded?: boolean;
   // 검색 매칭 하이라이트(히트맵 드로어 전용). active 와 같은 배경 틴트를 쓴다 —
   // 검색 중 그룹 전체를 보여주되 매칭 행만 강조. optional 이라 타 리스트 무영향.
   matched?: boolean;
@@ -105,7 +107,7 @@ export function QuoteRow({
   active, ariaLabel, testId, onClick, leading, indentContent, trailingAction, compact = false, columnLayout, nameTooltip, nameDetail, beforePrice,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
-  onContextMenu, onDelete, selected, selectionId, onSelectionKeyDown, indented, flash, matched,
+  onContextMenu, onDelete, selected, selectionId, onSelectionKeyDown, indented, flash, shaded, matched,
 }: QuoteRowProps) {
   const nameTip = useTextTooltip(nameTooltip ?? (code ? `${name} · ${code}` : name));
   void _changeWon;
@@ -164,6 +166,7 @@ export function QuoteRow({
       data-quote-row=""
       data-draggable={dragListeners ? '' : undefined}
       data-matched={matched ? '' : undefined}
+      data-shaded={shaded ? 'true' : undefined}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
@@ -186,6 +189,7 @@ export function QuoteRow({
         // 좌측 accent 바(borderLeft: 2px solid var(--accent))를 다시 넣지 말 것.
         // 관심·히트맵·스크리너·순위가 이 행을 공유하므로 여기 한 곳이 네 리스트를 결정한다(2026-07-23).
         background: selected || active || (selected == null && matched) ? 'var(--tint-selection)' : 'transparent',
+        backgroundImage: shaded ? 'linear-gradient(var(--tint-neutral), var(--tint-neutral))' : undefined,
         ...sortableStyle,
         ...columnLayout,
         ...(dragging
