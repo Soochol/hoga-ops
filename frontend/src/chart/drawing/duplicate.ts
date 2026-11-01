@@ -18,6 +18,8 @@ export function refCoords(d: Drawing): { realMs: number | null; price: number | 
       return { realMs: null, price: d.price };
     case 'vline':
       return { realMs: d.realMs, price: null };
+    case 'regression': return { realMs: d.a.realMs, price: null };
+    case 'callout': case 'fib-extension':
     case 'fib': case 'channel': case 'long-position': case 'short-position':
     case 'trendline':
     case 'rect':
@@ -26,6 +28,7 @@ export function refCoords(d: Drawing): { realMs: number | null; price: number | 
     case 'hray':
     case 'text':
       return { realMs: d.at.realMs, price: d.at.price };
+    case 'path':
     case 'pencil':
       return { realMs: d.points[0]?.realMs ?? null, price: d.points[0]?.price ?? null };
   }

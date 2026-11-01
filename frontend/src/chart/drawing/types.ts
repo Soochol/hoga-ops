@@ -21,6 +21,7 @@ export type Point = {
 export type DrawingId = string;
 
 export type DrawingKind =
+  | 'fib-extension' | 'path' | 'callout' | 'regression'
   | 'hray' | 'fib' | 'channel' | 'long-position' | 'short-position'
   | 'hline'
   | 'vline'
@@ -31,6 +32,7 @@ export type DrawingKind =
   | 'pencil';
 
 export type DrawingTool =
+  | 'fib-extension' | 'path' | 'callout' | 'regression'
   | 'hray' | 'fib' | 'channel' | 'long-position' | 'short-position'
   | 'day-high'
   | 'day-low'
@@ -309,7 +311,49 @@ export interface Position extends DrawingBase {
   stop: number;
   quantity: number;
 }
-export type AnalysisDrawing = HorizontalRay | Fib | Channel | Position;
+export const FIB_EXTENSION_LEVELS = [0, 0.618, 1, 1.272, 1.618, 2, 2.618] as const;
+export interface FibExtension extends DrawingBase {
+  kind: 'fib-extension';
+  a: Point;
+  b: Point;
+  c: Point;
+  levels: number[];
+  extendRight?: boolean;
+  labelHidden?: boolean;
+}
+export const PATH_MAX_POINTS = 128;
+export interface DrawingPath extends DrawingBase {
+  kind: 'path';
+  points: Point[];
+  arrowStart?: boolean;
+  /** Absent means enabled. */
+  arrowEnd?: boolean;
+}
+export interface Callout extends DrawingBase {
+  kind: 'callout';
+  a: Point;
+  /** CSS-pixel displacement of the text box from its data anchor. */
+  offsetX: number;
+  offsetY: number;
+  text: string;
+  fontSize: number;
+}
+export const REGRESSION_SOURCES = ['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4'] as const;
+export type RegressionSource = typeof REGRESSION_SOURCES[number];
+export type DrawingCandle = { ts_ms: number; open?: number; high?: number; low?: number; close?: number };
+export interface Regression extends DrawingBase {
+  kind: 'regression';
+  /** Time-bound range. Prices are not editable; rendering derives them from candles. */
+  a: Point;
+  b: Point;
+  source: RegressionSource;
+  upperDeviation: number;
+  lowerDeviation: number;
+  extendRight?: boolean;
+  fillOpacity: number;
+}
+export type AdvancedDrawing = FibExtension | DrawingPath | Callout | Regression;
+export type AnalysisDrawing = HorizontalRay | Fib | Channel | Position | AdvancedDrawing;
 export type Drawing = Hline | Vline | Trendline | Rect | Measure | Text | Pencil | AnalysisDrawing;
 
 /**
@@ -426,6 +470,8 @@ export const INITIAL_STYLE: DrawingStyle = {
  *  source of truth for "which kinds have a style slot". */
 export function initialStyleByKind(): Record<DrawingKind, DrawingStyle> {
   return {
+    'fib-extension': { ...INITIAL_STYLE }, path: { ...INITIAL_STYLE },
+    callout: { ...INITIAL_STYLE }, regression: { ...INITIAL_STYLE },
     hray: { ...INITIAL_STYLE }, fib: { ...INITIAL_STYLE }, channel: { ...INITIAL_STYLE },
     'long-position': { ...INITIAL_STYLE }, 'short-position': { ...INITIAL_STYLE },
     hline: { ...INITIAL_STYLE },

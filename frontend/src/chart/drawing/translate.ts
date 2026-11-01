@@ -40,8 +40,12 @@ export function translateDrawing(
 ): Partial<Drawing> {
   const shift = toShiftFn(dMs);
   switch (drawing.kind) {
+    case 'path': return { points: drawing.points.map(p => ({ realMs: shift(p.realMs), price: p.price + dPrice })) };
+    case 'callout': return { a: { realMs: shift(drawing.a.realMs), price: drawing.a.price + dPrice } };
+    case 'regression': return { a: { ...drawing.a, realMs: shift(drawing.a.realMs) }, b: { ...drawing.b, realMs: shift(drawing.b.realMs) } };
     case 'hray': return { at: { realMs: shift(drawing.at.realMs), price: drawing.at.price + dPrice } };
     case 'fib': return { a: { realMs: shift(drawing.a.realMs), price: drawing.a.price + dPrice }, b: { realMs: shift(drawing.b.realMs), price: drawing.b.price + dPrice } };
+    case 'fib-extension':
     case 'channel': return { a: { realMs: shift(drawing.a.realMs), price: drawing.a.price + dPrice }, b: { realMs: shift(drawing.b.realMs), price: drawing.b.price + dPrice }, c: { realMs: shift(drawing.c.realMs), price: drawing.c.price + dPrice } };
     case 'long-position': case 'short-position': return { a: { realMs: shift(drawing.a.realMs), price: drawing.a.price + dPrice }, b: { realMs: shift(drawing.b.realMs), price: drawing.b.price + dPrice }, stop: drawing.stop + dPrice };
     case 'hline':
@@ -119,8 +123,12 @@ function translatePencil(p: Pencil, shift: ShiftFn, dPrice: number): Partial<Pen
  *  has none, so it returns [] and group translation skips its vertical component. */
 export function pricesOf(drawing: Drawing): number[] {
   switch (drawing.kind) {
+    case 'path': return drawing.points.map(p => p.price);
+    case 'callout': return [drawing.a.price];
+    case 'regression': return [];
     case 'hray': return [drawing.at.price];
     case 'fib': return [drawing.a.price, drawing.b.price];
+    case 'fib-extension':
     case 'channel': return [drawing.a.price, drawing.b.price, drawing.c.price];
     case 'long-position': case 'short-position': return [drawing.a.price, drawing.b.price, drawing.stop];
     case 'hline':
@@ -145,8 +153,12 @@ export function pricesOf(drawing: Drawing): number[] {
  *  which is correct (hline discards the horizontal shift entirely). */
 export function timesOf(drawing: Drawing): number[] {
   switch (drawing.kind) {
+    case 'path': return drawing.points.map(p => p.realMs);
+    case 'callout': return [drawing.a.realMs];
+    case 'regression': return [drawing.a.realMs, drawing.b.realMs];
     case 'hray': return [drawing.at.realMs];
     case 'fib': case 'long-position': case 'short-position': return [drawing.a.realMs, drawing.b.realMs];
+    case 'fib-extension':
     case 'channel': return [drawing.a.realMs, drawing.b.realMs, drawing.c.realMs];
     case 'hline':
       return [];

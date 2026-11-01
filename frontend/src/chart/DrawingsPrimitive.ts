@@ -1,3 +1,4 @@
+import type { DrawingCandle } from './drawing/types';
 // frontend/src/chart/DrawingsPrimitive.ts
 //
 // Drawings rendered INSIDE the lightweight-charts render pipeline, one
@@ -76,10 +77,11 @@ export type DrawingsSnapshot = {
    *  (like `axis` / `bucketMs`) rather than as a prebuilt domain so the renderer
    *  keeps deriving its own — one definition of "one column", shared with the
    *  drag. See DragBarDomain. */
-  candles?: readonly { ts_ms: number }[];
+  candles?: readonly DrawingCandle[];
   /** In-flight creation gestures. Live on refs in the overlay, so they change
    *  without a React render — hence the pull-based source below. */
   drafts: {
+    advanced?: Drawing | null;
     analysis?: Drawing | null;
     trendline: TrendlineDraft | null;
     rect: RectDraft | null;
@@ -158,6 +160,8 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
           const y = series.priceToCoordinate(paneValueToSeriesValue(paneId, price));
           return y == null ? null : Number(y);
         },
+        backgroundColor: (() => { const bg = chart.options?.().layout.background; return bg && 'color' in bg ? bg.color : undefined; })(),
+        textColor: chart.options?.().layout.textColor,
         width: scope.mediaSize.width,
         paneBottom: scope.mediaSize.height,
         paneId,
@@ -189,6 +193,7 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
         });
       }
 
+      if (snap.drafts.advanced?.paneId === paneId) renderDrawing(c, ctx, snap.drafts.advanced, false);
       if (snap.drafts.analysis?.paneId === paneId) renderDrawing(c, ctx, snap.drafts.analysis, false);
       const { trendline, rect, measure, pencil } = snap.drafts;
       if (trendline?.b && trendline.paneId === paneId) {
