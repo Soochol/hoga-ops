@@ -52,7 +52,7 @@ export function WatchlistHeartActionButton({
         aria-label="관심 그룹 편집"
         aria-pressed={isMember}
         aria-haspopup="dialog" aria-expanded={picker !== null}
-        title={code == null ? '관심 그룹 편집 — 지수는 지원하지 않습니다' : '관심 그룹 편집'}
+        title={code == null ? '그룹 편집 — 지수는 지원하지 않습니다' : '관심종목·히트맵 그룹 편집'}
         onClick={(e) => {
           if (code == null) return;
           const r = e.currentTarget.getBoundingClientRect();
