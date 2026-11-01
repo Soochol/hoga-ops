@@ -1,0 +1,26 @@
+{
+  "validatedCodeCommit": "2f34bcae1b1a1d2a25b78b807a788e188093a56e",
+  "latestMain": "008587b1631e3c767a0d48bad7f5131496a52934",
+  "reusedValidation": "verification.json",
+  "inputFingerprint": {
+    "scopes": [
+      "frontend",
+      "hoga",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ],
+    "fileCount": 2390,
+    "format": "sorted JSON array of [relative path, SHA256(file)] pairs, UTF-8 compact JSON",
+    "sha256": "0628d752491f6c89bab7b7a896b9c32841ee0bae37e238612865f12175143619"
+  },
+  "reuseReason": "All 2390 recorded source/dependency/config/fixture input file hashes, validation log hashes, Node and Python versions match. Latest main is unchanged. Only this documentation record is added after the validated code commit.",
+  "results": {
+    "npm run typecheck": "passed (app/unit/E2E TS projects)",
+    "npx eslint src/etfExplorer tests/e2e/etf-explorer.spec.ts": "0 errors, 0 warnings",
+    "npx vitest run src/etfExplorer/model.test.ts": "9 passed",
+    "npx playwright test tests/e2e/etf-explorer.spec.ts --reporter=list": "8 passed; Vite production build passed",
+    "git diff --check": "passed"
+  },
+  "openPrOverlap": []
+}
