@@ -1,0 +1,99 @@
+{
+  "checked_at_kst": "2026-11-01T20:44:12.025886+09:00",
+  "branch": "codex/advanced-drawing-tools",
+  "base_sha": "f5f24862fda4952281cd2da85278bdc5907e665f",
+  "inputs": {
+    "scope": "All tracked/non-ignored untracked frontend/, hoga/, tests/ plus .python-version, pyproject.toml, uv.lock; sorted path + NUL + binary SHA256(file bytes). Generated build/dependencies ignored by git.",
+    "file_count": 2963,
+    "sha256": "cf314ec2503cd487331bbcd530747755f94bdf700b4fb08852b4225f2063893b"
+  },
+  "runtime": {
+    "node": "v24.13.1",
+    "chrome": "Google Chrome 156.0.8078.79",
+    "react": "18.3.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0",
+    "backend_python": "Python 3.14.7"
+  },
+  "verified_source_commit": "e1462afb1c215f0364a6fa9e79a684a69fe47920",
+  "applicability": "The subsequent commit only adds this verification record; product/test/configuration inputs remain identical.",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed: app, unit and E2E TypeScript projects",
+      "exit_code": 0,
+      "inputs_sha256": "cf314ec2503cd487331bbcd530747755f94bdf700b4fb08852b4225f2063893b",
+      "log": "/tmp/hoga-advanced-icons-typecheck.log"
+    },
+    {
+      "command": "npx vitest run",
+      "cwd": "frontend",
+      "result": "758 files, 9692 tests passed",
+      "exit_code": 0,
+      "inputs_sha256": "cb85760b35f3ae1671aa4d78223b67439abc2bd529790065a68ef3461777b03b",
+      "log": "/tmp/hoga-advanced-vitest-final.log"
+    },
+    {
+      "command": "npx vitest run src/chart src/state/drawings* src/live/Drawing* src/ui/AppIcon*",
+      "cwd": "frontend",
+      "result": "93 files, 1660 tests passed after final icon adjustment",
+      "exit_code": 0,
+      "log": "/tmp/hoga-advanced-icons-unit.log"
+    },
+    {
+      "command": "npx vite build",
+      "cwd": "frontend",
+      "result": "passed; pre-existing large chunk warning",
+      "exit_code": 0,
+      "inputs_sha256": "cf314ec2503cd487331bbcd530747755f94bdf700b4fb08852b4225f2063893b",
+      "log": "/tmp/hoga-advanced-build-final.log"
+    },
+    {
+      "command": "npx playwright test tests/e2e/drawing-advanced.spec.ts tests/e2e/drawing-professional.spec.ts tests/e2e/drawing-rectangle-free.spec.ts tests/e2e/drawing-right-selection.spec.ts tests/e2e/drawing-panel-position.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": "19 passed; one worker; isolated worktree ports/data/dist and blank vendor credential environment",
+      "exit_code": 0,
+      "inputs_sha256": "cb85760b35f3ae1671aa4d78223b67439abc2bd529790065a68ef3461777b03b",
+      "log": "/tmp/hoga-advanced-e2e-final.log"
+    },
+    {
+      "command": "git diff --cached --check",
+      "result": "passed",
+      "exit_code": 0
+    }
+  ],
+  "reuse": {
+    "from_inputs_sha256": "cb85760b35f3ae1671aa4d78223b67439abc2bd529790065a68ef3461777b03b",
+    "to_inputs_sha256": "cf314ec2503cd487331bbcd530747755f94bdf700b4fb08852b4225f2063893b",
+    "only_later_changes": [
+      "frontend/src/ui/AppIcon.tsx: correct two new SVG paths (callout right edge and regression parallel lines)",
+      "frontend/src/chart/drawing/lineGeometry.ts: remove trailing blank line"
+    ],
+    "reason": "No handlers, data/calculation, contracts, test fixtures, dependencies or settings changed after the full unit/E2E run. Re-ran chart/drawing/menu/icon unit scope and TypeScript/build after the SVG correction. The final whitespace-only change has no runtime or type effect. Reuse full unit and browser interaction results with this mapping."
+  },
+  "e2e_environment": {
+    "backend_port": 20497,
+    "frontend_port": 21497,
+    "data_dir": "/tmp/hoga-e2e-data-497",
+    "dist_dir": "/tmp/hoga-e2e-dist-497",
+    "servers_stopped_after_tests": true,
+    "user_ports_untouched": [
+      5173,
+      8000
+    ]
+  },
+  "visual_review": [
+    "fib-extension-settings.png",
+    "path-settings.png",
+    "callout-settings.png",
+    "regression-settings.png"
+  ],
+  "scope_notes": [
+    "Frontend implementation only; backend/API/dependencies unchanged. No additional backend tests required for this change.",
+    "Latest main fetched before final verification; fetched base remained f5f24862fda4952281cd2da85278bdc5907e665f.",
+    "Repository /browse skill was unavailable; repository Playwright E2E was used and screenshots inspected with view_image."
+  ]
+}
