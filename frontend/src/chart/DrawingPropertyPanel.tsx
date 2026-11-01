@@ -96,9 +96,9 @@ function kindHasProp(kind: DrawingKind, prop: StyleProp): boolean {
     case 'lineStyle':
       return kind !== 'text';
     case 'fillOpacity':
-      return kind === 'rect';
+      return kind === 'rect' || kind === 'channel' || kind === 'regression';
     case 'fontSize':
-      return kind === 'text';
+      return kind === 'text' || kind === 'callout';
   }
 }
 
@@ -1094,7 +1094,7 @@ export default function DrawingPropertyPanel({
         </>
       )}
 
-      {isText && drawing.kind === 'text' && (
+      {(drawing.kind === 'text' || drawing.kind === 'callout') && (
         <>
           <button
             type="button"

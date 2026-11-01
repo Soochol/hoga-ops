@@ -3,7 +3,7 @@
 import { projectRectX, rectCorner, type RectCorner } from './rectCoordinates';
 import { textLayout } from './textLayout';
 import { isAnalysisDrawing, projectAnalysis } from './analysisGeometry';
-import type { Drawing, PaneId } from './types';
+import type { Drawing, DrawingCandle, PaneId } from './types';
 import { HIT_THRESHOLD, subBarOffsetPx, isLocked, isExtendedRight, rectXSpan } from './types';
 
 /**
@@ -62,6 +62,7 @@ export function distanceToPolyline(p: Pixel, polyline: readonly Pixel[]): number
  * `null` means the coordinate is off the current axis/pane and the drawing is
  * skipped. */
 export interface HitCoord {
+  candles?: readonly DrawingCandle[];
   realMsToCanvasX: (realMs: number) => number | null;
   /** Off-axis-tolerant X for single-anchor drawings (text): snaps a gap/pre-axis
    *  realMs to the nearest session boundary so an off-axis text stays grabbable
@@ -129,7 +130,7 @@ export function hitTestDrawings(
     }
     if (d.paneId !== cursorPaneId) continue;
     if (isAnalysisDrawing(d) || (d.kind === 'trendline' && (d.extendLeft || d.extendRight))) {
-      const g = projectAnalysis(d, { x: coord.realMsToCanvasX, xClamped: coord.realMsToCanvasXClamped, y: p => coord.priceToCanvasY(p, d.paneId), width: coord.plotWidth ?? coord.canvasWidth ?? 0 });
+      const g = projectAnalysis(d, { x: coord.realMsToCanvasX, xClamped: coord.realMsToCanvasXClamped, y: p => coord.priceToCanvasY(p, d.paneId), width: coord.plotWidth ?? coord.canvasWidth ?? 0, candles: coord.candles, measureTextWidth: coord.measureTextWidth });
       if (g.segments.some(s => distanceToSegment({x:px,y:py}, s.a, s.b) <= HIT_THRESHOLD.trendlineBody)
         || g.handles.some(h => Math.hypot(px-h.at.x,py-h.at.y) <= HIT_THRESHOLD.trendlineHandle)
         || g.fills.some(f => pointInPolygon({x:px,y:py},f.points))) return d;
@@ -342,7 +343,7 @@ function hitsRect(coord: HitCoord, d: Drawing, rect: MarqueeRect): boolean {
     rect = { ...rect, y1: Math.max(rect.y1, bounds.top), y2: Math.min(rect.y2, bounds.bottom) };
   }
   if (isAnalysisDrawing(d) || (d.kind === 'trendline' && (d.extendLeft || d.extendRight))) {
-    const g = projectAnalysis(d, { x: coord.realMsToCanvasX, xClamped: coord.realMsToCanvasXClamped, y: p => coord.priceToCanvasY(p, d.paneId), width: coord.plotWidth ?? coord.canvasWidth ?? 0 });
+    const g = projectAnalysis(d, { x: coord.realMsToCanvasX, xClamped: coord.realMsToCanvasXClamped, y: p => coord.priceToCanvasY(p, d.paneId), width: coord.plotWidth ?? coord.canvasWidth ?? 0, candles: coord.candles, measureTextWidth: coord.measureTextWidth });
     return g.segments.some(s => segmentIntersectsBox(s.a, s.b, rect))
       || g.fills.some(f => pointInPolygon({ x: rect.x1, y: rect.y1 }, f.points)
         || f.points.some(p => p.x >= rect.x1 && p.x <= rect.x2 && p.y >= rect.y1 && p.y <= rect.y2)

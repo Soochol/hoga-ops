@@ -881,6 +881,19 @@ seconds/minute/D/W/M을 유지한다. `연속 그리기` 기본 끔은 생성 �
 선택하고 켬은 일반 도구를 유지한다. 일자 기준선·지우개의 기존 동작은 유지한다.
 ADR-0032의 2026-11-01 보완과 docs/plans/2026-11-01-professional-drawing-tools.md 참조.
 
+2026-11-01 추가 도구: `fib-extension`은 A→B 기준선 드래그 후 C 눌림점 클릭으로
+확정하며 목표값은 C + (B−A) × 레벨이다. `path`는 최대 128개 점을 클릭으로 잇고
+더블클릭 또는 Enter로 확정한다. 호버 점은 저장하지 않고 Escape·우클릭·포커스 이탈·
+도구/종목 전환은 초안을 취소한다. 점별 좌표·추가·삭제와 시작/끝 화살표를 설정한다.
+`callout`은 대상 Point와 메모 상자의 픽셀 간격을 저장한다. 상자 드래그는 대상 봉을
+이동하지 않으며 대상 핸들은 별도 편집한다. IME 입력·줄바꿈·더블클릭 재편집을 지원한다.
+`regression`은 candle pane의 구간을 선택해 현재 로드된 봉의 서수에 최소제곱 직선을
+맞춘다. 기준가는 OHLC·HL2·HLC3·OHLC4, 밴드는 잔차 모집단 표준편차의 상/하 배수다.
+두 시각의 봉과 유효한 기준가가 모두 있어야 계산하며 부족하면 임의 가격을 만들지 않는다.
+봉 주기·가격 데이터·기준가 변경 시 재계산하고 통계/봉 사본은 저장하지 않는다.
+수직 이동·정렬은 회귀 가격을 바꾸지 않으며 설정에서 시간 구간만 편집한다.
+상세 동작은 docs/plans/2026-11-01-advanced-drawing-tools.md 참조.
+
 **Drawing Defaults**:
 The sticky `{color, width, lineStyle}` triple the **Drawing Property Panel** seeds into the next new **Drawing** of any kind. Lives as a single slice on the `useDrawingsStore` (`state.defaults`); every property edit through the panel (`update + setDefaults`) updates it, and every drawing-tool constructor in `chart/drawing/tools.ts` reads it for the initial value of a new Drawing. Persisted globally to `localStorage["replay.drawingDefaults.v1"]` (no per-**Code** scoping — the user's color preference is a tool preference, not a per-stock annotation). Debounced 250ms on write, same pattern as the per-Code Drawing persistence. On absent or unreadable key, falls back to `INITIAL_DEFAULTS = { color: '#14B8A6', width: 2, lineStyle: 'solid' }`.
 _Avoid_: "default style" alone (ambiguous with `DESIGN.md`'s system tokens), "last-used settings" (overloaded with chart **ChartViewPrefs** carry-over), "sticky settings" (technical jargon).

@@ -1,36 +1,30 @@
+import { extendSegment } from './lineGeometry';
+import { isAdvancedDrawing, projectAdvanced, advancedHandlePatch } from './advancedGeometry';
+import type { DrawingCandle } from './types';
 import type { AnalysisDrawing, Drawing, Point, Position, Trendline } from './types';
 
 export type XY = { x: number; y: number };
-export type Segment = { a: XY; b: XY; dashed?: boolean };
+export type Segment = { a: XY; b: XY; dashed?: boolean; arrowStart?: boolean; arrowEnd?: boolean };
 export type AnalysisProjection = {
+  annotations?: { box: { x: number; y: number; width: number; height: number }; text: string; fontSize: number }[];
   segments: Segment[];
   fills: { points: XY[]; opacity: number; role?: 'target' | 'stop' }[];
   labels: { at: XY; text: string }[];
-  handles: { key: 'a' | 'b' | 'c' | 'at' | 'stop'; at: XY }[];
+  handles: { key: 'a' | 'b' | 'c' | 'at' | 'stop' | 'box' | number; at: XY }[];
 };
 export type AnalysisCoords = {
   x(ms: number): number | null;
   xClamped?(ms: number): number | null;
   y(price: number): number | null;
   width: number;
+  candles?: readonly DrawingCandle[];
+  measureTextWidth?: (text: string, fontSize: number) => number;
 };
 export function isAnalysisDrawing(d: Drawing): d is AnalysisDrawing {
-  return d.kind === 'hray' || d.kind === 'fib' || d.kind === 'channel'
+  return isAdvancedDrawing(d) || d.kind === 'hray' || d.kind === 'fib' || d.kind === 'channel'
     || d.kind === 'long-position' || d.kind === 'short-position';
 }
 
-/** Shared by painting, picking and marquee selection, including extensions. */
-export function extendSegment(a: XY, b: XY, width: number, left = false, right = false): Segment {
-  const first = a.x <= b.x ? a : b, last = a.x <= b.x ? b : a;
-  const dx = last.x - first.x, dy = last.y - first.y;
-  if (Math.abs(dx) < 0.001) {
-    return { a: { x: a.x, y: left ? -1e6 : Math.min(a.y, b.y) },
-      b: { x: b.x, y: right ? 1e6 : Math.max(a.y, b.y) } };
-  }
-  const at = (x: number): XY => ({ x, y: first.y + (x - first.x) * dy / dx });
-  return { a: left ? at(Math.min(0, first.x)) : first,
-    b: right ? at(Math.max(width, last.x)) : last };
-}
 
 export function positionStats(d: Position) {
   const risk = Math.abs(d.a.price - d.stop);
@@ -46,6 +40,7 @@ export function validPosition(d: Position): boolean {
 }
 
 export function projectAnalysis(d: AnalysisDrawing | Trendline, coords: AnalysisCoords): AnalysisProjection {
+  if (isAdvancedDrawing(d)) return projectAdvanced(d, coords);
   const out: AnalysisProjection = { segments: [], fills: [], labels: [], handles: [] };
   const point = (p: Point): XY | null => {
     const x = coords.x(p.realMs), y = coords.y(p.price);
@@ -101,7 +96,9 @@ export function projectAnalysis(d: AnalysisDrawing | Trendline, coords: Analysis
   return out;
 }
 
-export function analysisHandlePatch(d: AnalysisDrawing, key: AnalysisProjection['handles'][number]['key'], p: Point): Partial<Drawing> | null {
+export function analysisHandlePatch(d: AnalysisDrawing, key: AnalysisProjection['handles'][number]['key'], p: Point, candles?: readonly DrawingCandle[]): Partial<Drawing> | null {
+  if (isAdvancedDrawing(d)) return advancedHandlePatch(d, key, p, candles);
+  if (typeof key === 'number' || key === 'box') return null;
   if (d.kind === 'hray') return { at: p };
   if (key === 'at') return null;
   if (d.kind === 'long-position' || d.kind === 'short-position') {
