@@ -658,6 +658,7 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
     if volume_runtime and basis == "intraday" and any(volume_runtime.supports(leaf) for leaf in selected):
         prepared, receiving = volume_runtime.counts(selected, codes, int(time.time() * 1000))
         detail = volume_runtime.coverage() if hasattr(volume_runtime, 'coverage') else {}
+        result.coverage.trading_date = detail.pop('trading_date', None)
         detail.pop('prepared', None)
         detail.pop('receiving', None)
         result.coverage.realtime = BarRealtimeCoverage(prepared=prepared, receiving=receiving,

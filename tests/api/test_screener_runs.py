@@ -779,19 +779,34 @@ async def test_minute_unknown_is_not_false_and_or_can_be_decided(corpus, day_ven
 
 @pytest.mark.parametrize('stamp,expected', [
     ('2026-10-30T10:00:00+09:00', '2026-10-30'), ('2026-10-30T18:00:00+09:00', '2026-10-30'),
-    ('2026-11-01T10:00:00+09:00', '2026-10-30'), ('2026-10-30T08:00:00+09:00', '2026-10-30'),
+    ('2026-11-01T10:00:00+09:00', '2026-10-30'), ('2026-10-30T08:00:00+09:00', '2026-10-28'),
     ('2026-10-29T10:00:00+09:00', '2026-10-28'),
+    ('2026-11-02T01:36:00+09:00', '2026-10-30'),
+    ('2026-11-02T08:59:59+09:00', '2026-10-30'),
+    ('2026-11-02T09:00:00+09:00', '2026-11-02'),
+    ('2026-11-02T15:30:00+09:00', '2026-11-02'),
 ])
-def test_minute_search_day_uses_calendar_and_never_previous_day_before_open(corpus, monkeypatch, stamp, expected):
+def test_minute_search_day_uses_previous_session_until_open(corpus, monkeypatch, stamp, expected):
     from hoga.api.screener_minute_scope import resolve
-    monkeypatch.setattr(trading_days, 'trading_days', lambda _: {'20261028', '20261030'})
-    assert resolve(corpus, dt.datetime.fromisoformat(stamp)).day.isoformat() == expected
+    monkeypatch.setattr(trading_days, 'trading_days', lambda _: {'20261028', '20261030', '20261102'})
+    now = dt.datetime.fromisoformat(stamp)
+    scope = resolve(corpus, now)
+    assert scope.day.isoformat() == expected
+    assert scope.cutoff == min(now, dt.datetime.combine(scope.day, dt.time(15, 30), KST))
+    assert scope.live == (scope.day == now.date() and dt.time(9) <= now.time() < dt.time(15, 30))
 
 
-def test_minute_search_refuses_unknown_weekday(corpus):
+@pytest.mark.parametrize('stamp', ['2026-11-02T10:00:00+09:00', '2026-11-03T01:36:00+09:00'])
+def test_minute_search_refuses_unknown_weekday(corpus, stamp):
     from hoga.api.screener_minute_scope import resolve
     with pytest.raises(ValueError, match='달력이 부족'):
-        resolve(corpus, dt.datetime(2026, 11, 2, 10, tzinfo=KST))
+        resolve(corpus, dt.datetime.fromisoformat(stamp))
+
+
+def test_monday_preopen_needs_calendar_only_through_friday(corpus):
+    from hoga.api.screener_minute_scope import resolve
+    scope = resolve(corpus, dt.datetime(2026, 11, 2, 1, 36, tzinfo=KST))
+    assert scope.day == dt.date(2026, 10, 30) and not scope.live
 
 
 async def test_minute_restart_resumes_judgments_without_refetching_finished_codes(corpus, monkeypatch, day_vendor):
@@ -843,15 +858,23 @@ async def test_live_open_bar_uses_observed_value_instead_of_defering_every_code(
         await owner.close()
 
 
-async def test_preopen_does_not_fetch_previous_day_or_call_vendor(corpus, day_vendor):
+@pytest.mark.parametrize('policy', ['legacy_v1', 'separate_bases_v2'])
+async def test_monday_preopen_search_fetches_only_friday_and_warm_search_reuses_it(corpus, monkeypatch,
+                                                                               day_vendor, policy):
     seed_minutes(corpus, CODES)
-    clock = dt.datetime(2026, 10, 30, 8, 30, tzinfo=KST)
+    # Production's calendar may still end on Friday before the Monday refresh.
+    clock = dt.datetime(2026, 11, 2, 1, 36, tzinfo=KST)
     owner = ScreenerRuns(corpus, clock=lambda: clock)
     try:
-        done = await finish(owner, await owner.start(minute_request()))
+        done = await finish(owner, await owner.start(minute_request(calculation_policy=policy)))
         assert done.minute_date == '2026-10-30'
-        assert done.status == 'partial' and day_vendor == []
-        assert {item.reason for item in done.result.bar_coverage.incomplete} == {'minute_session_not_started'}
+        assert done.status == 'complete', done.errors
+        assert done.evaluated == len(CODES) and len(done.result.rows) == len(CODES)
+        assert done.result.bar_coverage.trading_date == '2026-10-30'
+        assert done.result.basis_at_ms == int(dt.datetime(2026, 10, 30, 15, 30, tzinfo=KST).timestamp() * 1000)
+        assert len(day_vendor) == len(CODES)
+        again = await finish(owner, await owner.start(minute_request(calculation_policy=policy)))
+        assert again.status == 'complete' and len(day_vendor) == len(CODES)
     finally:
         await owner.close()
 

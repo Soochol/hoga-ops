@@ -282,7 +282,7 @@ async def test_short_long_timeframe_does_not_mark_prepared_short_timeframe_unkno
     assert len(s.calls) == 1
 
 
-async def test_preopen_cannot_reuse_yesterday_and_holiday_uses_last_trading_day(setup):
+async def test_preopen_retains_previous_session_and_holiday_uses_last_trading_day(setup):
     s = setup
     calendar = s.owner.data_dir / 'calendar'
     calendar.mkdir()
@@ -290,8 +290,9 @@ async def test_preopen_cannot_reuse_yesterday_and_holiday_uses_last_trading_day(
     await s.owner.prepare(CODE, s.owner.histories[CODE])
     s.clock.now = OPEN + 24 * 60 * MINUTE - 60 * MINUTE  # next day 08:00
     for leaf in s.monitor.leaves:
-        assert ContinuousAdapter(s.owner, s.monitor).snapshot(leaf, CODE, s.clock.now)[0] == []
-    assert s.owner.status(s.monitor, s.clock.now).prepared == 0
+        data, _, _ = ContinuousAdapter(s.owner, s.monitor).snapshot(leaf, CODE, s.clock.now)
+        assert data and all(b.valid and not b.is_open for b in data[:-1])
+    assert s.owner.status(s.monitor, s.clock.now).prepared == 1
     # A known weekday holiday uses the last trading day, even during 09-15h.
     s.clock.now = OPEN + 2 * 24 * 60 * MINUTE + 60 * MINUTE  # Fri 23, omitted holiday
     s.oracle.clear()
@@ -301,6 +302,58 @@ async def test_preopen_cannot_reuse_yesterday_and_holiday_uses_last_trading_day(
     for leaf in s.monitor.leaves:
         data, _, _ = ContinuousAdapter(s.owner, s.monitor).snapshot(leaf, CODE, s.clock.now)
         assert data and all(b.valid and not b.is_open for b in data)
+
+
+async def test_monday_preopen_monitor_uses_friday_then_defers_at_open_without_yesterday(setup, monkeypatch):
+    s = setup
+    friday = int(dt.datetime(2026, 10, 30, 9, tzinfo=KST).timestamp() * 1000)
+    monday = int(dt.datetime(2026, 11, 2, 9, tzinfo=KST).timestamp() * 1000)
+    s.clock.now = monday - (7 * 60 + 24) * MINUTE  # Monday 01:36
+    calendar = s.owner.data_dir / 'calendar'
+    calendar.mkdir()
+    (calendar / 'trading_days.txt').write_text('20261030\n20261102\n')
+    s.oracle.clear()
+    s.oracle.update({friday + i * MINUTE: 10 for i in range(391)})
+    seen = []
+
+    async def snapshot(_dir, code, timeframe, scope, *, force=False):
+        seen.append((code, timeframe, scope.day.isoformat(), scope.cutoff))
+        return volume.MinuteSnapshot([volume.VolumeBar(stamp, qty) for stamp, qty in s.oracle.items()], s.clock.now)
+
+    monkeypatch.setattr(volume, '_day_snapshot', snapshot)
+    monkeypatch.setattr(volume.time, 'time', lambda: s.clock.now / 1000)
+    s.owner.loader = volume.monitor_day_snapshot
+    history = s.owner.histories[CODE]
+    s.monitor.leaves = [leaf.model_copy(update={'params': leaf.params.model_copy(
+        update={'period': period, 'lookback': 3})})
+        for leaf, period in zip(s.monitor.leaves, (40, 24, 12), strict=True)]
+    history.needed = candles.requirement(s.monitor.leaves)
+    await s.owner.prepare(CODE, history)
+    assert seen == [(CODE, '1m', '2026-10-30', dt.datetime(2026, 10, 30, 15, 30, tzinfo=KST))]
+    adapter = ContinuousAdapter(s.owner, s.monitor)
+    result = await volume.evaluate(data_dir=s.owner.data_dir, conditions=s.monitor.leaves, codes=[CODE],
+        basis='intraday', now=dt.datetime.fromtimestamp(s.clock.now / 1000, KST), volume_runtime=adapter)
+    assert result.coverage.complete == 1 and result.coverage.trading_date == '2026-10-30'
+    assert result.coverage.realtime.prepared == 1 and result.coverage.realtime.receiving == 0
+    # The existing response field survives serialization and labels the actual session.
+    assert type(result.coverage).model_validate_json(result.coverage.model_dump_json()).trading_date == '2026-10-30'
+    s.clock.now = monday - 1000
+    s.owner.schedule({CODE}, s.clock.now)
+    assert not s.owner.pending and len(seen) == 1
+    # With no fresh tick yet, yesterday is still withheld at the opening boundary.
+    s.clock.now = monday
+    for leaf in s.monitor.leaves:
+        assert adapter.snapshot(leaf, CODE, s.clock.now)[0] == []
+    assert s.owner.status(s.monitor, s.clock.now).prepared == 0
+    s.owner.schedule({CODE}, s.clock.now)
+    assert set(s.owner.pending) == {CODE}
+    await asyncio.gather(*s.owner.pending.values())
+    assert seen[-1][2] == '2026-11-02'
+    s.clock.now += 1000
+    ingest(s, 1000, 1000)
+    assert history.bars and all(b.start_ms >= monday for b in history.bars)
+    assert all(not volume.records(leaf, adapter.snapshot(leaf, CODE, s.clock.now)[0],
+                                 fetched_at_ms=s.clock.now)[1] for leaf in s.monitor.leaves)
 
 
 async def test_delayed_old_session_seed_cannot_reintroduce_yesterdays_bars(setup):

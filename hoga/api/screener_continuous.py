@@ -190,8 +190,10 @@ class ContinuousAdapter:
         return None
 
     def coverage(self):
-        status = self.owner.status(self.coverage_monitor, self.owner.now())
-        return {**status.model_dump(exclude={'id', 'total', 'error'}), 'monitor_error': status.error}
+        now = self.owner.now()
+        status = self.owner.status(self.coverage_monitor, now)
+        return {**status.model_dump(exclude={'id', 'total', 'error'}), 'monitor_error': status.error,
+                'trading_date': self.owner.selected_day(now).isoformat()}
 
 
 class ContinuousMonitors:
