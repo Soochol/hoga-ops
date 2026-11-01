@@ -30,6 +30,13 @@ def calendar(monkeypatch):
     (FRIDAY.replace(hour=8), "KRX", "preopen", "2026-10-29"),
     (FRIDAY.replace(hour=8), "UN", "open", "2026-10-30"),
     (SUNDAY, "KRX", "holiday", "2026-10-30"),
+    ((SUNDAY + dt.timedelta(days=1)).replace(hour=0), "KRX", "preopen", "2026-10-30"),
+    ((SUNDAY + dt.timedelta(days=1)).replace(hour=8, minute=59, second=59), "KRX", "preopen", "2026-10-30"),
+    ((SUNDAY + dt.timedelta(days=1)).replace(hour=9), "KRX", "calendar_unavailable", None),
+    ((SUNDAY + dt.timedelta(days=1)).replace(hour=7, minute=59, second=59), "UN", "preopen", "2026-10-30"),
+    ((SUNDAY + dt.timedelta(days=1)).replace(hour=8), "UN", "calendar_unavailable", None),
+    ((SUNDAY + dt.timedelta(days=1)).replace(hour=0), "NXT", "preopen", "2026-10-30"),
+    ((SUNDAY + dt.timedelta(days=2)).replace(hour=0), "KRX", "calendar_unavailable", None),
     (SUNDAY + dt.timedelta(days=1), "KRX", "calendar_unavailable", None),
     (SUNDAY + dt.timedelta(days=7), "KRX", "calendar_unavailable", None),
 ])
@@ -45,6 +52,12 @@ def test_known_holiday_and_preopen_follow_previous_session(calendar, tmp_path):
     assert holiday.state == "holiday" and holiday.date == FRIDAY.date()
     preopen = ranking_session.resolve(dt.datetime(2026, 11, 3, 8, tzinfo=KST), "KRX", tmp_path)
     assert preopen.state == "preopen" and preopen.date == FRIDAY.date()
+
+
+def test_midnight_preopen_normalizes_utc_without_inventing_a_trading_day(calendar, tmp_path):
+    utc = dt.datetime(2026, 11, 1, 15, 0, 1, tzinfo=dt.UTC)
+    session = ranking_session.resolve(utc, "KRX", tmp_path)
+    assert session.state == "preopen" and session.date == FRIDAY.date()
 
 
 def dated_snapshot(count=200, **changes):
@@ -156,13 +169,14 @@ async def test_last_provider_cache_expands_and_expires_without_becoming_monday_e
     assert opened is not preopen and mock.await_count == 6
 
 
-def test_holiday_panel_route_fetches_last_rows_and_serializes_unknown_date(calendar, tmp_path, monkeypatch):
+@pytest.mark.parametrize("now", [SUNDAY, (SUNDAY + dt.timedelta(days=1)).replace(hour=0)])
+def test_holiday_panel_route_fetches_last_rows_and_serializes_unknown_date(calendar, tmp_path, monkeypatch, now):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
     from hoga.live import api, lifecycle
 
-    fetcher = KiwoomRankingsFetcher(object(), data_dir=tmp_path, _now=lambda: SUNDAY)
+    fetcher = KiwoomRankingsFetcher(object(), data_dir=tmp_path, _now=lambda: now)
     monkeypatch.setattr(fetcher, "_fetch_rankings", AsyncMock(return_value=(dated_snapshot(2).rows, 2, False)))
     monkeypatch.setattr(api, "kiwoom_rankings_fetcher_instance", fetcher)
     app = FastAPI()
@@ -172,7 +186,8 @@ def test_holiday_panel_route_fetches_last_rows_and_serializes_unknown_date(calen
     assert response.status_code == 200
     body = response.json()
     assert len(body["rows"]) == body["queried_count"] == 2
-    assert body["basis"]["source"] == "provider" and body["basis"]["session"] == "holiday"
+    assert body["basis"]["source"] == "provider"
+    assert body["basis"]["session"] == ("holiday" if now.weekday() == 6 else "preopen")
     assert body["basis"]["trading_date"] is None and body["basis"]["observed_at_ms"] is None
 
 
