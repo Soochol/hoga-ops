@@ -879,17 +879,19 @@ async def test_monday_preopen_search_fetches_only_friday_and_warm_search_reuses_
         await owner.close()
 
 
-@pytest.mark.parametrize('has_display_price', [True, False])
-async def test_http_preopen_volume_match_keeps_last_confirmed_display_price(corpus, monkeypatch, has_display_price):
-    from hoga.api import screener_bar_volume as volume, screener_runner, screener_universe
-    from hoga.api.screener_continuous import ContinuousMonitors, build_router as monitor_router
-    from hoga.live.buffer import LiveBuffer
+def assert_preopen_prices(body, has_display_price):
+    if has_display_price:
+        assert {row['code'] for row in body['rows']} == set(CODES), body['bar_coverage']
+        assert all(row['price_date'] == '2026-10-29' for row in body['rows'])
+        assert all(event['date'] == '2026-10-30' for row in body['rows'] for event in row['occurrences'])
+        assert body['bar_coverage']['complete'] == len(CODES)
+    else:
+        assert body['rows'] == []
+        assert {item['reason'] for item in body['bar_coverage']['incomplete']} == {'vendor_price_unavailable'}
 
-    now = dt.datetime(2026, 11, 2, 1, 36, tzinfo=KST)
+
+def publish_thursday_prices(corpus, has_display_price=True):
     friday = dt.datetime(2026, 10, 30, 9, tzinfo=KST)
-    stamp = int(now.timestamp() * 1000)
-    # The v2 snapshot has only Thursday's confirmed prices; Friday's raw
-    # minute history is independently ready, as in the production incident.
     from types import SimpleNamespace
     payloads = [candidate(SimpleNamespace(code=code, first=DAYS[0], last=DAYS[1]), friday.date(),
                           now=friday.replace(hour=22)) for code in CODES]
@@ -899,6 +901,18 @@ async def test_http_preopen_volume_match_keeps_last_confirmed_display_price(corp
             for sample in ('first', 'second'):
                 payload['confirmation'][sample]['adjusted'] = []
     store.publish_pairs(corpus, payloads, adjusted_as_of='2026-10-30')
+
+
+@pytest.mark.parametrize('has_display_price', [True, False])
+async def test_http_preopen_volume_match_keeps_last_confirmed_display_price(corpus, monkeypatch, has_display_price):
+    from hoga.api import screener_bar_volume as volume, screener_runner, screener_universe
+    from hoga.api.screener_continuous import ContinuousMonitors, build_router as monitor_router
+    from hoga.live.buffer import LiveBuffer
+
+    now = dt.datetime(2026, 11, 2, 1, 36, tzinfo=KST)
+    friday = dt.datetime(2026, 10, 30, 9, tzinfo=KST)
+    stamp = int(now.timestamp() * 1000)
+    publish_thursday_prices(corpus, has_display_price)
     monkeypatch.setattr(screener_runner, 'now_kst', lambda: now)
     monkeypatch.setattr(volume.time, 'time', lambda: now.timestamp())
     monkeypatch.setattr(screener_universe, 'scope_codes', lambda *_: set(CODES))
@@ -919,6 +933,14 @@ async def test_http_preopen_volume_match_keeps_last_confirmed_display_price(corp
             for tf, period in [('3m', 40), ('5m', 24), ('10m', 12)]])
     app = FastAPI()
     app.include_router(monitor_router(owner))
+    validations = []
+    original_state = confirmation.state
+
+    def checked(payload):
+        validations.append(payload['code'])
+        return original_state(payload)
+
+    monkeypatch.setattr(confirmation, 'state', checked)
     try:
         status = await owner.start('http-preopen', req)
         owner.loop_task.cancel()
@@ -927,20 +949,74 @@ async def test_http_preopen_volume_match_keeps_last_confirmed_display_price(corp
             await owner.prepare(code, owner.histories[code])
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
             response = await client.get(f'/monitors/{status.id}/result')
-        assert response.status_code == 200
+            first_validations = len(validations)
+            again = await client.get(f'/monitors/{status.id}/result')
+        assert first_validations > 0 and response.status_code == again.status_code == 200
+        assert len(validations) == first_validations  # Stable daily snapshot is verified once.
+        assert again.json() == response.json()
         body = response.json()
-        if has_display_price:
-            assert {row['code'] for row in body['rows']} == set(CODES), body['bar_coverage']
-            assert all(row['price_date'] == '2026-10-29' for row in body['rows'])
-            assert all(event['date'] == '2026-10-30' for row in body['rows'] for event in row['occurrences'])
-            assert body['bar_coverage']['complete'] == len(CODES)
-        else:
-            assert body['rows'] == []
-            assert {item['reason'] for item in body['bar_coverage']['incomplete']} == {'vendor_price_unavailable'}
+        assert_preopen_prices(body, has_display_price)
         assert body['bar_coverage']['trading_date'] == '2026-10-30'
         assert body['bar_coverage']['realtime']['prepared'] == len(CODES)
         assert body['bar_coverage']['realtime']['receiving'] == 0
         assert calls == CODES  # Reading results never issues another seed.
+    finally:
+        await owner.close()
+
+
+async def test_warm_snapshot_still_evaluates_new_raw_ws_trade_over_http(corpus, monkeypatch):
+    from types import SimpleNamespace
+
+    from hoga.api import screener_bar_volume as volume, screener_runner, screener_universe
+    from hoga.api.screener_continuous import ContinuousMonitors, build_router as monitor_router
+    from hoga.live.buffer import LiveBuffer
+
+    publish_thursday_prices(corpus)
+    start = int(dt.datetime(2026, 10, 30, 10, tzinfo=KST).timestamp() * 1000)
+    clock = SimpleNamespace(now=start + 140_000)
+    buffer = LiveBuffer()
+    source = buffer.volume_source
+    source.configure(set(CODES))
+    source.health(dict.fromkeys(CODES, 'account:1'), start - 60_000)
+    def trade(code, qty, cumulative):
+        source.ingest(code, dict(kind='trade', venue='KRX', t_ms=clock.now, cum_volume=cumulative,
+                      trades=[dict(t_ms=clock.now, qty=qty)]), clock.now)
+        for frame in source.frames(clock.now):
+            buffer.volume_replica.apply(frame, clock.now)
+    for code in CODES:
+        trade(code, 10, 10)
+    calls = []
+    async def loader(_dir, code, *_):
+        calls.append(code)
+        return volume.MinuteSnapshot([volume.VolumeBar(start, 100), volume.VolumeBar(start + 60_000, 200),
+            volume.VolumeBar(start + 120_000, 10, True)], clock.now)
+    async def targets(_codes):
+        pass
+    monkeypatch.setattr(screener_runner, 'now_kst', lambda: dt.datetime.fromtimestamp(clock.now / 1000, KST))
+    monkeypatch.setattr(volume.time, 'time', lambda: clock.now / 1000)
+    monkeypatch.setattr(screener_universe, 'scope_codes', lambda *_: set(CODES))
+    monkeypatch.setattr(volume.kiwoom_rest_runtime, 'ensure_rest_client', lambda _: None)
+    owner = ContinuousMonitors(corpus, None, buffer, targets, loader=loader, now=lambda: clock.now)
+    req = minute_request(basis='intraday', universe={'scopes': ['watchlist']}, conditions=[dict(id='v',
+        type='new_high_vol', params=dict(timeframe='1m', period=3, lookback=1, include_open_bar=True))])
+    app = FastAPI()
+    app.include_router(monitor_router(owner))
+    try:
+        status = await owner.start('ws-warm', req)
+        owner.loop_task.cancel()
+        await asyncio.gather(owner.loop_task, return_exceptions=True)
+        for code in CODES:
+            await owner.prepare(code, owner.histories[code])
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+            assert (await client.get(f'/monitors/{status.id}/result')).json()['rows'] == []
+            # No daily snapshot input changes; its expensive validator must not run.
+            monkeypatch.setattr(confirmation, 'state', lambda _: pytest.fail('daily facts were revalidated'))
+            clock.now += 1000
+            trade(CODES[0], 300, 310)
+            changed = (await client.get(f'/monitors/{status.id}/result')).json()
+        assert [row['code'] for row in changed['rows']] == [CODES[0]]
+        assert changed['rows'][0]['occurrences'][0]['bar_match']['volume'] == 310
+        assert calls == CODES
     finally:
         await owner.close()
 

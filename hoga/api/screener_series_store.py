@@ -21,7 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from hoga.api import trading_days
+from hoga.api import screener_snapshot_cache as snapshots, trading_days
 from hoga.util.atomic_write import atomic_write_json
 
 _HASH = re.compile(r"^[a-f0-9]{64}$")
@@ -125,9 +125,12 @@ def _write_object(base: Path, value) -> str:
 
 
 def read_object(data_dir: Path, identity: str):
-    value = json.loads((root(data_dir) / "objects" / f"{_checked(identity)}.json").read_text())
+    path = root(data_dir) / "objects" / f"{_checked(identity)}.json"
+    stamp = snapshots.before_read(path)
+    value = json.loads(path.read_text())
     if digest(value) != identity:
         raise ValueError("Snapshot object checksum mismatch")
+    snapshots.after_read(path, stamp)
     return value
 
 
@@ -405,7 +408,7 @@ def current_observation(data_dir: Path, observation: dict) -> dict:
 
 
 @lru_cache(maxsize=32)
-def _verify_file(path: Path, size: int, modified_ns: int, checksum: str):
+def _verify_file(path: Path, stamp: tuple, checksum: str):
     with path.open("rb") as handle:
         if hashlib.file_digest(handle, "sha256").hexdigest() != checksum:
             raise ValueError("Legacy baseline checksum mismatch")
@@ -415,12 +418,16 @@ def baseline_path(data_dir: Path, manifest: dict, name: str) -> Path:
     if name not in (*_BASE_FILES, "calendar.json"):
         raise ValueError("Invalid baseline file")
     folder = root(data_dir) / "legacy" / _checked(manifest["baseline"])
-    metadata = json.loads((folder / "manifest.json").read_text())
+    metadata_path = folder / "manifest.json"
+    stamp = snapshots.before_read(metadata_path)
+    metadata = json.loads(metadata_path.read_text())
     if digest(metadata) != manifest["baseline"]:
         raise ValueError("Legacy baseline identity mismatch")
+    snapshots.after_read(metadata_path, stamp)
     path = folder / name
-    stat = path.stat()
-    _verify_file(path, stat.st_size, stat.st_mtime_ns, metadata["files"][name])
+    stamp = snapshots.signature(path)
+    _verify_file(path, stamp, metadata["files"][name])
+    snapshots.after_read(path, stamp)
     return path
 
 

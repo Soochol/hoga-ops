@@ -10,7 +10,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api import screener_series_store as store
+from hoga.api import screener_series_store as store, screener_snapshot_cache as snapshots
 
 
 @dataclass
@@ -93,6 +93,15 @@ def _confirmed_observation(data_dir, manifest, observation):
 def load_series(
     data_dir: Path, manifest: dict, codes: list[str], *, first=dt.date.min, last=dt.date.max
 ) -> dict[str, Series]:
+    # Keep compact display/recent windows. Long historical scans must not build
+    # another unbounded copy of the full daily corpus in RAM.
+    if last - first > dt.timedelta(days=32):
+        return _load_series(data_dir, manifest, codes, first=first, last=last)
+    return snapshots.obtain(data_dir, manifest, 'series', (tuple(codes), first, last),
+                            lambda: _load_series(data_dir, manifest, codes, first=first, last=last))
+
+
+def _load_series(data_dir, manifest, codes, *, first, last):
     raw = (
         pl.scan_parquet(store.baseline_path(data_dir, manifest, "daily_unadjusted.parquet"))
         .filter(pl.col("code").is_in(codes), pl.col("date").is_between(first, last))

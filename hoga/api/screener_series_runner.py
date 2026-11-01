@@ -19,6 +19,7 @@ from hoga.api import (
     screener_series_eval as evaluation,
     screener_series_store as store,
     screener_series_values as values,
+    screener_snapshot_cache as snapshots,
     screener_universe,
 )
 from hoga.api.models import (
@@ -140,6 +141,11 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
 
 
 def _confirmed_at(data_dir, manifest, codes, cutoff):
+    return snapshots.obtain(data_dir, manifest, 'confirmed', (tuple(codes), cutoff),
+                            lambda: _load_confirmed_at(data_dir, manifest, codes, cutoff))
+
+
+def _load_confirmed_at(data_dir, manifest, codes, cutoff):
     from hoga.api import screener_daily_confirmation as confirmation  # noqa: PLC0415 — provider metadata
 
     timestamps = []
@@ -176,6 +182,11 @@ def _eod_clock(now, confirmed):
 
 
 def _daily_contract(data_dir, manifest, codes):
+    return snapshots.obtain(data_dir, manifest, 'contract', tuple(codes),
+                            lambda: _load_daily_contract(data_dir, manifest, codes))
+
+
+def _load_daily_contract(data_dir, manifest, codes):
     scopes, policies = set(), set()
     for code in codes:
         identity = manifest["observations"].get(code)
