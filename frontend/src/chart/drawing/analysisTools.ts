@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import type { DrawingToolSpec, ToolCtx } from './tools';
 import type { AnalysisDrawing, DrawingStyle, PaneId, Point } from './types';
 import { FIB_LEVELS } from './types';
+import { validPosition } from './analysisGeometry';
 
 export type AnalysisDraft = {
   kind: Exclude<AnalysisDrawing['kind'], 'hray'>;
@@ -78,7 +79,11 @@ export function analysisTool(kind: AnalysisDraft['kind'], label: string): Drawin
       }
       if (d.kind === 'channel') { d.phase = 'width'; d.c = { ...d.a }; ctx.requestRedraw(); return; }
       const drawing = drawingFromAnalysisDraft(d); drawing.id = nanoid(8);
-      ctx.analysisDraft.current = null; ctx.add(drawing); ctx.requestRedraw();
+      ctx.analysisDraft.current = null;
+      if ((drawing.kind === 'long-position' || drawing.kind === 'short-position') && !validPosition(drawing)) {
+        ctx.requestRedraw(); return;
+      }
+      ctx.add(drawing); ctx.requestRedraw();
     },
   };
 }

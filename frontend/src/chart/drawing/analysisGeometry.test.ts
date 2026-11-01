@@ -122,6 +122,12 @@ describe('analysis gestures',()=>{
     expect(ctx.add).toHaveBeenCalledWith({...preview,id:expect.any(String)});
     expect(positionStats(preview as Position).ratio).toBe(2);
   });
+  it.each(['long-position', 'short-position'] as const)('%s rejects non-positive initial stop or target prices before persistence',kind=>{
+    const {ctx,tool}=context(kind);tool.onPointerDown!(ctx);
+    ctx.px=200;ctx.py=400;tool.onPointerUp!(ctx);
+    expect(ctx.add).not.toHaveBeenCalled();
+    expect(ctx.analysisDraft?.current).toBeNull();
+  });
   it('ray creates one anchored drawing',()=>{
     const {ctx}=context();horizontalRayTool.onPointerDown!(ctx);
     expect(ctx.add).toHaveBeenCalledWith(expect.objectContaining({kind:'hray',at:{realMs:100,price:100}}));
