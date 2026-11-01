@@ -24,6 +24,8 @@ from hoga.api import (
     screener_bollinger,
     screener_exclusions,
     screener_history_evidence,
+    screener_ma,
+    screener_price_compare,
     trading_days,
 )
 from hoga.api.models import (
@@ -39,6 +41,8 @@ from hoga.api.screener_bar_policy import (
     BOLLINGER_TYPES,
     CANDLE_TYPES,
     CHANGE_TYPES,
+    MA_TYPES,
+    PRICE_COMPARE_TYPES,
     RANGE_PARAMS,
     RANK_TYPES,
     TRADE_VALUE_TYPES,
@@ -102,6 +106,8 @@ _SPECIAL_RECORDS = {
     **dict.fromkeys(BOLLINGER_TYPES, screener_bollinger.records),
     **dict.fromkeys(TRADE_VALUE_TYPES, screener_bar_threshold.turnover_records),
     **dict.fromkeys(CHANGE_TYPES, screener_bar_threshold.change_records),
+    **dict.fromkeys(PRICE_COMPARE_TYPES, screener_price_compare.records),
+    **dict.fromkeys(MA_TYPES, screener_ma.records),
 }
 
 

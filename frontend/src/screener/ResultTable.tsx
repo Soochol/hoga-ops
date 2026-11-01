@@ -1,5 +1,5 @@
 import { SortDirectionIcon } from '../ui/SortDirectionIcon';
-import { PeriodChangeButton, type PeriodChangeDetailsProps } from './PeriodChangeDetails';
+import { PriceOccurrenceButtons, type PriceOccurrenceDetailsProps } from './PriceOccurrenceDetails';
 import { MarketRankEvidence } from './MarketRankEvidence';
 import { useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -12,7 +12,7 @@ import { DataTableHeader, DataTableRow, DataTableShell, EmptyState } from '../ui
 import { priceDirClass } from '../ui/priceDir';
 import type { JumpModifiers } from '../live/useJumpToLive';
 
-interface Props extends PeriodChangeDetailsProps {
+interface Props extends PriceOccurrenceDetailsProps {
   /** Live Quote 가 이미 머지된 결과 행(useScreenerRowsLive). 표시만 하면 된다. */
   rows: ScreenerRowLive[];
   onActivate: (code: string, name?: string, e?: JumpModifiers) => void;
@@ -151,7 +151,7 @@ function SortHeader({ field, label, sortLabel = label, align, sortMode = 'defaul
 
 /** 행 하나 — 평면 렌더와 가상 렌더가 **같은 마크업**을 쓰도록 뽑아냈다.
  *  둘이 갈라지면 가상화가 켜지는 임계(200행) 위아래에서 화면이 달라진다. */
-function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index, quoteMode, periodConditionIds, onPeriodDetails }: PeriodChangeDetailsProps & {
+function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, measureRef, index, quoteMode, occurrenceKinds, onOccurrenceDetails }: PriceOccurrenceDetailsProps & {
   r: ScreenerRowLive;
   isMember: (code: string) => boolean;
   onActivate: Props['onActivate'];
@@ -176,7 +176,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       <span className="flex min-w-0 items-center gap-2">
         <span className="min-w-0"><span className="block truncate">{r.name}</span>
           <MarketRankEvidence row={r} />
-          <PeriodChangeButton row={r} periodConditionIds={periodConditionIds} onPeriodDetails={onPeriodDetails} />
+          <PriceOccurrenceButtons row={r} occurrenceKinds={occurrenceKinds} onOccurrenceDetails={onOccurrenceDetails} />
         </span>
         {depthValues?.[r.code] && depthSides && <DepthBadge v={depthValues[r.code]} sides={depthSides} />}
         {depthValues?.[r.code] && depthSides && (depthSides.askRenewal || depthSides.bidRenewal)
@@ -215,7 +215,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
   );
 }
 
-export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides, quoteMode = 'live', periodConditionIds, onPeriodDetails }: Props) {
+export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChange, embedded = false, depthValues, depthSides, quoteMode = 'live', occurrenceKinds, onOccurrenceDetails }: Props) {
   // 훅은 표 전체에서 **한 번만** 부른다(useWatchlistMembership 계약: "ONCE per component,
   // not per row"). 행마다 부르던 시절엔 1,000행 = react-query 옵저버 1,000개였다.
   // 실측(재렌더): 500행 44 → 30 ms, 1,000행 65 → 59 ms.
@@ -283,7 +283,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
               depthSides={depthSides}
               measureRef={virtualizer.measureElement}
               index={vi.index}
-              quoteMode={quoteMode} periodConditionIds={periodConditionIds} onPeriodDetails={onPeriodDetails}
+              quoteMode={quoteMode} occurrenceKinds={occurrenceKinds} onOccurrenceDetails={onOccurrenceDetails}
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%',
                 transform: `translateY(${vi.start - virtualizer.options.scrollMargin}px)`,
@@ -295,7 +295,7 @@ export function ResultTable({ rows, onActivate, sortMode = 'default', onSortChan
         <div data-testid="screener-result-rows" data-virtualized="false" className="flex-1 min-h-0">
           {rows.map((r) => (
             <ResultRow key={r.code} r={r} isMember={isMember} onActivate={onActivate}
-              quoteMode={quoteMode} periodConditionIds={periodConditionIds} onPeriodDetails={onPeriodDetails}
+              quoteMode={quoteMode} occurrenceKinds={occurrenceKinds} onOccurrenceDetails={onOccurrenceDetails}
               depthValues={depthValues} depthSides={depthSides} />
           ))}
         </div>

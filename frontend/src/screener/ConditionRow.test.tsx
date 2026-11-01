@@ -29,6 +29,16 @@ describe('ConditionRow', () => {
     const card = screen.getByRole('group', { name: `${name} 조건` });
     const input = within(card).getAllByRole('textbox')[0];
     fireEvent.change(input, { target: { value: '17' } });
+    if (initial.type === 'ma_slope') {
+      expect(onChange).toHaveBeenLastCalledWith({ ...initial, params: { ...initial.params,
+        average: { ...initial.params.average, offset: 17 } } });
+      return;
+    }
+    if (initial.type === 'ma_compare' || initial.type === 'ma_cross' || initial.type === 'ma_gap' || initial.type === 'price_compare') {
+      expect(onChange).toHaveBeenLastCalledWith({ ...initial, params: { ...initial.params,
+        left: { ...initial.params.left, offset: 17 } } });
+      return;
+    }
     expect(onChange).toHaveBeenLastCalledWith({ ...initial,
       params: { ...initial.params, [type === 'price_range' ? 'min'
         : type === 'trade_value' ? 'min_eok'

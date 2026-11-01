@@ -72,7 +72,8 @@ def _stable(response):
     # coverage independently of when the two verification calls ran.
     for row in payload["rows"]:
         for occurrence in row.get("occurrences", []):
-            for field in ("bar_match", "bar_price_match", "bar_trade_value_match", "bar_change_match"):
+            for field in ("bar_match", "bar_price_match", "bar_trade_value_match", "bar_change_match",
+                          "bar_price_compare_match", "bar_ma_match"):
                 if occurrence.get(field) is not None:
                     occurrence[field].pop("fetched_at_ms", None)
     return {field: payload[field] for field in (

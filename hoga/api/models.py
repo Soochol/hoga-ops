@@ -2060,6 +2060,119 @@ class PriceRangeParams(BaseModel):
         return self
 
 MaSource = Literal["open", "high", "low", "close"]
+PriceCompareRelation = Literal["gt", "gte", "lt", "lte", "eq"]
+
+
+class PriceCompareOperand(BaseModel):
+    model_config = {"extra": "forbid"}
+    offset: int = Field(ge=0, le=1000, strict=True)
+    source: MaSource
+
+
+class PriceCompareParams(CandleParams):
+    left: PriceCompareOperand
+    right: PriceCompareOperand
+    relation: PriceCompareRelation
+
+
+class PriceComparePeriodParams(PriceCompareParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class PriceCompareRangeParams(PriceCompareParams, HistoryDateRangeParams):
+    pass
+
+
+MaOperandKind = Literal["price", "sma"]
+MaCrossDirection = Literal["up", "down"]
+MaConditionKind = Literal["compare", "cross", "gap", "slope"]
+
+
+class MaPriceOperand(PriceCompareOperand):
+    kind: Literal["price"] = "price"
+
+
+class MaAverageOperand(PriceCompareOperand):
+    kind: Literal["sma"] = "sma"
+    period: int = Field(ge=1, le=1000, strict=True)
+
+
+MaOperand = Annotated[MaPriceOperand | MaAverageOperand, Field(discriminator="kind")]
+
+
+class MaPairParams(CandleParams):
+    left: MaOperand
+    right: MaOperand
+
+    @model_validator(mode="after")
+    def require_average(self):
+        if self.left.kind != "sma" and self.right.kind != "sma":
+            raise ValueError("이동평균 대상을 하나 이상 선택하세요")
+        return self
+
+
+class MaThresholdParams(CandleParams):
+    op: Literal["gte", "lte", "between"]
+    pct: float | None = Field(default=None, allow_inf_nan=False)
+    lo: float | None = Field(default=None, allow_inf_nan=False)
+    hi: float | None = Field(default=None, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def check_threshold(self):
+        if self.op in {"gte", "lte"} and self.pct is None:
+            raise ValueError("gte/lte requires pct")
+        if self.op == "between" and (self.lo is None or self.hi is None or self.lo > self.hi):
+            raise ValueError("between requires lo <= hi")
+        return self
+
+
+class MaCompareParams(MaPairParams):
+    relation: PriceCompareRelation
+
+
+class MaCrossParams(MaPairParams):
+    direction: MaCrossDirection
+
+
+class MaGapParams(MaPairParams, MaThresholdParams):
+    pass
+
+
+class MaSlopeParams(MaThresholdParams):
+    average: MaAverageOperand
+    lag: int = Field(ge=1, le=1000, strict=True)
+
+
+class MaComparePeriodParams(MaCompareParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class MaCompareRangeParams(MaCompareParams, HistoryDateRangeParams):
+    pass
+
+
+class MaCrossPeriodParams(MaCrossParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class MaCrossRangeParams(MaCrossParams, HistoryDateRangeParams):
+    pass
+
+
+class MaGapPeriodParams(MaGapParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class MaGapRangeParams(MaGapParams, HistoryDateRangeParams):
+    pass
+
+
+class MaSlopePeriodParams(MaSlopeParams):
+    lookback: int = Field(ge=1, le=1000, strict=True)
+
+
+class MaSlopeRangeParams(MaSlopeParams, HistoryDateRangeParams):
+    pass
 
 
 class MaParams(CandleParams):
@@ -2208,6 +2321,64 @@ class PriceRangeLeaf(BaseModel):
     id: str
     params: PriceRangeParams
 
+class PriceCompareLeaf(BaseModel):
+    type: Literal["price_compare"] = "price_compare"
+    id: str
+    params: PriceCompareParams
+
+class PriceComparePeriodLeaf(BaseModel):
+    type: Literal["price_compare_period"] = "price_compare_period"
+    id: str
+    params: PriceCompareRangeParams | PriceComparePeriodParams
+
+class MaCompareLeaf(BaseModel):
+    type: Literal["ma_compare"] = "ma_compare"
+    id: str
+    params: MaCompareParams
+
+
+class MaComparePeriodLeaf(BaseModel):
+    type: Literal["ma_compare_period"] = "ma_compare_period"
+    id: str
+    params: MaCompareRangeParams | MaComparePeriodParams
+
+
+class MaCrossLeaf(BaseModel):
+    type: Literal["ma_cross"] = "ma_cross"
+    id: str
+    params: MaCrossParams
+
+
+class MaCrossPeriodLeaf(BaseModel):
+    type: Literal["ma_cross_period"] = "ma_cross_period"
+    id: str
+    params: MaCrossRangeParams | MaCrossPeriodParams
+
+
+class MaGapLeaf(BaseModel):
+    type: Literal["ma_gap"] = "ma_gap"
+    id: str
+    params: MaGapParams
+
+
+class MaGapPeriodLeaf(BaseModel):
+    type: Literal["ma_gap_period"] = "ma_gap_period"
+    id: str
+    params: MaGapRangeParams | MaGapPeriodParams
+
+
+class MaSlopeLeaf(BaseModel):
+    type: Literal["ma_slope"] = "ma_slope"
+    id: str
+    params: MaSlopeParams
+
+
+class MaSlopePeriodLeaf(BaseModel):
+    type: Literal["ma_slope_period"] = "ma_slope_period"
+    id: str
+    params: MaSlopeRangeParams | MaSlopePeriodParams
+
+
 class MaLeaf(BaseModel):
     type: Literal["ma"] = "ma"
     id: str
@@ -2273,7 +2444,7 @@ class BidDepthRenewalLeaf(BaseModel):
     params: DepthRenewalParams
 
 ConditionLeaf = Annotated[
-    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | ChangePctPeriodLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValueRankLeaf | ChangePctRankLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | ChangePctPeriodLeaf | PriceRangeLeaf | PriceCompareLeaf | PriceComparePeriodLeaf | MaCompareLeaf | MaComparePeriodLeaf | MaCrossLeaf | MaCrossPeriodLeaf | MaGapLeaf | MaGapPeriodLeaf | MaSlopeLeaf | MaSlopePeriodLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -2457,6 +2628,47 @@ class BarChangeMatch(BaseModel):
     is_open: bool
     fetched_at_ms: int
 
+class BarPriceCompareValue(BaseModel):
+    offset: int
+    source: MaSource
+    value: float = Field(gt=0, allow_inf_nan=False)
+    bar_start_ms: int
+    is_open: bool
+
+
+class BarPriceCompareMatch(BaseModel):
+    timeframe: ScreenerTimeframe
+    relation: PriceCompareRelation
+    left: BarPriceCompareValue
+    right: BarPriceCompareValue
+    is_open: bool
+    fetched_at_ms: int
+
+
+class BarMaValue(BaseModel):
+    kind: MaOperandKind
+    offset: int
+    source: MaSource
+    period: int | None = None
+    value: float = Field(gt=0, allow_inf_nan=False)
+    bar_start_ms: int
+    window_start_ms: int
+    is_open: bool
+
+
+class BarMaMatch(BaseModel):
+    kind: MaConditionKind
+    timeframe: ScreenerTimeframe
+    left: BarMaValue
+    right: BarMaValue
+    previous_left: BarMaValue | None = None
+    previous_right: BarMaValue | None = None
+    relation: PriceCompareRelation | None = None
+    direction: MaCrossDirection | None = None
+    value_pct: float | None = Field(default=None, allow_inf_nan=False)
+    is_open: bool
+    fetched_at_ms: int
+
 
 class BarVolumeCoverageItem(BaseModel):
     code: str
@@ -2517,6 +2729,8 @@ class ScreenerOccurrence(BaseModel):
     bar_price_match: BarPriceMatch | None = None
     bar_trade_value_match: BarTradeValueMatch | None = None
     bar_change_match: BarChangeMatch | None = None
+    bar_price_compare_match: BarPriceCompareMatch | None = None
+    bar_ma_match: BarMaMatch | None = None
 
 
 class ScreenerExclusionWrite(BaseModel):
@@ -2539,7 +2753,9 @@ class ScreenerExclusionWrite(BaseModel):
                 raise ValueError("봉 시작 시각과 발생 날짜가 다릅니다")
             if self.condition.type not in {"new_high_vol", "new_high_vol_today", "new_high", "new_high_today",
                                            "high_off_peak", "ma", "trade_value", "trade_value_period",
-                                           "change_pct", "change_pct_period",
+                                           "change_pct", "change_pct_period", "price_compare", "price_compare_period",
+                                           "ma_compare", "ma_compare_period", "ma_cross", "ma_cross_period",
+                                           "ma_gap", "ma_gap_period", "ma_slope", "ma_slope_period",
                                            "bollinger_breakout_today", "bollinger_breakout",
                                            "bollinger_position_today", "bollinger_position"}:
                 raise ValueError("봉 시각은 주기별 가격·거래량 조건에서만 사용합니다")

@@ -41,6 +41,12 @@ def condition_key(leaf: ConditionLeaf, *, calculation_policy: str = "legacy_v1")
         "new_high_vol",
         "trade_value_period",
         "change_pct_period",
+        "price_compare_period",
+        "ma_compare_period",
+        "ma_cross_period",
+        "ma_gap_period",
+        "ma_slope_period",
+
         "ask_depth_new_high_period",
         "bid_depth_new_high_period",
     }:
