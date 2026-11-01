@@ -1,13 +1,14 @@
 import { MA_CONDITION_TYPES } from './maLabels';
+import { VOLUME_CONDITION_TYPES } from './volumeLabels';
 import { useCallback, useMemo, useState } from 'react';
 import type { ScreenerRow } from '../api/screener';
 import { ScreenerOccurrenceDetails } from './ScreenerOccurrenceDetails';
 import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 
 /** Keep the drawer's row callbacks stable; one modal follows the latest scan. */
-type EvidenceKind = 'change' | 'compare' | 'ma';
-const KINDS: EvidenceKind[] = ['change', 'compare', 'ma'];
-const LABELS = { change: '기간내 등락률', compare: '주가 비교', ma: '이동평균' };
+type EvidenceKind = 'change' | 'compare' | 'ma' | 'volume';
+const KINDS: EvidenceKind[] = ['change', 'compare', 'ma', 'volume'];
+const LABELS = { change: '기간내 등락률', compare: '주가 비교', ma: '이동평균', volume: '거래량' };
 
 export function usePriceOccurrenceDetails(rows: ScreenerRow[], controller?: OccurrenceExclusions) {
   const [selected, setSelected] = useState<{ code: string; kind: EvidenceKind } | null>(null);
@@ -15,6 +16,7 @@ export function usePriceOccurrenceDetails(rows: ScreenerRow[], controller?: Occu
     const kinds = new Map<string, EvidenceKind>();
     for (const c of controller?.conditions ?? []) {
       if (MA_CONDITION_TYPES.has(c.type)) kinds.set(c.id, 'ma');
+      if (VOLUME_CONDITION_TYPES.has(c.type)) kinds.set(c.id, 'volume');
       if (c.type === 'change_pct_period') kinds.set(c.id, 'change');
       if (c.type === 'price_compare' || c.type === 'price_compare_period') kinds.set(c.id, 'compare');
     }
@@ -35,7 +37,7 @@ export interface PriceOccurrenceDetailsProps {
 
 export function PriceOccurrenceButtons({ row, occurrenceKinds, onOccurrenceDetails }: PriceOccurrenceDetailsProps & { row: Pick<ScreenerRow, 'code' | 'name' | 'occurrences'> }) {
   if (!onOccurrenceDetails) return null;
-  const counts = { change: 0, compare: 0, ma: 0 };
+  const counts = { change: 0, compare: 0, ma: 0, volume: 0 };
   for (const event of row.occurrences ?? []) {
     const kind = occurrenceKinds?.get(event.condition_id);
     if (kind) counts[kind]++;
