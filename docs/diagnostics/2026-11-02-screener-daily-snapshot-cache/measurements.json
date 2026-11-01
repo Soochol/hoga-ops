@@ -1,0 +1,92 @@
+{
+  "snapshot": "1d82b20eecd2645de7a869730b3beacf6a42a1c1a48716c9389deaa46f3bf307",
+  "codes": 350,
+  "code_fingerprint": "06d05d817e552285b6282c10b03f91330af906cf30d5532034478a2d04c5e82e",
+  "as_of": "2026-11-02T02:30:00+09:00",
+  "api_calls": 0,
+  "rounds": [
+    {
+      "round": 0,
+      "phases": {
+        "confirmed": {
+          "seconds": 36.393391653000435,
+          "object_reads": 466
+        },
+        "daily": {
+          "seconds": 45.178528416996414,
+          "object_reads": 470
+        },
+        "metadata": {
+          "seconds": 37.859514318995934,
+          "object_reads": 466
+        }
+      },
+      "seconds": 119.43143438899278,
+      "object_reads": 1402,
+      "identical": true
+    },
+    {
+      "round": 1,
+      "phases": {
+        "confirmed": {
+          "seconds": 0.0011221899985685013,
+          "object_reads": 0
+        },
+        "daily": {
+          "seconds": 0.011082261000410654,
+          "object_reads": 0
+        },
+        "metadata": {
+          "seconds": 0.0008271260012406856,
+          "object_reads": 0
+        }
+      },
+      "seconds": 0.01303157700021984,
+      "object_reads": 0,
+      "identical": true
+    },
+    {
+      "round": 2,
+      "phases": {
+        "confirmed": {
+          "seconds": 0.0008082900021690875,
+          "object_reads": 0
+        },
+        "daily": {
+          "seconds": 0.010791615000925958,
+          "object_reads": 0
+        },
+        "metadata": {
+          "seconds": 0.0007562220052932389,
+          "object_reads": 0
+        }
+      },
+      "seconds": 0.012356127008388285,
+      "object_reads": 0,
+      "identical": true
+    },
+    {
+      "round": 3,
+      "phases": {
+        "confirmed": {
+          "seconds": 0.0007499100029235706,
+          "object_reads": 0
+        },
+        "daily": {
+          "seconds": 0.010727715001848992,
+          "object_reads": 0
+        },
+        "metadata": {
+          "seconds": 0.0007630350010003895,
+          "object_reads": 0
+        }
+      },
+      "seconds": 0.012240660005772952,
+      "object_reads": 0,
+      "identical": true
+    }
+  ],
+  "warm_median_seconds": 0.012356127008388285,
+  "cache_bytes": 524499,
+  "cache_entries": 3
+}

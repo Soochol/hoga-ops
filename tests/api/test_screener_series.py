@@ -538,6 +538,62 @@ def test_snapshot_input_cannot_be_silently_ignored_by_legacy_or_intraday():
             ScanRequest.model_validate(data)
 
 
+def test_daily_snapshot_facts_reuse_and_publication_invalidates(corpus, monkeypatch):
+    from hoga.api import screener_series_runner as runner
+    _, manifest = store.load_snapshot(corpus)
+    calls = []
+    original = store.read_object
+    def read(*args):
+        calls.append(args[1])
+        return original(*args)
+    monkeypatch.setattr(store, 'read_object', read)
+    def facts(current):
+        return (runner._confirmed_at(corpus, current, ['005930'], NOW.date()),
+                values.load_series(corpus, current, ['005930'], first=DAYS[0], last=DAYS[-1]),
+                runner._daily_contract(corpus, current, ['005930']))
+    first = facts(manifest)
+    count = len(calls)
+    assert count > 0 and facts(manifest) == first and len(calls) == count
+    observation = original(corpus, manifest['observations']['005930'])
+    adjusted = [{**row, **{key: row[key] * 1.1 for key in ('open', 'high', 'low', 'close')}}
+                for row in observation['adjusted']]
+    store.publish_pair(corpus, '005930', observation['unadjusted'], adjusted,
+                       adjusted_as_of='2018-05-04', observed_at=NOW.isoformat(), price_events=[])
+    _, latest = store.load_snapshot(corpus)
+    calls.clear()
+    updated = facts(latest)
+    assert calls and updated[1]['005930'].prices[DAYS[-1]]['close'] == pytest.approx(110)
+
+
+def test_cached_daily_series_do_not_share_mutable_rows_sets_or_evidence(corpus):
+    evidence(corpus)
+    _, manifest = store.load_snapshot(corpus)
+    def load():
+        return values.load_series(corpus, manifest, ['005930'], first=DAYS[0], last=DAYS[-1])['005930']
+    first = load()
+    first.prices[DAYS[-1]]['close'] = 999
+    first.original[DAYS[-1]]['volume'] = 1
+    first.conflicts.add(DAYS[0])
+    first.evidence.events[0].numerator = 99
+    again = load()
+    assert again.prices[DAYS[-1]]['close'] == 100
+    assert again.original[DAYS[-1]]['volume'] == 400
+    assert DAYS[0] not in again.conflicts and again.evidence.events[0].numerator == 5
+
+
+def test_cached_series_rejects_baseline_corruption_even_with_restored_mtime(corpus):
+    import os
+    _, manifest = store.load_snapshot(corpus)
+    values.load_series(corpus, manifest, ['005930'], first=DAYS[0], last=DAYS[-1])
+    path = store.baseline_path(corpus, manifest, 'daily_unadjusted.parquet')
+    stamp = path.stat()
+    data = path.read_bytes()
+    path.write_bytes(data[:-1] + bytes([data[-1] ^ 1]))
+    os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    with pytest.raises(ValueError, match='checksum mismatch'):
+        values.load_series(corpus, manifest, ['005930'], first=DAYS[0], last=DAYS[-1])
+
+
 @pytest.mark.parametrize("price_factor,rate", [(0.9995, "-0.05"), (0.9976, "-0.24")])
 async def test_small_price_events_keep_vendor_prices_and_do_not_reprice_quantity(corpus, price_factor, rate):
     observation = store.read_object(corpus, store.load_snapshot(corpus)[1]["observations"]["005930"])
