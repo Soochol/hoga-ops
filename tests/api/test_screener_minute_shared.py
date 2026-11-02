@@ -47,6 +47,7 @@ async def test_all_timeframes_and_fresh_scan_cutoffs_share_one_raw_day(tmp_path,
                                            for tf in ('1m', '3m', '5m', '10m')))
         assert [len(value.bars) for value in values] == [6, 2, 2, 1]
         assert values[-1].bars[0].volume == sum(range(2, 8))
+        assert {value.response_received_ms for value in values} == {int(NOW.timestamp() * 1000)}
     assert len(calls) == 1 and calls[0]['tic_scope'] == '1'
     assert shared_days.get(shared_days.key(tmp_path, 'KRX', '005930', DAY), int(cutoff.timestamp()*1000))
 
@@ -60,6 +61,7 @@ async def test_chart_then_search_and_search_then_chart_reuse_same_raw_source(tmp
     with bind(scope):
         read = await volume._day_snapshot(tmp_path, '005930', '5m', scope)
     assert len(read.bars) == 2 and len(calls) == 1
+    assert read.response_received_ms == int(NOW.timestamp() * 1000)
     scope = MinuteScope(DAY, NOW)
     with bind(scope):
         await volume._day_snapshot(tmp_path, '000660', '3m', scope)

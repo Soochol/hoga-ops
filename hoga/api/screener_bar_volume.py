@@ -279,12 +279,14 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
     bars_by_ms = {}
     chart_bars = []
     reason = None
+    response_received_ms = None
     for page_index in range(MAX_MINUTE_PAGES):
         page = await kiwoom_access.run_with_capacity(scheduler,
             key=("screener-bars", code, timeframe, cursor, as_of.date().isoformat()),
             api_id="ka10080", priority="background", client=client,
             fetch_fn=lambda c, cur=cursor: c.call("ka10080", {
                 "stk_cd": code, "tic_scope": scope, "upd_stkpc_tp": "0", "base_dt": cur}))
+        response_received_ms = int(time.time() * 1000)
         observation = screener_minute_scope.current.get()
         if observation is not None and observation.live and observation.clock:
             as_of = min(observation.clock(), dt.datetime.combine(observation.day, dt.time(15, 30), KST))
@@ -327,7 +329,7 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
             reason = "fetch_budget_exhausted"
     return MinuteSnapshot([bars_by_ms[ms] for ms in sorted(bars_by_ms)], fetched_at, reason,
                           chart_bars=chart_bars if observation is not None and timeframe == '1m' else None,
-                          cutoff_ms=int(as_of.timestamp()*1000))
+                          cutoff_ms=int(as_of.timestamp()*1000), response_received_ms=response_received_ms)
 
 
 def aggregate_day_minutes(bars, timeframe, cutoff_ms):
@@ -410,9 +412,9 @@ async def _load_minutes(key, data_dir, code, timeframe, needed, lower, as_of):
             # needed=1 stops after the first page. Previous dates are never
             # fetched to satisfy a lookback; filtering happens before evaluation.
             result = await _fetch_minutes(data_dir, code, timeframe, 0, None, as_of)
-            result = MinuteSnapshot([bar for bar in result.bars
+            result = replace(result, bars=[bar for bar in result.bars
                 if dt.datetime.fromtimestamp(bar.start_ms / 1000, KST).date() == scope.day],
-                int(time.time() * 1000), result.reason)
+                fetched_at_ms=int(time.time() * 1000))
         else:
             result = await _fetch_minutes(data_dir, code, timeframe, needed, lower, as_of)
     except Exception as exc:

@@ -32,7 +32,7 @@ MAX_MONITORS = 32
 MAX_STREAMS = 512
 MAX_BARS = 250_000
 MAX_BYTES = 64 * 1024 * 1024
-BAR_RESERVATION_BYTES = 512  # Conservative admission includes objects, indexes and evidence.
+BAR_RESERVATION_BYTES = 640
 REPLAY_RESERVATION_BYTES = MAX_REPLAY_BARS * 1024
 LEASE_MS = 300_000
 AUDIT_MS = 300_000
@@ -71,6 +71,7 @@ class History:
     generation: str = ''
     lower: set[int] = field(default_factory=set)
     observed: dict[int, tuple] = field(default_factory=dict)
+    observation_ms: dict[int, int] = field(default_factory=dict)
     reason: str | None = None
     retry_at: int = 0
     failures: int = 0
@@ -278,7 +279,7 @@ class ContinuousMonitors:
         if history.repair_until_ms or (self.live_clock(now) and (not state or not state['ready'])):
             data = tuple(replace(bar, valid=False) for bar in data)
         return PreparedSnapshot(data, frozenset(history.lower), history.coverage_start_ms,
-            history.fetched_ms, max([history.fetched_ms, *(item[3] for item in history.observed.values())]),
+            history.fetched_ms, max([history.fetched_ms, *history.observation_ms.values()]),
             self.version(code, history, now), current, history.reason, now,
             bool(self.live_clock(now) and state and state['ready']), history.repair_until_ms)
 
@@ -494,6 +495,11 @@ class ContinuousMonitors:
             # A completed authoritative REST bar supersedes older producer state.
             if old and old.valid and not old.is_open and start in history.canonical:
                 continue
+            if old and valid_prices(old) and valid and prices_complete:
+                incoming_bar = volume.VolumeBar(start, observed, is_open, True, o, h, low, close)
+                data[start] = candles.reconcile_source(history, old, incoming_bar, last, now)
+                history.observed[start] = (observed, state['revision'], state['observed_ms'], last)
+                continue
             if (old and is_open and valid_prices(old) and last <= history.fetched_ms
                     and observed <= old.volume):
                 history.observed[start] = (observed, state['revision'], state['observed_ms'], last)
@@ -516,6 +522,7 @@ class ContinuousMonitors:
                 history.lower.discard(start)
             if prices_complete:
                 data[start] = replace(data[start], open=o, high=h, low=low, close=close)
+            history.observation_ms[start] = last
             history.observed[start] = (observed, state['revision'], state['observed_ms'], last)
         # Clock closure also occurs without a new trade; never fabricate 0 bars.
         history.bars = candles.close_minutes(sorted(data.values(), key=lambda b: b.start_ms), history.lower, now)
@@ -523,6 +530,7 @@ class ContinuousMonitors:
         retained = {bar.start_ms for bar in history.bars}
         history.lower.intersection_update(retained)
         history.observed = {k: v for k, v in history.observed.items() if k in retained}
+        history.observation_ms = {k: v for k, v in history.observation_ms.items() if k in retained}
         history.canonical = {k: v for k, v in history.canonical.items() if k in retained}
 
     def track_source(self, history, state, now):
@@ -555,20 +563,12 @@ class ContinuousMonitors:
                 opening = candles.reset_day(history, snapshot.bars[-1].start_ms)
                 history.coverage_start_ms = opening
             incoming = self.canonicalize(snapshot, history)
-            for bar in history.bars:
-                if bar.start_ms not in incoming or (bar.is_open and incoming[bar.start_ms].is_open):
-                    if bar.start_ms in incoming:
-                        observed = history.observed.get(bar.start_ms)
-                        selected = (bar if observed and observed[3] > snapshot.fetched_at_ms
-                                    and valid_prices(bar) else incoming[bar.start_ms])
-                        incoming[bar.start_ms] = replace(selected,
-                            volume=max(bar.volume, incoming[bar.start_ms].volume))
-                    else:
-                        incoming[bar.start_ms] = bar
-            history.bars = sorted(incoming.values(), key=lambda b: b.start_ms)
-            candles.trim(history)
+            response_received = snapshot.response_received_ms or snapshot.fetched_at_ms
+            conflict = candles.reconcile_rest(history, incoming, response_received)
             if snapshot.bars and snapshot.fetched_at_ms >= history.repair_until_ms:
                 history.repair_until_ms = 0
+            if conflict:
+                history.repair_until_ms = max(history.repair_until_ms, self.now())
             history.baseline_after_ms = self.now()
             history.observed.clear()
             history.lower = {b.start_ms for b in history.bars if b.is_open}

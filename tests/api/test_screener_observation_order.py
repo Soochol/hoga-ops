@@ -5,7 +5,7 @@ import pytest
 
 from hoga.api import screener_bar_volume as volume
 from hoga.api.models import ScanRequest
-from hoga.api.screener_continuous import ContinuousMonitors, History
+from hoga.api.screener_continuous import ContinuousMonitors, History, Monitor
 from hoga.live.volume_state import VolumeReplica, VolumeSource
 from hoga.util.timeenc import KST
 
@@ -18,12 +18,7 @@ def trade(stamp, cumulative, price, qty):
                 trades=[dict(t_ms=stamp, price=price, qty=qty)])
 
 
-@pytest.mark.parametrize('rest_volume,rest_close,ws_volume,ws_close,expected_close', [
-    (20, 110, 15, 105, 110),
-    (15, 105, 20, 110, 110),
-])
-async def test_delayed_full_rest_fetch_orders_whole_open_ohlcv_and_replay(
-        tmp_path, monkeypatch, rest_volume, rest_close, ws_volume, ws_close, expected_close):
+async def delayed_history(tmp_path, monkeypatch, rest_volume, rest_close, ws_volume, ws_close):
     clock = SimpleNamespace(now=START + 20_000)
     source = VolumeSource('ordered')
     source.configure({CODE})
@@ -49,7 +44,7 @@ async def test_delayed_full_rest_fetch_orders_whole_open_ohlcv_and_replay(
     async def capacity(*_args, **_kwargs):
         stamp = START + 21_000
         source.ingest(CODE, trade(stamp, 1000 + ws_volume, ws_close, ws_volume - 10), stamp)
-        clock.now = START + 30_000
+        clock.now = max(clock.now, START + 30_000)
         await targets([CODE])
         owner.merge(CODE, history, clock.now)
         return SimpleNamespace(rows=[dict(cntr_tm='20261021120000', open_pric='100',
@@ -66,6 +61,34 @@ async def test_delayed_full_rest_fetch_orders_whole_open_ohlcv_and_replay(
     monkeypatch.setattr(volume.kiwoom_rest_runtime, 'ensure_scheduler', lambda _dir: None)
     monkeypatch.setattr(volume.kiwoom_access, 'run_with_capacity', capacity)
     await owner.prepare(CODE, history)
+    return SimpleNamespace(owner=owner, history=history, clock=clock, targets=targets, loaded=loaded)
+
+
+@pytest.mark.parametrize('rest_volume,rest_close,ws_volume,ws_close,expected_close', [
+    (20, 110, 15, 105, 110),
+    (15, 105, 20, 110, 110),
+    (20, 110, 20, 110, 110),
+    (20, 110, 20, 105, None),
+    (20, 102, 15, 105, None),
+])
+async def test_delayed_full_rest_fetch_orders_whole_open_ohlcv_and_replay(
+        tmp_path, monkeypatch, rest_volume, rest_close, ws_volume, ws_close, expected_close):
+    setup = await delayed_history(tmp_path, monkeypatch, rest_volume, rest_close, ws_volume, ws_close)
+    owner, history, clock, targets, loaded = setup.owner, setup.history, setup.clock, setup.targets, setup.loaded
+    if expected_close is None:
+        snapshot = owner.snapshot(CODE, clock.now)
+        assert history.repair_until_ms
+        assert not snapshot.bars[-1].valid
+        request = ScanRequest.model_validate(dict(conditions=[dict(id='price', type='change_pct',
+            params=dict(timeframe='1m', change_reference='bar_open', op='gte', pct=8))]))
+        owner.monitors['test'] = Monitor('test', 'client', request, [CODE], request.conditions, clock.now)
+        clock.now = history.retry_at
+        owner.schedule({CODE}, clock.now)
+        assert set(owner.pending) == {CODE}
+        import asyncio
+        await asyncio.gather(*owner.pending.values())
+        assert history.repair_until_ms
+        return
     expected = volume.VolumeBar(START, max(rest_volume, ws_volume), True, True,
                                100, expected_close, 100, expected_close)
     assert history.bars[-1] == expected
@@ -82,3 +105,58 @@ async def test_delayed_full_rest_fetch_orders_whole_open_ohlcv_and_replay(
     snapshot = owner.snapshot(CODE, clock.now)
     expected_observation = START + (30_000 if rest_volume > ws_volume else 21_000)
     assert snapshot.observed_ms == expected_observation
+    clock.now = START + 60_000
+    await targets([CODE])
+    closed = owner.snapshot(CODE, clock.now)
+    assert closed.bars[-1].volume == max(rest_volume, ws_volume)
+    assert closed.bars[-1].close == expected_close
+    assert closed.bars[-1].valid == (ws_volume >= rest_volume)
+    assert closed.observed_ms == expected_observation
+
+
+def test_minute_bar_order_never_pairs_a_volume_with_another_observations_price():
+    from hoga.api.screener_continuous_bars import ordered_minute_bar
+
+    old = volume.VolumeBar(START, 20, True, True, 100, 110, 95, 105)
+    for newer in [volume.VolumeBar(START, 25, True, True, 101, 115, 95, 112),
+                  volume.VolumeBar(START, 25, True, True, 100, 109, 95, 108),
+                  volume.VolumeBar(START, 25, True, True, 100, 115, 96, 112)]:
+        for first, second in [(old, newer), (newer, old)]:
+            selected = ordered_minute_bar(first, second)
+            assert not selected.valid
+            assert selected.volume == 25
+            assert selected.open is selected.high is selected.low is selected.close is None
+
+
+def test_accepted_observations_are_bounded_and_reset_with_the_trading_day():
+    from hoga.api import screener_continuous_bars as candles
+
+    data = [volume.VolumeBar(START + i * 60_000, i) for i in range(10)]
+    history = History(needed=2, bars=data, observation_ms={bar.start_ms: bar.start_ms for bar in data})
+    candles.reconcile_rest(history, {}, START)
+    assert len(history.bars) == len(history.observation_ms) == 3
+    candles.reset_day(history, START + 24 * 60 * 60_000)
+    assert not history.observation_ms
+
+
+async def test_cancelled_delayed_rest_does_not_publish_response_observations(tmp_path):
+    import asyncio
+
+    began, release = asyncio.Event(), asyncio.Event()
+    replica = VolumeReplica()
+    async def targets(_codes):
+        pass
+    async def loader(*_args):
+        began.set()
+        await release.wait()
+        return volume.MinuteSnapshot([], START, response_received_ms=START + 30_000)
+    owner = ContinuousMonitors(tmp_path, None, SimpleNamespace(volume_replica=replica), targets,
+                               loader=loader, now=lambda: START + 20_000)
+    history = History(needed=1, fetched_ms=START, observation_ms={START: START})
+    task = asyncio.create_task(owner.prepare(CODE, history))
+    await began.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert history.fetched_ms == START
+    assert history.observation_ms == {START: START}

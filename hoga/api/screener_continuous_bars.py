@@ -11,6 +11,53 @@ from hoga.util.timeenc import KST
 TIMEFRAMES = {'1m', '3m', '5m', '10m'}
 
 
+def ordered_minute_bar(old, incoming):
+    newer, older = (incoming, old) if incoming.volume > old.volume else (old, incoming)
+    same = all(getattr(old, name) == getattr(incoming, name) for name in ('open', 'high', 'low', 'close'))
+    coherent = (newer.open == older.open and newer.high >= older.high and newer.low <= older.low)
+    if (old.volume == incoming.volume and not same) or not coherent:
+        return replace(newer, valid=False, open=None, high=None, low=None, close=None)
+    return newer
+
+
+def reconcile_source(history, old, incoming, last, now):
+    selected = ordered_minute_bar(old, incoming)
+    if not selected.valid:
+        history.repair_until_ms = max(history.repair_until_ms, now)
+    else:
+        if selected is incoming:
+            history.observation_ms[incoming.start_ms] = last
+        if incoming.volume >= old.volume:
+            history.lower.discard(incoming.start_ms)
+    return selected
+
+
+def reconcile_rest(history, incoming, response_received):
+    observations = {stamp: response_received for stamp in incoming}
+    conflict = False
+    for bar in history.bars:
+        rest = incoming.get(bar.start_ms)
+        if rest is None:
+            incoming[bar.start_ms] = bar
+            observations[bar.start_ms] = history.observation_ms.get(bar.start_ms, history.fetched_ms)
+        elif bar.is_open and rest.is_open:
+            if bar.valid and valid_prices(bar) and rest.valid and valid_prices(rest):
+                selected = ordered_minute_bar(bar, rest)
+            elif bar.volume > rest.volume:
+                selected = bar
+            else:
+                selected = rest
+            incoming[bar.start_ms] = selected
+            conflict |= not selected.valid
+            if selected is bar:
+                observations[bar.start_ms] = history.observation_ms.get(bar.start_ms, history.fetched_ms)
+    history.bars = sorted(incoming.values(), key=lambda b: b.start_ms)
+    trim(history)
+    retained = {bar.start_ms for bar in history.bars}
+    history.observation_ms = {k: v for k, v in observations.items() if k in retained}
+    return conflict
+
+
 def candle_count(leaf):
     return comparison_period(leaf) + lookback(leaf) - 1
 
@@ -104,6 +151,7 @@ def reset_day(history, stamp):
         history.bars.clear()
         history.lower.clear()
         history.observed.clear()
+        history.observation_ms.clear()
         history.canonical.clear()
         history.fetched_ms = history.source_seen_ms = history.repair_until_ms = 0
         history.source_epoch = history.generation = ''

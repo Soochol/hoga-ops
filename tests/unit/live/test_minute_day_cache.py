@@ -95,11 +95,14 @@ def test_compact_roundtrip_is_isolated_and_budgeted(tmp_path):
     cache = MinuteDayCache(max_entries=2)
     key = cache.key(tmp_path, 'KRX', '005930', DAY)
     source = snapshot()
+    source.response_received_ms = CLOSE + 30_000
     source.bars[0] = replace(source.bars[0], trade_value_won=123.5, previous_day_close=9, previous_day_ms=OPEN-86400000)
     source.chart_bars = source.bars
     cache.put(key, source, CLOSE)
     read = cache.get(key, CLOSE)
     assert read.bars == source.bars
+    assert read.response_received_ms == CLOSE + 30_000
+    assert read.fetched_at_ms == source.fetched_at_ms
     read.bars.clear()
     assert cache.get(key, CLOSE).bars == source.bars
     for code in ('000660', '000001'):
