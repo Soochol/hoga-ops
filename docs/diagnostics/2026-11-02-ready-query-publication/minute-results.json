@@ -1,0 +1,389 @@
+{
+  "claim": "Read-owned immutable aggregation lowers prepared minute evaluation CPU without changing full payload.",
+  "scope": "Full volume.evaluate fixture after preparation; excludes HTTP/daily/rank/preparation. Baseline modules from exact git object, production modules from worktree. No live data.",
+  "base": "e16041ff2efd6c674961f952971b810485898610",
+  "head": "e16041ff2efd6c674961f952971b810485898610",
+  "python": "3.14.7 (main, Sep 29 2026, 15:01:40) [Clang 22.1.3 ]",
+  "platform": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+  "loadavg": [
+    14.78466796875,
+    8.05419921875,
+    5.2060546875
+  ],
+  "cores": 32,
+  "source_sha256": {
+    "hoga/api/screener_continuous.py": "54e8e6578f6454716a61e3c3baf6153d2dce9eb8fdcbb5ce497e471bf9d92082",
+    "hoga/api/screener_continuous_bars.py": "f9131ba91c160d0a25299504d40246939dd9ed311d89a28f22df779a52643877",
+    "hoga/api/screener_bar_volume.py": "32a1afe57dbd51535129f508ba583f423ba2fa9a0da03042aa37d7effddcd8fa",
+    "tests/api/test_screener_continuous_prices.py": "c8e2b9199d60d2843daf3c5961a63c59b4a29c24f9964a3de3f17a5000950c7b",
+    "tests/api/test_screener_continuous_read_bars.py": "ca0112818992e080623fc1e38c0e37f923bff69df1c0d596afa473ee51fb69d9",
+    "pyproject.toml": "faaad98fb766479a5b263ae6e250a3179c6433b05cd1926a2b19e762daaf4d4d",
+    "uv.lock": "d258fff9b095679ecfe81a376704ec99e5b59646cdbd14bcf7443072ad5a37fb",
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    ".audit/minute-read-aggregation/base_continuous.py": "af8baa2194961b1aad29f0d45a89d94a2e35872a4714bd272165e90d18dc4edc",
+    ".audit/minute-read-aggregation/base_bars.py": "f63f9ce28484b08ddfaf55302f4a93868094291781f956c404cadee0aa8e7984",
+    ".audit/minute-read-aggregation/benchmark.py": "3e481ac49c8772bc5d27bedec80f7a61eca8fa28e9aaac757708477f8fc561bf"
+  },
+  "results": [
+    {
+      "count": 150,
+      "changed_version": false,
+      "samples": {
+        "base": [
+          {
+            "repeat": 0,
+            "wall_ms": 471.86870699806605,
+            "cpu_ms": 471.52607199999966
+          },
+          {
+            "repeat": 1,
+            "wall_ms": 639.4369350018678,
+            "cpu_ms": 639.3676899999994
+          },
+          {
+            "repeat": 2,
+            "wall_ms": 393.2366030057892,
+            "cpu_ms": 393.1624599999992
+          },
+          {
+            "repeat": 3,
+            "wall_ms": 431.9062290014699,
+            "cpu_ms": 431.8897260000005
+          },
+          {
+            "repeat": 4,
+            "wall_ms": 451.5516560059041,
+            "cpu_ms": 451.3427810000001
+          }
+        ],
+        "production": [
+          {
+            "repeat": 0,
+            "wall_ms": 141.74120700045023,
+            "cpu_ms": 141.69700400000008
+          },
+          {
+            "repeat": 1,
+            "wall_ms": 116.72539499704726,
+            "cpu_ms": 116.72468999999985
+          },
+          {
+            "repeat": 2,
+            "wall_ms": 128.17300599999726,
+            "cpu_ms": 128.17113000000012
+          },
+          {
+            "repeat": 3,
+            "wall_ms": 137.57246400928125,
+            "cpu_ms": 137.54990900000053
+          },
+          {
+            "repeat": 4,
+            "wall_ms": 132.89757700113114,
+            "cpu_ms": 132.63557500000013
+          }
+        ]
+      },
+      "summary": {
+        "base": {
+          "median_ms": 451.5516560059041,
+          "min_ms": 393.2366030057892,
+          "max_ms": 639.4369350018678,
+          "median_cpu_ms": 451.3427810000001
+        },
+        "production": {
+          "median_ms": 132.89757700113114,
+          "min_ms": 116.72539499704726,
+          "max_ms": 141.74120700045023,
+          "median_cpu_ms": 132.63557500000013
+        }
+      },
+      "payload_sha256": "4435b47c8b1bd9c54768db312faafb85777b5a2753be8e8f2db3ab9178db6381",
+      "failures": 0,
+      "vendor_calls_during_results": 0,
+      "baseline_loader_calls": {
+        "base": 150,
+        "production": 150
+      },
+      "separate_profile_aggregate_counts": {
+        "base": {
+          "calls": 3600
+        },
+        "production": {
+          "calls": 450
+        }
+      },
+      "retained_memory": {
+        "additional_retained_bytes": 2435790,
+        "entries": 450,
+        "grouped_bars": 8100,
+        "pinned_snapshots": 150
+      },
+      "coverage": {
+        "total": 150,
+        "complete": 150,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 150,
+          "receiving": 150,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1792551620000
+        },
+        "trading_date": "2026-10-21"
+      },
+      "events": {
+        "A": 300,
+        "B": 2850,
+        "C": 300,
+        "D": 1650,
+        "E": 150,
+        "F": 150
+      }
+    },
+    {
+      "count": 150,
+      "changed_version": true,
+      "samples": {
+        "base": [
+          {
+            "repeat": 0,
+            "wall_ms": 937.2873980028089,
+            "cpu_ms": 945.1599230000003
+          },
+          {
+            "repeat": 1,
+            "wall_ms": 779.1852230002405,
+            "cpu_ms": 786.6759850000004
+          },
+          {
+            "repeat": 2,
+            "wall_ms": 1045.9963979956228,
+            "cpu_ms": 1060.4432349999993
+          },
+          {
+            "repeat": 3,
+            "wall_ms": 973.5517669905676,
+            "cpu_ms": 978.9417659999983
+          },
+          {
+            "repeat": 4,
+            "wall_ms": 776.1743070004741,
+            "cpu_ms": 782.1119509999974
+          }
+        ],
+        "production": [
+          {
+            "repeat": 0,
+            "wall_ms": 554.6351310040336,
+            "cpu_ms": 573.0929969999999
+          },
+          {
+            "repeat": 1,
+            "wall_ms": 541.2799810001161,
+            "cpu_ms": 546.3872680000002
+          },
+          {
+            "repeat": 2,
+            "wall_ms": 322.42383300035726,
+            "cpu_ms": 326.0773690000001
+          },
+          {
+            "repeat": 3,
+            "wall_ms": 558.7630989903118,
+            "cpu_ms": 570.9383119999991
+          },
+          {
+            "repeat": 4,
+            "wall_ms": 506.66613699286245,
+            "cpu_ms": 510.61633100000137
+          }
+        ]
+      },
+      "summary": {
+        "base": {
+          "median_ms": 937.2873980028089,
+          "min_ms": 776.1743070004741,
+          "max_ms": 1045.9963979956228,
+          "median_cpu_ms": 945.1599230000003
+        },
+        "production": {
+          "median_ms": 541.2799810001161,
+          "min_ms": 322.42383300035726,
+          "max_ms": 558.7630989903118,
+          "median_cpu_ms": 546.3872680000002
+        }
+      },
+      "payload_sha256": "4435b47c8b1bd9c54768db312faafb85777b5a2753be8e8f2db3ab9178db6381",
+      "failures": 0,
+      "vendor_calls_during_results": 0,
+      "baseline_loader_calls": {
+        "base": 150,
+        "production": 150
+      },
+      "separate_profile_aggregate_counts": {
+        "base": {
+          "calls": 5400
+        },
+        "production": {
+          "calls": 450
+        }
+      },
+      "retained_memory": {
+        "additional_retained_bytes": 2435734,
+        "entries": 450,
+        "grouped_bars": 8100,
+        "pinned_snapshots": 150
+      },
+      "coverage": {
+        "total": 150,
+        "complete": 150,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 150,
+          "receiving": 150,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1792551620000
+        },
+        "trading_date": "2026-10-21"
+      },
+      "events": {
+        "A": 300,
+        "B": 2850,
+        "C": 300,
+        "D": 1650,
+        "E": 150,
+        "F": 150
+      }
+    },
+    {
+      "count": 152,
+      "changed_version": true,
+      "samples": {
+        "base": [
+          {
+            "repeat": 0,
+            "wall_ms": 1036.1618920142064,
+            "cpu_ms": 1034.6922109999994
+          },
+          {
+            "repeat": 1,
+            "wall_ms": 851.3066260056803,
+            "cpu_ms": 851.8129290000012
+          },
+          {
+            "repeat": 2,
+            "wall_ms": 1091.1956910131266,
+            "cpu_ms": 1102.1784819999993
+          },
+          {
+            "repeat": 3,
+            "wall_ms": 1174.8695120040793,
+            "cpu_ms": 1140.7383069999994
+          },
+          {
+            "repeat": 4,
+            "wall_ms": 811.405532003846,
+            "cpu_ms": 815.2378969999959
+          }
+        ],
+        "production": [
+          {
+            "repeat": 0,
+            "wall_ms": 305.4224210063694,
+            "cpu_ms": 309.5120520000023
+          },
+          {
+            "repeat": 1,
+            "wall_ms": 555.5400640005246,
+            "cpu_ms": 561.8531440000005
+          },
+          {
+            "repeat": 2,
+            "wall_ms": 323.5419870034093,
+            "cpu_ms": 327.5660129999984
+          },
+          {
+            "repeat": 3,
+            "wall_ms": 566.6550989990355,
+            "cpu_ms": 576.6700689999986
+          },
+          {
+            "repeat": 4,
+            "wall_ms": 556.7246529972181,
+            "cpu_ms": 562.1945920000044
+          }
+        ]
+      },
+      "summary": {
+        "base": {
+          "median_ms": 1036.1618920142064,
+          "min_ms": 811.405532003846,
+          "max_ms": 1174.8695120040793,
+          "median_cpu_ms": 1034.6922109999994
+        },
+        "production": {
+          "median_ms": 555.5400640005246,
+          "min_ms": 305.4224210063694,
+          "max_ms": 566.6550989990355,
+          "median_cpu_ms": 561.8531440000005
+        }
+      },
+      "payload_sha256": "2a7074f265d3f6f6eb2db32d430f132fd3ad09cf89f6f21e48d62bd69432352a",
+      "failures": 0,
+      "vendor_calls_during_results": 0,
+      "baseline_loader_calls": {
+        "base": 152,
+        "production": 152
+      },
+      "separate_profile_aggregate_counts": {
+        "base": {
+          "calls": 5472
+        },
+        "production": {
+          "calls": 456
+        }
+      },
+      "retained_memory": {
+        "additional_retained_bytes": 2467902,
+        "entries": 456,
+        "grouped_bars": 8208,
+        "pinned_snapshots": 152
+      },
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1792551620000
+        },
+        "trading_date": "2026-10-21"
+      },
+      "events": {
+        "A": 304,
+        "B": 2888,
+        "C": 304,
+        "D": 1672,
+        "E": 152,
+        "F": 152
+      }
+    }
+  ]
+}

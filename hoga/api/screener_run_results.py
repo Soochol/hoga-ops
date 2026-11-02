@@ -36,7 +36,7 @@ class RunResults:
     async def _context(self, req, pinned, clock, ready):
         manifest = pinned[1]
         metadata = store.digest({key: value for key, value in manifest.items()
-                                 if key not in {"observations", "parent"}})
+                                 if key not in {"observations", "parent", "daily_query"}})
         changed = {code for code in ready if self.observations.get(code) != manifest["observations"].get(code)}
         changed.update(ready - self.evaluated)
         # Changes to already evaluated inputs can remove rows or lower a cutoff.

@@ -1,0 +1,214 @@
+"""Actual baseline/production adapters, five alternating fixed-fixture pairs."""
+import asyncio
+import cProfile
+import datetime as dt
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import platform
+import pstats
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+from types import SimpleNamespace
+
+ROOT = Path.cwd()
+sys.path.insert(0, str(ROOT))
+OUT = ROOT / '.audit/minute-read-aggregation'
+from hoga.api import screener_bar_volume as volume, screener_continuous as production
+from hoga.live.buffer import LiveBuffer
+from hoga.util.timeenc import KST
+from tests.api.test_screener_continuous_prices import OPEN, full_saved_request, minute_fixture
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+baseline = load('minute_baseline_continuous', OUT / 'base_continuous.py')
+baseline.candles = load('minute_baseline_bars', OUT / 'base_bars.py')
+
+
+def payload(result):
+    return {'coverage': result.coverage.model_dump(mode='json'),
+        'events': {key: [(code, event.model_dump(mode='json')) for code, event in values]
+            for key, values in result.events.items()}}
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+async def setup(path, module, count):
+    request = full_saved_request()
+    codes = [f'{i:06d}' for i in range(count)]
+    data = minute_fixture()
+    clock = SimpleNamespace(now=data[-1].start_ms + 20_000)
+    calls = []
+    buffer = LiveBuffer()
+    buffer.volume_source.configure(codes)
+    buffer.volume_source.health(dict.fromkeys(codes, 'account:1'), OPEN)
+
+    async def targets(_codes):
+        for frame in buffer.volume_source.frames(clock.now):
+            buffer.volume_replica.apply(frame, clock.now)
+
+    async def loader(_dir, code, timeframe, _needed, _lower, _asof):
+        calls.append((code, timeframe))
+        return volume.MinuteSnapshot(list(data), clock.now)
+
+    owner = module.ContinuousMonitors(path, None, buffer, targets, loader=loader, now=lambda: clock.now)
+
+    async def resolve(_request):
+        return codes
+
+    owner.resolve = resolve
+    volume.time.time = lambda: clock.now / 1000
+    status = await owner.start('benchmark', request)
+    owner.loop_task.cancel()
+    await asyncio.gather(owner.loop_task, return_exceptions=True)
+    owner.loop_task = None
+    monitor = owner.get(status.id)
+    await targets(codes)
+    for code in codes:
+        await owner.prepare(code, owner.histories[code])
+    return SimpleNamespace(module=module, owner=owner, monitor=monitor, clock=clock, calls=calls,
+        data=data, codes=codes, request=request)
+
+
+async def evaluate(s):
+    adapter = s.module.ContinuousAdapter(s.owner, s.monitor)
+    result = await volume.evaluate(data_dir=s.owner.data_dir, conditions=s.request.conditions, codes=s.codes,
+        basis='intraday', now=dt.datetime.fromtimestamp(s.clock.now / 1000, KST), volume_runtime=adapter)
+    return result, adapter
+
+
+def verify(s, result):
+    assert result.coverage.complete == len(s.codes)
+    assert result.coverage.realtime.prepared == len(s.codes)
+    assert result.coverage.realtime.receiving == len(s.codes)
+    for leaf in s.monitor.leaves:
+        expected, complete = volume.records(leaf, volume.aggregate_day_minutes(
+            s.data, leaf.params.timeframe, s.clock.now), fetched_at_ms=s.clock.now)
+        assert complete
+        assert result.events[leaf.id] == [(code, event) for code in s.codes for event in expected]
+    assert s.calls == [(code, '1m') for code in s.codes]
+
+
+def graph_size(value, seen):
+    identity = id(value)
+    if identity in seen:
+        return 0
+    seen.add(identity)
+    total = sys.getsizeof(value)
+    if isinstance(value, dict):
+        return total + sum(graph_size(k, seen) + graph_size(v, seen) for k, v in value.items())
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return total + sum(graph_size(v, seen) for v in value)
+    if hasattr(value, '__dict__'):
+        return total + graph_size(vars(value), seen)
+    return total
+
+
+async def group(path, count, changed):
+    sides = {name: await setup(path / name, module, count)
+        for name, module in [('base', baseline), ('production', production)]}
+    samples = {name: [] for name in sides}
+    expected = None
+    try:
+        for s in sides.values():
+            result, adapter = await evaluate(s)
+            verify(s, result)
+            if expected is None:
+                expected = payload(result)
+            assert payload(result) == expected
+        for repeat in range(5):
+            for name, s in sides.items():
+                if changed:
+                    for history in s.owner.histories.values():
+                        history.revision += 1
+                started, cpu_started = time.perf_counter(), time.process_time()
+                result, adapter = await evaluate(s)
+                elapsed = 1000 * (time.perf_counter() - started)
+                cpu = 1000 * (time.process_time() - cpu_started)
+                verify(s, result)
+                assert payload(result) == expected
+                samples[name].append({'repeat': repeat, 'wall_ms': elapsed, 'cpu_ms': cpu})
+        memory = None
+        counters = {}
+        for name, s in sides.items():
+            original, counts = s.module.candles.aggregate, {'calls': 0}
+
+            def counted(*args):
+                counts['calls'] += 1
+                return original(*args)
+
+            s.module.candles.aggregate = counted
+            if changed:
+                for history in s.owner.histories.values():
+                    history.revision += 1
+            profile = cProfile.Profile()
+            profile.enable()
+            result, adapter = await evaluate(s)
+            profile.disable()
+            s.module.candles.aggregate = original
+            assert payload(result) == expected
+            counters[name] = counts
+            with (OUT / f'profile-{count}-{changed}-{name}.txt').open('w') as f:
+                pstats.Stats(profile, stream=f).strip_dirs().sort_stats('cumulative').print_stats(35)
+            if name == 'production':
+                seen = set()
+                graph_size(adapter._snapshots, seen)
+                memory = {'additional_retained_bytes': graph_size(adapter._bars, seen),
+                    'entries': len(adapter._bars._aggregates),
+                    'grouped_bars': sum(len(entry[1]) for entry in adapter._bars._aggregates.values()),
+                    'pinned_snapshots': len(adapter._snapshots)}
+        return {'count': count, 'changed_version': changed, 'samples': samples,
+            'summary': {name: {'median_ms': statistics.median(v['wall_ms'] for v in values),
+                'min_ms': min(v['wall_ms'] for v in values), 'max_ms': max(v['wall_ms'] for v in values),
+                'median_cpu_ms': statistics.median(v['cpu_ms'] for v in values)} for name, values in samples.items()},
+            'payload_sha256': digest(expected), 'failures': 0, 'vendor_calls_during_results': 0,
+            'baseline_loader_calls': {name: len(s.calls) for name, s in sides.items()},
+            'separate_profile_aggregate_counts': counters, 'retained_memory': memory,
+            'coverage': expected['coverage'], 'events': {key: len(value) for key, value in expected['events'].items()}}
+    finally:
+        for s in sides.values():
+            await s.owner.close()
+
+
+async def main():
+    real_time = volume.time.time
+    async def forbidden(*args, **kwargs):
+        raise AssertionError('result vendor request')
+    volume.minute_snapshot = forbidden
+    try:
+        with tempfile.TemporaryDirectory(prefix='hoga-read-bars-benchmark-') as tmp:
+            results = [await group(Path(tmp), 150, False), await group(Path(tmp), 150, True),
+                await group(Path(tmp), 152, True)]
+    finally:
+        volume.time.time = real_time
+    files = ['hoga/api/screener_continuous.py', 'hoga/api/screener_continuous_bars.py',
+        'hoga/api/screener_bar_volume.py', 'tests/api/test_screener_continuous_prices.py',
+        'tests/api/test_screener_continuous_read_bars.py', 'pyproject.toml', 'uv.lock', '.python-version',
+        '.audit/minute-read-aggregation/base_continuous.py', '.audit/minute-read-aggregation/base_bars.py',
+        '.audit/minute-read-aggregation/benchmark.py']
+    report = {'claim': 'Read-owned immutable aggregation lowers prepared minute evaluation CPU without changing full payload.',
+        'scope': 'Full volume.evaluate fixture after preparation; excludes HTTP/daily/rank/preparation. Baseline modules from exact git object, production modules from worktree. No live data.',
+        'base': 'e16041ff2efd6c674961f952971b810485898610',
+        'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+        'python': sys.version, 'platform': platform.platform(), 'loadavg': os.getloadavg(), 'cores': os.cpu_count(),
+        'source_sha256': {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in files}, 'results': results}
+    (OUT / 'benchmark-results.json').write_text(json.dumps(report, indent=2))
+    print(json.dumps([{k: item[k] for k in ['count', 'changed_version', 'summary', 'payload_sha256',
+        'separate_profile_aggregate_counts', 'retained_memory']} for item in results], indent=2))
+
+
+asyncio.run(main())

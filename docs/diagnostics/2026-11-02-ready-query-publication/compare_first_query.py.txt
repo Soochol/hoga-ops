@@ -1,0 +1,44 @@
+import hashlib
+import json
+import os
+import platform
+import statistics
+import subprocess
+from pathlib import Path
+
+root = Path('/home/dev/.codex/worktrees/73e2/hoga-ops')
+case = root / '.audit/direct-refresh-query/first_query_case.py'
+output = root / '.audit/direct-refresh-query/fresh-process'
+output.mkdir(exist_ok=True)
+checkouts = {'base': Path('/tmp/hoga-direct-refresh-baseline'), 'head': root}
+records = []
+for repeat in range(5):
+    for name, checkout in checkouts.items():
+        env = {**os.environ, 'PYTHONPATH': str(checkout)}
+        result = subprocess.run([str(checkout / '.venv/bin/python'), str(case),
+            '--checkout', str(checkout), '--data', '/tmp/hoga-direct-refresh-corpus',
+            '--request', str(root / 'docs/diagnostics/2026-11-02-afternoon-query-performance/request.json')],
+            cwd=checkout, env=env, capture_output=True, text=True, timeout=120)
+        (output / f'{repeat}-{name}.log').write_text(result.stdout + result.stderr)
+        assert result.returncode == 0, result.stderr[-1000:]
+        record = json.loads(result.stdout.splitlines()[-1])
+        record.update(side=name, repeat=repeat, loadavg=os.getloadavg())
+        records.append(record)
+        assert record['calls']['source_observation_json'] == (248 if name == 'base' else 0)
+        assert record['coverage']['complete'] == record['coverage']['realtime']['prepared'] == 152
+        assert record['coverage']['realtime']['receiving'] == 152
+        assert record['rows'] == 1
+        assert len({r['payload_sha256'] for r in records}) == 1
+        (output / 'samples.json').write_text(json.dumps(records, indent=2))
+        print(json.dumps({k: record[k] for k in ('side', 'repeat', 'wall_s', 'cpu_s', 'payload_sha256')}), flush=True)
+summary = {}
+for name in checkouts:
+    values = [r['wall_s'] for r in records if r['side'] == name]
+    summary[name] = dict(median_s=statistics.median(values), min_s=min(values), max_s=max(values))
+report = dict(claim='Fresh-process first complete HTTP monitor result is faster after publication-ready daily data and read-owned minute aggregation.',
+    scope='Real immutable daily corpus, 152 selected codes, synthetic already-prepared minutes and rank/quotes. External network forbidden. Each HTTP query uses a new process; not cold OS cache or vendor readiness.',
+    heads={name: subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=checkout, text=True).strip() for name, checkout in checkouts.items()},
+    case_sha256=hashlib.sha256(case.read_bytes()).hexdigest(), python=platform.python_version(), cores=os.cpu_count(),
+    snapshot=records[0]['snapshot'], summary=summary, samples=records, failures=0)
+(output / 'results.json').write_text(json.dumps(report, indent=2))
+print(json.dumps(summary), flush=True)

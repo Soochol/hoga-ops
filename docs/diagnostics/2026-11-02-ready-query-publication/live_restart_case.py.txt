@@ -1,0 +1,88 @@
+import argparse
+import asyncio
+import json
+import time
+from pathlib import Path
+
+import httpx
+import websockets
+
+
+async def main(args):
+    records = {'started_at_ms': int(time.time() * 1000), 'label': args.label,
+               'queries': [], 'health': [], 'pongs_ms': [], 'probe_errors': []}
+    running = True
+    async with httpx.AsyncClient(base_url='http://127.0.0.1:8000', timeout=120) as http:
+        health = await http.get('/health')
+        health.raise_for_status()
+        records['server'] = health.json()
+
+        async def probes():
+            try:
+                async with websockets.connect('ws://127.0.0.1:8000/api/ws', ping_interval=None) as ws:
+                    while running:
+                        begun = time.perf_counter()
+                        pong = await ws.ping()
+                        await asyncio.wait_for(pong, timeout=5)
+                        records['pongs_ms'].append((time.perf_counter() - begun) * 1000)
+                        response = await http.get('/health')
+                        records['health'].append(response.status_code)
+                        await asyncio.sleep(3)
+            except Exception as exc:
+                records['probe_errors'].append(f'{type(exc).__name__}: {exc}')
+
+        task = asyncio.create_task(probes())
+        request = json.loads(args.request.read_text())
+        start = await http.post('/api/screener/monitors', json={'client_id': args.label, 'request': request})
+        start.raise_for_status()
+        records['initial_status'] = start.json()
+        monitor = start.json()['id']
+        created_at = time.monotonic()
+        path = f'/api/screener/monitors/{monitor}'
+        complete_at = None
+        try:
+            while time.monotonic() - created_at < args.seconds:
+                await http.post(path + '/heartbeat')
+                begun = time.perf_counter()
+                response = await http.get(path + '/result')
+                elapsed = time.perf_counter() - begun
+                response.raise_for_status()
+                payload = response.json()
+                args.output.with_suffix('.last-response.json').write_text(json.dumps(payload, ensure_ascii=False))
+                coverage = payload.get('bar_coverage') or {}
+                item = {'elapsed_s': elapsed, 'since_start_s': time.monotonic() - created_at,
+                        'rows': len(payload['rows']), 'coverage': coverage,
+                        'snapshot': payload.get('calculation', {}).get('snapshot_id')}
+                records['queries'].append(item)
+                status = coverage.get('realtime') or {}
+                print(json.dumps({'query': len(records['queries']), 'elapsed_s': elapsed,
+                                  'total': coverage.get('total'), 'complete': coverage.get('complete'),
+                                  'prepared': status.get('prepared'), 'rows': item['rows']}), flush=True)
+                if coverage.get('total') and coverage['complete'] == coverage['total']:
+                    if complete_at is None:
+                        complete_at = time.monotonic() - created_at
+                    if sum(q['coverage'].get('complete') == q['coverage'].get('total') for q in records['queries']) >= 5:
+                        break
+                args.output.write_text(json.dumps(records, indent=2))
+                await asyncio.sleep(3)
+            records['all_candidates_complete_at_s'] = complete_at
+        finally:
+            deleted = await http.delete(path)
+            records['own_monitor_delete_status'] = deleted.status_code
+            running = False
+            await task
+            records['ended_at_ms'] = int(time.time() * 1000)
+            args.output.write_text(json.dumps(records, indent=2))
+        assert not records['probe_errors'], records['probe_errors']
+        assert all(code == 200 for code in records['health'])
+        print(json.dumps({'record': str(args.output), 'complete_at_s': complete_at, 'health': len(records['health']),
+                          'pongs': len(records['pongs_ms'])}), flush=True)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--request', type=Path, required=True)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--label', required=True)
+    parser.add_argument('--seconds', type=int, default=240)
+    asyncio.run(main(parser.parse_args()))

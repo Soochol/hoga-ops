@@ -20,7 +20,7 @@ from tests.api.test_screener_snapshot_cache import object_file
 corpus = recovery_corpus
 
 
-def test_confirmed_projection_validates_once_and_retains_exact_rows(corpus, monkeypatch):
+def test_published_projection_reuses_verified_facts_and_retains_exact_rows(corpus, monkeypatch):
     payload = confirmed(observation(strict_spec().targets[0], NOW.date()))
     store.publish_pair(corpus, **payload)
     _, manifest = store.load_snapshot(corpus)
@@ -35,22 +35,22 @@ def test_confirmed_projection_validates_once_and_retains_exact_rows(corpus, monk
         assert "provider_rows" in value["confirmation"]["second"]
         return state(value)
 
-    def counted_read(data_dir, object_id):
+    def counted_read(data_dir, object_id, **kwargs):
         calls[object_id] += 1
-        return read(data_dir, object_id)
+        return read(data_dir, object_id, **kwargs)
 
     monkeypatch.setattr(confirmation, "state", counted_state)
     monkeypatch.setattr(store, "read_object", counted_read)
     runner._confirmed_at(corpus, manifest, ["005930"], NOW.date())
     values.load_series(corpus, manifest, ["005930"], first=DAYS[0], last=DAYS[-1])
     runner._daily_contract(corpus, manifest, ["005930"])
-    facts = projection.read(corpus, identity)
-    assert calls[identity] == calls["state"] == 1
+    facts = projection.read(corpus, manifest, "005930")
+    assert calls[identity] == calls["state"] == 0
     assert facts.candidate.identity == identity
     assert facts.candidate.unadjusted == payload["unadjusted"]
     assert facts.candidate.confirmed_dates == {day.isoformat() for day in DAYS}
     facts.candidate.unadjusted[0]["volume"] = 1
-    assert projection.read(corpus, identity).candidate.unadjusted == payload["unadjusted"]
+    assert projection.read(corpus, manifest, "005930").candidate.unadjusted == payload["unadjusted"]
     assert read(corpus, identity)["confirmation"] == payload["confirmation"]
 
 
@@ -66,7 +66,7 @@ def test_projection_rejects_original_confirmation_damage(tmp_path, damage):
         payload["confirmation"]["second"]["unadjusted"][0]["volume"] += 1
     identity, _ = object_file(tmp_path, payload)
     with pytest.raises(ValueError):
-        projection.read(tmp_path, identity)
+        projection.read(tmp_path, {"observations": {"005930": identity}}, "005930")
 
 
 @pytest.mark.parametrize("damage", ["tamper", "delete", "during_read"])
@@ -79,7 +79,7 @@ def test_merged_projection_forwards_candidate_attestation(tmp_path, monkeypatch,
     key = (str(tmp_path.resolve()), "wrapper")
 
     def load():
-        return projection.read(tmp_path, identity)
+        return projection.read(tmp_path, {"observations": {"005930": identity}}, "005930")
 
     first = cache.shared.obtain(key, load)
     assert first.candidate.identity == candidate_id
@@ -98,14 +98,15 @@ def test_merged_projection_forwards_candidate_attestation(tmp_path, monkeypatch,
         cache.shared.clear()
         read = store.read_object
 
-        def mutate(data_dir, object_id):
-            value = read(data_dir, object_id)
+        def mutate(data_dir, object_id, **kwargs):
+            value = read(data_dir, object_id, **kwargs)
             if object_id == candidate_id:
                 candidate_path.write_text(json.dumps({**payload, "changed": True}))
             return value
 
         monkeypatch.setattr(store, "read_object", mutate)
-        assert cache.shared.obtain(key, load) == first
+        with pytest.raises(ValueError, match="changed during read"):
+            cache.shared.obtain(key, load)
         assert not cache.shared.entries
         return
     with pytest.raises(expected):
@@ -120,7 +121,7 @@ def test_candidate_invalid_dates_remain_distinct_from_merged_dates(tmp_path):
         "violations": [{"date_yyyymmdd": "20180502", "basis": "adjusted"}],
     }
     identity, _ = object_file(tmp_path, merged)
-    facts = projection.read(tmp_path, identity)
+    facts = projection.read(tmp_path, {"observations": {"005930": identity}}, "005930")
     assert facts.invalid_adjusted == {dt.date(2018, 5, 2)}
     assert facts.candidate.invalid_adjusted == set()
     assert facts.candidate.confirmed_dates is None

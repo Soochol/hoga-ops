@@ -150,35 +150,17 @@ def _confirmed_at(data_dir, manifest, codes, cutoff, *, stop=None):
 
 
 def _load_confirmed_at(data_dir, manifest, codes, cutoff, *, stop=None):
-    from hoga.api import (  # noqa: PLC0415 — provider metadata
-        screener_daily_confirmation as confirmation,
-        screener_daily_projection as projection,
-    )
+    from hoga.api import screener_daily_projection as projection  # noqa: PLC0415
 
     timestamps = []
     for code in codes:
         checkpoint(stop)
-        identity = manifest["observations"].get(code)
-        if identity:
-            observation = projection.read(data_dir, identity, stop=stop)
-            if observation.adjusted_as_of != manifest["adjusted_as_of"]:
-                continue
-            candidate = observation.candidate
-            verified = candidate.confirmed_dates
-            if verified is None and manifest.get("daily_contract_required"):
-                verified = set()
-            invalid = candidate.invalid_adjusted
-            timestamps.extend(
-                dt.datetime.combine(
-                    dt.date.fromisoformat(row["date"]),
-                    dt.time(confirmation.FINALIZATION_HOUR) if verified is not None else dt.time(15, 30), KST,
-                )
-                for row in observation.adjusted
-                if row["date"] <= cutoff.isoformat() and row.get("complete", True) and values.valid_price(row)
-                and invalid is not None and dt.date.fromisoformat(row["date"]) not in invalid
-                and (verified is None or row["date"] in verified)
-            )
-    return int(max(timestamps).timestamp() * 1000) if timestamps else None
+        daily = projection.summary(data_dir, manifest, code, stop=stop)
+        if daily is not None and daily.adjusted_as_of == manifest["adjusted_as_of"]:
+            timestamp = daily.confirmed_at_or_before(cutoff, required=manifest.get("daily_contract_required", False))
+            if timestamp is not None:
+                timestamps.append(timestamp)
+    return max(timestamps) if timestamps else None
 
 
 def _eod_clock(now, confirmed):
@@ -200,8 +182,7 @@ def _load_daily_contract(data_dir, manifest, codes, *, stop=None):
     scopes, policies = set(), set()
     for code in codes:
         checkpoint(stop)
-        identity = manifest["observations"].get(code)
-        candidate = projection.read(data_dir, identity, stop=stop).candidate if identity else None
+        candidate = projection.summary(data_dir, manifest, code, stop=stop)
         scopes.add(candidate.session_scope if candidate else "legacy_unknown")
         policies.add(candidate.policy if candidate else "legacy_unverified")
     return {

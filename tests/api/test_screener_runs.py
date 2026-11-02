@@ -951,7 +951,7 @@ async def test_http_preopen_volume_match_keeps_last_confirmed_display_price(corp
             response = await client.get(f'/monitors/{status.id}/result')
             first_validations = len(validations)
             again = await client.get(f'/monitors/{status.id}/result')
-        assert first_validations > 0 and response.status_code == again.status_code == 200
+        assert first_validations == 0 and response.status_code == again.status_code == 200
         assert len(validations) == first_validations  # Stable daily snapshot is verified once.
         assert again.json() == response.json()
         body = response.json()

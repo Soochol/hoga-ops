@@ -1,0 +1,103 @@
+import copy
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from hoga.api import screener_daily_ingest as ingest, screener_series_store as store
+from tests.api.test_screener_recovery import corpus, observation, NOW, DAYS
+from tests.api.test_screener_daily_confirmation import confirmed, strict_spec
+
+WORKER = r'''
+import asyncio, json, sys, time
+from pathlib import Path
+from hoga.api import screener_runner as runner, screener_series_store as store, screener_daily_projection as projection
+from hoga.api.models import ScanRequest
+from tests.api.test_screener_recovery import NOW
+time.time = lambda: NOW.timestamp()
+root, identity = Path(sys.argv[1]), sys.argv[2]
+_, manifest = store.load_snapshot(root, identity)
+if sys.argv[3] == 'compact':
+    headers = manifest.get('daily_query', {}).get('headers', {})
+    blocked = {str(store.root(root) / 'objects' / (source['identity'] + '.json'))
+        for hid in headers.values() for source in store.read_object(root, hid)['sources']}
+    def audit(event, args):
+        if event == 'open' and isinstance(args[0], (str, bytes)) and str(args[0]) in blocked:
+            raise AssertionError('query reopened source JSON')
+    sys.addaudithook(audit)
+request = ScanRequest.model_validate(dict(calculation_policy='separate_bases_v2', basis='eod', snapshot_id=identity,
+    universe={'exclude_etf':False}, conditions=[{'id':'v','type':'new_high_vol_today','params':{'period':3,'volume_basis':'raw'}}]))
+result = asyncio.run(runner.run_screener_scan(data_dir=root, req=request, now=NOW)).model_dump(mode='json')
+result['calculation'].pop('snapshot_id')
+print(json.dumps(result, sort_keys=True))
+'''
+
+
+def query(root, identity, mode='compact', success=True):
+    result = subprocess.run([sys.executable, '-c', WORKER, str(root), identity, mode], text=True, capture_output=True)
+    if success:
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)
+    assert result.returncode != 0, result.stdout
+    assert 'checksum mismatch' in result.stderr
+
+
+@pytest.mark.parametrize('scenario', ['normal', 'unstable', 'conflict', 'provisional', 'pending', 'correction'])
+def test_publisher_to_fresh_runner(corpus, scenario):
+    payload = confirmed(observation(strict_spec().targets[0], NOW.date()))
+    first = store.publish_pair(corpus, **payload)
+    original = store.load_snapshot(corpus, first)[1]
+    immutable = (store.root(corpus) / 'objects' / f'{first}.json').read_bytes()
+    if scenario == 'unstable':
+        payload['confirmation']['first']['unadjusted'][0]['volume'] += 1
+        store.publish_pair(corpus, **payload)
+    if scenario in {'conflict', 'correction'}:
+        payload['unadjusted'][-1]['volume'] += 1
+        payload = confirmed({k:v for k,v in payload.items() if k != 'confirmation'})
+        store.publish_pair(corpus, **payload)
+    if scenario in {'provisional', 'pending'}:
+        ingest._publish(corpus, {'entries':{'005930:2018-05-04': {'code':'005930','date':'2018-05-04','status':'provisional'}},
+                               'summary':{'commit_pending':scenario == 'pending'}, 'confirmed_through':{}})
+    identity, manifest = store.load_snapshot(corpus)
+    if scenario == 'correction':
+        from hoga.api import screener_daily_projection as projection
+        candidate = projection.read(corpus, manifest, '005930').candidate
+        selected = copy.deepcopy(candidate.unadjusted[-1])
+        review = {'kind':'screener_correction_review','code':'005930','baseline':manifest['baseline'],
+                  'observation_id':manifest['observations']['005930'],'candidate_id':candidate.identity,
+                  'accepted':[{'date':DAYS[-1].isoformat(),'selected':selected,'preserved':dict(selected, volume=400)}]}
+        identity = store.publish_correction_reviews(corpus, {'005930':review}, expected_snapshot=identity)
+        _, manifest = store.load_snapshot(corpus)
+    compact = query(corpus, identity)
+    legacy = {k:v for k,v in manifest.items() if k != 'daily_query'}
+    old_id = store._write_object(store.root(corpus), legacy)
+    assert query(corpus, old_id, 'legacy') == compact
+    assert query(corpus, first)['rows'], 'pinned first snapshot changed'
+    assert store.load_snapshot(corpus, first)[1] == original
+    assert (store.root(corpus) / 'objects' / f'{first}.json').read_bytes() == immutable
+    codes = [r['code'] for r in compact['rows']]
+    assert codes == (['005930'] if scenario in {'normal', 'correction'} else []), compact
+    if scenario == 'correction':
+        assert compact['rows'][0]['occurrences'][0]['volume_evidence']['compared_volume'] == '401'
+
+
+def test_real_runner_derived_loss_falls_back_raw_damage_refuses(corpus):
+    store.publish_pair(corpus, **confirmed(observation(strict_spec().targets[0], NOW.date())))
+    identity, manifest = store.load_snapshot(corpus)
+    expected = query(corpus, identity)
+    header = store.read_object(corpus, manifest['daily_query']['headers']['005930'])
+    body = store.root(corpus) / 'daily_query' / f"{header['body_id']}.json.zlib"
+    body.unlink()
+    assert query(corpus, identity, 'legacy') == expected
+    source = store.root(corpus) / 'objects' / f"{manifest['observations']['005930']}.json"
+    stamp = source.stat()
+    raw = source.read_bytes()
+    changed = raw.replace(b'"volume": 400', b'"volume": 401', 1)
+    assert len(changed) == len(raw) and changed != raw
+    source.write_bytes(changed)
+    os.utime(source, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    query(corpus, identity, 'legacy', success=False)

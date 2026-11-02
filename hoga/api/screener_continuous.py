@@ -131,6 +131,7 @@ class ContinuousAdapter:
         self.owner, self.monitor = owner, monitor
         self.coverage_monitor = monitor
         self._snapshots: dict[str, PreparedSnapshot] = {}
+        self._bars = candles.ReadBars()
 
     @staticmethod
     def eligible(leaf):
@@ -146,7 +147,7 @@ class ContinuousAdapter:
 
     def snapshot(self, leaf, code, now):
         snapshot = self.owner.snapshot(code, now)
-        data, lower = candles.window(snapshot, leaf, now)
+        data, lower = self._bars.window(snapshot, leaf, now)
         return data, snapshot.observed_ms, lower
 
     async def evaluate_leaf(self, leaf, code, now):
@@ -174,7 +175,7 @@ class ContinuousAdapter:
         version = snapshot.version
         cached = self.owner.evaluations.get(key)
         if cached is None or cached[0] != version:
-            data, lower = candles.window(snapshot, leaf, now)
+            data, lower = self._bars.window(snapshot, leaf, now)
             events, complete = await run_read_sync(
                 operation, volume.records, leaf, data, fetched_at_ms=snapshot.observed_ms)
             for event in events:
@@ -206,7 +207,7 @@ class ContinuousAdapter:
         for code in codes:
             if code not in self._snapshots:
                 self._snapshots[code] = self.owner.snapshot(code, now)
-        status = self.owner.status(self.coverage_monitor, now, snapshots=self._snapshots)
+        status = self.owner.status(self.coverage_monitor, now, snapshots=self._snapshots, read_bars=self._bars)
         return status.prepared, status.receiving
 
     def reason(self, code, leaf=None):
@@ -215,21 +216,20 @@ class ContinuousAdapter:
         leaves = [leaf] if leaf else self.monitor.leaves
         return self._reason(snapshot, leaves, snapshot.cutoff_ms)
 
-    @staticmethod
-    def _reason(snapshot, leaves, now):
-        if snapshot.reason and not candles.prepared(snapshot, leaves, now):
+    def _reason(self, snapshot, leaves, now):
+        if snapshot.reason and not self._bars.prepared(snapshot, leaves, now):
             return snapshot.reason
         if not snapshot.fetched_ms or not snapshot.current_day:
             return 'volume_preparing'
-        if not candles.prepared(snapshot, leaves, now):
-            if any(len(candles.window(snapshot, leaf, now)[0]) < candles.candle_count(leaf) for leaf in leaves):
+        if not self._bars.prepared(snapshot, leaves, now):
+            if any(len(self._bars.window(snapshot, leaf, now)[0]) < candles.candle_count(leaf) for leaf in leaves):
                 return 'insufficient_minute_history'
             return 'live_bar_unconfirmed'
         return None
 
     def coverage(self):
         now = self.owner.now()
-        status = self.owner.status(self.coverage_monitor, now, snapshots=self._snapshots)
+        status = self.owner.status(self.coverage_monitor, now, snapshots=self._snapshots, read_bars=self._bars)
         return {**status.model_dump(exclude={'id', 'total', 'error'}), 'monitor_error': status.error,
                 'trading_date': self.owner.selected_day(now).isoformat()}
 
@@ -483,7 +483,7 @@ class ContinuousMonitors:
             self._quality[key] = quality
         return quality[1:]
 
-    def status(self, monitor, now, *, snapshots=None):
+    def status(self, monitor, now, *, snapshots=None, read_bars: candles.ReadBars | None = None):
         prepared = receiving = recovering = unavailable = insufficient = preparing = 0
         verified = []
         needed = candles.requirement(monitor.leaves)
@@ -492,8 +492,9 @@ class ContinuousMonitors:
             history = snapshot or self.histories.get(code, History(needed))
             state = self.replica.get(code, now)
             if snapshot:
-                ready = snapshot.current_day and candles.prepared(snapshot, monitor.leaves, snapshot.cutoff_ms)
-                damaged = candles.damaged(snapshot, monitor.leaves, snapshot.cutoff_ms)
+                bars = read_bars or candles
+                ready = snapshot.current_day and bars.prepared(snapshot, monitor.leaves, snapshot.cutoff_ms)
+                damaged = bars.damaged(snapshot, monitor.leaves, snapshot.cutoff_ms)
                 receiving_live = snapshot.live_ready
                 live_clock = self.live_clock(snapshot.cutoff_ms)
             else:

@@ -253,8 +253,7 @@ def _publish(data_dir, state):
         if snapshot and snapshot[1].get("daily_ingest") != series.digest(guard):
             identity = series._write_object(series.root(data_dir), guard)
             manifest = {**snapshot[1], "daily_ingest": identity, "parent": snapshot[0]}
-            sid = series._write_object(series.root(data_dir), manifest)
-            atomic_write_json(series.root(data_dir) / "current.json", {"id": sid})
+            series._commit_snapshot_locked(data_dir, manifest)
         atomic_write_json(root(data_dir) / "current.json", state)
         atomic_write_json(root(data_dir) / "status.json", state["summary"])
 
