@@ -180,20 +180,9 @@ async def test_malformed_control_does_not_end_connection(monkeypatch, message):
         await asyncio.gather(task, return_exceptions=True)
 
 
-@pytest.mark.parametrize('mode', ['process', 'inprocess'])
-@pytest.mark.parametrize('stage', ['lock', 'effect', 'unsubscribe-lock'])
-async def test_asgi_cancellation_during_actual_session_work_removes_only_owned_refs(monkeypatch, tmp_path, mode, stage):
-    from hoga.live import lifecycle
+def actual_session(monkeypatch, tmp_path, mode, call):
     from hoga.live.collector_process import CaptureProcessSession
     from hoga.live.kiwoom_session import KiwoomSessionManager, _DisplayEntry
-
-    entered = asyncio.Event()
-
-    async def call(*args, **kwargs):
-        if stage == 'unsubscribe-lock':
-            return True
-        entered.set()
-        await asyncio.Event().wait()
 
     if mode == 'process':
         session = CaptureProcessSession(buffer=None, data_dir=tmp_path)
@@ -215,6 +204,23 @@ async def test_asgi_cancellation_during_actual_session_work_removes_only_owned_r
 
         def refs():
             return set(session._display[('005930', 'KRX')].refs)
+    return session, lock, refs
+
+
+@pytest.mark.parametrize('mode', ['process', 'inprocess'])
+@pytest.mark.parametrize('stage', ['lock', 'effect', 'unsubscribe-lock'])
+async def test_asgi_cancellation_during_actual_session_work_removes_only_owned_refs(monkeypatch, tmp_path, mode, stage):
+    from hoga.live import lifecycle
+
+    entered = asyncio.Event()
+
+    async def call(*args, **kwargs):
+        if stage == 'unsubscribe-lock':
+            return True
+        entered.set()
+        await asyncio.Event().wait()
+
+    session, lock, refs = actual_session(monkeypatch, tmp_path, mode, call)
     monkeypatch.setattr(lifecycle._state, 'kiwoom_session', session)
     buffer, bus = LiveBuffer(), EventBus()
     messages = [dict(action='subscribe', code='005930', venues=['KRX'])]

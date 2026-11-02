@@ -117,7 +117,6 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         pending_subs: dict[str, set[str] | None] = {}
         pending_changed = asyncio.Event()
         us_subs: set[tuple[str, str]] = set()
-        domestic_lifecycle_used = False
 
         def emit(frame: dict) -> None:
             try:
@@ -180,8 +179,8 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                 except ViewSubscriptionLimitError:
                     us_subs.discard(subject)
             elif action == "unsubscribe_us_stock" and subject in us_subs:
-                us_subs.discard(subject)
                 await session.on_us_unsubscribe(exchange, symbol, ref=view_ref)
+                us_subs.discard(subject)
 
         async def receiver() -> None:
             while True:
@@ -197,7 +196,6 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                     return
 
         async def apply_commands() -> None:
-            nonlocal domestic_lifecycle_used
             while True:
                 command = await commands.get()
                 if isinstance(command, _UsCommand):
@@ -218,7 +216,6 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                         # ADR-0067/PR-C: forward to REST poller + 키움 표시셋 lifecycle.
                         # 만석(전 연결 슬롯 소진)이면 이 탭에 만석 이벤트(토스트).
                         try:
-                            domestic_lifecycle_used = True
                             accepted = await lifecycle.on_view_subscribe(code, venues, ref=view_ref)
                         except ViewSubscriptionLimitError:
                             emit({"ch": "event", "data": {"type": "live_subscription_limit", "code": code}})
@@ -230,7 +227,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                                 pending_changed.set()
                     emit({"ch": "subscribed", "code": code})
                 elif action == "unsubscribe" and code in code_subs:
-                    q, task, venues = code_subs.pop(code)
+                    q, task, venues = code_subs[code]
                     task.cancel()
                     out.discard(code)
                     buf = get_buffer()
@@ -238,6 +235,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                         buf.unsubscribe(code, q)
                     # ADR-0067/PR-C: forward to REST poller + 키움 표시셋 lifecycle.
                     await lifecycle.on_view_unsubscribe(code, venues, ref=view_ref)
+                    code_subs.pop(code)
                     if code in pending_subs:
                         resolve_pending(code)
 
@@ -276,7 +274,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                     buf.unsubscribe(code, q)
             session = lifecycle._state.kiwoom_session
             us_release = None
-            if session is not None and domestic_lifecycle_used:
+            if session is not None and subs:
                 session.forget_view_ref(view_ref)
             if session is not None and us_subs:
                 # Clear ownership synchronously, even under ASGI cancellation.
