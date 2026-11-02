@@ -1,0 +1,76 @@
+{
+  "recorded_at": "2026-11-02T14:20:23.516785+00:00",
+  "head_sha": "7ee93d2d22bcfb5c2dfbd68efb7ec5b307f34f75",
+  "base_sha": "7ee93d2d22bcfb5c2dfbd68efb7ec5b307f34f75",
+  "working_tree": "Uncommitted focus-console changes; fingerprints include file contents, not only HEAD.",
+  "environment": {
+    "node": "v24.13.1",
+    "os": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+    "display": ":0",
+    "electron": "44.8.0",
+    "playwright": "1.64.1",
+    "workers": 1,
+    "sandbox": true,
+    "servers": "Isolated Node fixture services on dynamically allocated loopback ports; no user server restart."
+  },
+  "input_fingerprints": {
+    "desktop_all": {
+      "sha256": "ca8481b1e419f70ccbf8696e63bd3e14abb70298e835c3ae505ba2b7326e1e27",
+      "file_count": 63
+    },
+    "unit_inputs": {
+      "sha256": "1336db648a658c2923806cebe350454cbbca77ed4ba7448a9eb20df5dbcf5199",
+      "file_count": 26
+    }
+  },
+  "checks": [
+    {
+      "cwd": "desktop",
+      "command": "npm run lint",
+      "result": "pass"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run typecheck",
+      "result": "pass",
+      "reuse": "TypeScript source, tsconfig and dependency inputs unchanged after this check."
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run build",
+      "result": "pass"
+    },
+    {
+      "cwd": "desktop",
+      "command": "node --test tests/*.test.cjs",
+      "result": "20 passed",
+      "reuse": "Subsequent changes only affect renderer JS, E2E expectations and documentation; unit input files remain identical."
+    },
+    {
+      "cwd": "desktop",
+      "command": "npx playwright test tests/e2e/server-manager.spec.cjs tests/e2e/server-ui-reload.spec.cjs tests/e2e/server-tray.spec.cjs",
+      "result": "21 passed"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "pass"
+    }
+  ],
+  "coverage": [
+    "Source tab separation and keyboard navigation",
+    "Level filtering without treating stderr as ERROR",
+    "Collapsed traceback included in native clipboard copy",
+    "Original timestamps and source preserved",
+    "All-source clipboard copy and clipboard restoration in test cleanup",
+    "Tab/filter/raw mode state across renderer reload",
+    "Compact and expanded layouts and scroll position across resizing",
+    "Unchanged server PIDs during UI reload/resize",
+    "Start/stop/force-stop confirmations and tray actions"
+  ],
+  "limitations": [
+    "No deployment or shortcut replacement for the installed user application.",
+    "Native clipboard IPC requires the new main/preload build on next manager launch.",
+    "External server stdout and browser console output are not collected; only retained 300 lines are copied."
+  ]
+}

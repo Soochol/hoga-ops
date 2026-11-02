@@ -20,6 +20,7 @@
     <symbol id="icon-maximize" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/></symbol>
     <symbol id="icon-restore" viewBox="0 0 24 24"><rect x="4" y="8" width="12" height="12" rx="1"/><path d="M8 8V4h12v12h-4"/></symbol>
     <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
   </defs></svg>
   <header class="chrome"><img src="icon.png" alt="" width="28" height="28"><span>Ticklane 서버</span><div class="window-controls" role="group" aria-label="창 제어">
     <button id="minimize" class="window-control" type="button" aria-label="최소화" title="최소화" disabled><svg class="icon" aria-hidden="true"><use href="#icon-minimize"/></svg></button>
@@ -27,19 +28,30 @@
     <button id="close" class="window-control window-close" type="button" aria-label="관리 창 숨기기" title="닫기 · 창만 숨기고 서버는 계속 실행합니다"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
   </div></header>
   <main>
-    <div class="heading"><h1>로컬 서버</h1><span class="device"><svg class="icon" aria-hidden="true"><use href="#icon-monitor"/></svg>이 PC</span></div>
+    <div class="overview"><div class="heading"><h1>로컬 서버</h1><span class="device"><svg class="icon" aria-hidden="true"><use href="#icon-monitor"/></svg>이 PC</span></div>
     <section class="hero" aria-label="전체 서버 상태">
       <span class="state-icon" aria-hidden="true"><svg class="icon"><use id="state-icon" href="#icon-wait"/></svg></span>
       <div><h2 id="headline">서버 상태를 확인하고 있습니다</h2><p id="message" role="status" aria-live="polite">서버 실행 설정을 읽고 있습니다.</p></div>
     </section>
     <div class="actions"><button id="primary" class="primary" disabled><svg class="icon" aria-hidden="true"><use id="primary-icon" href="#icon-power"/></svg><span id="primary-label">확인 중…</span></button><button id="stop" hidden disabled>서버 중지</button></div>
+    </div>
     <section id="services" aria-label="서비스 연결 상태">
       <div class="section-head"><span>서비스</span><div><span>자동 확인</span><button id="refresh" class="icon-button" aria-label="상태 새로고침" title="상태 새로고침"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg></button></div></div>
       <article id="service-frontend" class="service" aria-label="프론트엔드"><svg class="icon service-icon" aria-hidden="true"><use href="#icon-frontend"/></svg><div class="service-info"><h3>화면 서버</h3><p class="address">프론트엔드</p><p class="detail" hidden></p></div><span class="service-status"><span class="dot" aria-hidden="true"></span><span class="phase">확인 중</span></span></article>
       <article id="service-backend" class="service" aria-label="백엔드"><svg class="icon service-icon" aria-hidden="true"><use href="#icon-backend"/></svg><div class="service-info"><h3>API 서버</h3><p class="address">백엔드</p><p class="detail" hidden></p></div><span class="service-status"><span class="dot" aria-hidden="true"></span><span class="phase">확인 중</span></span></article>
     </section>
     <p id="external-note" class="note" hidden>다른 곳에서 실행한 서버입니다. 실행 정보를 확인한 뒤 중지할 수 있습니다.</p>
-    <details id="log-details"><summary><span class="chevron" aria-hidden="true">›</span>실행 기록 <span class="log-hint">· 필요할 때 확인</span></summary><div class="log-tools"><label><input id="follow" type="checkbox" checked> 자동 스크롤</label><button id="open-logs" class="subtle">로그 폴더 열기</button></div><pre id="logs" aria-label="실행 로그 내용" tabindex="0">아직 실행 로그가 없습니다.</pre></details>
+    <details id="log-details"><summary><span class="chevron" aria-hidden="true">›</span>실행 기록 <span class="log-hint">· 서비스별 로그</span></summary>
+      <div class="log-header"><div class="log-tabs" role="tablist" aria-label="서비스별 로그">
+        <button id="tab-backend" role="tab" aria-selected="true" aria-controls="logs" data-source="backend">백엔드 <span class="log-count">0</span></button>
+        <button id="tab-frontend" role="tab" aria-selected="false" aria-controls="logs" data-source="frontend" tabindex="-1">프론트엔드 <span class="log-count">0</span></button>
+        <button id="tab-manager" role="tab" aria-selected="false" aria-controls="logs" data-source="manager" tabindex="-1">관리 <span class="log-count">0</span></button>
+      </div><div class="log-actions"><button id="raw-logs" class="subtle" aria-pressed="false">원문</button><button id="copy-all-logs" class="subtle">전체 로그 복사</button></div></div>
+      <div class="log-tools"><div><label for="log-level" class="sr-only">로그 레벨</label><select id="log-level"><option value="all">모든 레벨</option><option value="issues">WARN + ERROR</option></select><span id="log-count" class="log-count"></span></div><button id="copy-logs" class="subtle"><svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg>표시 로그 복사</button></div>
+      <div id="logs" role="tabpanel" aria-labelledby="tab-backend" aria-label="실행 로그 내용" tabindex="0">아직 실행 로그가 없습니다.</div>
+      <div class="log-footer"><label><input id="follow" type="checkbox" checked> 자동 스크롤</label><span>최근 300줄 · PC 로컬 시각</span><button id="open-logs" class="subtle">로그 폴더 열기</button></div>
+      <p id="log-feedback" aria-live="polite"></p><div id="copy-fallback" hidden><label for="copy-text">Ctrl+C 또는 ⌘C로 복사하세요.</label><textarea id="copy-text" readonly rows="5"></textarea><button id="close-copy" class="subtle">닫기</button></div>
+    </details>
     <p id="feedback" role="alert" hidden></p>
   </main>
   <footer><div><span id="project" title="실행할 프로젝트 경로">로컬 프로젝트</span><span>창을 닫아도 서버는 계속 실행됩니다</span></div><button id="quit" class="subtle">관리 앱 종료</button></footer>
