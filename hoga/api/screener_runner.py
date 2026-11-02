@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 import time
 from pathlib import Path
@@ -18,6 +17,7 @@ from hoga.api import (
     symbols,
 )
 from hoga.api.models import ScanRequest, ScreenerResponse
+from hoga.api.read_shutdown import ReadOperation, run_read_sync
 from hoga.api.screener_expression import active_conditions
 from hoga.api.screener_minute_scope import current as minute_scope
 from hoga.api.screener_timing import phase
@@ -26,16 +26,18 @@ from hoga.util.timeenc import KST
 
 
 async def run_screener_scan(*, data_dir: Path, req: ScanRequest,
-                            now: dt.datetime | None = None, volume_runtime=None) -> ScreenerResponse:
+                            now: dt.datetime | None = None, volume_runtime=None,
+                                operation: ReadOperation | None = None) -> ScreenerResponse:
     now = now or now_kst()
     with phase('ranks'):
-        rank_eval = await screener_rankings.evaluate(data_dir, req, now, None)
+        rank_eval = await screener_rankings.evaluate(data_dir, req, now, None, operation=operation)
     screener_rankings.validate_stored_conditions(req, rank_eval)
     if req.calculation_policy == "separate_bases_v2":
         from hoga.api.screener_series_runner import run_scan  # noqa: PLC0415 — isolate optional v2 path
-        return await run_scan(data_dir=data_dir, req=req, now=now, volume_runtime=volume_runtime, rank_eval=rank_eval)
+        return await run_scan(data_dir=data_dir, req=req, now=now, volume_runtime=volume_runtime, rank_eval=rank_eval,
+            operation=operation)
     return await _run_legacy_scan(data_dir=data_dir, req=req, now=now,
-                                  volume_runtime=volume_runtime, rank_eval=rank_eval)
+                                  volume_runtime=volume_runtime, rank_eval=rank_eval, operation=operation)
 
 
 async def _run_legacy_scan(
@@ -45,8 +47,7 @@ async def _run_legacy_scan(
     now: dt.datetime | None = None,
     volume_runtime=None,
     rank_eval=None,
-    codes_override=None,
-) -> ScreenerResponse:
+    codes_override=None, operation: ReadOperation | None = None) -> ScreenerResponse:
     sdir = data_dir / "screener"
     if not (sdir / "status.json").exists():
         return ScreenerResponse(status="not_seeded", rows=[])
@@ -61,7 +62,7 @@ async def _run_legacy_scan(
     # 유니버스 스코프(관심∪히트맵) 1회 해석 — intraday overlay·depth·run_scan 세 경로가
     # 공유한다. None = 무제한(전체 시장). 빈 set = 스코프는 켰으나 대상 0종목 → 조건
     # 미충족과 구분되게 warning 을 붙인다(결과는 자연히 0행).
-    scope = await asyncio.to_thread(
+    scope = await run_read_sync(operation,
         screener_universe.scope_codes, data_dir, req.universe.scopes)
     if codes_override is not None:
         scope = set(codes_override) if scope is None else scope & set(codes_override)
@@ -77,12 +78,12 @@ async def _run_legacy_scan(
         warnings.append("etf_filter_stale_master_unavailable")
 
     conditions = active_conditions(req.conditions, req.expression)
-    codes = await asyncio.to_thread(screener_universe.codes_for_universe,
+    codes = await run_read_sync(operation, screener_universe.codes_for_universe,
         sdir / "stocks.parquet", req.universe, scope=scope, etf_codes=etf_codes)
     codes, scope, now_value, requested = _rank_inputs(req, codes, scope, now_value, rank_eval)
     confirmed_at, basis, daily_coverage, codes, scope = await _basis_quality(
         data_dir, conditions, codes, scope, requested, now_value, warnings,
-        cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None)
+        cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None, operation=operation)
     history = screener_history_coverage.history_leaves(conditions)
     needs_overlay = basis == "intraday" and (not conditions or any(
         screener_bar_volume.needs_daily_overlay(leaf, now_value.date().isoformat()) for leaf in conditions))
@@ -108,7 +109,7 @@ async def _run_legacy_scan(
 
     depth_eval = None
     if screener_depth.has_depth_conditions(conditions):
-        depth_eval = await asyncio.to_thread(
+        depth_eval = await run_read_sync(operation,
             screener_depth.evaluate,
             data_dir=data_dir,
             sdir=sdir,
@@ -125,7 +126,7 @@ async def _run_legacy_scan(
     )
     history_eval = None
     if history:
-        history_eval = await asyncio.to_thread(
+        history_eval = await run_read_sync(operation,
             screener_history_coverage.evaluate, data_dir, conditions, codes)
     bar_eval = None
     if screener_bar_volume.leaves(conditions):
@@ -135,11 +136,12 @@ async def _run_legacy_scan(
             now=now_value, overlay=intraday_rows,
             volume_runtime=None if rank_eval and rank_eval.historical else volume_runtime,
             cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None,
-            daily_fallback_codes=set(codes) - live_codes if needs_overlay else None)
+            daily_fallback_codes=set(codes) - live_codes if needs_overlay else None, operation=operation)
         if bar_eval.coverage.incomplete:
             warnings.append("bar_volume_partial")
     rows = await _matching_rows(data_dir, sdir, req, codes, scope, etf_codes, intraday_rows,
-                                depth_pass, depth_eval, history_eval, bar_eval, daily_coverage, rank_eval)
+                                depth_pass, depth_eval, history_eval, bar_eval, daily_coverage, rank_eval,
+                                    operation=operation)
     return screener_rankings.with_basis(ScreenerResponse(
         daily_coverage=daily_coverage,
         history_coverage=history_eval.coverage if history_eval else None,
@@ -158,12 +160,13 @@ async def _run_legacy_scan(
 
 
 async def _matching_rows(data_dir, sdir, req, codes, scope, etf_codes, intraday_rows,
-                         depth_pass, depth_eval, history_eval, bar_eval, daily_coverage, rank_eval):
+                         depth_pass, depth_eval, history_eval, bar_eval, daily_coverage, rank_eval,
+                             operation: ReadOperation | None = None):
     excluded = screener_exclusions.exclusion_keys(
-        await asyncio.to_thread(screener_exclusions.load_exclusions, data_dir))
+        await run_read_sync(operation, screener_exclusions.load_exclusions, data_dir))
     occurrence_dates = _occurrence_dates(depth_eval, history_eval)
     truths = {} if minute_scope.get() is not None else None
-    rows = await asyncio.to_thread(
+    rows = await run_read_sync(operation,
         screener_scan.run_scan,
         sdir / "daily_adjusted.parquet",
         sdir / "stocks.parquet",
@@ -216,15 +219,16 @@ def _rank_inputs(req, codes, scope, now, evaluation):
             "eod" if evaluation.historical else req.basis)
 
 
-async def _basis_quality(data_dir, conditions, codes, scope, requested_basis, now_value, warnings, cutoff=None):
+async def _basis_quality(data_dir, conditions, codes, scope, requested_basis, now_value, warnings, cutoff=None,
+    operation: ReadOperation | None = None):
     from hoga.api.screener_daily_quality import legacy_coverage  # noqa: PLC0415
-    confirmed_at = await asyncio.to_thread(screener_basis.confirmed_timestamp, data_dir / "screener", codes)
+    confirmed_at = await run_read_sync(operation, screener_basis.confirmed_timestamp, data_dir / "screener", codes)
     if cutoff is not None and confirmed_at is not None:
         confirmed_at = min(confirmed_at, int(cutoff.timestamp() * 1000))
     basis = screener_basis.choose_basis(requested_basis, now_value, confirmed_at, data_dir)
     quality_clock = cutoff or (dt.datetime.fromtimestamp(confirmed_at / 1000, KST)
                                if basis == "eod" and confirmed_at is not None else now_value)
-    coverage, quarantined = await asyncio.to_thread(
+    coverage, quarantined = await run_read_sync(operation,
         legacy_coverage, data_dir, conditions, codes, quality_clock, basis == "intraday", historical=cutoff is not None)
     if quarantined and not conditions:
         codes = [code for code in codes if code not in quarantined]

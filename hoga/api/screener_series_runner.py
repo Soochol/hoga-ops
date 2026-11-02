@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 import time
 from pathlib import Path
@@ -31,6 +30,7 @@ from hoga.api.models import (
     ScreenerResponse,
     ScreenerRow,
 )
+from hoga.api.read_shutdown import ReadOperation, checkpoint, run_read_sync
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR
 from hoga.api.screener_expression import active_conditions, parse_expression
 from hoga.api.screener_minute_scope import current as minute_scope
@@ -85,7 +85,8 @@ def _minute_candidates(req, codes, events, failures, rank_eval):
         unknown_leaves | unavailable.get(code, set()), req.conditions) is not False]
 
 
-def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallback_clock=None, blocked_conditions=None):
+def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallback_clock=None,
+                      blocked_conditions=None, *, stop=None):
     _, manifest = pinned
     days = [dt.datetime.strptime(day, "%Y%m%d").date() for day in store.snapshot_calendar(data_dir, manifest)]
     selected = [
@@ -113,7 +114,8 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
     display_day = min(clock.date(), fallback_clock.date()) if fallback_clock is not None else clock.date()
     first = min(required, default=display_day)
     prior = [day for day in days if day < first]
-    series = values.load_series(data_dir, manifest, codes, first=prior[-1] if prior else first, last=clock.date())
+    series = values.load_series(data_dir, manifest, codes, first=prior[-1] if prior else first,
+                                last=clock.date(), stop=stop)
     events, failures = {leaf.id: [] for leaf in selected}, []
     if overlay is not None:
         for row in overlay.iter_rows(named=True):
@@ -126,6 +128,7 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
                     series[code].prices[day] = candidate
     live_codes = set(overlay["code"].to_list()) if overlay is not None else set()
     for code in codes:
+        checkpoint(stop)
         chosen_clock = fallback_clock if fallback_clock is not None and code not in live_codes else clock
         chosen_plans = fallback_plans if chosen_clock != clock else plans
         for leaf in selected:
@@ -141,12 +144,12 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
     return series, events, failures
 
 
-def _confirmed_at(data_dir, manifest, codes, cutoff):
+def _confirmed_at(data_dir, manifest, codes, cutoff, *, stop=None):
     return snapshots.obtain(data_dir, manifest, 'confirmed', (tuple(codes), cutoff),
-                            lambda: _load_confirmed_at(data_dir, manifest, codes, cutoff))
+                            lambda: _load_confirmed_at(data_dir, manifest, codes, cutoff, stop=stop), stop=stop)
 
 
-def _load_confirmed_at(data_dir, manifest, codes, cutoff):
+def _load_confirmed_at(data_dir, manifest, codes, cutoff, *, stop=None):
     from hoga.api import (  # noqa: PLC0415 — provider metadata
         screener_daily_confirmation as confirmation,
         screener_daily_projection as projection,
@@ -154,9 +157,10 @@ def _load_confirmed_at(data_dir, manifest, codes, cutoff):
 
     timestamps = []
     for code in codes:
+        checkpoint(stop)
         identity = manifest["observations"].get(code)
         if identity:
-            observation = projection.read(data_dir, identity)
+            observation = projection.read(data_dir, identity, stop=stop)
             if observation.adjusted_as_of != manifest["adjusted_as_of"]:
                 continue
             candidate = observation.candidate
@@ -185,18 +189,19 @@ def _eod_clock(now, confirmed):
     return dt.datetime.combine(cutoff, time, KST)
 
 
-def _daily_contract(data_dir, manifest, codes):
+def _daily_contract(data_dir, manifest, codes, *, stop=None):
     return snapshots.obtain(data_dir, manifest, 'contract', tuple(codes),
-                            lambda: _load_daily_contract(data_dir, manifest, codes))
+                            lambda: _load_daily_contract(data_dir, manifest, codes, stop=stop), stop=stop)
 
 
-def _load_daily_contract(data_dir, manifest, codes):
+def _load_daily_contract(data_dir, manifest, codes, *, stop=None):
     from hoga.api import screener_daily_projection as projection  # noqa: PLC0415
 
     scopes, policies = set(), set()
     for code in codes:
+        checkpoint(stop)
         identity = manifest["observations"].get(code)
-        candidate = projection.read(data_dir, identity).candidate if identity else None
+        candidate = projection.read(data_dir, identity, stop=stop).candidate if identity else None
         scopes.add(candidate.session_scope if candidate else "legacy_unknown")
         policies.add(candidate.policy if candidate else "legacy_unverified")
     return {
@@ -206,21 +211,21 @@ def _load_daily_contract(data_dir, manifest, codes):
     }
 
 
-async def _inputs(data_dir, req, manifest, now, replay, rank_eval=None):
+async def _inputs(data_dir, req, manifest, now, replay, rank_eval=None, operation: ReadOperation | None = None):
     if replay is not None:
         return replay
-    roster = pl.DataFrame(await asyncio.to_thread(store.read_object, data_dir, manifest["roster"]))
-    scope = await asyncio.to_thread(screener_universe.scope_codes, data_dir, req.universe.scopes)
+    roster = pl.DataFrame(await run_read_sync(operation, store.read_object, data_dir, manifest["roster"]))
+    scope = await run_read_sync(operation, screener_universe.scope_codes, data_dir, req.universe.scopes)
     roster = screener_universe.filter_stocks_df(roster, req.universe, scope=scope)
     codes = roster["code"].to_list()
     codes = screener_rankings.candidate_codes(req, codes, rank_eval)
-    confirmed = await asyncio.to_thread(_confirmed_at, data_dir, manifest, codes, now.date())
+    confirmed = await run_read_sync(operation, _confirmed_at, data_dir, manifest, codes, now.date(), stop=operation)
     basis = screener_basis.choose_basis(req.basis, now, confirmed, data_dir)
     clock = now if basis == "intraday" else _eod_clock(now, confirmed)
     if rank_eval and rank_eval.historical:
         basis, clock = "eod", rank_eval.cutoff
     excluded = screener_exclusions.exclusion_keys(
-        await asyncio.to_thread(
+        await run_read_sync(operation,
             screener_exclusions.load_exclusions, data_dir, calculation_policy=req.calculation_policy
         )
     )
@@ -256,7 +261,8 @@ async def _overlay(data_dir, req, inputs, now):
     return observed.rows, warnings, observed.fetched_at_ms, observed.failure
 
 
-async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failures, rank_eval=None):
+async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failures, rank_eval=None,
+    operation: ReadOperation | None = None):
     minute_coverage = None
     if not inputs["codes"]:
         return None, minute_coverage
@@ -272,13 +278,13 @@ async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failure
                 now=now,
                 volume_runtime=volume_runtime,
                 cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None,
-            )
+             operation=operation)
         events.update(result.events)
         failures.extend(result.coverage.incomplete)
         minute_coverage = result.coverage
     if not screener_depth.has_depth_conditions(selected):
         return None, minute_coverage
-    depth = await asyncio.to_thread(
+    depth = await run_read_sync(operation,
         screener_depth.evaluate,
         data_dir=data_dir,
         sdir=data_dir / "screener",
@@ -311,7 +317,7 @@ def _occurrences(req, inputs, events):
     return by_code
 
 
-def _rows(req, inputs, series, events, failures, days, clock):
+def _rows(req, inputs, series, events, failures, days, clock, *, stop=None):
     by_code = _occurrences(req, inputs, events)
     tokens = parse_expression(req.expression, len(req.conditions))
     labels = {row["code"]: row for row in inputs["labels"]}
@@ -321,6 +327,7 @@ def _rows(req, inputs, series, events, failures, days, clock):
     for item in failures:
         unknown_by_code.setdefault(item.code, set()).add(item.condition_id)
     for code, occurrences in by_code.items():
+        checkpoint(stop)
         if inputs.get("ready_codes") is not None and code not in inputs["ready_codes"]:
             continue
         passing = {event.condition_id for event in occurrences}
@@ -374,15 +381,15 @@ def _rows(req, inputs, series, events, failures, days, clock):
 async def run_scan(
     *, data_dir: Path, req: ScanRequest, now: dt.datetime, volume_runtime=None, record=False, replay=None,
     ready_codes: set[str] | None = None, input_snapshot=None, blocked_conditions=None, rank_eval=None,
-) -> ScreenerResponse:
+        operation: ReadOperation | None = None) -> ScreenerResponse:
     now = now.astimezone(KST) if now.tzinfo else now.replace(tzinfo=KST)
     if rank_eval is None:
-        rank_eval = await screener_rankings.evaluate(data_dir, req, now, None)
+        rank_eval = await screener_rankings.evaluate(data_dir, req, now, None, operation=operation)
     screener_rankings.validate_stored_conditions(req, rank_eval)
     if rank_eval and rank_eval.historical:
         now, volume_runtime = rank_eval.cutoff, None
     with phase('snapshot'):
-        pinned = input_snapshot or await asyncio.to_thread(store.load_snapshot, data_dir, req.snapshot_id)
+        pinned = input_snapshot or await run_read_sync(operation, store.load_snapshot, data_dir, req.snapshot_id)
     if pinned is None:
         return ScreenerResponse(
             status="ok",
@@ -392,7 +399,7 @@ async def run_scan(
         )
     identity, manifest = pinned
     with phase('inputs'):
-        inputs = await _inputs(data_dir, req, manifest, now, replay, rank_eval)
+        inputs = await _inputs(data_dir, req, manifest, now, replay, rank_eval, operation=operation)
     inputs["ready_codes"] = ready_codes
     available = inputs if ready_codes is None else {**inputs, "codes": [code for code in inputs["codes"]
                                                                       if code in ready_codes]}
@@ -401,9 +408,9 @@ async def run_scan(
         overlay, warnings, overlay_at, intraday_failure = await _overlay(data_dir, req, available, now)
     fallback_clock = _eod_clock(now, inputs["confirmed_at"]) if inputs["basis"] == "intraday" else None
     with phase('calendar'):
-        series, events, failures = await asyncio.to_thread(
+        series, events, failures = await run_read_sync(operation,
             calendar_evaluate, data_dir, req, pinned, available["codes"], clock, overlay,
-            fallback_clock, blocked_conditions
+            fallback_clock, blocked_conditions, stop=operation
         )
     blocked_by_code = {}
     for (code, condition), reason in (blocked_conditions or {}).items():
@@ -414,15 +421,16 @@ async def run_scan(
                         for condition, reason in reasons or [("preparation", "daily_preparation_pending")])
     candidates = _minute_candidates(req, available["codes"], events, failures, rank_eval)
     depth, minute_coverage = await _auxiliary(data_dir, req, {**available, "codes": candidates},
-                                              now, volume_runtime, events, failures, rank_eval)
+                                              now, volume_runtime, events, failures, rank_eval, operation=operation)
     events.update(rank_eval.events if rank_eval else {})
     days = [dt.datetime.strptime(day, "%Y%m%d").date() for day in store.snapshot_calendar(data_dir, manifest)]
     with phase('rows'):
-        rows = await asyncio.to_thread(_rows, req, inputs, series, events, failures, days, clock)
+        rows = await run_read_sync(operation, _rows, req, inputs, series, events, failures, days, clock, stop=operation)
     if failures:
         warnings.append("separate_bases_partial")
     with phase('daily_contract'):
-        daily_contract = await asyncio.to_thread(_daily_contract, data_dir, manifest, inputs["codes"])
+        daily_contract = await run_read_sync(operation, _daily_contract, data_dir, manifest, inputs["codes"],
+            stop=operation)
     response = ScreenerResponse(
         status="ok",
         rows=rows[: req.limit],
@@ -462,5 +470,5 @@ async def run_scan(
     if record:
         from hoga.api.screener_series_execution import archive  # noqa: PLC0415 — optional explicit archive
 
-        await asyncio.to_thread(archive, data_dir, req, inputs, response)
+        await run_read_sync(operation, archive, data_dir, req, inputs, response)
     return screener_rankings.with_basis(response, req, rank_eval)

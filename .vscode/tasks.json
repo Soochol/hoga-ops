@@ -4,7 +4,7 @@
     {
       "label": "Backend: dev (hot reload)",
       "type": "shell",
-      "command": "uv run --frozen uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir hoga",
+      "command": "uv run --frozen hoga serve --host 127.0.0.1 --port 8000 --reload --reload-dir hoga",
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -68,7 +68,7 @@
     {
       "label": "Dev: kill all servers",
       "type": "shell",
-      "command": "pkill -f '[u]vicorn hoga.api.app'; pkill -f 'hoga-ops.*[v]ite'; sleep 1; ss -tln | grep -E ':(8000|517[0-9])' && echo '⚠ 아직 살아있는 리스너 위 참조' || echo '✔ 모든 dev 서버 종료됨'",
+      "command": "pkill -f '[u]vicorn hoga.api.app'; pkill -f '[h]oga serve.*--reload'; pkill -f 'hoga-ops.*[v]ite'; sleep 1; ss -tln | grep -E ':(8000|517[0-9])' && echo '⚠ 아직 살아있는 리스너 위 참조' || echo '✔ 모든 dev 서버 종료됨'",
       "presentation": {
         "panel": "dedicated",
         "group": "dev",

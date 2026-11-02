@@ -21,6 +21,7 @@ from hoga.api import (
     symbols,
 )
 from hoga.api.models import ScanRequest, ScreenerResponse
+from hoga.api.read_shutdown import ReadDrainReport, ReadFlight, ReadInterrupted, ReadOperation, ReadWork, run_read_sync
 from hoga.api.screener_bar_policy import CHANGE_TYPES, RANGE_PARAMS
 from hoga.api.screener_bar_price import valid_prices
 from hoga.api.screener_timing import monitor_scan
@@ -103,9 +104,13 @@ class PreparedSnapshot:
 
 @dataclass
 class ResultFlight:
-    task: asyncio.Task[ScreenerResponse]
+    read: ReadFlight[ScreenerResponse]
     waiters: int = 0
     finished: asyncio.Event = field(default_factory=asyncio.Event)
+
+    @property
+    def task(self):
+        return self.read.task
 
 
 @dataclass
@@ -118,6 +123,7 @@ class Monitor:
     touched_ms: int
     fingerprint: tuple = ()
     result_flight: ResultFlight | None = field(default=None, repr=False, compare=False)
+    read_shutdown: bool = field(default=False, repr=False, compare=False)
 
 
 class ContinuousAdapter:
@@ -156,19 +162,21 @@ class ContinuousAdapter:
             flight = key, version
             task = self.owner.evaluation_flights.get(flight)
             if task is None:
-                task = asyncio.create_task(self._evaluate_changed(leaf, code, now, key, snapshot))
+                task = self.owner._evaluations.start(
+                    lambda item: self._evaluate_changed(leaf, code, now, key, snapshot, operation=item)).task
                 self.owner.evaluation_flights[flight] = task
                 task.add_done_callback(lambda _task: self.owner.evaluation_flights.pop(flight, None))
             cached = await asyncio.shield(task)
         return leaf, code, [event.model_copy(deep=True) for event in cached[1]], cached[2], cached[3]
 
-    async def _evaluate_changed(self, leaf, code, now, key, snapshot):
+    async def _evaluate_changed(self, leaf, code, now, key, snapshot, *, operation=None):
         now = snapshot.cutoff_ms
         version = snapshot.version
         cached = self.owner.evaluations.get(key)
         if cached is None or cached[0] != version:
             data, lower = candles.window(snapshot, leaf, now)
-            events, complete = await asyncio.to_thread(volume.records, leaf, data, fetched_at_ms=snapshot.observed_ms)
+            events, complete = await run_read_sync(
+                operation, volume.records, leaf, data, fetched_at_ms=snapshot.observed_ms)
             for event in events:
                 if event.bar_match and event.bar_start_ms in lower:
                     event.bar_match.volume_is_lower_bound = True
@@ -246,7 +254,20 @@ class ContinuousMonitors:
         self.evaluations = OrderedDict()
         self._event_count = 0
         self.evaluation_flights = {}
-        self.result_tasks: set[asyncio.Task[ScreenerResponse]] = set()
+        self._reads = ReadWork()
+        self._evaluations = ReadWork()
+        self.result_tasks = self._reads.tasks
+
+    def begin_read_shutdown(self) -> None:
+        for monitor in self.monitors.values():
+            monitor.read_shutdown = True
+        self._reads.begin_read_shutdown()
+
+    async def wait_read_work(self) -> ReadDrainReport:
+        self.begin_read_shutdown()
+        reads = await self._reads.wait_read_work()
+        evaluations = await self._evaluations.wait_read_work()
+        return ReadDrainReport(reads.failures + evaluations.failures)
 
     def selected_day(self, now):
         # Calendar I/O is outside raw ingest and shared across all result/status
@@ -288,6 +309,7 @@ class ContinuousMonitors:
                 and self.selected_day(now) == datetime.fromtimestamp(now / 1000, KST).date())
 
     async def start(self, client_id, request):
+        self._require_read_admission()
         leaves = [leaf for leaf in screener_expression.active_conditions(request.conditions, request.expression)
                   if ContinuousAdapter.eligible(leaf)]
         if not leaves or not request.universe.scopes or request.basis == 'eod':
@@ -299,6 +321,7 @@ class ContinuousMonitors:
         if len(self.monitors) >= MAX_MONITORS and old is None:
             raise HTTPException(409, '동시 감시 개수 한도를 초과했습니다.')
         codes = await self.resolve(request)
+        self._require_read_admission()
         needed = candles.requirement(leaves)
         requirements = {code: needed for code in codes}
         for monitor in self.monitors.values():
@@ -372,32 +395,58 @@ class ContinuousMonitors:
         if self.closed or self.monitors.get(monitor.id) is not monitor:
             raise HTTPException(404, '감시가 만료되었거나 종료되었습니다. 다시 시작해 주세요.')
 
-    async def _scan_result(self, monitor):
+    def _require_read_admission(self):
+        try:
+            self._reads.check_admission()
+        except ReadInterrupted as error:
+            raise HTTPException(503, str(error)) from error
+
+    async def _scan_result(self, monitor, *, operation: ReadOperation | None = None):
         from hoga.api.screener_runner import run_screener_scan  # noqa: PLC0415 — request assembly
 
         with monitor_scan(monitor.id):
             return await run_screener_scan(data_dir=self.data_dir,
                 req=monitor.request.model_copy(update={'basis': 'intraday'}),
-                volume_runtime=ContinuousAdapter(self, monitor))
+                volume_runtime=ContinuousAdapter(self, monitor), operation=operation)
 
     async def result(self, monitor_id):
+        try:
+            return await self._result(monitor_id)
+        except ReadInterrupted as error:
+            raise HTTPException(503, str(error)) from error
+
+    @staticmethod
+    async def _wait_previous_result(flight):
+        try:
+            await flight.read.result()
+        except ReadInterrupted:
+            raise
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise
+        except Exception:
+            log.exception('readerless previous result finished with an error')
+
+    async def _result(self, monitor_id):
+        self._reads.check_admission()
         monitor = self.get(monitor_id)
         while True:
+            self._reads.check_admission()
             self._require_current(monitor)
             flight = monitor.result_flight
             if flight and not flight.task.done() and flight.task.cancelling():
-                await flight.finished.wait()
+                await self._wait_previous_result(flight)
                 continue
             if flight is None or flight.task.done():
                 if len(self.result_tasks) >= MAX_MONITORS:
                     raise HTTPException(409, '진행 중인 감시 결과 작업이 많습니다. 잠시 후 다시 조회해 주세요.')
-                task = asyncio.create_task(self._scan_result(monitor), name=f'screener-result-{monitor.id}')
-                flight = ResultFlight(task)
+                read = self._reads.start(lambda operation: self._scan_result(monitor, operation=operation),
+                                         name=f'screener-result-{monitor.id}')
+                task = read.task
+                flight = ResultFlight(read)
                 monitor.result_flight = flight
-                self.result_tasks.add(task)
 
                 def finished(task, flight=flight):
-                    self.result_tasks.discard(task)
                     if monitor.result_flight and monitor.result_flight.task is task:
                         monitor.result_flight = None
                     if not task.cancelled():
@@ -409,13 +458,14 @@ class ContinuousMonitors:
         flight.waiters += 1
         try:
             try:
-                response = await asyncio.shield(flight.task)
+                response = await flight.read.result()
             except asyncio.CancelledError:
                 if asyncio.current_task().cancelling():
                     raise
                 self._require_current(monitor)
                 raise
-            self._require_current(monitor)
+            if not monitor.read_shutdown:
+                self._require_current(monitor)
             return response.model_copy(deep=True)
         finally:
             flight.waiters -= 1
@@ -744,6 +794,7 @@ class ContinuousMonitors:
             await asyncio.sleep(0.25 if self.market_clock(self.now()) else 1)
 
     async def close(self):
+        (await self.wait_read_work()).log_failures()
         self.closed = True
         for monitor_id in list(self.monitors):
             self.stop(monitor_id)
@@ -757,6 +808,7 @@ class ContinuousMonitors:
             if not task.cancelling():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        (await self._evaluations.wait_read_work()).log_failures()
         with contextlib.suppress(ConnectionError, TimeoutError):
             await self.set_targets(set())
 

@@ -82,7 +82,7 @@ export class ServerController extends EventEmitter {
     this.services = [
       { id: 'backend', label: '백엔드', port: ports.backend, path: '/health', tool: config.uv,
         cwd: project, dependency: join(project, '.venv/bin/python'),
-        args: ['run', '--frozen', 'uvicorn', 'hoga.api.app:default_app', '--factory', '--host', '127.0.0.1', '--port', String(ports.backend), '--reload', '--reload-dir', 'hoga'] },
+        args: ['run', '--frozen', 'hoga', 'serve', '--host', '127.0.0.1', '--port', String(ports.backend), '--reload', '--reload-dir', 'hoga'] },
       { id: 'frontend', label: '프론트엔드', port: ports.frontend, path: '/@vite/client', tool: config.npm,
         cwd: join(project, 'frontend'), dependency: join(project, 'frontend/node_modules/vite/bin/vite.js'),
         args: ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(ports.frontend), '--strictPort'] },

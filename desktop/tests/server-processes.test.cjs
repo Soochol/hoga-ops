@@ -35,6 +35,10 @@ test('confirmed external stop terminates only the selected server tree and suppo
     await assert.rejects(c.confirmStop(plan.token), /만료/);
     await c.start();
     assert.equal(c.snapshot().services.find(s => s.id === 'backend').owner, 'managed');
+    const managed = await f.marker('backend');
+    assert.deepEqual(managed.args.slice(0, 4), ['run', '--frozen', 'hoga', 'serve']);
+    assert.ok(managed.args.includes('--reload'));
+    assert.ok(managed.args.includes('--reload-dir'));
     assert.equal(c.snapshot().services.find(s => s.id === 'frontend').owner, 'external');
     await c.stop(); assert.equal(await alive(frontend.pid), true);
   } finally { await c.stop(); c.dispose(); await f.dispose(); }
@@ -117,10 +121,10 @@ test('a server bound beyond loopback cannot be stopped through the local manager
   } finally { c.dispose(); await f.dispose(); }
 });
 
-test('a reload launcher and its opaque listener child are stopped together', async () => {
+for (const command of ['uvicorn', 'hoga']) test(`${command} reload launcher and its opaque listener child are stopped together`, async () => {
   const f = await fixture(); const c = controller(f);
   try {
-    const launcher = f.external('backend', { env: { TICKLANE_FIXTURE_RELOAD: 'backend' } }); await ready(f, 'backend');
+    const launcher = f.external('backend', { command, env: { TICKLANE_FIXTURE_RELOAD: 'backend' } }); await ready(f, 'backend');
     const listener = await f.marker('backend');
     const plan = await c.prepareStop(['backend']);
     assert.deepEqual(plan.blocked, []); assert.equal(plan.targets[0].pid, launcher.pid);

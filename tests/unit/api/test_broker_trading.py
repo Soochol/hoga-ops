@@ -841,7 +841,9 @@ async def test_preopen_exact_wire_dedup_terms_modify_rejection_and_cancel(mornin
     ref = first.json()["order_ref"]
     # Reopen the registry, then parse a vendor row which does not disclose the order type.
     adapter.registry = AccountRegistry(service.data_dir / "trading/accounts.sqlite3")
-    state = await adapter.order_state("005930", fresh=True, date="20261030")
+    # The simulated preopen clock differs from the command's actual journal date.
+    _, trading_date, _ = service.registry.resolve_order(ref, adapter.account_ref)
+    state = await adapter.order_state("005930", fresh=True, date=trading_date)
     order = next(o for o in state.orders if o.order_ref == ref)
     assert order.order_type == "PREOPEN_CLOSE"
     change = {"account_ref": adapter.account_ref, "command_id": "change-preopen", "code": "005930", "price": 67300}

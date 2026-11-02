@@ -445,7 +445,7 @@ async def test_partial_preparation_keeps_ranking_population_global(corpus, monke
 
     populations = []
 
-    async def ranking(root, req, clock, codes):
+    async def ranking(root, req, clock, codes, *, operation=None):
         populations.append(codes)
         event = ScreenerOccurrence(condition_id="rank", condition_key="rank", date=NOW.date().isoformat(),
             trade_value_rank_match=TradeValueRankMatch(rank=1, trade_value_won=1000000000, market="all", venue="KRX",
@@ -598,7 +598,7 @@ async def test_historical_rank_prepares_only_its_candidates_and_never_reads_late
     observed = int(cutoff.timestamp() * 1000)
     fetched = observed if source == "stored" else int(NOW.timestamp() * 1000)
 
-    async def ranking(root, req, clock, codes):
+    async def ranking(root, req, clock, codes, *, operation=None):
         event = ScreenerOccurrence(condition_id="rank", condition_key="rank", date=DAYS[0].isoformat(),
             trade_value_rank_match=TradeValueRankMatch(rank=1, trade_value_won=1000000000, market="all", venue="KRX",
                                                        fetched_at_ms=fetched))

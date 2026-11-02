@@ -46,17 +46,17 @@ def violation_dates(observation, basis):
     return dates
 
 
-def read(data_dir: Path, identity: str) -> Observation:
+def read(data_dir: Path, identity: str, *, stop=None) -> Observation:
     key = (str(Path(data_dir).resolve()), "daily-query-v1", identity)
-    packed = snapshots.shared.obtain(key, lambda: _load(data_dir, identity))
+    packed = snapshots.shared.obtain(key, lambda: _load(data_dir, identity, stop=stop), stop=stop)
     return pickle.loads(zlib.decompress(packed))
 
 
-def _load(data_dir, identity):
+def _load(data_dir, identity, *, stop=None):
     observation = store.read_object(data_dir, identity)
     candidate_id = observation.get("candidate_observation")
     if candidate_id:
-        candidate = read(data_dir, candidate_id).candidate
+        candidate = read(data_dir, candidate_id, stop=stop).candidate
     else:
         verified = confirmation.confirmed_dates(observation) if observation.get("confirmation") else None
         metadata = observation.get("confirmation", {})

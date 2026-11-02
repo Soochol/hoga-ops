@@ -62,6 +62,60 @@ async def start(owner, req=None, client='test'):
     return owner.get(status.id)
 
 
+@pytest.mark.parametrize('failed', [False, True])
+async def test_completed_result_is_preserved_when_shutdown_removes_monitor(fixture, monkeypatch, failed):
+    from hoga.api.models import ScreenerResponse
+
+    owner, _, _ = fixture
+    monitor = await start(owner)
+    entered, finish = asyncio.Event(), asyncio.Event()
+
+    async def scan(_monitor, **kwargs):
+        entered.set()
+        await finish.wait()
+        if failed:
+            raise ValueError('real provider error')
+        return ScreenerResponse(status='ok', rows=[])
+
+    monkeypatch.setattr(owner, '_scan_result', scan)
+    reader = asyncio.create_task(owner.result(monitor.id))
+    await entered.wait()
+    task = monitor.result_flight.task
+
+    def stop_after_completion(_task):
+        owner.begin_read_shutdown()
+        owner.monitors.clear()
+
+    task.add_done_callback(stop_after_completion)
+    finish.set()
+    if failed:
+        with pytest.raises(ValueError, match='real provider error'):
+            await reader
+    else:
+        assert (await reader).status == 'ok'
+
+
+async def test_early_retirement_keeps_monitor_and_subscription_until_final_close(fixture, monkeypatch):
+    owner, _, _ = fixture
+    monitor = await start(owner)
+    targets = []
+
+    async def set_targets(codes):
+        targets.append(set(codes))
+
+    monkeypatch.setattr(owner, 'set_targets', set_targets)
+    owner.begin_read_shutdown()
+    owner.begin_read_shutdown()
+    assert owner.monitors[monitor.id] is monitor
+    assert not owner.closed and not targets
+    with pytest.raises(HTTPException) as error:
+        await owner.result(monitor.id)
+    assert error.value.status_code == 503
+    await owner.close()
+    assert owner.closed and not owner.monitors
+    assert targets == [set()]
+
+
 async def test_prepare_and_healthy_idle_history_survive_15_seconds_without_repeated_rest(fixture):
     owner, clock, calls = fixture
     monitor = await start(owner)
@@ -306,7 +360,7 @@ async def test_result_retirement_cancels_scan_before_later_minute_work(fixture, 
         was_cancelled = cancelled.is_set()
         release.set()
         response = await reader
-        assert (was_cancelled, response.status_code, later) == (True, 404, [])
+        assert (was_cancelled, response.status_code, later) == (True, 503 if retire == 'close' else 404, [])
 
 
 async def test_overlapping_result_readers_share_work_and_cancel_independently(fixture, monkeypatch):

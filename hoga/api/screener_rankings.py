@@ -11,6 +11,7 @@ import httpx
 from fastapi import HTTPException
 
 from hoga.api.models import ChangePctRankMatch, MarketRankMatch, ScreenerOccurrence, TradeValueRankMatch
+from hoga.api.read_shutdown import ReadOperation, run_read_sync
 from hoga.api.screener_bar_policy import RANK_TYPES
 from hoga.api.screener_daily_confirmation import FINALIZATION_HOUR
 from hoga.api.screener_exclusions import condition_key
@@ -85,7 +86,7 @@ async def _fetch_kind(kind, market, venue, limit, direction="up", *, allow_last_
     return await fetcher.get(kind, market, direction, venue, limit=limit, allow_last_available=allow_last_available)
 
 
-async def evaluate(data_dir, req, now, codes):
+async def evaluate(data_dir, req, now, codes, operation: ReadOperation | None = None):
     selected = leaves(req)
     if not selected:
         return None
@@ -101,7 +102,8 @@ async def evaluate(data_dir, req, now, codes):
     identities = sorted({(leaf.type, _direction(leaf)) for leaf in selected})
     groups = [[leaf for leaf in selected if (leaf.type, _direction(leaf)) == identity] for identity in identities]
     results = await asyncio.gather(*(
-        _evaluate_kind(data_dir, req, now, codes, market, group, session) for group in groups if group
+        _evaluate_kind(data_dir, req, now, codes, market, group, session,
+            operation=operation) for group in groups if group
     ))
     provider = next((result for result in results if result.basis and result.basis.source == "provider"), None)
     # A mixed stored/provider scan has no common observation time. Its other
@@ -114,14 +116,14 @@ async def evaluate(data_dir, req, now, codes):
     )
 
 
-async def _read_snapshot(data_dir, req, session, market, selected):
+async def _read_snapshot(data_dir, req, session, market, selected, operation: ReadOperation | None = None):
     kind, label = _SPECS[selected[0].type]
     direction = _direction(selected[0])
     limit = max(leaf.params.top_n for leaf in selected)
     if not session.can_fetch:
         from hoga.live import ranking_history  # noqa: PLC0415 — avoid dataclass import cycle
 
-        snapshot = await asyncio.to_thread(
+        snapshot = await run_read_sync(operation,
             ranking_history.load, data_dir, session, kind, market, direction, req.venue, limit)
         if snapshot is not None:
             return snapshot
@@ -175,12 +177,12 @@ def _validate_snapshot(snapshot, req, now, market, selected, session):
             raise _error(502, "invalid_rank", f"키움 {label} 응답의 수량·금액이 올바르지 않습니다")
 
 
-async def _evaluate_kind(data_dir, req, now, codes, market, selected, session):
+async def _evaluate_kind(data_dir, req, now, codes, market, selected, session, operation: ReadOperation | None = None):
     kind, _ = _SPECS[selected[0].type]
     if session.can_fetch and kind in _INVESTORS and now.time() < dt.time(9):
         raise _error(409, "session_unavailable", "기관·외국인 추정 순위는 정규장 개장 이후 조회할 수 있습니다.")
     started = time.monotonic()
-    snapshot = await _read_snapshot(data_dir, req, session, market, selected)
+    snapshot = await _read_snapshot(data_dir, req, session, market, selected, operation=operation)
     _validate_snapshot(snapshot, req, now + dt.timedelta(seconds=time.monotonic() - started), market, selected, session)
     universe = set(codes or [])
     events = {

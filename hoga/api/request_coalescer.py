@@ -12,13 +12,19 @@ from typing import Generic, TypeVar
 
 from fastapi import HTTPException, Request
 
+from hoga.api.read_shutdown import ReadDrainReport, ReadFlight, ReadInterrupted, ReadOperation, ReadWork
+
 T = TypeVar("T")
 
 
 @dataclass
 class _Flight(Generic[T]):
-    task: asyncio.Task[T]
+    read: ReadFlight[T]
     readers: int = 0
+
+    @property
+    def task(self) -> asyncio.Task[T]:
+        return self.read.task
 
 
 async def _disconnected(request: Request) -> None:
@@ -36,43 +42,47 @@ def _consume_result(task: asyncio.Task) -> None:
 class ReadRequestCoalescer(Generic[T]):
     def __init__(self) -> None:
         self._inflight: dict[str, _Flight[T]] = {}
-        self._tasks: set[asyncio.Task[T]] = set()
-        self._closed = False
+        self._work = ReadWork()
+        self._tasks = self._work.tasks
+
+    def begin_read_shutdown(self) -> None:
+        self._work.begin_read_shutdown()
+
+    async def wait_read_work(self) -> ReadDrainReport:
+        return await self._work.wait_read_work()
 
     async def aclose(self) -> None:
-        self._closed = True
-        tasks = list(self._tasks)
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        (await self.wait_read_work()).log_failures()
 
-    def _finished(self, task: asyncio.Task[T]) -> None:
-        self._tasks.discard(task)
-        _consume_result(task)
+    async def run(self, key: str, factory: Callable[[ReadOperation], Awaitable[T]], request: Request) -> T:
+        try:
+            return await self._run(key, factory, request)
+        except ReadInterrupted as error:
+            raise HTTPException(503, str(error)) from error
 
-    async def run(self, key: str, factory: Callable[[], Awaitable[T]], request: Request) -> T:
-        if self._closed:
-            raise HTTPException(503, "read requests are shutting down")
+    async def _run(self, key: str, factory: Callable[[ReadOperation], Awaitable[T]], request: Request) -> T:
+        self._work.check_admission()
         flight = self._inflight.get(key)
         if flight is None:
-            task = asyncio.create_task(factory())
-            self._tasks.add(task)
-            task.add_done_callback(self._finished)
-            flight = self._inflight[key] = _Flight(task)
+            flight = self._inflight[key] = _Flight(self._work.start(factory))
         flight.readers += 1
         disconnected = asyncio.create_task(_disconnected(request))
+        result = asyncio.create_task(flight.read.result())
         try:
             done, _ = await asyncio.wait(
-                (flight.task, disconnected), return_when=asyncio.FIRST_COMPLETED,
+                (result, disconnected), return_when=asyncio.FIRST_COMPLETED,
             )
             if disconnected in done:
                 disconnected.result()
                 raise HTTPException(499, "client disconnected")
-            return flight.task.result()
+            return result.result()
         finally:
+            result.cancel()
+            result.add_done_callback(_consume_result)
             disconnected.cancel()
             disconnected.add_done_callback(_consume_result)
             flight.readers -= 1
             if flight.readers == 0:
                 self._inflight.pop(key, None)
-                flight.task.cancel()
+                if not flight.task.done() and not flight.task.cancelling():
+                    flight.task.cancel()

@@ -66,7 +66,11 @@ process.on('SIGTERM',()=>{
   return { project, config, settings, env, ports,
     marker: async id => JSON.parse(await readFile(join(project, `${id}.json`), 'utf8')),
     external: (id, options = {}) => {
-      const args = id === 'backend' ? ['run', '--frozen', 'uvicorn', 'hoga.api.app:default_app', '--factory'] : ['run', 'dev', '--'];
+      const args = id === 'backend'
+        ? (options.command === 'hoga'
+          ? ['run', '--frozen', 'hoga', 'serve', '--reload', '--reload-dir', 'hoga']
+          : ['run', '--frozen', 'uvicorn', 'hoga.api.app:default_app', '--factory'])
+        : ['run', 'dev', '--'];
       const child = spawn(id === 'backend' ? uv : npm, [...args, '--port', String(ports[id])], {
         cwd: options.cwd ?? (id === 'backend' ? project : join(project, 'frontend')),
         env: { ...process.env, ...env, ...options.env }, detached: true, stdio: 'ignore',

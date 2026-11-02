@@ -1,7 +1,6 @@
 """Candle turnover estimates and explicitly referenced price changes."""
 from __future__ import annotations
 
-import asyncio
 import bisect
 import datetime as dt
 import logging
@@ -13,6 +12,7 @@ import polars as pl
 
 from hoga.api import screener_bar_price, screener_exclusions, trading_days
 from hoga.api.models import BarChangeMatch, BarTradeValueMatch, ScreenerOccurrence
+from hoga.api.read_shutdown import ReadInterrupted, ReadOperation, run_read_sync
 from hoga.api.screener_bar_policy import CHANGE_TYPES, RANGE_PARAMS, TRADE_VALUE_TYPES, lookback
 from hoga.api.screener_write_lock import screener_read_lock
 from hoga.util.timeenc import KST
@@ -130,13 +130,15 @@ def _raw_references(data_dir, code, bars):
     return out
 
 
-async def prepare_minutes(leaf, data, data_dir, code, anchor):
+async def prepare_minutes(leaf, data, data_dir, code, anchor, operation: ReadOperation | None = None):
     if leaf.type in TRADE_VALUE_TYPES:
         return data, None  # Price adjustment with unadjusted volume would corrupt turnover.
     references = {}
     if leaf.type in CHANGE_TYPES and leaf.params.change_reference == "previous_day":
         try:
-            references = await asyncio.to_thread(_raw_references, data_dir, code, data)
+            references = await run_read_sync(operation, _raw_references, data_dir, code, data)
+        except ReadInterrupted:
+            raise
         except Exception:
             log.exception("스크리너 전일 종가 읽기 실패: %s", code)
     raw = [*data, *references.values()]

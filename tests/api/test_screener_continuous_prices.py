@@ -406,7 +406,7 @@ async def test_prior_selected_day_price_leaves_keep_adjustment_fallback(live_pri
     async def loader(*_args, **_kwargs):
         return volume.MinuteSnapshot([replace(bar, is_open=False) for bar in s.rows], s.clock.now)
 
-    async def adjusted(leaf, data, _dir, code, anchor):
+    async def adjusted(leaf, data, _dir, code, anchor, operation=None):
         seen.append((leaf.id, code, anchor))
         return [replace(bar, **{name: getattr(bar, name) * 2 for name in prices.PRICE_FIELDS}) for bar in data], None
 
