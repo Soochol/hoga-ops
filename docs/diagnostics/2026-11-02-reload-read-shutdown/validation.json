@@ -1,0 +1,93 @@
+{
+  "recorded_at_kst": "2026-11-02T14:45:50.804392+09:00",
+  "base": "a712f83d0c26b86acbb91bbbadc27e6ab36f78aa",
+  "head_before_commit": "a712f83d0c26b86acbb91bbbadc27e6ab36f78aa",
+  "environment": {
+    "python": "3.14.7",
+    "pytest": "9.0.3",
+    "ruff": "0.15.13",
+    "uvicorn": "0.47.0",
+    "fastapi": "0.136.1",
+    "httpx": "0.28.1",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "os": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43"
+  },
+  "fingerprints": {
+    "repository_excluding_validation_artifacts": "7f87cb5eee4b14061abdeb0b62d89911fdf4107cc47bbf2f965cc7aa81da4d14",
+    "desktop": "856b334e9da795ad78db220d84cf5fcd36543375e9e3cbf4c5ce8230f02e5085"
+  },
+  "algorithm": "SHA256(sorted git ls-files -co --exclude-standard paths + NUL + binary SHA256(file bytes) + LF); excludes this validation directory",
+  "completed_at_kst": "2026-11-02T14:52:04.008494+09:00",
+  "branch": "codex/reload-read-shutdown",
+  "validated_tree": "Uncommitted implementation on head_before_commit; all listed fingerprints were verified unchanged after final tests. The commit containing this record contains these source bytes.",
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "8287 passed, 2 skipped, 13 deselected, 82 warnings in 407.21s",
+      "log_sha256": "b40200e1362643b93e68da01e51d98c234a4c777ef0c04d134a57937e2ac67be"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/integration/test_reload_compute_ownership.py tests/integration/test_reload_read_shutdown.py tests/unit/test_server.py tests/unit/api/test_read_shutdown.py",
+      "result": "24 passed, 2 warnings in 21.22s; also included in final full suite"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener_runs.py tests/unit/api/test_broker_trading.py",
+      "result": "118 passed, 1 warning in 14.42s; also included in final full suite"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run typecheck && npm run lint && npm test",
+      "result": "typecheck and lint passed; build succeeded; 20 tests passed",
+      "log_sha256": "01317a1a81d6e4a6c143675187c563e662487e4602fba3270d8c59ccb0287f96",
+      "reuse": "Desktop source, tests, configuration, dependencies and VERSION unchanged since successful run."
+    },
+    {
+      "command": "uv run --frozen hoga serve --help",
+      "result": "passed; reload flags exposed; server not started"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "integration_assertions": [
+    "10 actual-app file-triggered reloads (5 cooperative + 5 noncooperative)",
+    "HTTP read 503 precedes release of held noncooperative work",
+    "Actual thread terminal completion precedes volume teardown",
+    "Atomic publication completes with 200 during read retirement",
+    "New PID /health succeeds; old PID exits; child-only factory; no traceback or semaphore warnings",
+    "Real shared process pool retains read slot until execution completes; queued capture parse and depth save succeed",
+    "Real CommandJournal and dispatch_command preserve order acceptance and restart deduplication with a fake gateway",
+    "Completed success/error, external cancellation, deleted-monitor 404 and late-after-retirement results retain distinct outcomes",
+    "Signal-free should_exit and ordinary-drain fallback paths verified",
+    "Desktop recognizes existing uvicorn and new hoga reload trees and safely stops only confirmed fixture processes"
+  ],
+  "baseline_test_repair": {
+    "base": "a712f83d0c26b86acbb91bbbadc27e6ab36f78aa",
+    "result": "2 preopen journal tests fail unchanged on archived main with date mismatch; query changed to persisted order date, all original assertions preserved",
+    "command": "git archive a712f83d0 hoga tests pyproject.toml uv.lock .python-version ruff.toml VERSION into an isolated temporary checkout; run python -m pytest -q tests/unit/api/test_broker_trading.py -k preopen_exact_wire",
+    "log_sha256": "d9a492f7a7f22125f1bdc286d5fbe12a023090bf8d3b5ef419f88c0d8fa3b6c9"
+  },
+  "limits": [
+    "No production latency or speedup claim; synthetic scan work only in reload integration.",
+    "Native queries and already-running process jobs still drain to actual completion; no total restart deadline.",
+    "No new forced repeated SIGINT, partial-startup or credentialed full collector test.",
+    "No production server restart or installed desktop app update; existing uvicorn supervisor needs one restart through the new runner.",
+    "API health does not establish broker WS registration readiness."
+  ],
+  "user_server_observation": {
+    "backend_app_pid": 3985904,
+    "backend_reloader_pid": 3430046,
+    "frontend_pid": 3430055,
+    "ports": [
+      8000,
+      5173
+    ],
+    "unchanged": true
+  }
+}

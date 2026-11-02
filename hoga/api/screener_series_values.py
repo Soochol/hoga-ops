@@ -11,6 +11,7 @@ from pathlib import Path
 import polars as pl
 
 from hoga.api import screener_series_store as store, screener_snapshot_cache as snapshots
+from hoga.api.read_shutdown import checkpoint
 
 
 @dataclass
@@ -91,17 +92,18 @@ def _confirmed_observation(data_dir, manifest, observation):
 
 
 def load_series(
-    data_dir: Path, manifest: dict, codes: list[str], *, first=dt.date.min, last=dt.date.max
+    data_dir: Path, manifest: dict, codes: list[str], *, first=dt.date.min, last=dt.date.max, stop=None
 ) -> dict[str, Series]:
     # Keep compact display/recent windows. Long historical scans must not build
     # another unbounded copy of the full daily corpus in RAM.
     if last - first > dt.timedelta(days=32):
-        return _load_series(data_dir, manifest, codes, first=first, last=last)
+        return _load_series(data_dir, manifest, codes, first=first, last=last, stop=stop)
     return snapshots.obtain(data_dir, manifest, 'series', (tuple(codes), first, last),
-                            lambda: _load_series(data_dir, manifest, codes, first=first, last=last))
+                            lambda: _load_series(data_dir, manifest, codes, first=first, last=last, stop=stop),
+                            stop=stop)
 
 
-def _load_series(data_dir, manifest, codes, *, first, last):
+def _load_series(data_dir, manifest, codes, *, first, last, stop=None):
     raw = (
         pl.scan_parquet(store.baseline_path(data_dir, manifest, "daily_unadjusted.parquet"))
         .filter(pl.col("code").is_in(codes), pl.col("date").is_between(first, last))
@@ -112,6 +114,7 @@ def _load_series(data_dir, manifest, codes, *, first, last):
     guard = store.read_object(data_dir, manifest["daily_ingest"]) if manifest.get("daily_ingest") else None
     from hoga.api.screener_daily_quality import reason  # noqa: PLC0415 — shared availability semantics
     for code in codes:
+        checkpoint(stop)
         frame = by_code.get((code,))
         original = (
             {row["date"]: {**row, "date": row["date"].isoformat()} for row in frame.iter_rows(named=True)}

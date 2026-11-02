@@ -39,6 +39,7 @@ from hoga.api.models import (
     HistoryDateRangeParams,
     ScreenerOccurrence,
 )
+from hoga.api.read_shutdown import ReadInterrupted, ReadOperation, checkpoint, run_read_sync
 from hoga.api.screener_bar_policy import (
     BOLLINGER_TYPES,
     CANDLE_TYPES,
@@ -428,7 +429,7 @@ async def _load_minutes(key, data_dir, code, timeframe, needed, lower, as_of):
     return result
 
 
-def _evaluate_calendar(result, selected, codes, values, days, as_of, data_dir=None):
+def _evaluate_calendar(result, selected, codes, values, days, as_of, data_dir=None, *, stop=None):
     evidence = screener_history_evidence.load(data_dir) if data_dir is not None else {}
     incomplete = set()
     windows = {leaf.id: _required_windows(leaf, days, as_of) for leaf in selected}
@@ -436,6 +437,7 @@ def _evaluate_calendar(result, selected, codes, values, days, as_of, data_dir=No
         expected = sorted({day for window in windows[leaf.id] for day in window[0]})
         calendar_complete = _calendar_complete(leaf, windows[leaf.id], days, as_of)
         for code in codes:
+            checkpoint(stop)
             bars = calendar_bars(values.get(code, {}), days, timeframe=leaf.params.timeframe,
                                  as_of=as_of, windows=windows[leaf.id])
             events, complete = records(leaf, bars, fetched_at_ms=int(time.time() * 1000))
@@ -483,7 +485,7 @@ def _calendar_complete(leaf, windows, days, as_of):
     return len(windows) >= needed
 
 
-async def _evaluate_day_leaf(leaf, code, data_dir, now, sem, scope):
+async def _evaluate_day_leaf(leaf, code, data_dir, now, sem, scope, operation: ReadOperation | None = None):
     p = leaf.params
     if scope.pending:
         return leaf, code, [], False, "minute_preparation_pending"
@@ -512,34 +514,37 @@ async def _evaluate_day_leaf(leaf, code, data_dir, now, sem, scope):
             data, reason = _historical_minutes(snapshot.bars, p.include_open_bar, scope.cutoff)
         if leaf.type not in VOLUME_TYPES:
             data, price_reason = await screener_bar_threshold.prepare_minutes(
-                leaf, data, data_dir, code, now.astimezone(KST).strftime("%Y%m%d"))
+                leaf, data, data_dir, code, now.astimezone(KST).strftime("%Y%m%d"), operation=operation)
             reason = reason or price_reason
-        events, complete = await asyncio.to_thread(records, leaf, data, fetched_at_ms=snapshot.fetched_at_ms)
+        events, complete = await run_read_sync(operation, records, leaf, data, fetched_at_ms=snapshot.fetched_at_ms)
         reason = snapshot.reason or reason
         if not data and reason is None:
             reason = "minute_day_unavailable"
         if not complete and reason is None:
             reason = "insufficient_day_bars"
         return leaf, code, events, complete and reason is None, reason
+    except ReadInterrupted:
+        raise
     except Exception as exc:
         log.exception("single-day minute evaluation failed: %s", code)
         return leaf, code, [], False, classify_live_error(exc).reason
 
 
 async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetch_codes, sem, volume_runtime,
-                                historical=False):
+                                historical=False, operation: ReadOperation | None = None):
     scope = screener_minute_scope.current.get()
     if scope is not None:
-        return await _evaluate_day_leaf(leaf, code, data_dir, now, sem, scope)
+        return await _evaluate_day_leaf(leaf, code, data_dir, now, sem, scope, operation=operation)
     if (basis == 'intraday' and volume_runtime and hasattr(volume_runtime, 'evaluate_leaf')
             and volume_runtime.supports(leaf) and not historical):
         return await volume_runtime.evaluate_leaf(leaf, code, int(time.time() * 1000))
     return await _evaluate_minute_window(leaf, code, data_dir=data_dir, as_of=as_of, now=now,
-        basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime, historical=historical)
+        basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime, historical=historical,
+            operation=operation)
 
 
 async def _evaluate_minute_window(leaf, code, *, data_dir, as_of, now, basis, fetch_codes, sem, volume_runtime,
-                                  historical=False):
+                                  historical=False, operation: ReadOperation | None = None):
     p = leaf.params
     lower = dt.date.fromisoformat(p.start_date) if isinstance(p, RANGE_PARAMS) else None
     needed = comparison_period(leaf) + (0 if lower else lookback(leaf) - 1) + (not p.include_open_bar)
@@ -579,11 +584,11 @@ async def _evaluate_minute_window(leaf, code, *, data_dir, as_of, now, basis, fe
                         data = data[-(comparison_period(leaf) + lookback(leaf) - 1):]
                     data, price_reason = await screener_bar_threshold.prepare_minutes(
                         leaf, data, data_dir, code, (now.astimezone(KST) if now.tzinfo else
-                                               now.replace(tzinfo=KST)).strftime("%Y%m%d"))
+                                               now.replace(tzinfo=KST)).strftime("%Y%m%d"), operation=operation)
                     adjustment_reason = adjustment_reason or price_reason
     except TimeoutError:
         return leaf, code, [], False, "fetch_timeout"
-    events, complete = await asyncio.to_thread(records, leaf, data,
+    events, complete = await run_read_sync(operation, records, leaf, data,
                                                fetched_at_ms=snapshot.fetched_at_ms)
     for event in events:
         if event.bar_match and event.bar_start_ms in lower_bounds:
@@ -607,7 +612,8 @@ def _historical_minutes(bars, include_open, cutoff):
 
 
 async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
-                   daily_fallback_codes: set[str] | None = None, volume_runtime=None, cutoff=None) -> Evaluation:
+                   daily_fallback_codes: set[str] | None = None, volume_runtime=None, cutoff=None,
+                       operation: ReadOperation | None = None) -> Evaluation:
     selected = leaves(conditions)
     result = Evaluation(BarVolumeCoverage(total=len(codes), complete=0),
                         {leaf.id: [] for leaf in selected})
@@ -629,10 +635,10 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
     for group, group_cutoff, daily_overlay in groups:
         if not calendar_leaves or not group:
             continue
-        values, days = await asyncio.to_thread(
+        values, days = await run_read_sync(operation,
             _daily_values, data_dir, group, daily_overlay, group_cutoff, calendar_leaves)
-        incomplete.update(await asyncio.to_thread(
-            _evaluate_calendar, result, calendar_leaves, group, values, days, group_cutoff, data_dir))
+        incomplete.update(await run_read_sync(operation,
+            _evaluate_calendar, result, calendar_leaves, group, values, days, group_cutoff, data_dir, stop=operation))
     minute_leaves = [leaf for leaf in selected if leaf.params.timeframe.endswith("m")]
     if minute_leaves:
         # Rotate the bounded REST batch so repeated monitoring covers the whole
@@ -646,7 +652,8 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
         sem = asyncio.Semaphore(4)
 
         evaluations = await asyncio.gather(*(_evaluate_minute_leaf(leaf, code, data_dir=data_dir, as_of=as_of, now=now,
-            basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime, historical=cutoff is not None)
+            basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime, historical=cutoff is not None,
+                operation=operation)
             for leaf in minute_leaves for code in codes))
         for leaf, code, events, complete, reason in evaluations:
             result.events[leaf.id].extend((code, event) for event in events)

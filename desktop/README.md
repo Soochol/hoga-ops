@@ -55,7 +55,7 @@ npm run install:server -- --project-root /home/dev/code/hoga-ops
 
 소스로 실행하는 서버 관리 창은 `desktop/src/server-ui/`의 `index.html`, `server.css`, `server.js`를 직접 읽는다. 파일을 저장하면 화면만 자동으로 다시 불러오므로 UI 수정마다 빌드하거나 관리 앱을 재시작할 필요가 없다. Electron 메인 프로세스와 서버 제어기는 유지되며 관리 중인 서버의 PID·로그·시작/중지 권한도 유지된다. 실행 기록의 펼침 상태와 자동 스크롤 선택도 복원한다. 창을 숨겨 둔 동안에는 파일이 바뀌어도 창이 자동으로 나타나지 않는다. 설치된 로컬 **Ticklane 서버** 바로가기에도 자동 적용된다. `.deb`/ZIP 배포본은 동봉된 UI를 사용하며 파일 감시를 하지 않는다. Electron 메인·preload·서버 제어 코드 변경은 기존대로 빌드와 관리 앱 재시작이 필요하다.
 
-백엔드는 기존 uvicorn 개발 실행 명령을 사용하고 프론트는 Vite로 실행하므로 코드 변경 시 백엔드 재시작과 프론트 HMR을 유지한다. Python·Node와 프로젝트를 동봉한 독립 서버 배포 파일은 아니며, 이 PC의 개발 환경을 사용하는 관리 앱이다.
+백엔드는 `uv run --frozen hoga serve --reload --reload-dir hoga`로, 프론트는 Vite로 실행한다. 백엔드 reload 시 등록된 스크리너 조회를 먼저 중단하고 실제 작업을 정리한다. 기존 uvicorn으로 실행 중인 백엔드에는 서버를 한 번 종료하고 새 관리 앱에서 시작한 뒤 적용된다. Python·Node와 프로젝트를 동봉한 독립 서버 배포 파일은 아니며, 이 PC의 개발 환경을 사용하는 관리 앱이다.
 
 저장소의 Node 24 환경에서 실행한다.
 

@@ -41,12 +41,14 @@ from hoga.api.models import (
     ScreenerUpdateSkipReason,
 )
 from hoga.api.mutation_broadcast import mutation_broadcast_route_class
+from hoga.api.read_shutdown import ReadShutdown
 from hoga.api.request_coalescer import ReadRequestCoalescer
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR as _SCREENER_EOD_CUTOFF_HOUR
 from hoga.api.screener_continuous import build_router as continuous_router, make_owner
 from hoga.api.screener_daily_confirmation import FINALIZATION_HOUR
 from hoga.api.screener_runs import ScreenerRuns, build_router as runs_router
 from hoga.api.screener_store import DailyBar
+from hoga.api.shutdown_timing import shutdown_phase
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kiwoom_access, kiwoom_rest_runtime
 from hoga.util.timeenc import KST
@@ -489,7 +491,12 @@ def _build_pattern_saves_router(data_dir: Path, bus) -> APIRouter:
     return pat_saves
 
 
-def _read_requests_lifespan(*coalescers: ReadRequestCoalescer, volume_runtime=None, live_buffer=None, continuous=None):
+def _read_requests_lifespan(*coalescers: ReadRequestCoalescer, volume_runtime=None,
+                            live_buffer=None, continuous=None, read_shutdown=None):
+    reads = read_shutdown or ReadShutdown()
+    for owner in (*coalescers, *((continuous,) if continuous is not None else ())):
+        reads.register(owner)
+
     @contextlib.asynccontextmanager
     async def lifespan(_app):
         release = (live_buffer.observe_trades(volume_runtime.ingest, volume_runtime.gap)
@@ -497,6 +504,8 @@ def _read_requests_lifespan(*coalescers: ReadRequestCoalescer, volume_runtime=No
         try:
             yield
         finally:
+            with shutdown_phase("screener_read_work"):
+                (await reads.wait_finished()).log_failures()
             if release:
                 release()
             if continuous:
@@ -525,7 +534,7 @@ def _include_series_routers(router, data_dir):
 
 
 def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = None,
-                 live_buffer=None, volume_targets=None) -> APIRouter:
+                 live_buffer=None, volume_targets=None, read_shutdown: ReadShutdown | None = None) -> APIRouter:
     global _module_bus  # noqa: PLW0603
     _module_bus = bus   # 스케줄러발 trigger_update(bus 미전달)도 같은 버스로 발행
     # 패턴 검색이 도는 자리(ADR-0169). 안 넘기면 스레드 — 종전 `asyncio.to_thread` 와 같다.
@@ -539,7 +548,7 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     router = APIRouter(
         prefix="/api/screener", tags=["screener"],
         lifespan=_read_requests_lifespan(scan_requests, pattern_requests,
-            volume_runtime=volume_runtime, live_buffer=live_buffer, continuous=continuous),
+            volume_runtime=volume_runtime, live_buffer=live_buffer, continuous=continuous, read_shutdown=read_shutdown),
     )
     router.include_router(continuous_router(continuous))
     from hoga.api.screener_history_jobs import build_router as history_router  # noqa: PLC0415 — router import
@@ -555,16 +564,17 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
         # 동일 바디의 동시 요청은 하나의 스캔으로 합친다(모니터링·멀티탭 중복 제거).
         key = f"{data_dir}:{screener_exclusions.revision(data_dir, req.calculation_policy)}:{req.model_dump_json()}"
         return await scan_requests.run(
-            key, lambda: screener_runner.run_screener_scan(
-                data_dir=data_dir, req=req, volume_runtime=volume_runtime), request)
+            key, lambda operation: screener_runner.run_screener_scan(
+                data_dir=data_dir, req=req, volume_runtime=volume_runtime, operation=operation), request)
 
     @router.post("/pattern-search")
     async def pattern_search(req: PatternSearchRequest, request: Request) -> PatternSearchResponse:
         """동일 검색은 공유하고 모든 클라이언트가 떠난 대기 검색은 제출 전에 버린다."""
         return await pattern_requests.run(
             req.model_dump_json(),
-            lambda: compute_jobs.run_job(
+            lambda operation: compute_jobs.run_job(
                 pools.wide, compute_jobs.pattern_search_job, str(data_dir), req,
+                operation=operation,
             ),
             request,
         )

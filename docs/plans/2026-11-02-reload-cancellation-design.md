@@ -1,7 +1,8 @@
 # Reload 시작 시 조회 중단과 실제 작업 종료 확인
 
-상태: 테스트 근거를 갖춘 설계 제안. 2026-11-02 사용자 요청은 테스트와 설계 작성까지다.
-이번 작업은 진단용 앱·드라이버·결과만 추가하며 제품 서버와 실행기를 변경하지 않는다.
+상태: 2026-11-02 구현. `hoga serve`와 데스크톱·VSCode 개발 실행기에 적용한다.
+기존 실행 중인 uvicorn supervisor에는 한 번 새 실행 명령으로 재기동한 뒤 적용된다.
+이 작업에서는 사용자 서버를 재시작하지 않았다.
 
 ## 문제와 확인한 사실
 
@@ -12,9 +13,9 @@
 [관측 원문과 범위](../diagnostics/2026-11-02-reload-cancellation/observed-reload.json).
 
 설치된 Uvicorn 0.47.0은 listener와 connection에 종료를 통지하고,
-진행 HTTP 응답·ASGI task를 기다린 뒤 lifespan을 종료한다. 현재 스크리너의
-`ContinuousMonitors.close()`와 `ReadRequestCoalescer.aclose()`는 router lifespan에
-있다. 조회를 취소하는 현재 위치로는 앞선 연결 대기를 줄일 수 없다.
+진행 HTTP 응답·ASGI task를 기다린 뒤 lifespan을 종료한다. 변경 전 스크리너의
+`ContinuousMonitors.close()`와 `ReadRequestCoalescer.aclose()`는 router lifespan에서만
+호출됐다. 이 위치에서 조회를 취소하면 앞선 연결 대기를 줄일 수 없다.
 
 다만 HTTP 취소가 실제 계산의 종료를 뜻하지 않는다. `asyncio.to_thread`의 동기 작업과
 이미 제출된 `ComputeExecutor` 작업은 별도의 완료 확인이 필요하다. 공용 wide 풀에는
@@ -44,7 +45,8 @@
 
 ## 호출자가 사용하는 형태
 
-새 심볼과 아래 코드는 구현용 스케치이며 아직 제품 코드에 존재하지 않는다.
+아래 코드는 조립 경계를 보여 준다. 실제 구현은 `hoga/server.py`와
+`hoga/api/read_shutdown.py`에 있다.
 
 ### 서버 실행기
 
@@ -54,13 +56,15 @@
 supervisor에서 앱 factory나 vendor client를 미리 생성하지 않는다.
 
 ```python
-class _ReadDrainServer(uvicorn.Server):
+class ReadDrainServer(uvicorn.Server):
     async def _wait_tasks_to_complete(self) -> None:
         try:
-            reads = read_shutdown_from_state(self.lifespan.state)
+            reads = self.lifespan.state[STATE_KEY]
+            if not isinstance(reads, ReadShutdown):
+                raise TypeError("invalid read shutdown boundary")
             reads.begin()
         except Exception:
-            logger.exception("reload.read_retirement_failed; ordinary drain continues")
+            log.exception("reload.read_retirement_unavailable; ordinary drain continues")
         await super()._wait_tasks_to_complete()
 ```
 
@@ -70,8 +74,8 @@ state 조회·검증도 fallback 범위 안에 있다. state 누락, 초기화 �
 명시적인 진단 실패로 남기고 표준 drain과 lifespan을 계속한다. 빠른 종료 성공으로
 집계하지 않는다.
 
-초기 지원 버전은 재현한 Uvicorn **0.47.0**으로 고정한다. 구현 시 의존성 선언과 lock을
-같이 맞추고, 다른 버전에서는 조기 중단 기능을 비활성화하고 경고한 뒤 표준 종료를
+지원 버전은 재현한 Uvicorn **0.47.0**으로 의존성 선언과 lock에 고정한다.
+다른 버전에서는 조기 중단 기능을 비활성화하고 경고한 뒤 표준 종료를
 사용한다. 지원 버전 확대는 아래 실제 reload 계약 시험을 통과한 변경으로만 수행한다.
 private hook과 ChangeReload 결합은 `hoga/server.py` 안에 한정한다.
 
@@ -108,8 +112,8 @@ owner 등록은 해당 owner를 생성하는 조립점에 둔다. root에서 같
 FastAPI 조립 시험으로 고정한다.
 
 **root finally의 대기만으로는 충분하지 않다.** FastAPI의 중첩 router lifespan은 root보다
-먼저 종료된다. 현재 `_read_requests_lifespan`은 observer를 먼저 해제하므로, 이 함수의
-finally **첫머리**에도 완료 확인을 넣어야 한다.
+먼저 종료된다. `_read_requests_lifespan`의 finally 첫머리에서 완료를 기다린 뒤
+observer를 해제한다.
 
 ```python
 # screener.py: _read_requests_lifespan의 finally
@@ -175,7 +179,7 @@ class ReadOperation:
         raise NotImplementedError
 
     async def run_sync[T](self, fn: Callable[[], T]) -> T:
-        """실제 실행 task를 shield하고 완료까지 강하게 보유. caller 취소와 분리."""
+        """실제 실행 task를 완료까지 강하게 보유. caller 취소와 분리."""
         raise NotImplementedError
 ```
 
@@ -197,7 +201,7 @@ owner를 연결하고 같은 종료를 한 번 시작하는 경계다. task 이�
 것은 허용하지 않는다. 아직 실행 중이면 소유권을 유지하고 기다려야 한다. 강제 종료에
 따른 외부 cancellation은 정상 report로 바꾸지 않는다.
 
-HTTP 독자는 실제 flight 완료와 retirement event를 함께 기다린다. 실제 완료가 이미
+HTTP 독자는 실제 flight 완료와 retirement event를 함께 기다린다. begin 전에 실제 완료가 이미
 있으면 그 성공 또는 오류를 우선한다. 해당 미완료 flight가 서버 종료로 retirement된
 경우에만 `ReadInterrupted`를 503으로 변환한다. 공급자·SQL 오류, 모니터 삭제의 404,
 caller disconnect와 외부 ASGI cancellation을 shutdown 503으로 덮어쓰지 않는다.
@@ -319,5 +323,44 @@ future·semaphore 경고·writer lock을 확인한다. 빠른 재기동이라도
 - process pool 강제 종료나 wait=False로 바꾸는 후속안은 기존 ADR과 충돌하므로 별도
   결정 변경과 증명이 필요하다. 이번 안은 이를 채택하지 않는다.
 
-아직 구현 편차는 없다. 다음 구현은 실제 worker 완료 추적과 Event 기반 시험부터
-시작하며, 제품 적용 전 위 신규 통합 gate를 통과해야 한다.
+## 구현과 검증 범위
+
+`ReadWork`가 owner 내부의 flight와 동기 작업 task를 보유한다. 각 호출은
+`ReadOperation`을 명시적으로 전달한다. `run_sync()`는 `asyncio.wait()`로 실제 thread
+작업을 기다려 caller 취소가 전파되지 않게 한다. Python 3.14의 `shield()`는 취소 후
+발생한 내부 예외를 별도 로그로 남기므로, 예상된 `ReadInterrupted`가 오류 로그로
+새지 않는 이 형태를 사용한다. aggregate 완료 task에는 기존 `shield()`를 유지한다.
+
+일반 조회·감시 결과의 동기 실행과 공유 snapshot cache에 checkpoint를 연결했다.
+미완료 flight가 retirement되면 이후 정상 반환도 503으로 처리한다. begin 전에 끝난
+성공·오류는 그대로 반환하며, 외부 caller 취소·감시 삭제의 404도 유지한다.
+취소된 snapshot loader를 공유하던 다른 실행은 자신의 loader로 다시 조회한다.
+
+continuous result와 공유 evaluation은 별도의 `ReadWork`를 소유한다. 조기 begin은
+result admission과 flight만 중단한다. 최종 drain은 공유 evaluation의 실제 thread
+완료까지 기다린다. 분봉 준비·수정계수·공유 일중 데이터의 벤더 task, volume target,
+trade observer, collector는 기존 소유자가 정리한다. 이들을 조회 token으로 중단하지 않는다.
+process 계산은 기존 executor가 실행 future와 slot을 보유하고 `aclose(wait=True)`로
+완료를 기다린다. 공용 wide 풀의 capture parse/save를 조기 종료하지 않는다.
+
+`reload.shutdown_phase`는 `screener_read_work`, `read_work`, `symbols`, `orders`,
+`background_tasks`, `compute`, `history_jobs`, `quotes`, `live_runtime`,
+`capture_workers`, `observer`의 경과 시간과 결과를 기록한다. 기존 request timing과
+Uvicorn의 프로세스·startup 로그를 함께 사용한다. collector flush와 writer lock 반환은
+`live_runtime` 내부이며 별도 계측은 추가하지 않았다. API 준비는 WS 재등록 완료를
+뜻하지 않는다.
+
+자동 검증은 실제 앱 조립·router·WatchFiles·새 실행기를 임시 포트와 무자격 환경에서
+사용한다. 동기 스캔 부하만 Event/파일 barrier로 대체했다. cooperative와
+noncooperative 각각 5회 reload에서 조회 503, 실제 작업 종료 후 volume 해제,
+동시 atomic publication 완료, 이전 PID 종료, 새 API 응답, semaphore 경고 부재를
+검증한다. 같은 process slot을 공유하는 실제 capture parse와 depth save가
+조회 중단 뒤에도 완료되는지 별도 시험한다. 실제 주문 `CommandJournal`·`dispatch_command`와 fake gateway의 완료 및
+재기동 후 중복 전송 방지는 별도 테스트로 확인한다. 기존 compute suite가 process
+slot·pool 종료와 SIGTERM·SIGINT의 semaphore 반환을 검증한다.
+
+새 실행기의 signal 없는 `should_exit`, lifespan 비활성, state 누락·잘못된 타입,
+지원 버전 fallback, CLI 기본 nonreload와 startup 실패 exit code를 검사한다.
+강제 반복 SIGINT·부분 startup·실자격 collector 전체의 종료 시간은 새 통합 시험에서
+검증하지 않았다. 운영 데이터의 재시작 시간 개선율은 측정하지 않았다. 위 구현은
+전체 종료 시간 상한을 보장하지 않으며, 남은 native query와 process 작업을 기다린다.

@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from hoga.api.models import PatternSearchRequest, PatternSearchResponse, RangeBundle
     from hoga.api.panel_flow import PanelFlowResponse, PanelFlowSource
     from hoga.api.queries import QueryEngine
+    from hoga.api.read_shutdown import ReadOperation
     from hoga.compute_executor import ComputeExecutor
 
 log = logging.getLogger(__name__)
@@ -307,7 +308,7 @@ def trade_spot_job(data_dir: str, params: dict, snapshot: dict):
 
 async def run_job(
     executor: ComputeExecutor, fn: Callable[..., T], /, *args: object,
-    background: bool = False, admitted: bool = False,
+    background: bool = False, admitted: bool = False, operation: ReadOperation | None = None,
 ) -> T:
     """작업을 실행기에서 돌리고 껍데기 예외를 원래 의미로 되돌린다.
 
@@ -320,6 +321,11 @@ async def run_job(
     from hoga.compute_executor import ComputeAdmissionRejected  # noqa: PLC0415
 
     try:
+        if operation is not None and executor.kind == "thread":
+            if background or admitted:
+                return await operation.run_sync(functools.partial(fn, *args))
+            async with executor.admission():
+                return await operation.run_sync(functools.partial(fn, *args))
         return await (
             executor.run(fn, *args) if background or admitted else executor.run_admitted(fn, *args)
         )

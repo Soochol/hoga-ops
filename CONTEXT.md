@@ -1,5 +1,11 @@
 # hoga-ops
 
+Reload 조회 정리(2026-11-02): 공식 실행은 `hoga serve --reload --reload-dir hoga`다.
+연결 drain 전에 스크리너 scan·pattern-search·감시 result admission을 닫고 진행 조회를
+503으로 마무리한다. 실제 동기 작업 완료 뒤 의존성을 해제하며 주문·저장·공용 compute
+풀의 기존 종료 계약은 유지한다. `reload.shutdown_phase`로 정리 단계 시간을 남긴다.
+기존 uvicorn supervisor에는 새 명령으로 한 번 다시 실행해야 적용된다.
+
 VI 예상체결 표시(2026-11-02): 10호가·호가주문은 WS `1h`에서 확인한 당일
 종목·시장별 VI 발동 중에 `0D` FID 23/24가 모두 양수면 예상 체결가·체결량을
 기존 정보란에 표시한다. 발동 전·해제 후·다른 시장·전날 상태로는 허용하지 않는다.

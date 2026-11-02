@@ -92,7 +92,7 @@ async def test_scan_coalescer_shares_one_run_for_concurrent_same_key():
     calls = 0
     gate = asyncio.Event()
 
-    async def factory():
+    async def factory(_operation):
         nonlocal calls
         calls += 1
         await gate.wait()          # 두 caller 가 확실히 겹치도록 게이트로 붙잡는다
@@ -113,7 +113,7 @@ async def test_scan_coalescer_distinct_keys_run_separately():
     coalescer = ReadRequestCoalescer()
     calls = 0
 
-    async def factory():
+    async def factory(_operation):
         nonlocal calls
         calls += 1
         return calls
@@ -132,7 +132,7 @@ async def test_scan_coalescer_caller_cancel_does_not_kill_shared_flight():
     gate = asyncio.Event()
     ran = False
 
-    async def factory():
+    async def factory(_operation):
         nonlocal ran
         await gate.wait()
         ran = True

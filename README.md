@@ -120,7 +120,7 @@ fixtures use explicit wire or adapter types, and component modules keep utility
 exports in separate modules so Vite Fast Refresh has a component boundary.
 
 ```sh
-uv run --frozen uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir hoga
+uv run --frozen hoga serve --host 127.0.0.1 --port 8000 --reload --reload-dir hoga
 cd frontend
 npm install
 npm run dev

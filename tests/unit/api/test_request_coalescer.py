@@ -17,7 +17,7 @@ async def test_identical_searches_share_work_when_one_reader_disconnects():
     started, finish = asyncio.Event(), asyncio.Event()
     calls = 0
 
-    async def compute():
+    async def compute(_operation):
         nonlocal calls
         calls += 1
         started.set()
@@ -46,7 +46,7 @@ async def test_last_reader_leaving_cancels_pending_work(disconnect):
     started, cancelled = asyncio.Event(), asyncio.Event()
     request, messages = _request()
 
-    async def pending():
+    async def pending(_operation):
         started.set()
         try:
             await asyncio.Event().wait()
@@ -71,14 +71,14 @@ async def test_failure_is_shared_but_next_request_retries():
     coalescer = ReadRequestCoalescer[int]()
     request, _ = _request()
 
-    async def fail():
+    async def fail(_operation):
         raise ValueError("bad query")
 
     with pytest.raises(ValueError, match="bad query"):
         await coalescer.run("key", fail, request)
     assert not coalescer._inflight
 
-    async def success():
+    async def success(_operation):
         return 7
 
     assert await coalescer.run("key", success, request) == 7
@@ -92,7 +92,7 @@ async def test_last_reader_cancellation_consumes_late_failure_and_close_drains_w
     previous = loop.get_exception_handler()
     loop.set_exception_handler(lambda _, context: errors.append(context))
 
-    async def late_failure():
+    async def late_failure(_operation):
         started.set()
         try:
             await asyncio.Event().wait()
@@ -128,7 +128,7 @@ async def test_router_lifespan_closes_owned_read_requests(tmp_path):
     coalescer = ReadRequestCoalescer[int]()
     started, stopped = asyncio.Event(), asyncio.Event()
 
-    async def pending():
+    async def pending(_operation):
         started.set()
         try:
             await asyncio.Event().wait()
@@ -140,6 +140,7 @@ async def test_router_lifespan_closes_owned_read_requests(tmp_path):
         reader = asyncio.create_task(coalescer.run("key", pending, request))
         await started.wait()
     assert stopped.is_set()
-    with pytest.raises(asyncio.CancelledError):
+    with pytest.raises(HTTPException) as error:
         await reader
+    assert error.value.status_code == 503
     assert not coalescer._tasks

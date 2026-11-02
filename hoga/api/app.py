@@ -48,11 +48,13 @@ from hoga.api.origin_guard import OriginGuardMiddleware
 from hoga.api.panel_flow import build_router as build_panel_flow_router
 from hoga.api.prune import disk_headroom
 from hoga.api.queries import QueryEngine
+from hoga.api.read_shutdown import STATE_KEY, ReadShutdown
 from hoga.api.request_timing import RequestTimingMiddleware
 from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
 from hoga.api.sentiment_routes import build_router as build_sentiment_router
+from hoga.api.shutdown_timing import shutdown_phase
 from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
 from hoga.api.study_view_routes import build_router as build_study_view_router
@@ -320,6 +322,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     data_dir: Path, *, compute: ComputePools | None = None, collector: str = "inprocess",
 ) -> FastAPI:
     engine = QueryEngine(data_dir)
+    read_shutdown = ReadShutdown()
     # 요청 경로 CPU 작업(range 번들·거래원 시계열·패턴 검색·그룹 흐름)이 도는 자리
     # (ADR-0169). 안 넘기면 스레드 두 벌 — 테스트가 그 경로다. 운영(`default_app`)은
     # env 로 만든 프로세스 풀을 넘긴다.
@@ -365,7 +368,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     ))
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:  # noqa: PLR0915 — centralized resource shutdown order
+    async def lifespan(_app: FastAPI) -> AsyncIterator[dict[str, object]]:  # noqa: PLR0915 — centralized resource shutdown order
         migrate_to_v2_layout(data_dir)
         # ADR-0068: one-time seed of the independent heatmap.json from the
         # watchlist (folders+entries, capture fields stripped) the first boot
@@ -454,15 +457,19 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             "gc": gc_probe.stats_snapshot(),
         })
         try:
-            yield
+            yield {STATE_KEY: read_shutdown}
         finally:
+            with shutdown_phase("read_work"):
+                (await read_shutdown.wait_finished()).log_failures()
             # Stop catalog refresh before joining its shared count reader, so a
             # finishing refresh cannot start a new scan during resource teardown.
-            await _symbols_module.aclose_refresh()
-            await _symbols_module.aclose_capture_counts()
-            await _app.state.broker_trading_service.close()
-            await _app.state.trading_service.close()
-            await _app.state.paper_trading_service.close()
+            with shutdown_phase("symbols"):
+                await _symbols_module.aclose_refresh()
+                await _symbols_module.aclose_capture_counts()
+            with shutdown_phase("orders"):
+                await _app.state.broker_trading_service.close()
+                await _app.state.trading_service.close()
+                await _app.state.paper_trading_service.close()
             _captures_module.begin_capture_shutdown()
             # 복원은 **프로덕션이 아니라 테스트를 위한 것**이다. 프로세스가 오래 사는
             # 운영에서는 의미가 없지만, `TestClient` 는 한 pytest 프로세스 안에서
@@ -473,7 +480,8 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # 콜백이 그만큼 쌓여 수집마다 전부 불린다.
             gc_probe.uninstall()
             configure_failure_context(None)
-            await _cancel_tasks(*lifespan_tasks)
+            with shutdown_phase("background_tasks"):
+                await _cancel_tasks(*lifespan_tasks)
             # 컴퓨트 워커 프로세스(ADR-0169). **예열 태스크를 먼저 취소한다** — 아직 spawn
             # 을 기다리는 중에 풀을 내리면 그 future 가 BrokenProcessPool 로 끝나
             # `run()` 이 풀을 버리며 경고를 남긴다(정상 종료·TestClient teardown 마다
@@ -482,17 +490,22 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # lifespan 뒤 uvicorn 이 SIGTERM 을 다시 보내기 전에 세마포어를 반환한다.
             await _cancel_tasks(_app.state.compute_prewarm)
             install_default_compute_pools(None)
-            await pools.aclose()
+            with shutdown_phase("compute"):
+                await pools.aclose()
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.
-            await screener_history_jobs.shutdown_jobs(data_dir)
-            await _screener_module.shutdown_update_job()
-            await quote_fetcher.aclose()
-            await startup_runtime.stop()
+            with shutdown_phase("history_jobs"):
+                await screener_history_jobs.shutdown_jobs(data_dir)
+                await _screener_module.shutdown_update_job()
+            with shutdown_phase("quotes"):
+                await quote_fetcher.aclose()
+            with shutdown_phase("live_runtime"):
+                await startup_runtime.stop()
             # Stop the worker pool first so in-flight items observe cancellation
             # while bus + observer are still live (they emit terminal events).
-            await _captures_module.stop_workers(_captures_module._workers)
+            with shutdown_phase("capture_workers"):
+                await _captures_module.stop_workers(_captures_module._workers)
             _captures_module._workers = []
             # Best-effort cancel of any in-flight items at shutdown — raw files
             # are preserved on disk for Resume. Spec §9 documents this behavior.
@@ -506,12 +519,14 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             from hoga.api.ownership import release_all  # noqa: PLC0415
             release_all()
             _captures_module.clear_capture_runtime()
-            observer.stop()
-            observer.join()
+            with shutdown_phase("observer"):
+                observer.stop()
+                observer.join()
             engine.close()
             set_captures_bus(None, None)
 
     app = FastAPI(title="hoga-ops API", version=APP_VERSION, lifespan=lifespan)
+    app.state.read_shutdown = read_shutdown
     # 허용 출처는 여기서 한 번만 확정해 CORS 와 OriginGuard 양쪽에 넘긴다 —
     # 두 방어층이 다른 목록을 보는 상태를 구조적으로 못 만들게.
     origins = allowed_origins()
@@ -637,7 +652,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(build_panel_flow_router(data_dir=data_dir, compute=pools))
     app.include_router(build_heatmap_router(data_dir=data_dir, bus=bus, compute=pools))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus, compute=pools, live_buffer=live_get_buffer(),
-        volume_targets=set_screener_volume_targets))
+        volume_targets=set_screener_volume_targets, read_shutdown=read_shutdown))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_news_router(data_dir=data_dir))

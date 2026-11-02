@@ -15,9 +15,10 @@ Python은 루트 `.python-version`의 버전으로 설치·실행·검증한다.
 2. 워크트리별 포트와 데이터 경로를 정한다. 프론트에서 별도 API에 연결한다면
    런타임 `config.json`과 백엔드의 허용 origin도 맞춘다.
 3. 개발 서버는 루프백에 바인딩한다. LAN 노출이 목적일 때만 공개 바인딩을 선택한다.
-4. 백엔드 자동 갱신에는 `uvicorn hoga.api.app:default_app --factory`와
-   `--reload --reload-dir hoga`를 사용한다. `hoga serve`는 `reload=False`다.
-   `--factory`는 앱 팩토리 호출에 필요하고 reload 범위는 프론트 편집으로 인한 재시작을 막는다.
+4. 백엔드 자동 갱신에는 `uv run --frozen hoga serve --reload --reload-dir hoga`를
+   사용한다. `--reload`가 없으면 자동 갱신하지 않는다. 이 실행기는 연결 종료 대기 전에
+   등록된 스크리너 조회를 중단한다. 감시 범위는 프론트 편집으로 인한 재시작을 막는다.
+   기존 uvicorn 실행기는 한 번 종료하고 새 명령으로 실행해야 이 종료 경로가 적용된다.
 5. 백엔드는 단일 워커를 유지한다. 기동 후 `/health`의 상태·버전·커밋을 확인한다.
 
 ## 자격증명과 데이터 가용성

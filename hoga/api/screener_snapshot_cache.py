@@ -14,6 +14,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from hoga.api.read_shutdown import ReadInterrupted, checkpoint
+
 MAX_BYTES = 64 * 1024 * 1024
 MAX_ENTRY_BYTES = 8 * 1024 * 1024
 MAX_ENTRIES = 128
@@ -73,18 +75,25 @@ class SnapshotCache:
             self.generation += 1
 
     @staticmethod
-    def valid(entry):
+    def valid(entry, stop=None):
         try:
-            return entry.reads.stable and all(signature(path) == stamp for path, stamp in entry.reads.files.items())
+            if not entry.reads.stable:
+                return False
+            for path, stamp in entry.reads.files.items():
+                checkpoint(stop)
+                if signature(path) != stamp:
+                    return False
+            return True
         except OSError:
             return False
 
-    def obtain(self, key, loader):
+    def obtain(self, key, loader, *, stop=None):
         while True:
+            checkpoint(stop)
             with self.lock:
                 entry = self.entries.get(key)
                 generation = self.generation
-            if entry is not None and self.valid(entry):
+            if entry is not None and self.valid(entry, stop):
                 with self.lock:
                     if self.entries.get(key) is entry:
                         self.entries.move_to_end(key)
@@ -101,16 +110,18 @@ class SnapshotCache:
                     future = self.flights[flight] = Future()
                 break
         if not owner:
-            return self.unpack(future.result())
+            return self._wait_entry(flight, future, key, loader, stop)
         token = _reads.set(Reads())
         try:
             value = loader()
+            checkpoint(stop)
             reads = _reads.get()
             payload = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
             size = len(payload) + sum(len(str(path).encode()) + 128 for path in reads.files) + len(repr(key))
             entry = Entry(payload, reads, size)
-            reads.stable &= self.valid(entry)
+            reads.stable &= self.valid(entry, stop)
             with self.lock:
+                checkpoint(stop)
                 if (flight[0] == self.generation and reads.stable and size <= MAX_ENTRY_BYTES
                         and size <= MAX_BYTES and MAX_ENTRIES > 0):
                     previous = self.entries.pop(key, None)
@@ -127,8 +138,28 @@ class SnapshotCache:
         finally:
             _reads.reset(token)
             with self.lock:
-                self.flights.pop(flight, None)
+                if self.flights.get(flight) is future:
+                    self.flights.pop(flight, None)
         return self.unpack(entry)
+
+    def _wait_entry(self, flight, future, key, loader, stop):
+        while True:
+            checkpoint(stop)
+            try:
+                entry = future.result(timeout=0.1)
+                checkpoint(stop)
+                return self.unpack(entry)
+            except TimeoutError:
+                if future.done():
+                    raise
+                continue
+            except ReadInterrupted:
+                checkpoint(stop)
+                # Another read's cancellation must not retire this reader or a durable caller.
+                with self.lock:
+                    if self.flights.get(flight) is future:
+                        self.flights.pop(flight, None)
+                return self.obtain(key, loader, stop=stop)
 
     @staticmethod
     def unpack(entry):
@@ -143,8 +174,8 @@ class SnapshotCache:
 shared = SnapshotCache()
 
 
-def obtain(data_dir, manifest, kind, inputs, loader):
+def obtain(data_dir, manifest, kind, inputs, loader, *, stop=None):
     # Import at the call boundary: store records dependencies using this module.
     from hoga.api.screener_series_store import digest  # noqa: PLC0415
     key = (str(Path(data_dir).resolve()), digest(manifest), kind, inputs)
-    return shared.obtain(key, loader)
+    return shared.obtain(key, loader, stop=stop)

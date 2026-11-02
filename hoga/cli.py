@@ -7,7 +7,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import typer
-import uvicorn
 from rich.console import Console
 from rich.table import Table
 
@@ -16,6 +15,7 @@ from hoga.collector.orchestrator import collect_stock_date
 from hoga.config import Config, CookieMissingError, resolve_data_dir
 from hoga.env import load_env
 from hoga.parser import parse_stock_date
+from hoga.server import run_server
 from hoga.util.atomic_write import atomic_write_json
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="hoga-ops backend CLI")
@@ -92,16 +92,12 @@ def serve(
         help="바인드 주소. 기본은 루프백. prod 는 tailscale 인터페이스 주소만 지정 — "
         "공인 인터페이스 바인드 금지 (ADR-0134, README 'Access model').",
     ),
+    reload: bool = typer.Option(False, "--reload", help="Python 소스 변경 시 API를 다시 시작합니다."),
+    reload_dir: list[Path] = typer.Option([], "--reload-dir", help="변경 감시 경로. 기본은 hoga 패키지입니다."),
 ) -> None:
     """Start the FastAPI server."""
     load_env()  # ADR-0008: discover and load .env (no override at startup)
-    uvicorn.run(
-        "hoga.api.app:default_app",
-        factory=True,
-        host=host,
-        port=port,
-        reload=False,
-    )
+    run_server(host=host, port=port, reload=reload, reload_dirs=reload_dir)
 
 
 def _cache_observe_default_out() -> Path:
