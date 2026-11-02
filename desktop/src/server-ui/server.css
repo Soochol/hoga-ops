@@ -138,16 +138,16 @@ button.primary { min-width: 0; }
 .log-tools .icon { width: 14px; height: 14px; }
 #raw-logs[aria-pressed="true"] { color: var(--accent); background: var(--raised); }
 select { font: 12px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; }
-#logs { border: 0; border-radius: 0; background: var(--bg); padding: 0 8px; min-height: 100px; }
-.log-entry { padding: 10px 0; }
-.log-row { display: grid; grid-template-columns: 94px 44px minmax(0, 1fr) 28px; align-items: start; gap: 8px; }
+#logs { border: 0; border-radius: 0; background: var(--bg); padding: 0 8px; min-height: 100px; line-height: 1.5; }
+.log-entry { padding: 2px 0; }
+.log-row { display: grid; grid-template-columns: 94px 44px minmax(0, 1fr) 28px; align-items: start; gap: 2px 8px; }
 .log-time { margin: 0; font-variant-numeric: tabular-nums; }
 .log-level { color: var(--muted); }
 .log-entry[data-level="WARN"] .log-level { color: var(--warn); }
 .log-entry[data-level="ERROR"] { background: var(--bad-bg); }
 .log-entry[data-level="ERROR"] .log-level { color: var(--bad); }
 .log-message { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-button.log-copy { border: 0; background: transparent; color: var(--muted); padding: 3px; }
+button.log-copy { display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); padding: 2px; line-height: 1; }
 .log-copy .icon { width: 14px; height: 14px; }
 .log-trace { margin: 6px 0 0 154px; padding-left: 12px; border-left: 1px solid var(--line); }
 .log-trace summary { min-height: 24px; padding: 0; }
