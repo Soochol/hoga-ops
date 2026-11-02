@@ -134,3 +134,48 @@ def test_corrupt_existing_source_cannot_be_attested_from_incoming_values(corpus)
     with pytest.raises(ValueError, match='checksum mismatch'):
         store.publish_pair(corpus, **payload)
     assert not (store.root(corpus) / 'current.json').exists()
+
+
+def test_ready_facts_reuse_across_parent_and_guard_without_stale_quality(corpus, monkeypatch):
+    from collections import Counter
+
+    from hoga.api import screener_snapshot_cache as cache
+
+    store.publish_pair(corpus, **confirmed(observation(strict_spec().targets[0], NOW.date())))
+    _, manifest = store.load_snapshot(corpus)
+    cache.shared.clear()
+    header_id = manifest['daily_query']['headers']['005930']
+    header_path = projection._source_path(corpus, header_id)
+    header = store.read_object(corpus, header_id)
+    body_path = projection._body_path(corpus, header['body_id'])
+    reads = Counter()
+    read = store._read_file
+
+    def counted(path, **kwargs):
+        reads[path] += 1
+        return read(path, **kwargs)
+
+    def facts(current):
+        return (runner._confirmed_at(corpus, current, ['005930'], NOW.date()),
+                values.load_series(corpus, current, ['005930'], first=DAYS[0], last=DAYS[-1]),
+                runner._daily_contract(corpus, current, ['005930']))
+
+    monkeypatch.setattr(store, '_read_file', counted)
+    first = facts(manifest)
+    assert reads[header_path] == 2 and reads[body_path] == 1
+    reads.clear()
+    assert facts({**manifest, 'parent': 'different-parent'}) == first
+    assert not reads[header_path] and not reads[body_path]
+    state = {
+        'entries': {'005930:2018-05-04': {'code': '005930', 'date': '2018-05-04', 'status': 'provisional'}},
+        'summary': {}, 'confirmed_through': {},
+    }
+    ingest._publish(corpus, state)
+    _, guarded = store.load_snapshot(corpus)
+    assert guarded['daily_query'] == manifest['daily_query']
+    reads.clear()
+    changed = facts(guarded)
+    assert changed[0] == first[0] and changed[2] == first[2]
+    assert not first[1]['005930'].daily_quality
+    assert changed[1]['005930'].daily_quality[DAYS[-1]] == 'daily_observation_unconfirmed'
+    assert not reads[header_path] and not reads[body_path]

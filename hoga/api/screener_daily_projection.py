@@ -283,10 +283,16 @@ def _decompress(packed, *, decoded_bytes=None, maximum=MAX_DECODED_BYTES, stop=N
 
 
 def _header_id(manifest, code):
-    query = manifest.get("daily_query", {})
-    if query.get("format") != FORMAT or query.get("verifier") != VERIFIER:
+    query = manifest.get("daily_query")
+    if not isinstance(query, dict) or query.get("format") != FORMAT or query.get("verifier") != VERIFIER:
         return None
-    return query.get("headers", {}).get(code)
+    headers = query.get("headers")
+    if not isinstance(headers, dict) or not isinstance(headers.get(code), str):
+        return None
+    try:
+        return store._checked(headers[code])
+    except ValueError:
+        return None
 
 
 def _read_header(data_dir, identity, observation_id, *, stop=None):
@@ -346,18 +352,23 @@ def _load(data_dir, manifest, code, *, rows, stop=None):
     return result
 
 
+def _cache_key(data_dir, manifest, code, kind):
+    return (str(Path(data_dir).resolve()), kind, FORMAT, VERIFIER,
+            manifest["observations"][code], _header_id(manifest, code))
+
+
 def summary(data_dir: Path, manifest: dict, code: str, *, stop=None) -> DailySummary | None:
     if not manifest["observations"].get(code):
         return None
-    return snapshots.obtain(data_dir, manifest, "daily-query-summary-v1", code,
-                            lambda: _load(data_dir, manifest, code, rows=False, stop=stop), stop=stop)
+    return snapshots.shared.obtain(_cache_key(data_dir, manifest, code, "daily-query-summary"),
+                                   lambda: _load(data_dir, manifest, code, rows=False, stop=stop), stop=stop)
 
 
 def read(data_dir: Path, manifest: dict, code: str, *, stop=None) -> Observation | None:
     if not manifest["observations"].get(code):
         return None
-    packed = snapshots.obtain(data_dir, manifest, "daily-query-rows-v1", code,
-                              lambda: _load(data_dir, manifest, code, rows=True, stop=stop), stop=stop)
+    packed = snapshots.shared.obtain(_cache_key(data_dir, manifest, code, "daily-query-rows"),
+                                     lambda: _load(data_dir, manifest, code, rows=True, stop=stop), stop=stop)
     checkpoint(stop)
     facts = _decode(_decompress(packed.data, decoded_bytes=packed.decoded_bytes,
                                maximum=packed.decoded_bytes, stop=stop))

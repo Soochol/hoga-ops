@@ -215,3 +215,25 @@ def test_derived_writer_cannot_accept_an_original_path(corpus):
     with pytest.raises(TypeError):
         projection._write_query_file(corpus, original)
     assert original.read_bytes() == expected
+
+
+@pytest.mark.parametrize('query', [None, [], 'unsupported', {'format': projection.FORMAT},
+    {'format': projection.FORMAT, 'verifier': projection.VERIFIER, 'headers': None},
+    {'format': projection.FORMAT, 'verifier': projection.VERIFIER, 'headers': []},
+    *({'format': projection.FORMAT, 'verifier': projection.VERIFIER, 'headers': {'005930': ref}}
+      for ref in [None, [], 1, '../bad', 'g' * 64])])
+def test_malformed_optional_query_reference_uses_checked_sources(corpus, monkeypatch, query):
+    manifest = publish(corpus)
+    expected = projection.read(corpus, manifest, '005930')
+    malformed = {**manifest, 'daily_query': query}
+    calls = []
+    read = store.read_object
+
+    def checked(data_dir, identity, **kwargs):
+        calls.append(identity)
+        return read(data_dir, identity, **kwargs)
+
+    monkeypatch.setattr(store, 'read_object', checked)
+    assert projection.summary(corpus, malformed, '005930') is not None
+    assert projection.read(corpus, malformed, '005930') == expected
+    assert manifest['observations']['005930'] in calls
