@@ -1,0 +1,192 @@
+{
+  "run_count": 1,
+  "kind": "live production file reload during real monitor query",
+  "before_pid": 512981,
+  "recorded_at_utc": "2026-11-02T06:23:53.319051+00:00",
+  "load_average": "3.32, 3.87, 4.85; 32 cores",
+  "request": {
+    "conditions": [
+      {
+        "type": "new_high_vol",
+        "id": "VCRNdqJE",
+        "params": {
+          "timeframe": "3m",
+          "include_open_bar": true,
+          "lookback": 3,
+          "period": 20,
+          "volume_basis": "raw"
+        }
+      },
+      {
+        "type": "change_pct_period",
+        "id": "458H4rG8",
+        "params": {
+          "timeframe": "3m",
+          "include_open_bar": true,
+          "change_reference": "previous_bar",
+          "op": "gte",
+          "pct": 1.0,
+          "lo": null,
+          "hi": null,
+          "lookback": 20
+        }
+      },
+      {
+        "type": "new_high_vol",
+        "id": "fqesNYUG",
+        "params": {
+          "timeframe": "5m",
+          "include_open_bar": true,
+          "lookback": 3,
+          "period": 12,
+          "volume_basis": "raw"
+        }
+      },
+      {
+        "type": "change_pct_period",
+        "id": "Li8Hi7bR",
+        "params": {
+          "timeframe": "5m",
+          "include_open_bar": true,
+          "change_reference": "previous_bar",
+          "op": "gte",
+          "pct": 1.0,
+          "lo": null,
+          "hi": null,
+          "lookback": 12
+        }
+      },
+      {
+        "type": "new_high_vol",
+        "id": "ZGpsKBdV",
+        "params": {
+          "timeframe": "10m",
+          "include_open_bar": true,
+          "lookback": 2,
+          "period": 6,
+          "volume_basis": "raw"
+        }
+      },
+      {
+        "type": "change_pct_period",
+        "id": "zKZoWoSy",
+        "params": {
+          "timeframe": "3m",
+          "include_open_bar": true,
+          "change_reference": "previous_bar",
+          "op": "gte",
+          "pct": 1.0,
+          "lo": null,
+          "hi": null,
+          "lookback": 2
+        }
+      },
+      {
+        "type": "trade_value_rank",
+        "id": "nH_tPkp3",
+        "params": {
+          "top_n": 300
+        }
+      }
+    ],
+    "expression": "((A AND B) OR (C AND D) OR (E AND F)) AND G",
+    "universe": {
+      "markets": [],
+      "exclude_etf": true,
+      "exclude_halted": true,
+      "scopes": [
+        "watchlist",
+        "heatmap"
+      ]
+    },
+    "calculation_policy": "separate_bases_v2",
+    "basis": "intraday",
+    "venue": "KRX"
+  },
+  "expected": "one read retirement 503, new PID, healthy API and collector, unchanged source bytes",
+  "health_before": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "e16041ff2"
+  },
+  "monitor_before": {
+    "id": "e23ffcacaa484dc9978a2ec62ea0de37",
+    "total": 350,
+    "prepared": 24,
+    "receiving": 24,
+    "preparing": 326,
+    "recovering": 0,
+    "unavailable": 0,
+    "insufficient": 0,
+    "last_verified_ms": 1793600475902,
+    "error": null
+  },
+  "trigger_at_utc": "2026-11-02T06:23:53.463884+00:00",
+  "query_started_before_trigger_ms": 50.60327998944558,
+  "read_http_status": 503,
+  "read_response": {
+    "detail": "서버를 다시 시작하고 있습니다. 잠시 후 다시 조회해 주세요."
+  },
+  "trigger_to_read_response_s": 0.2123982080083806,
+  "after_pid": 537031,
+  "health_after": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "e16041ff2"
+  },
+  "trigger_to_new_health_s": 20.063434652009164,
+  "deep_health": {
+    "status": "ok",
+    "dead_tasks": [],
+    "collector_ready": true
+  },
+  "trigger_to_deep_health_s": 21.11185256000317,
+  "old_pid_gone": true,
+  "source_bytes_unchanged": true,
+  "server_events": [
+    "2026-11-02T06:23:53.541Z [백엔드] WARNING:  WatchFiles detected changes in 'hoga/api/read_shutdown.py'. Reloading...",
+    "2026-11-02T06:23:53.573Z [백엔드] INFO:     Shutting down",
+    "2026-11-02T06:23:53.674Z [백엔드] INFO:     Waiting for connections to close. (CTRL+C to force quit)",
+    "2026-11-02T06:23:53.774Z [백엔드] INFO:     Waiting for application shutdown.",
+    "2026-11-02T06:24:09.749Z [백엔드] INFO:     Application shutdown complete.",
+    "2026-11-02T06:24:09.749Z [백엔드] INFO:     Finished server process [512981]",
+    "2026-11-02T06:24:10.879Z [백엔드] INFO:     Started server process [537031]",
+    "2026-11-02T06:24:10.879Z [백엔드] INFO:     Waiting for application startup.",
+    "2026-11-02T06:24:13.361Z [백엔드] INFO:     Application startup complete."
+  ],
+  "shutdown_events": [
+    "2026-11-02 15:23:53,673 INFO hoga.api.read_shutdown reload.read_retirement owners=3",
+    "2026-11-02 15:23:53,674 INFO hoga.api.screener_timing screener.monitor.phase monitor_id=e23ffcacaa484dc9978a2ec62ea0de37 scan_id=ddd617bacdf34b2ca630def9fc97fe19 phase=ranks elapsed_ms=201.6 outcome=cancelled",
+    "2026-11-02 15:23:53,674 INFO hoga.api.screener_timing screener.monitor.phase monitor_id=e23ffcacaa484dc9978a2ec62ea0de37 scan_id=ddd617bacdf34b2ca630def9fc97fe19 phase=total elapsed_ms=201.7 outcome=cancelled",
+    "2026-11-02 15:23:53,777 INFO hoga.api.read_shutdown reload.read_drained elapsed_ms=2.2 failures=0",
+    "2026-11-02 15:23:53,777 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=screener_read_work elapsed_ms=3.1 outcome=completed",
+    "2026-11-02 15:23:53,779 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=read_work elapsed_ms=0.0 outcome=completed",
+    "2026-11-02 15:23:53,779 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=symbols elapsed_ms=0.0 outcome=completed",
+    "2026-11-02 15:23:53,834 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=orders elapsed_ms=54.9 outcome=completed",
+    "2026-11-02 15:23:54,137 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=background_tasks elapsed_ms=7.4 outcome=completed",
+    "2026-11-02 15:23:55,835 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=compute elapsed_ms=1697.7 outcome=completed",
+    "2026-11-02 15:23:55,837 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=history_jobs elapsed_ms=1.1 outcome=completed",
+    "2026-11-02 15:23:55,837 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=quotes elapsed_ms=0.0 outcome=completed",
+    "2026-11-02 15:24:09,673 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=live_runtime elapsed_ms=13836.0 outcome=completed",
+    "2026-11-02 15:24:09,673 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=capture_workers elapsed_ms=0.0 outcome=completed",
+    "2026-11-02 15:24:09,748 INFO hoga.api.shutdown_timing reload.shutdown_phase phase=observer elapsed_ms=75.2 outcome=completed"
+  ],
+  "shutdown_phase_ms": {
+    "screener_read_work": 3.1,
+    "read_work": 0.0,
+    "symbols": 0.0,
+    "orders": 54.9,
+    "background_tasks": 7.4,
+    "compute": 1697.7,
+    "history_jobs": 1.1,
+    "quotes": 0.0,
+    "live_runtime": 13836.0,
+    "capture_workers": 0.0,
+    "observer": 75.2
+  },
+  "query_execution_confirmed": true,
+  "unexpected_error_lines": [],
+  "interpretation": "Single production observation, not a controlled before/after comparison. Expected 503 is deliberate retirement, not a successful scan or query speedup. Native work and protected cleanup can still dominate shutdown.",
+  "timing_origin": "Monotonic timestamp immediately before touching unchanged source file; readiness requires a new API PID and successful HTTP health.",
+  "limiter_observed": "live_runtime shutdown 13.836s dominates; compute pool shutdown 1.6977s; screener read drain 0.0031s."
+}

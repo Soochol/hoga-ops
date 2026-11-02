@@ -5,6 +5,9 @@ Reload 조회 정리(2026-11-02): 공식 실행은 `hoga serve --reload --reload
 503으로 마무리한다. 실제 동기 작업 완료 뒤 의존성을 해제하며 주문·저장·공용 compute
 풀의 기존 종료 계약은 유지한다. `reload.shutdown_phase`로 정리 단계 시간을 남긴다.
 기존 uvicorn supervisor에는 새 명령으로 한 번 다시 실행해야 적용된다.
+실시간 종료는 계정별 subscription→WS→flush 순서를 유지하면서 계정 간 대기를 겹친다.
+공용 초봉 최종 flush와 capture lock 반환은 모든 연결·저장 작업이 끝난 뒤 수행한다.
+부모·수집 자식의 세부 종료 시간을 pid·epoch·계정별로 기록한다.
 
 VI 예상체결 표시(2026-11-02): 10호가·호가주문은 WS `1h`에서 확인한 당일
 종목·시장별 VI 발동 중에 `0D` FID 23/24가 모두 양수면 예상 체결가·체결량을

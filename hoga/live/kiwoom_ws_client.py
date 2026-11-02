@@ -379,7 +379,12 @@ class KiwoomWsClient:
                 provider_errors.clear(self)
                 self.connected = False
                 raise
-            except Exception as e:  # noqa: BLE001 — 연결 오류는 전부 재시도 대상
+            except Exception as e:
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    provider_errors.clear(self)
+                    self.connected = False
+                    raise asyncio.CancelledError from e
                 self.last_close_code = getattr(e, "code", None)
                 self.last_error_type = type(e).__name__
                 if e is not self._reported_failure:
@@ -468,14 +473,16 @@ class KiwoomWsClient:
             self._reset_after_stable_session()
             self.connected = False
             self.account_events_acked = False
-            if self._on_account_state and self.account_events:
-                await self._on_account_state(False, self.connection_generation)
-            self._ws = None
             try:
-                await self._end_session(ws, recv_task, retire_task)
+                if self._on_account_state and self.account_events:
+                    await self._on_account_state(False, self.connection_generation)
             finally:
-                if self._retired is retired:
-                    self._retired = None
+                self._ws = None
+                try:
+                    await self._end_session(ws, recv_task, retire_task)
+                finally:
+                    if self._retired is retired:
+                        self._retired = None
 
     async def _end_session(self, ws: _WsLike, recv_task: asyncio.Task, retire_task: asyncio.Task) -> None:
         recv_task.cancel()

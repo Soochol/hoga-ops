@@ -75,6 +75,65 @@ async def stop(*tasks):
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
+async def test_disconnected_account_notification_cannot_skip_transport_retirement():
+    socket = Socket()
+
+    async def account_state(connected, generation):
+        if not connected:
+            raise ConnectionError('parent IPC closed')
+
+    instance = client(lambda _: asyncio.sleep(0, result=socket), account_events=True,
+                      on_account_row=lambda *_: asyncio.sleep(0), on_account_state=account_state)
+    before = asyncio.all_tasks()
+    runner = asyncio.create_task(instance._session_once())
+    try:
+        await until(lambda: instance.registration_ready)
+        runner.cancel()
+        with pytest.raises(ConnectionError, match='parent IPC closed'):
+            await runner
+        assert socket.terminated.is_set() and not socket.receiver_active
+        assert instance._ws is None and instance._retired is None
+    finally:
+        # Only tasks spawned by this isolated session are eligible for test cleanup.
+        owned = asyncio.all_tasks() - before
+        for task in owned:
+            task.cancel()
+        await asyncio.gather(*owned, return_exceptions=True)
+
+
+async def test_shutdown_notification_failure_does_not_restart_cancelled_receiver():
+    socket = Socket()
+    connections = []
+
+    async def connect(_url):
+        connections.append(True)
+        if len(connections) > 1:
+            await asyncio.Event().wait()
+        return socket
+
+    async def account_state(connected, generation):
+        if not connected:
+            raise ConnectionError('parent IPC closed')
+
+    instance = client(connect, account_events=True, on_account_row=lambda *_: asyncio.sleep(0),
+                      on_account_state=account_state)
+    before = asyncio.all_tasks()
+    runner = asyncio.create_task(instance.run(['005930']))
+    try:
+        await until(lambda: instance.registration_ready)
+        runner.cancel()
+        await until(lambda: runner.done() or len(connections) > 1)
+        assert connections == [True]
+        with pytest.raises(asyncio.CancelledError):
+            await runner
+        assert socket.terminated.is_set() and not socket.receiver_active
+    finally:
+        owned = asyncio.all_tasks() - before
+        for task in owned:
+            task.cancel()
+        await asyncio.gather(*owned, return_exceptions=True)
+
+
 async def test_external_remove_timeout_joins_receiver_and_consumer_before_reconnect(monkeypatch):
     sockets = [Socket(missing='REMOVE', hang_close=True), Socket()]
     calls, ticks = [], []

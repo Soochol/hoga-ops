@@ -42,6 +42,10 @@ def volume_entry(root, epoch, sockets, parent_pid):
 
 
 async def test_volume_snapshot_uses_separate_lane_and_survives_child_restart(tmp_path, monkeypatch):
+    from hoga.live import volume_state
+
+    # Sender and receiver must interpret the synthetic regular-session clock alike.
+    monkeypatch.setattr(volume_state, 'datetime', RegularClock)
     buffer = LiveBuffer()
     session = CaptureProcessSession(buffer=buffer, data_dir=tmp_path, process_target=volume_entry)
 

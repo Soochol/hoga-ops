@@ -48,9 +48,9 @@ from hoga.api.screener_continuous import build_router as continuous_router, make
 from hoga.api.screener_daily_confirmation import FINALIZATION_HOUR
 from hoga.api.screener_runs import ScreenerRuns, build_router as runs_router
 from hoga.api.screener_store import DailyBar
-from hoga.api.shutdown_timing import shutdown_phase
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kiwoom_access, kiwoom_rest_runtime
+from hoga.util.shutdown import shutdown_phase
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)

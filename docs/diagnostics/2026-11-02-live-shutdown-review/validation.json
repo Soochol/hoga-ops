@@ -1,0 +1,48 @@
+{
+  "head": "b9a9e242e5981c9ff1cb9b7bfb364e1daa472714",
+  "current_main": "e16041ff2efd6c674961f952971b810485898610",
+  "product_source_relation": "git diff origin/main -- hoga tests pyproject.toml uv.lock is empty",
+  "input_sha256": "971dc83b07789b6ce1f411c42765c4aa5d8c6943d07be9a6cf5f236ab3e99d65",
+  "input_paths": [
+    "docs/diagnostics/2026-11-02-live-shutdown-review/probe.py.txt",
+    "hoga/api/startup_runtime.py",
+    "hoga/live/collector_ipc.py",
+    "hoga/live/collector_process.py",
+    "hoga/live/collector_worker.py",
+    "hoga/live/kiwoom_session.py",
+    "hoga/live/kiwoom_ws_client.py",
+    "hoga/live/program_trade_collector.py",
+    "hoga/live/storage_runtime.py",
+    "pyproject.toml",
+    "tests/api/test_startup_runtime.py",
+    "tests/unit/live/test_collector_process.py",
+    "tests/unit/live/test_kiwoom_session.py",
+    "tests/unit/live/test_kiwoom_session_retirement.py",
+    "tests/unit/live/test_program_trade_collector.py",
+    "uv.lock"
+  ],
+  "algorithm": "SHA256(sorted path + NUL + binary SHA256(file bytes) + LF)",
+  "environment": {
+    "python": "3.14.7",
+    "websockets": "16.0",
+    "uvicorn": "0.47.0",
+    "pytest": "9.0.3"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev python docs/diagnostics/2026-11-02-live-shutdown-review/probe.py.txt",
+      "result": "2 barrier probes passed; 10 alternating timing runs passed; no vendor connections; all terminal and final-flush assertions passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_kiwoom_session_retirement.py tests/unit/live/test_kiwoom_session.py tests/unit/live/test_collector_process.py tests/unit/live/test_program_trade_collector.py tests/api/test_startup_runtime.py",
+      "result": "106 passed in 12.65s",
+      "log_sha256": "97075514046852b4f2d7ac95d6e27df50500f96130fa30dbb6be75f97cdeffc1"
+    }
+  ],
+  "limits": [
+    "50ms/account synthetic transport waits; not production speedup",
+    "No additional production reload or product implementation during this review",
+    "Production live_runtime 13.836s is still an aggregate; per-account close contribution not yet measured",
+    "Prototype verifies transport/flush-task barrier order, not physical fsync/lock correctness of a future production change"
+  ]
+}
