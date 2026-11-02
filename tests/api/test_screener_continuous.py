@@ -424,6 +424,73 @@ async def test_retiring_result_tasks_count_toward_admission(fixture, monkeypatch
     assert (await owner.result(replacement.id)).status == 'ok'
 
 
+async def test_shared_result_readers_receive_independent_models_and_later_requests_retry(fixture, monkeypatch):
+    from hoga.api import screener_runner
+    from hoga.api.models import ScreenerResponse
+
+    owner, _, _ = fixture
+    monitor = await start(owner)
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = ScreenerResponse(status='ok', rows=[])
+    calls = []
+
+    async def scan(**kwargs):
+        calls.append(kwargs)
+        entered.set()
+        await release.wait()
+        if len(calls) == 2:
+            raise ValueError('provider failed')
+        return original
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    first = asyncio.create_task(owner.result(monitor.id))
+    await entered.wait()
+    second = asyncio.create_task(owner.result(monitor.id))
+    await asyncio.sleep(0)
+    release.set()
+    a, b = await asyncio.gather(first, second)
+    a.warnings.append('changed by reader')
+    assert b.warnings == original.warnings == []
+    with pytest.raises(ValueError, match='provider failed'):
+        await owner.result(monitor.id)
+    assert (await owner.result(monitor.id)).status == 'ok'
+    assert len(calls) == 3
+
+
+async def test_result_phase_logs_keep_each_monitor_and_scan_correlated(fixture, monkeypatch, caplog):
+    import logging
+
+    from hoga.api import screener_runner
+    from hoga.api.models import ScreenerResponse
+    from hoga.api.screener_timing import phase
+
+    owner, _, _ = fixture
+    first, second = await start(owner), await start(owner, client='second')
+
+    async def scan(**kwargs):
+        with phase('overlay'):
+            await asyncio.sleep(0)
+        return ScreenerResponse(status='ok', rows=[])
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    caplog.set_level(logging.DEBUG, logger='hoga.api.screener_timing')
+    await asyncio.gather(owner.result(first.id), owner.result(second.id))
+    messages = [record.getMessage() for record in caplog.records if record.name == 'hoga.api.screener_timing']
+    assert len(messages) == 4
+    scan_ids = set()
+    for monitor in [first, second]:
+        matching = [message for message in messages if f'monitor_id={monitor.id} ' in message]
+        assert len(matching) == 2
+        fields = [dict(field.split('=', 1) for field in message.split()[1:]) for message in matching]
+        assert {field['phase'] for field in fields} == {'overlay', 'total'}
+        assert len({field['scan_id'] for field in fields}) == 1
+        scan_ids.add(fields[0]['scan_id'])
+    assert len(scan_ids) == 2
+    with phase('standalone'):
+        pass
+    assert len(caplog.records) == 4
+
+
 async def test_full_regular_session_338_symbols_shared_conditions_and_targeted_repair(fixture, tmp_path):
     from hoga.live.volume_state import MINUTE, VolumeSource
     from hoga.util.retained_size import retained_size

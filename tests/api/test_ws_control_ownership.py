@@ -255,3 +255,35 @@ async def test_asgi_cancellation_during_actual_session_work_removes_only_owned_r
     assert refs() == {'other-tab'}
     assert not buffer._subscribers
     assert not bus.queues
+
+
+async def test_asgi_cancellation_while_actual_us_unsubscribe_waits_for_lock(monkeypatch, tmp_path):
+    from hoga.live import lifecycle
+
+    async def noop(*args, **kwargs):
+        pass
+
+    session, lock, _ = actual_session(monkeypatch, tmp_path, 'inprocess', noop)
+    session._us_refs.add(('NASDAQ', 'AAPL', 'other-tab'))
+    monkeypatch.setattr(session, 'sync', noop)
+    monkeypatch.setattr(session._us, 'publish', lambda event: None)
+    entered = asyncio.Event()
+    original = session.on_us_unsubscribe
+
+    async def unsubscribe(exchange, symbol, *, ref):
+        async with lock:
+            entered.set()
+            await original(exchange, symbol, ref=ref)
+
+    monkeypatch.setattr(session, 'on_us_unsubscribe', unsubscribe)
+    monkeypatch.setattr(lifecycle._state, 'kiwoom_session', session)
+    socket = Socket([dict(action=action, exchange='NASDAQ', symbol='AAPL')
+                     for action in ['subscribe_us_stock', 'unsubscribe_us_stock']])
+    buffer = LiveBuffer()
+    endpoint = build_ws_router(EventBus(), lambda: buffer).routes[0].endpoint
+    async with anyio.create_task_group() as group:
+        group.start_soon(endpoint, socket)
+        await entered.wait()
+        assert len(session._us_refs) == 2
+        group.cancel_scope.cancel()
+    assert session._us_refs == {('NASDAQ', 'AAPL', 'other-tab')}
