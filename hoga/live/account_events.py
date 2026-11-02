@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
 import inspect
+import logging
 from collections import defaultdict
+
+log = logging.getLogger(__name__)
 
 _listeners: dict[tuple[str, int], set] = defaultdict(set)
 _states: dict[tuple[str, int], bool] = {}
@@ -66,7 +68,9 @@ async def subscribe_account(data_dir, environment: str, account: int, callback, 
         await session.retain_account(account)
         state_callback(_states.get(key, False))
     except BaseException:
-        with contextlib.suppress(Exception):
+        try:
             await release()
+        except Exception as exc:
+            log.warning("Account event rollback failed (%s)", type(exc).__name__)
         raise
     return release

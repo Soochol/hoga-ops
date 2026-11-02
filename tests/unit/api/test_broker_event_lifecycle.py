@@ -281,12 +281,12 @@ async def test_detached_unexpected_failure_is_observed_and_next_read_retries(eve
         loop.set_exception_handler(previous_handler)
 
 
-async def test_rollback_failure_preserves_original_retain_error(events, monkeypatch):
+async def test_rollback_failure_preserves_original_retain_error(events, monkeypatch, caplog):
     original_release = events.owner.release_account
 
     async def release(account):
         await original_release(account)
-        raise OSError("rollback transport failed")
+        raise OSError("SECRET-account-1111111111 rollback transport failed")
 
     monkeypatch.setattr(events.owner, "release_account", release)
     events.failure = ValueError("original retain failed")
@@ -296,6 +296,8 @@ async def test_rollback_failure_preserves_original_retain_error(events, monkeypa
             events.service.data_dir, "real", 0, lambda *_: None, lambda _: None,
         )
     assert events.owner.account_refs == set()
+    assert any(record.name == "hoga.live.account_events" and "OSError" in record.message for record in caplog.records)
+    assert "SECRET-account-1111111111" not in caplog.text
 
 
 async def test_unexpected_registration_failure_reaches_reader_and_allows_retry(events):
