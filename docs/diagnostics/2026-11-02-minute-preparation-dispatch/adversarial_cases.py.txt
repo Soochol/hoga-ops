@@ -1,0 +1,207 @@
+import asyncio
+from dataclasses import replace
+from datetime import timedelta
+import weakref
+
+import pytest
+
+from hoga.api import screener_rankings, screener_runner, screener_series_runner
+from hoga.api.models import ScanRequest, ScreenerResponse
+from hoga.api.screener_continuous import ContinuousAdapter, History
+from tests.api.test_screener_preparation_dispatch import dispatch, turns
+
+
+def ranked_request(expression='A AND B', policy='legacy_v1'):
+    return ScanRequest.model_validate(dict(conditions=[
+        dict(id='v', type='new_high_vol', params=dict(timeframe='1m', period=5, lookback=1)),
+        dict(id='r', type='trade_value_rank', params=dict(top_n=300))], expression=expression,
+        universe=dict(scopes=['watchlist']), basis='intraday', calculation_policy=policy))
+
+
+@pytest.mark.parametrize('mutation', ['scope', 'identity', 'needed', 'fetched', 'retry', 'day'])
+async def test_stale_waiting_jobs_never_enter_loader(tmp_path, mutation):
+    async with dispatch(tmp_path) as (owner, monitor, codes, started, release, maximum):
+        owner.schedule(set(codes), owner.now())
+        await turns()
+        waiting = set(codes) - set(started)
+        if mutation == 'scope':
+            monitor.codes = list(started)
+        elif mutation == 'day':
+            day = owner.selected_day(owner.now())
+            owner.selected_day = lambda _: day + timedelta(days=1)
+        else:
+            for code in waiting:
+                history = owner.histories[code]
+                if mutation == 'identity':
+                    owner.histories[code] = History(history.needed)
+                elif mutation == 'needed':
+                    history.needed += 1
+                elif mutation == 'fetched':
+                    history.fetched_ms = owner.now()
+                else:
+                    history.retry_at = owner.now() + 60_000
+        for code in started[:]:
+            release[code].set()
+        await turns()
+        assert len(started) == 4
+        assert maximum() == 4
+        assert not owner._preparations.waiting
+
+
+async def test_cancelled_slot_refills_without_exceeding_capacity(tmp_path):
+    async with dispatch(tmp_path) as (owner, _, codes, started, _, maximum):
+        owner.schedule(set(codes), owner.now())
+        await turns()
+        owner.pending[started[0]].cancel()
+        await turns()
+        assert len(started) == 5
+        assert len(owner.pending) == maximum() == 4
+
+
+async def test_late_old_callback_keeps_replacement_owner(tmp_path):
+    async with dispatch(tmp_path) as (owner, _, codes, started, release, maximum):
+        owner.schedule(set(codes), owner.now())
+        await turns()
+        code = started[0]
+        old = owner.pending[code]
+        old.remove_done_callback(old._callbacks[0][0])
+        release[code].set()
+        await old
+        replacement = asyncio.create_task(asyncio.Event().wait())
+        owner.pending[code] = replacement
+        owner._preparation_finished(code, old)
+        assert owner.pending[code] is replacement
+        assert len(owner.pending) == 4
+        assert len(started) == 4
+        assert maximum() == 4
+
+
+@pytest.mark.parametrize('expression,full_scope', [('A AND B', False), ('A OR B', True)])
+async def test_expression_priority_is_safe(tmp_path, expression, full_scope):
+    async with dispatch(tmp_path) as (owner, monitor, codes, started, _, _maximum):
+        monitor.request = ranked_request(expression)
+        rank = screener_rankings.RankEvaluation({'r': [(c, None) for c in codes[4:]]}, owner.now())
+        ContinuousAdapter(owner, monitor).prioritize_rank_candidates(rank)
+        assert monitor.preferred == frozenset(codes if full_scope else codes[4:])
+        owner.schedule(set(codes), owner.now())
+        await turns()
+        assert set(started) == (set(codes[:4]) if full_scope else {codes[0], *codes[4:7]})
+
+
+@pytest.mark.parametrize('expired', ['age', 'day', 'future', 'stopped'])
+async def test_stale_priority_cannot_reorder(tmp_path, expired):
+    async with dispatch(tmp_path) as (owner, monitor, codes, started, _, _maximum):
+        monitor.request = ranked_request()
+        rank = screener_rankings.RankEvaluation({'r': [(c, None) for c in codes[4:]]}, owner.now())
+        ContinuousAdapter(owner, monitor).prioritize_rank_candidates(rank)
+        if expired == 'age':
+            monitor.preferred_at_ms -= 30_001
+        elif expired == 'future':
+            monitor.preferred_at_ms += 1
+        elif expired == 'day':
+            monitor.preferred_day = '1900-01-01'
+        else:
+            second = replace(monitor, id='second', client_id='second', preferred=frozenset())
+            owner.monitors[second.id] = second
+            owner.stop(monitor.id)
+        owner.schedule(set(codes), owner.now())
+        await turns()
+        assert started == codes[:4]
+
+
+async def test_recovery_precedes_ranked_cold_and_fairness_survives_queue_replacement(tmp_path):
+    async with dispatch(tmp_path, 24) as (owner, monitor, codes, started, release, maximum):
+        monitor.request = ranked_request()
+        preferred = set(codes[4:20])
+        rank = screener_rankings.RankEvaluation({'r': [(c, None) for c in preferred]}, owner.now())
+        ContinuousAdapter(owner, monitor).prioritize_rank_candidates(rank)
+        for code in codes[20:]:
+            history = owner.histories[code]
+            history.fetched_ms = owner.now() - 600_000
+            history.repair_until_ms = owner.now()
+        owner.schedule(set(codes), owner.now())
+        await turns()
+        assert set(started) == set(codes[20:])
+        while len(started) < len(codes):
+            owner.schedule(set(codes), owner.now())
+            for code in started[:]:
+                release[code].set()
+            await turns()
+        assert len(set(started)) == len(codes)
+        for index in range(4, 20, 4):
+            assert len(set(started[index:index+4]) & preferred) == 3
+        assert maximum() == 4
+
+
+@pytest.mark.parametrize('policy', ['legacy_v1', 'separate_bases_v2'])
+async def test_runner_hook_fetches_only_once_and_preserves_runtime(tmp_path, monkeypatch, policy):
+    async with dispatch(tmp_path) as (owner, monitor, codes, _, _, _maximum):
+        monitor.request = ranked_request(policy=policy)
+        adapter = ContinuousAdapter(owner, monitor)
+        calls = []
+        rank = screener_rankings.RankEvaluation({'r': [(c, None) for c in codes[4:]]}, owner.now())
+
+        async def evaluate(*args, **kwargs):
+            calls.append('rank')
+            assert monitor.preferred == frozenset()
+            return rank
+
+        async def run(**kwargs):
+            calls.append('run')
+            assert kwargs['volume_runtime'] is adapter
+            assert kwargs['rank_eval'] is rank
+            assert monitor.preferred == frozenset(codes[4:])
+            return ScreenerResponse(status='ok', rows=[])
+
+        monkeypatch.setattr(screener_rankings, 'evaluate', evaluate)
+        monkeypatch.setattr(screener_runner, '_run_legacy_scan', run)
+        monkeypatch.setattr(screener_series_runner, 'run_scan', run)
+        response = await screener_runner.run_screener_scan(data_dir=tmp_path, req=monitor.request,
+                                                        volume_runtime=adapter)
+        assert response.status == 'ok'
+        assert calls == ['rank', 'run']
+
+
+async def test_cancelled_rank_request_clears_priority(tmp_path, monkeypatch):
+    async with dispatch(tmp_path) as (owner, monitor, codes, _, _, _maximum):
+        monitor.request = ranked_request()
+        adapter = ContinuousAdapter(owner, monitor)
+        rank = screener_rankings.RankEvaluation({'r': [(c, None) for c in codes[4:]]}, owner.now())
+        adapter.prioritize_rank_candidates(rank)
+        entered = asyncio.Event()
+
+        async def evaluate(*args, **kwargs):
+            entered.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(screener_rankings, 'evaluate', evaluate)
+        task = asyncio.create_task(screener_runner.run_screener_scan(data_dir=tmp_path,
+            req=monitor.request, volume_runtime=adapter))
+        await entered.wait()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert monitor.preferred == frozenset()
+
+
+async def test_maximum_queue_drains_and_releases_waiting_history_reference(tmp_path):
+    async with dispatch(tmp_path, 512) as (owner, _, codes, started, release, maximum):
+        owner.schedule(set(codes), owner.now())
+        await turns()
+        assert len(owner._preparations.waiting) == 508
+        code = codes[-1]
+        old = weakref.ref(owner.histories[code])
+        owner.histories[code] = History(owner.histories[code].needed)
+        assert old() is not None
+        owner.schedule(set(codes), owner.now())
+        assert old() is None
+        while len(started) < len(codes):
+            for done in started[:]:
+                release[done].set()
+            await turns()
+        for done in started[:]:
+            release[done].set()
+        await turns()
+        assert len(started) == len(set(started)) == 512
+        assert maximum() == 4
+        assert not owner.pending
+        assert not owner._preparations.waiting
