@@ -1,0 +1,34 @@
+import argparse
+import json
+from pathlib import Path
+
+from hoga.api import screener_daily_projection as projection, screener_series_store as store
+from hoga.api import screener_universe, symbols
+from hoga.api.models import ScanRequest
+from hoga.config import resolve_symbol_master_path
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--apply', action='store_true')
+parser.add_argument('--output', type=Path, required=True)
+args = parser.parse_args()
+data = Path('/home/dev/.local/share/hoga-ops/data')
+request = ScanRequest.model_validate(json.loads(Path('docs/diagnostics/2026-11-02-afternoon-query-performance/request.json').read_text()))
+symbols.load_disk_state(path=resolve_symbol_master_path(), data_dir=data, defer_counts=True)
+codes = screener_universe.codes_for_universe(data / 'screener/stocks.parquet', request.universe,
+    scope=screener_universe.scope_codes(data, request.universe.scopes), etf_codes=symbols.all_etf_etn_codes())
+identity, before = store.load_snapshot(data)
+result = {'codes': codes, 'before_snapshot': identity, 'before_ready': len(before.get('daily_query', {}).get('headers', {})),
+          'selected_observations': len(set(codes) & before['observations'].keys()), 'applied': args.apply}
+if args.apply:
+    result['preparation'] = projection.prepare_existing_query_data(data, expected_snapshot=identity, codes=codes)
+    after_id, after = store.load_snapshot(data, result['preparation']['snapshot_id'])
+    previous_id, previous = store.load_snapshot(data, result['preparation']['previous_snapshot'])
+    normalize = lambda manifest: {k: v for k, v in manifest.items() if k not in {'parent', 'daily_query'}}
+    assert normalize(after) == normalize(previous), 'Preparation changed semantic daily facts'
+    assert store.load_snapshot(data, identity)[1] == before, 'Pinned prior snapshot changed'
+    result['semantic_fields_unchanged'] = True
+    result['after_snapshot'] = after_id
+args.output.write_text(json.dumps(result, indent=2))
+print(json.dumps({k: v for k, v in result.items() if k not in {'codes','preparation'}}), flush=True)
+if args.apply:
+    print(json.dumps({k:v for k,v in result['preparation'].items() if k not in {'prepared','reused','sizes'}}), flush=True)

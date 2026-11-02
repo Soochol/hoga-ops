@@ -1,0 +1,35 @@
+{
+  "head": "75207735231a869ab8904b4dc16c950b7fb11ea8",
+  "base": "e16041ff2efd6c674961f952971b810485898610",
+  "full_backend_head": "dcd36a1b1bf5fde2e0946a8b39e7bf73010a2558",
+  "full_backend_input_hash": "5a7fc5a043766bf04c731139ee236c15c4bf6fa1b76dc1bcae04ba1a11106a5f",
+  "final_input_hash": "62cbe8ce1c446defd6b6ebd865de689af24a6242d58ae16120cbf3635e47ed4a",
+  "changed_after_full_backend": [
+    "hoga/api/screener_daily_projection.py",
+    "tests/api/test_screener_daily_query_integrity.py",
+    "tests/api/test_screener_daily_query_publication.py"
+  ],
+  "reuse": "Root approved localized optional-reference parser and per-observation inner RAM keys. All affected screener, read-shutdown and spawned volume-process tests were rerun; other 903 input files are byte-identical.",
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "PASS final head"
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "8424 passed, 2 skipped, 13 deselected, 82 warnings in 377.96s",
+      "head": "dcd36a1b1bf5fde2e0946a8b39e7bf73010a2558",
+      "log": "/tmp/direct-refresh-final-backend.log"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener*.py tests/unit/api/test_read_shutdown.py tests/unit/live/test_volume_process.py",
+      "result": "1731 passed, 66 warnings in 81.68s",
+      "head": "75207735231a869ab8904b4dc16c950b7fb11ea8",
+      "log": "/tmp/direct-refresh-final-screener.log"
+    }
+  ],
+  "log_sha256": {
+    "/tmp/direct-refresh-final-backend.log": "109081de6a6fc5d3cdbad739e4b5e77a231d470ae9f2d43d7f1727cee30b0339",
+    "/tmp/direct-refresh-final-screener.log": "09dfaee57c513767e8cb5e70a4452f575ae1c18e1277a9c0d60345cf0c90ba5e"
+  }
+}

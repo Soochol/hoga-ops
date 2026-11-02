@@ -1,0 +1,77 @@
+import argparse
+import json
+import subprocess
+import time
+from pathlib import Path
+
+from hoga.api import screener_series_store as store
+
+
+def copy_file(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['cp', '--reflink=auto', str(source), str(target)], check=True)
+
+
+def main(target):
+    started = time.monotonic()
+    source = Path('/home/dev/.local/share/hoga-ops/data')
+    spec = json.loads(Path('docs/diagnostics/2026-11-02-afternoon-query-performance/daily-inputs.json').read_text())
+    identity, manifest = store.load_snapshot(source, spec['snapshot_id'])
+    original, destination = store.root(source), store.root(target)
+    destination.mkdir(parents=True, exist_ok=True)
+    baseline = original / 'legacy' / manifest['baseline']
+    for file in baseline.iterdir():
+        if file.is_file():
+            copy_file(file, destination / 'legacy' / manifest['baseline'] / file.name)
+    selected = set(spec['codes'])
+    queue = [manifest['observations'][code] for code in selected if code in manifest['observations']]
+    copied = set()
+    source_bytes = 0
+    while queue:
+        object_id = queue.pop()
+        if object_id in copied:
+            continue
+        value = store.read_object(source, object_id)
+        path = original / 'objects' / (object_id + '.json')
+        copy_file(path, destination / 'objects' / path.name)
+        source_bytes += path.stat().st_size
+        copied.add(object_id)
+        if value.get('candidate_observation'):
+            queue.append(value['candidate_observation'])
+    observation_ids = sorted(copied)
+    references = {identity, manifest['roster']}
+    if manifest.get('daily_ingest'):
+        references.add(manifest['daily_ingest'])
+    for field in ('quantity', 'corrections'):
+        references.update(value for code, value in manifest.get(field, {}).items() if code in selected)
+    for object_id in references - copied:
+        source_file = original / 'objects' / (object_id + '.json')
+        copy_file(source_file, destination / 'objects' / source_file.name)
+        copied.add(object_id)
+    (destination / 'current.json').write_text(json.dumps({'id': identity}))
+    (destination / 'baseline.json').write_text(json.dumps({'id': manifest['baseline']}))
+    copy_file(baseline / 'stocks.parquet', target / 'screener' / 'stocks.parquet')
+    (target / 'watchlist.json').write_text(json.dumps(dict(schema_version=4,
+        folders=[dict(id='f_00000000', name='fixture', items=[dict(kind='code', code=c) for c in spec['codes']])],
+        entries=[dict(code=c, name=c, registered_at_kst_date='20261020') for c in spec['codes']])))
+    calendar = target / 'calendar'
+    calendar.mkdir(exist_ok=True)
+    days = manifest.get('calendar') or json.loads((baseline / 'calendar.json').read_text())
+    days = sorted(set(days) | {'20261102'})
+    (calendar / 'trading_days.txt').write_text('\n'.join(days) + '\n')
+    record = dict(source_snapshot=identity, private_data_dir=str(target), cohort=spec['codes'],
+                  source_observation_ids=observation_ids,
+                  observation_bytes=source_bytes, copied_objects=len(copied),
+                  elapsed_s=time.monotonic() - started)
+    (target / 'clone-record.json').write_text(json.dumps(record, indent=2))
+    print(json.dumps({k: v for k, v in record.items() if k != 'cohort'}), flush=True)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('target', type=Path)
+    args = parser.parse_args()
+    if args.target.exists():
+        raise SystemExit('Use a new private target directory')
+    args.target.mkdir(parents=True)
+    main(args.target)

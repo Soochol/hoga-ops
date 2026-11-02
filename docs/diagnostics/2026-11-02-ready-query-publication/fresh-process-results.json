@@ -1,0 +1,537 @@
+{
+  "claim": "Fresh-process first complete HTTP monitor result is faster after publication-ready daily data and read-owned minute aggregation.",
+  "scope": "Real immutable daily corpus, 152 selected codes, synthetic already-prepared minutes and rank/quotes. External network forbidden. Each HTTP query uses a new process; not cold OS cache or vendor readiness.",
+  "heads": {
+    "base": "6c5d84198a3a2681f93ca7f844b823e4f3f492ab",
+    "head": "7f2d73d1ec3719d7af6dcdfcbd91679300da718e"
+  },
+  "case_sha256": "00224fb6e85a4a215bc492d50885ff3e99c00c5fc1e13e2583225c8bb256b7a7",
+  "python": "3.14.7",
+  "cores": 32,
+  "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+  "summary": {
+    "base": {
+      "median_s": 27.36046960100066,
+      "min_s": 27.119822167005623,
+      "max_s": 28.007245621003676
+    },
+    "head": {
+      "median_s": 4.181407685013255,
+      "min_s": 4.002933987998404,
+      "max_s": 4.786756575005711
+    }
+  },
+  "samples": [
+    {
+      "wall_s": 27.522098742992966,
+      "cpu_s": 27.500794257,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 253,
+        "source_observation_json": 248,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=ranks elapsed_ms=1.8 outcome=completed",
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=snapshot elapsed_ms=2.6 outcome=completed",
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=inputs elapsed_ms=25340.6 outcome=completed",
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=overlay elapsed_ms=1.7 outcome=completed",
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=calendar elapsed_ms=768.3 outcome=completed",
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=minute elapsed_ms=692.7 outcome=completed",
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=rows elapsed_ms=4.6 outcome=completed",
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=daily_contract elapsed_ms=690.1 outcome=completed",
+        "screener.monitor.phase monitor_id=fdc8f1105e0a42e497cc6f6893309ff3 scan_id=fcd60f6184a446dd8bdbd240b2f5108e phase=total elapsed_ms=27519.5 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/tmp/hoga-direct-refresh-baseline/hoga/api/screener_series_store.py",
+      "side": "base",
+      "repeat": 0,
+      "loadavg": [
+        4.19873046875,
+        5.34228515625,
+        5.33837890625
+      ]
+    },
+    {
+      "wall_s": 4.3273895460006315,
+      "cpu_s": 4.346244872,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 5,
+        "source_observation_json": 0,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=ranks elapsed_ms=2.3 outcome=completed",
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=snapshot elapsed_ms=1.9 outcome=completed",
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=inputs elapsed_ms=309.5 outcome=completed",
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=overlay elapsed_ms=1.3 outcome=completed",
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=calendar elapsed_ms=3632.5 outcome=completed",
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=minute elapsed_ms=315.0 outcome=completed",
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=rows elapsed_ms=3.4 outcome=completed",
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=daily_contract elapsed_ms=38.4 outcome=completed",
+        "screener.monitor.phase monitor_id=16e74411f5624f2c855809ec0a57dcf3 scan_id=020e3f846d7c4d33b6c43079f125f709 phase=total elapsed_ms=4325.2 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/home/dev/.codex/worktrees/73e2/hoga-ops/hoga/api/screener_series_store.py",
+      "side": "head",
+      "repeat": 0,
+      "loadavg": [
+        4.42333984375,
+        5.3701171875,
+        5.34765625
+      ]
+    },
+    {
+      "wall_s": 27.119822167005623,
+      "cpu_s": 27.096845158,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 253,
+        "source_observation_json": 248,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=ranks elapsed_ms=1.8 outcome=completed",
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=snapshot elapsed_ms=2.8 outcome=completed",
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=inputs elapsed_ms=24911.4 outcome=completed",
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=overlay elapsed_ms=1.2 outcome=completed",
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=calendar elapsed_ms=800.7 outcome=completed",
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=minute elapsed_ms=721.2 outcome=completed",
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=rows elapsed_ms=5.7 outcome=completed",
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=daily_contract elapsed_ms=656.7 outcome=completed",
+        "screener.monitor.phase monitor_id=be5b65a090d5425089b48a01cb2aa9c6 scan_id=da78e5428f5543229aeef7be323b1c12 phase=total elapsed_ms=27117.8 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/tmp/hoga-direct-refresh-baseline/hoga/api/screener_series_store.py",
+      "side": "base",
+      "repeat": 1,
+      "loadavg": [
+        4.2626953125,
+        5.23828125,
+        5.30419921875
+      ]
+    },
+    {
+      "wall_s": 4.786756575005711,
+      "cpu_s": 4.8074134310000005,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 5,
+        "source_observation_json": 0,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=ranks elapsed_ms=1.9 outcome=completed",
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=snapshot elapsed_ms=2.2 outcome=completed",
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=inputs elapsed_ms=313.5 outcome=completed",
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=overlay elapsed_ms=1.2 outcome=completed",
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=calendar elapsed_ms=4000.2 outcome=completed",
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=minute elapsed_ms=409.5 outcome=completed",
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=rows elapsed_ms=3.7 outcome=completed",
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=daily_contract elapsed_ms=32.5 outcome=completed",
+        "screener.monitor.phase monitor_id=e3c5bf1f820744e49aa73cae839a1db2 scan_id=dee723f772e4462f8c3b0dd8b4426539 phase=total elapsed_ms=4784.6 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/home/dev/.codex/worktrees/73e2/hoga-ops/hoga/api/screener_series_store.py",
+      "side": "head",
+      "repeat": 1,
+      "loadavg": [
+        4.32177734375,
+        5.23388671875,
+        5.30224609375
+      ]
+    },
+    {
+      "wall_s": 28.007245621003676,
+      "cpu_s": 28.021393279999998,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 253,
+        "source_observation_json": 248,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=ranks elapsed_ms=1.8 outcome=completed",
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=snapshot elapsed_ms=2.2 outcome=completed",
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=inputs elapsed_ms=26099.3 outcome=completed",
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=overlay elapsed_ms=1.3 outcome=completed",
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=calendar elapsed_ms=741.4 outcome=completed",
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=minute elapsed_ms=617.2 outcome=completed",
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=rows elapsed_ms=4.0 outcome=completed",
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=daily_contract elapsed_ms=521.8 outcome=completed",
+        "screener.monitor.phase monitor_id=f13da2cb65ff4002b5c2a6daf6fd09c1 scan_id=4137d54ddce449af817e7d295d7dc889 phase=total elapsed_ms=28005.3 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/tmp/hoga-direct-refresh-baseline/hoga/api/screener_series_store.py",
+      "side": "base",
+      "repeat": 2,
+      "loadavg": [
+        5.4296875,
+        5.4052734375,
+        5.35595703125
+      ]
+    },
+    {
+      "wall_s": 4.002933987998404,
+      "cpu_s": 4.023641769999999,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 5,
+        "source_observation_json": 0,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=ranks elapsed_ms=1.7 outcome=completed",
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=snapshot elapsed_ms=1.0 outcome=completed",
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=inputs elapsed_ms=254.7 outcome=completed",
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=overlay elapsed_ms=1.2 outcome=completed",
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=calendar elapsed_ms=3385.2 outcome=completed",
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=minute elapsed_ms=306.8 outcome=completed",
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=rows elapsed_ms=3.6 outcome=completed",
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=daily_contract elapsed_ms=28.9 outcome=completed",
+        "screener.monitor.phase monitor_id=ae0c3a2fafeb4060baf9f082bd6f46c1 scan_id=dcff4cdfdf744559b5eeba443fbae130 phase=total elapsed_ms=4001.1 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/home/dev/.codex/worktrees/73e2/hoga-ops/hoga/api/screener_series_store.py",
+      "side": "head",
+      "repeat": 2,
+      "loadavg": [
+        5.39501953125,
+        5.3984375,
+        5.35400390625
+      ]
+    },
+    {
+      "wall_s": 27.36046960100066,
+      "cpu_s": 27.351675006,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 253,
+        "source_observation_json": 248,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=ranks elapsed_ms=1.8 outcome=completed",
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=snapshot elapsed_ms=2.8 outcome=completed",
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=inputs elapsed_ms=25437.4 outcome=completed",
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=overlay elapsed_ms=2.3 outcome=completed",
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=calendar elapsed_ms=724.3 outcome=completed",
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=minute elapsed_ms=651.9 outcome=completed",
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=rows elapsed_ms=4.2 outcome=completed",
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=daily_contract elapsed_ms=518.1 outcome=completed",
+        "screener.monitor.phase monitor_id=1059fdca4f3e46bdaff4d6b1c90cdd63 scan_id=bba128b4498d4a2da7a0998ecd1d09db phase=total elapsed_ms=27358.2 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/tmp/hoga-direct-refresh-baseline/hoga/api/screener_series_store.py",
+      "side": "base",
+      "repeat": 3,
+      "loadavg": [
+        5.48046875,
+        5.427734375,
+        5.365234375
+      ]
+    },
+    {
+      "wall_s": 4.121567348993267,
+      "cpu_s": 4.1417045869999995,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 5,
+        "source_observation_json": 0,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=ranks elapsed_ms=1.8 outcome=completed",
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=snapshot elapsed_ms=2.3 outcome=completed",
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=inputs elapsed_ms=266.4 outcome=completed",
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=overlay elapsed_ms=1.1 outcome=completed",
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=calendar elapsed_ms=3361.9 outcome=completed",
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=minute elapsed_ms=399.3 outcome=completed",
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=rows elapsed_ms=3.6 outcome=completed",
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=daily_contract elapsed_ms=63.5 outcome=completed",
+        "screener.monitor.phase monitor_id=0c3b39ce16aa49e0ae91452f6e9b7248 scan_id=c665f83c95a841bfa035cf6ae77afa7b phase=total elapsed_ms=4119.2 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/home/dev/.codex/worktrees/73e2/hoga-ops/hoga/api/screener_series_store.py",
+      "side": "head",
+      "repeat": 3,
+      "loadavg": [
+        5.20166015625,
+        5.37060546875,
+        5.3466796875
+      ]
+    },
+    {
+      "wall_s": 27.134507026989013,
+      "cpu_s": 27.148515084,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 253,
+        "source_observation_json": 248,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=ranks elapsed_ms=1.8 outcome=completed",
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=snapshot elapsed_ms=3.7 outcome=completed",
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=inputs elapsed_ms=25257.7 outcome=completed",
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=overlay elapsed_ms=1.2 outcome=completed",
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=calendar elapsed_ms=670.4 outcome=completed",
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=minute elapsed_ms=624.3 outcome=completed",
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=rows elapsed_ms=4.0 outcome=completed",
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=daily_contract elapsed_ms=554.3 outcome=completed",
+        "screener.monitor.phase monitor_id=3b171be27800447ebbd23cf7d64578f8 scan_id=de032106297747fa89f059e232aabddf phase=total elapsed_ms=27132.5 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/tmp/hoga-direct-refresh-baseline/hoga/api/screener_series_store.py",
+      "side": "base",
+      "repeat": 4,
+      "loadavg": [
+        4.75146484375,
+        5.265625,
+        5.31396484375
+      ]
+    },
+    {
+      "wall_s": 4.181407685013255,
+      "cpu_s": 4.212983431,
+      "rows": 1,
+      "coverage": {
+        "total": 152,
+        "complete": 152,
+        "incomplete": [],
+        "realtime": {
+          "prepared": 152,
+          "receiving": 152,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1793590820000
+        },
+        "trading_date": "2026-11-02"
+      },
+      "calls": {
+        "minute_seed": 152,
+        "ranks": 1,
+        "objects": 5,
+        "source_observation_json": 0,
+        "capacity": 2,
+        "quote_chunks": 2
+      },
+      "phases": [
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=ranks elapsed_ms=1.8 outcome=completed",
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=snapshot elapsed_ms=1.0 outcome=completed",
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=inputs elapsed_ms=259.7 outcome=completed",
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=overlay elapsed_ms=1.2 outcome=completed",
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=calendar elapsed_ms=3525.2 outcome=completed",
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=minute elapsed_ms=330.6 outcome=completed",
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=rows elapsed_ms=5.9 outcome=completed",
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=daily_contract elapsed_ms=34.9 outcome=completed",
+        "screener.monitor.phase monitor_id=b199526222654634aac5e2f2302917b8 scan_id=8fdc9774d5704cbd834992c17a8750e3 phase=total elapsed_ms=4179.4 outcome=completed"
+      ],
+      "payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+      "snapshot": "cbc54b2f0f2e3a28d98b45403b45bd8a7ca2d55317f5a6ef25919d29c09b1e55",
+      "source_file": "/home/dev/.codex/worktrees/73e2/hoga-ops/hoga/api/screener_series_store.py",
+      "side": "head",
+      "repeat": 4,
+      "loadavg": [
+        4.61083984375,
+        5.2275390625,
+        5.30126953125
+      ]
+    }
+  ],
+  "failures": 0
+}

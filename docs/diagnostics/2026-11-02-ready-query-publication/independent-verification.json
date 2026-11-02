@@ -1,0 +1,18 @@
+{
+  "verifier": "ready_query_independent_verifier",
+  "non_author": true,
+  "checkout": "/tmp/hoga-ready-query-verifier",
+  "runtime_head": "0866e57cb54a9e440bbd1e7ce75090363fffd376",
+  "baseline_head": "6c5d84198a3a2681f93ca7f844b823e4f3f492ab",
+  "final_base": "57693dddc4d374c1436a9a1e4a275c00fd75a5e2",
+  "full_payload_sha256": "a9c0a20b81f5dc6304a81746d7f132f2bb2e01743fa7f814a94b1eab4078fb2c",
+  "coverage_total": 152,
+  "coverage_complete": 152,
+  "initial_source_json_reads": 248,
+  "final_source_json_reads": 0,
+  "single_run_wall_s": {
+    "initial": 25.570452207990456,
+    "final": 4.264385306989425
+  },
+  "single_run_note": "Diagnostic evidence; no median/speedup claim. Coordinator owns five alternating pairs. Minute preparation completed with fixture loader before timed HTTP GET. No live vendor or production restart."
+}

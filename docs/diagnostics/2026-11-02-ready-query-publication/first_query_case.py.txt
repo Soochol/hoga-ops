@@ -1,0 +1,148 @@
+import argparse
+import asyncio
+import datetime as dt
+import hashlib
+import json
+import logging
+import socket
+import time
+from collections import Counter
+from pathlib import Path
+
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from pytest import MonkeyPatch
+
+from hoga.api import screener_bar_volume as bars, screener_intraday as overlay
+from hoga.api import screener_runner, screener_series_store as store
+from hoga.api.screener_continuous import ContinuousMonitors, build_router
+from hoga.live.buffer import LiveBuffer
+from hoga.live.kiwoom_rankings import RankingRow, RankingSnapshot
+from hoga.live.kiwoom_rankings_access import set_rankings_fetcher_getter
+from hoga.live.quote_models import Quote
+from hoga.util.timeenc import KST
+
+
+async def main(args):
+    expected = Path(args.checkout).resolve()
+    assert Path(store.__file__).resolve().is_relative_to(expected)
+    record = json.loads((args.data / 'clone-record.json').read_text())
+    codes = record['cohort']
+    clock = dt.datetime(2026, 11, 2, 12, 40, 20, tzinfo=KST)
+    now = int(clock.timestamp() * 1000)
+    opening = int(clock.replace(hour=9, minute=0, second=0).timestamp() * 1000)
+    data = [bars.VolumeBar(opening + i * 60_000, 10 + i, i == 220,
+        open=1000 + i * 10, high=1012 + i * 10, low=995 + i * 10, close=1009 + i * 10)
+        for i in range(221)]
+    flat = [bars.VolumeBar(b.start_ms, 10, b.is_open, open=100, high=100, low=100, close=100)
+            for b in data]
+    mp, calls, phases = MonkeyPatch(), Counter(), []
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError('External network/result minute request forbidden')
+
+    class RankFetcher:
+        async def get(self, *_args, **_kwargs):
+            calls['ranks'] += 1
+            return RankingSnapshot('value', 'all', 'up', tuple(
+                RankingRow(i + 1, code, code, 2809, 1., provider_rank=i + 1, trade_value_won=100000000)
+                for i, code in enumerate(codes)), True, now)
+
+    class Timing(logging.Handler):
+        def emit(self, entry):
+            message = entry.getMessage()
+            if 'screener.monitor.phase' in message:
+                phases.append(message)
+
+    async def capacity(_scheduler, *, fetch_fn, client, **_kwargs):
+        calls['capacity'] += 1
+        return await fetch_fn(client)
+
+    async def quotes(_client, selected, **_kwargs):
+        calls['quote_chunks'] += 1
+        return [Quote(code=code, price=2809, change_pct=1., open=1000, high=2812, low=995,
+                      volume=200000) for code in selected]
+
+    buffer = LiveBuffer()
+    source = buffer.volume_source
+    source.configure(codes)
+    source.health(dict.fromkeys(codes, 'fixture:1'), opening)
+
+    async def targets(selected):
+        for frame in source.frames(now):
+            buffer.volume_replica.apply(frame, now)
+
+    async def loader(_dir, code, timeframe, *_args):
+        calls['minute_seed'] += 1
+        assert timeframe == '1m'
+        return bars.MinuteSnapshot(list(data if code == '005930' else flat), now)
+
+    mp.setattr(socket.socket, 'connect', forbidden)
+    mp.setattr(screener_runner, 'now_kst', lambda: clock)
+    mp.setattr(bars.time, 'time', lambda: now / 1000)
+    mp.setattr(bars, 'minute_snapshot', forbidden)
+    mp.setattr(overlay.kiwoom_rest_runtime, 'ensure_rest_client', lambda *_: object())
+    mp.setattr(overlay.kiwoom_rest_runtime, 'ensure_scheduler', lambda *_: object())
+    mp.setattr(overlay.kiwoom_access, 'run_with_capacity', capacity)
+    mp.setattr(overlay.kiwoom_multi_quote, 'fetch_multi_price', quotes)
+    set_rankings_fetcher_getter(lambda: RankFetcher())
+    logger = logging.getLogger('hoga.api.screener_timing')
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(Timing())
+    owner = ContinuousMonitors(args.data, None, buffer, targets, loader=loader, now=lambda: now)
+    app = FastAPI()
+    app.include_router(build_router(owner), prefix='/api/screener')
+    request = json.loads(args.request.read_text())
+    request['limit'] = 1000
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://fixture') as client:
+            started = await client.post('/api/screener/monitors', json={'client_id': 'fresh-process', 'request': request})
+            started.raise_for_status()
+            monitor_id = started.json()['id']
+            owner.loop_task.cancel()
+            await asyncio.gather(owner.loop_task, return_exceptions=True)
+            owner.loop_task = None
+            await targets(codes)
+            for code in codes:
+                await owner.prepare(code, owner.histories[code])
+            assert calls['minute_seed'] == len(codes)
+            read = store.read_object
+            source_ids = set(record['source_observation_ids'])
+
+            def counted(data_dir, identity, **kwargs):
+                calls['objects'] += 1
+                calls['source_observation_json'] += identity in source_ids
+                return read(data_dir, identity, **kwargs)
+
+            mp.setattr(store, 'read_object', counted)
+            before, cpu = time.perf_counter(), time.process_time()
+            response = await client.get(f'/api/screener/monitors/{monitor_id}/result')
+            if response.is_error:
+                print(response.text, flush=True)
+            response.raise_for_status()
+            payload = response.json()
+            elapsed, used = time.perf_counter() - before, time.process_time() - cpu
+            assert payload['bar_coverage']['total'] == len(codes) == 152
+            assert payload['bar_coverage']['complete'] == 152, {
+                'complete': payload['bar_coverage']['complete'],
+                'reasons': dict(Counter(v['reason'] for v in payload['bar_coverage']['incomplete']))}
+            assert {row['code'] for row in payload['rows']} == {'005930'}, payload['rows']
+            normalized = json.loads(json.dumps(payload))
+            normalized['calculation'].pop('snapshot_id')
+            digest = hashlib.sha256(json.dumps(normalized, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            print(json.dumps(dict(wall_s=elapsed, cpu_s=used, rows=len(payload['rows']),
+                coverage=payload['bar_coverage'], calls=dict(calls), phases=phases,
+                payload_sha256=digest, snapshot=payload['calculation']['snapshot_id'],
+                source_file=store.__file__)), flush=True)
+    finally:
+        await owner.close()
+        set_rankings_fetcher_getter(None)
+        mp.undo()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--checkout', required=True)
+    parser.add_argument('--data', type=Path, required=True)
+    parser.add_argument('--request', type=Path, required=True)
+    asyncio.run(main(parser.parse_args()))
