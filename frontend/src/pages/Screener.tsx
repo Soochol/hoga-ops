@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
 import { useScreener } from '../screener/useScreener';
 import { hasContinuousVolume } from '../screener/continuousClient';
+import { InfoButton } from '../ui/InfoButton';
 import { useScreenerMonitor, monitorPeriod } from '../screener/useScreenerMonitor';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
@@ -366,11 +367,13 @@ export function Screener() {
               저장본으로 되돌리기
             </ToolbarButton>
           )}
-          <p className="text-xs text-fg-dim">{calculationLabel(editor.calculationPolicy)}</p>
+          <div className="flex items-center gap-1 text-xs text-fg-dim">
+            {calculationLabel(editor.calculationPolicy)}
+            <InfoButton label="조건 조회 안내" text="저장된 조건을 선택해 불러온 뒤 조회를 누르세요. 조회는 한 번만 실행합니다. 자동 갱신은 실시간 감시 시작으로 켭니다. 분봉 실시간 감시는 관심종목·히트맵 범위에서 지원합니다." />
+          </div>
           {editor.calculationPolicy !== 'separate_bases_v2' && editor.conditions.length > 0 &&
             status?.calculation_policies?.includes('separate_bases_v2') &&
             <ToolbarButton disabled={editor.isSaving || !!invalidEditor} onClick={editor.copyToNewPolicy}>새 기준으로 복사</ToolbarButton>}
-          <p className="text-xs text-fg-dim">선택하면 조건을 불러옵니다 · 조회를 눌러 실행하세요</p>
           {editor.saveError && (
             <div className="text-xs" style={{ color: 'var(--error)' }}>저장 실패: {editor.saveError.message}</div>
           )}
@@ -383,7 +386,7 @@ export function Screener() {
             {!invalidEditor && !screener.preparation?.minute_date && <ScreenerPreparationStatus run={screener.preparation} />}
           </ConditionBuilder>
           {!editor.universe.scopes?.length && hasContinuousVolume(scanBody) &&
-            <p className="text-xs text-fg-dim">전체 시장은 수동 조회만 지원합니다. 실시간 감시는 관심종목·히트맵 범위를 선택하세요.</p>}
+            <p className="text-xs text-fg-dim">전체 시장 · 수동 조회</p>}
         </div>
       </PanelCard>
 
@@ -475,12 +478,14 @@ export function Screener() {
               <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan?.dailyCoverage.total - lastScan?.dailyCoverage.complete}종목</div>}
             <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
             {!serverUpdating && <ScreenerUpdateProgress updating={null} daily={status?.daily_ingest} />}
+            <CalculationNotice scan={lastScan} />
           </div>
 
-          <CalculationNotice scan={lastScan} />
-          {lastScan?.rankBasis && <p className="text-xs text-fg-dim">{rankingBasisText(lastScan.rankBasis)}</p>}
-          {lastScan?.rankBasis?.source === 'provider' && lastScan.rankBasis.message &&
-            <p className="text-xs text-fg-dim">{lastScan.rankBasis.message}</p>}
+          {lastScan?.rankBasis && <div className="flex items-center gap-1 text-xs text-fg-dim">
+            {rankingBasisText(lastScan.rankBasis)}
+            {lastScan.rankBasis.source === 'provider' && lastScan.rankBasis.message &&
+              <InfoButton label="순위 기준 안내" text={lastScan.rankBasis.message} />}
+          </div>}
           {notSeeded ? (
             <InlineState tone="warn" className="text-sm">
               <span className="font-semibold">시드 필요</span> 스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요

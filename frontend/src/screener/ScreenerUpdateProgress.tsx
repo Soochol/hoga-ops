@@ -1,4 +1,5 @@
 import type { ScreenerUpdating, ScreenerDailyIngestStatus } from '../api/screener';
+import { InfoButton } from '../ui/InfoButton';
 
 /** 갱신 job 진행 칩 + 바. status.updating(서버 진실)만 그린다 — WS 이벤트는
  *  useScreenerUpdateSync 가 같은 캐시 필드로 흘려보내므로 여기서는 구독이 없다. */
@@ -8,14 +9,19 @@ export function ScreenerUpdateProgress({ updating, daily }: {
 }) {
   if (!updating) {
     if (!daily?.checked_on) return null;
-    return <span className="font-data text-xs tabular-nums text-fg-dim" role="status">
-      일봉 재대조 {daily.checked_on} · 확정 {daily.confirmed.toLocaleString()}건
-      {` · 잠정 ${daily.provisional.toLocaleString()}건 · 충돌 격리 ${daily.quarantined.toLocaleString()}건`}
+    const details = [
+      `확정 ${daily.confirmed.toLocaleString()}건 · 잠정 ${daily.provisional.toLocaleString()}건 · 충돌 격리 ${daily.quarantined.toLocaleString()}건`,
+      `공급자 미제공 ${daily.unavailable_codes.toLocaleString()}종목 · 수집 대상 외 ${daily.excluded_dates.toLocaleString()}일봉`,
+      `종료 확인 ${daily.retired_codes.toLocaleString()}종목 · 미제공 재시도 ${daily.retryable_unavailable_codes.toLocaleString()}종목`,
+    ].join('\n');
+    return <span className="inline-flex flex-wrap items-center gap-1 font-data text-xs tabular-nums text-fg-dim" role="status">
+      일봉 확인 {daily.checked_on}
+      {daily.provisional > 0 ? ` · 잠정 ${daily.provisional.toLocaleString()}건` : null}
+      {daily.quarantined > 0 ? ` · 충돌 격리 ${daily.quarantined.toLocaleString()}건` : null}
       {daily.failed_codes > 0 ? ` · 확인 실패 ${daily.failed_codes.toLocaleString()}종목` : null}
       {daily.unavailable_codes > 0 ? ` · 공급자 미제공 ${daily.unavailable_codes.toLocaleString()}종목` : null}
-      {daily.excluded_dates > 0 ? ` · 수집 대상 외 ${daily.excluded_dates.toLocaleString()}일봉` : null}
-      {daily.retired_codes > 0 ? ` · 종료 확인 ${daily.retired_codes.toLocaleString()}종목 · 미제공 재시도 ${daily.retryable_unavailable_codes.toLocaleString()}종목` : null}
       {daily.commit_pending ? ' · 저장 재시도 대기' : null}
+      <InfoButton label="일봉 확인 상세" text={details} />
     </span>;
   }
   // **wire 값을 그대로 믿지 않는다.** 백엔드 재시도 패스가 같은 종목을 다시 세면
