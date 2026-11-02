@@ -18,7 +18,7 @@ from hoga.api.read_shutdown import ReadInterrupted, checkpoint
 
 MAX_BYTES = 64 * 1024 * 1024
 MAX_ENTRY_BYTES = 8 * 1024 * 1024
-MAX_ENTRIES = 128
+MAX_ENTRIES = 1536
 
 
 def signature(path):

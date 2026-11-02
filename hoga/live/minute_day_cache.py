@@ -48,6 +48,7 @@ class MinuteSnapshot:
     reason: str | None = None
     chart_bars: list[MinuteBar] | None = None
     cutoff_ms: int | None = None
+    response_received_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ class Entry:
     full_session: bool
     extras: dict
     regular_rows: int
+    response_received_ms: int | None = None
 
     @property
     def weight(self):
@@ -72,7 +74,7 @@ class Entry:
                                  **self.extras.get(index, {})))
         regular = [bar for bar in data if regular_minute(bar.start_ms) and bar.start_ms <= self.cutoff_ms]
         return MinuteSnapshot(regular, self.fetched_ms, chart_bars=data if self.full_session else None,
-                              cutoff_ms=self.cutoff_ms)
+                              cutoff_ms=self.cutoff_ms, response_received_ms=self.response_received_ms)
 
 
 def regular_minute(stamp):
@@ -100,7 +102,7 @@ def pack(snapshot, cutoff_ms):
     return Entry(bytes(rows), snapshot.fetched_at_ms, snapshot.cutoff_ms or cutoff_ms,
                  snapshot.chart_bars is not None, extras,
                  sum(regular_minute(bar.start_ms) and bar.start_ms <= (snapshot.cutoff_ms or cutoff_ms)
-                     for bar in data))
+                     for bar in data), snapshot.response_received_ms)
 
 
 class MinuteDayCache:

@@ -150,27 +150,30 @@ def _confirmed_at(data_dir, manifest, codes, cutoff, *, stop=None):
 
 
 def _load_confirmed_at(data_dir, manifest, codes, cutoff, *, stop=None):
-    from hoga.api import screener_daily_confirmation as confirmation  # noqa: PLC0415 — provider metadata
+    from hoga.api import (  # noqa: PLC0415 — provider metadata
+        screener_daily_confirmation as confirmation,
+        screener_daily_projection as projection,
+    )
 
     timestamps = []
     for code in codes:
         checkpoint(stop)
         identity = manifest["observations"].get(code)
         if identity:
-            observation = store.read_object(data_dir, identity)
-            if observation["adjusted_as_of"] != manifest["adjusted_as_of"]:
+            observation = projection.read(data_dir, identity, stop=stop)
+            if observation.adjusted_as_of != manifest["adjusted_as_of"]:
                 continue
-            candidate = store.current_observation(data_dir, observation)
-            verified = confirmation.confirmed_dates(candidate) if candidate.get("confirmation") else (
-                set() if manifest.get("daily_contract_required") else None
-            )
-            invalid = values._violation_dates(candidate, "adjusted")
+            candidate = observation.candidate
+            verified = candidate.confirmed_dates
+            if verified is None and manifest.get("daily_contract_required"):
+                verified = set()
+            invalid = candidate.invalid_adjusted
             timestamps.extend(
                 dt.datetime.combine(
                     dt.date.fromisoformat(row["date"]),
                     dt.time(confirmation.FINALIZATION_HOUR) if verified is not None else dt.time(15, 30), KST,
                 )
-                for row in observation["adjusted"]
+                for row in observation.adjusted
                 if row["date"] <= cutoff.isoformat() and row.get("complete", True) and values.valid_price(row)
                 and invalid is not None and dt.date.fromisoformat(row["date"]) not in invalid
                 and (verified is None or row["date"] in verified)
@@ -192,14 +195,15 @@ def _daily_contract(data_dir, manifest, codes, *, stop=None):
 
 
 def _load_daily_contract(data_dir, manifest, codes, *, stop=None):
+    from hoga.api import screener_daily_projection as projection  # noqa: PLC0415
+
     scopes, policies = set(), set()
     for code in codes:
         checkpoint(stop)
         identity = manifest["observations"].get(code)
-        observation = store.current_observation(data_dir, store.read_object(data_dir, identity)) if identity else {}
-        metadata = observation.get("confirmation", {})
-        scopes.add(metadata.get("session_scope", "legacy_unknown"))
-        policies.add(metadata.get("policy", "legacy_unverified"))
+        candidate = projection.read(data_dir, identity, stop=stop).candidate if identity else None
+        scopes.add(candidate.session_scope if candidate else "legacy_unknown")
+        policies.add(candidate.policy if candidate else "legacy_unverified")
     return {
         "daily_session_scope": next(iter(scopes)) if len(scopes) == 1 else "mixed" if scopes else None,
         "daily_confirmation_policy": next(iter(policies)) if len(policies) == 1 else "mixed" if policies else None,

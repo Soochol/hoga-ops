@@ -1,0 +1,35 @@
+import collections,dataclasses,datetime as dt,hashlib,json,pickle,sys,time
+from pathlib import Path
+from pydantic import BaseModel
+from hoga.api import screener_series_store as store,screener_series_runner as runner,screener_snapshot_cache as cache,screener_daily_confirmation as confirmation
+from hoga.api.models import ScanRequest
+from hoga.util.timeenc import KST
+expected=Path(sys.argv[1]);assert Path(store.__file__).is_relative_to(expected),store.__file__
+D=Path('/home/dev/.local/share/hoga-ops/data');response=json.load(open('/tmp/afternoon-live-result-1.json'));pinned=store.load_snapshot(D,response['calculation']['snapshot_id']);manifest=pinned[1]
+s=next(s for s in json.load(open('/tmp/afternoon-saved-current.json'))['saves'] if s['name']=='오후장 공략');req=ScanRequest.model_validate({k:s[k] for k in ['conditions','expression','universe','calculation_policy']});codes=sorted({i['code'] for i in response['bar_coverage']['incomplete']});clock=dt.datetime(2026,11,2,12,40,tzinfo=KST)
+reads=collections.Counter();states=[];original=store.read_object;state=confirmation.state
+store.read_object=lambda d,i:(reads.update([i]),original(d,i))[1]
+confirmation.state=lambda o:(states.append(o['code']),state(o))[1]
+def norm(x):
+ if isinstance(x,BaseModel):return ['model',type(x).__name__,norm(x.model_dump())]
+ if dataclasses.is_dataclass(x):return ['dataclass',type(x).__name__,[[f.name,norm(getattr(x,f.name))] for f in dataclasses.fields(x)]]
+ if isinstance(x,dict):return ['dict',sorted([[norm(k),norm(v)] for k,v in x.items()],key=lambda p:repr(p[0]))]
+ if isinstance(x,(set,frozenset)):return ['set',sorted([norm(v) for v in x],key=repr)]
+ if isinstance(x,(list,tuple)):return [type(x).__name__,[norm(v) for v in x]]
+ if isinstance(x,(dt.date,dt.datetime)):return [type(x).__name__,x.isoformat()]
+ return [type(x).__name__,x]
+cache.shared.clear();results=[];fingerprint=None
+for warmth in ['cold','warm']:
+ reads.clear();states.clear();phases=[];t0=time.perf_counter();cpu=time.process_time()
+ def stage(name,fn):
+  s=time.perf_counter();value=fn();phases.append({'name':name,'s':time.perf_counter()-s});return value
+ confirmed=stage('confirmed',lambda:runner._confirmed_at(D,manifest,codes,clock.date()))
+ series,events,failures=stage('calendar',lambda:runner.calendar_evaluate(D,req,pinned,codes,clock,None,runner._eod_clock(clock,confirmed)))
+ contract=stage('contract',lambda:runner._daily_contract(D,manifest,codes))
+ elapsed=time.perf_counter()-t0;used=time.process_time()-cpu
+ normalized=norm((confirmed,series,events,failures,contract));digest=hashlib.sha256(pickle.dumps(normalized,protocol=5)).hexdigest()
+ assert len(series)==152 and not events and not failures
+ assert fingerprint is None or fingerprint==digest
+ fingerprint=digest
+ results.append({'state':warmth,'wall_s':elapsed,'cpu_s':used,'phases':phases,'reads':sum(reads.values()),'distinct_reads':len(reads),'confirmation_checks':len(states),'series_count':len(series),'digest':digest,'cache_bytes':cache.shared.bytes,'cache_entries':len(cache.shared.entries)})
+print(json.dumps({'source_file':store.__file__,'snapshot_id':pinned[0],'results':results}),flush=True)

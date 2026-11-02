@@ -1,0 +1,79 @@
+import asyncio, datetime as dt, json, socket, tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from pytest import MonkeyPatch
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from hoga.api import screener_bar_volume as v, screener_runner, screener_intraday
+from hoga.api.screener_continuous import ContinuousMonitors, build_router
+from hoga.live.buffer import LiveBuffer
+from hoga.live.volume_state import VolumeSource
+from hoga.util.timeenc import KST
+
+ns={}; exec(Path('/tmp/afternoon-http-verifier.py').read_text().rsplit('asyncio.run(main())',1)[0],ns)
+START=ns['OPEN']+180*60000; CODE=ns['CODES'][0]; clock=SimpleNamespace(now=START+1000)
+
+def request(lookback):
+    return dict(conditions=[dict(id='threshold',type='change_pct_period',params=dict(timeframe='1m',change_reference='bar_open',op='gte',pct=8,lookback=lookback))],expression='A',calculation_policy='separate_bases_v2',basis='intraday',universe=dict(scopes=['watchlist']))
+
+async def main():
+    mp=MonkeyPatch(); root=Path(tempfile.mkdtemp(prefix='hoga-delayed-rest-http-')); ns['fixture'](root,mp)
+    raw=json.loads((root/'watchlist.json').read_text()); raw['folders'][0]['items']=raw['folders'][0]['items'][:1]; raw['entries']=raw['entries'][:1]; (root/'watchlist.json').write_text(json.dumps(raw))
+    mp.setattr(socket.socket,'connect',ns['no_network'])
+    mp.setattr(v.time,'time',lambda:clock.now/1000)
+    mp.setattr(screener_runner,'now_kst',lambda:dt.datetime.fromtimestamp(clock.now/1000,KST))
+    mp.setattr(screener_intraday.kiwoom_rest_runtime,'ensure_rest_client',lambda *_:object())
+    mp.setattr(screener_intraday.kiwoom_rest_runtime,'ensure_scheduler',lambda *_:None)
+    async def quotes(*args,**kwargs): return [],[],0
+    mp.setattr(screener_intraday,'_fetch_quotes_in_chunks',quotes)
+    source=VolumeSource('delay-http'); source.configure({CODE}); source.health({CODE:'fixture:1'},START-60000)
+    def trade(stamp,cum,price,qty): source.ingest(CODE,dict(kind='trade',t_ms=stamp,cum_volume=cum,trades=[dict(t_ms=stamp,price=price,qty=qty)]),stamp)
+    trade(START-1000,1000,100,1); trade(START+1000,1010,100,10)
+    buffer=LiveBuffer(); buffer.volume_replica.reset('delay-http')
+    async def targets(codes):
+        if codes:
+            for frame in source.frames(clock.now): buffer.volume_replica.apply(frame,clock.now)
+    seeds=0
+    async def delayed_capacity(*args,**kwargs):
+        assert kwargs['api_id']=='ka10080'
+        trade(START+21000,1015,105,5); clock.now=START+30000; await targets({CODE}); await asyncio.sleep(.35)
+        return SimpleNamespace(rows=[dict(cntr_tm=dt.datetime.fromtimestamp((START-i*60000)/1000,KST).strftime('%Y%m%d%H%M%S'),open_pric='100',high_pric='110' if i==0 else '100',low_pric='100',cur_prc='110' if i==0 else '100',trde_qty='20' if i==0 else '10') for i in range(4)])
+    mp.setattr(v.kiwoom_access,'run_with_capacity',delayed_capacity)
+    async def loader(data_dir,code,timeframe,needed,lower,asof):
+        nonlocal seeds
+        seeds+=1
+        if seeds==1: return v.MinuteSnapshot([v.VolumeBar(START-i*60000,10,is_open=i==0,open=100,high=100,low=100,close=100) for i in reversed(range(4))],clock.now)
+        return await v._fetch_minutes(data_dir,code,timeframe,needed,lower,asof)
+    owner=ContinuousMonitors(root,None,buffer,targets,loader=loader,now=lambda:clock.now)
+    app=FastAPI(); app.include_router(build_router(owner),prefix='/api/screener')
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app),base_url='http://fixture') as http:
+            first=await http.post('/api/screener/monitors',json=dict(client_id='delayed',request=request(1))); assert first.status_code==200,first.text
+            mid=first.json()['id']
+            for _ in range(300):
+                heartbeat=await http.post(f'/api/screener/monitors/{mid}/heartbeat')
+                if heartbeat.json()['prepared']==1: break
+                await asyncio.sleep(.01)
+            assert heartbeat.json()['prepared']==1,heartbeat.text
+            baseline=await http.get(f'/api/screener/monitors/{mid}/result'); assert baseline.status_code==200 and baseline.json()['rows']==[],baseline.text
+            clock.now=START+20000
+            second=await http.post('/api/screener/monitors',json=dict(client_id='delayed',request=request(3))); assert second.status_code==200,second.text
+            mid=second.json()['id']
+            for _ in range(300):
+                heartbeat=await http.post(f'/api/screener/monitors/{mid}/heartbeat')
+                if seeds==2 and not owner.pending: break
+                await asyncio.sleep(.01)
+            assert seeds==2 and not owner.pending,(seeds,heartbeat.text)
+            actual=await http.get(f'/api/screener/monitors/{mid}/result'); assert actual.status_code==200,actual.text
+            body=actual.json(); (root/'result.json').write_text(json.dumps(body))
+            bar=owner.histories[CODE].bars[-1]
+            print(json.dumps(dict(head=__import__('subprocess').check_output(['git','rev-parse','HEAD'],text=True).strip(),rows=len(body['rows']),coverage=body['bar_coverage'],bar=repr(bar),corpus=str(root))),flush=True)
+            assert body['bar_coverage']['complete']==1,body['bar_coverage']
+            assert [r['code'] for r in body['rows']]==[CODE],body
+            event=body['rows'][0]['occurrences'][0]['bar_change_match']; assert event['close']==110 and event['change_pct']>=8,event
+            assert bar.volume==20 and bar.close==110,bar
+            assert (await http.delete(f'/api/screener/monitors/{mid}')).status_code==204
+    finally:
+        await owner.close(); mp.undo()
+
+asyncio.run(main())

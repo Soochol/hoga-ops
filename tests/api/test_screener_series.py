@@ -619,3 +619,26 @@ async def test_small_price_events_keep_vendor_prices_and_do_not_reprice_quantity
     assert series.quantity(DAYS[0], DAYS[-1], "share_adjusted") == 100
     result = await screener_runner.run_screener_scan(data_dir=corpus, req=request(), now=NOW)
     assert len(result.rows) == 1 and result.rows[0].occurrences[0].volume_evidence.compared_volume == "400"
+
+
+def test_daily_readers_share_observation_validation_across_parent_snapshots(corpus, monkeypatch):
+    from collections import Counter
+
+    from hoga.api import screener_series_runner as runner, screener_snapshot_cache as cache
+
+    cache.shared.clear()
+    _, manifest = store.load_snapshot(corpus)
+    calls = Counter()
+    read = store.read_object
+
+    def counted(data_dir, identity):
+        calls[identity] += 1
+        return read(data_dir, identity)
+
+    monkeypatch.setattr(store, "read_object", counted)
+    identity = manifest["observations"]["005930"]
+    for current in (manifest, {**manifest, "unrelated_parent_revision": "new"}):
+        runner._confirmed_at(corpus, current, ["005930"], NOW.date())
+        values.load_series(corpus, current, ["005930"], first=DAYS[0], last=DAYS[-1])
+        runner._daily_contract(corpus, current, ["005930"])
+    assert calls[identity] == 1

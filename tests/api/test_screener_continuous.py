@@ -14,6 +14,7 @@ from hoga.api import screener_bar_volume as bars
 from hoga.api.models import ConditionLeaf, ScanRequest
 from hoga.api.screener_continuous import ContinuousAdapter, ContinuousMonitors, History
 from hoga.live.buffer import LiveBuffer
+from hoga.live.volume_state import PROTOCOL, REPLAY_MS
 from hoga.util.timeenc import KST
 
 START = int(dt.datetime(2026, 10, 21, 10, 0, tzinfo=KST).timestamp() * 1000)
@@ -180,9 +181,11 @@ async def test_authoritative_closed_bar_correction_can_reduce_volume(fixture):
     assert history.bars[-2].volume == 1000
     # Late collector replay cannot undo the completed REST correction.
     owner.replica.reset('epoch')
-    owner.replica.apply(dict(protocol=1, epoch='epoch', observed_ms=clock.now, streams={'005930':dict(
+    owner.replica.apply(dict(protocol=PROTOCOL, epoch='epoch', observed_ms=clock.now, streams={'005930':dict(
         revision=1, generation='a:1', ready=True, tick_ms=clock.now, since_ms=START,
-        bars=[[START - 60_000, 9999, True]])}), clock.now)
+        replay_since_ms=clock.now - REPLAY_MS,
+        bars=[[START - 60_000, 9999, True, None, None, None, None, False,
+               START - 60_000, START - 60_000]])}), clock.now)
     owner.merge('005930', history, clock.now)
     assert history.bars[-2].volume == 1000
     assert monitor.id in owner.monitors
@@ -196,9 +199,10 @@ async def test_partial_open_bar_rest_overlap_is_not_added_and_postresponse_delta
     owner.replica.reset('epoch')
 
     def state(observed_ms, volume, revision):
-        return dict(protocol=1, epoch='epoch', observed_ms=observed_ms, streams={'005930':dict(
+        return dict(protocol=PROTOCOL, epoch='epoch', observed_ms=observed_ms, streams={'005930':dict(
             revision=revision, generation='a:1', ready=True, tick_ms=observed_ms, since_ms=START + 1000,
-            bars=[[START, volume, False]])})
+            replay_since_ms=observed_ms - REPLAY_MS,
+            bars=[[START, volume, False, None, None, None, None, False, START, START]])})
 
     owner.replica.apply(state(clock.now - 1, 8, 1), clock.now)
     owner.merge('005930', history, clock.now)
@@ -706,10 +710,12 @@ async def test_initial_failure_surfaces_reason_and_is_not_perpetual_preparing(fi
 def cache_frame(owner, clock, *, first_volume=10, first_revision=1):
     if owner.replica.epoch != 'cache':
         owner.replica.reset('cache')
-    owner.replica.apply(dict(protocol=1, epoch='cache', observed_ms=clock.now, streams={
+    owner.replica.apply(dict(protocol=PROTOCOL, epoch='cache', observed_ms=clock.now, streams={
         code: dict(revision=first_revision if code == '005930' else 1, generation='cache:1',
             ready=True, tick_ms=clock.now, since_ms=START-60_000,
-            bars=[[START, first_volume if code == '005930' else 10, True]])
+            replay_since_ms=clock.now - REPLAY_MS,
+            bars=[[START, first_volume if code == '005930' else 10, True,
+                   None, None, None, None, False, START, START]])
         for code in ['005930', '000660']}), clock.now)
     for code, history in owner.histories.items():
         owner.merge(code, history, clock.now)

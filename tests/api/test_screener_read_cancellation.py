@@ -61,10 +61,9 @@ async def test_daily_contract_stops_before_next_file_and_does_not_cache_cancelle
         calls.append(identity)
         loop.call_soon_threadsafe(entered.set)
         assert release.wait(5)
-        return {'confirmation': {'session_scope': 'regular'}}
+        return {'unadjusted': [], 'adjusted': [], 'adjusted_as_of': '2026-11-02'}
 
     monkeypatch.setattr(runner.store, 'read_object', read)
-    monkeypatch.setattr(runner.store, 'current_observation', lambda _, item: item)
 
     async def query(operation):
         return await run_read_sync(operation, runner._daily_contract, tmp_path, manifest,

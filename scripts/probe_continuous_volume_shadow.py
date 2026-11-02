@@ -66,7 +66,8 @@ async def validate(args):
 
     def generations(status):
         accounts = status['kiwoom'].get('accounts', [])
-        signature = repr([(a['account_id'], a.get('connection_generation')) for a in accounts])
+        signature = hashlib.sha256(repr([(a['account_id'], a.get('connection_generation'))
+                                         for a in accounts]).encode()).hexdigest()
         return dict.fromkeys(set(status['kiwoom']['ready_codes']) & requested, signature)
 
     source.health(generations(health), now())
@@ -155,7 +156,7 @@ async def validate(args):
                     continue
                 expected = {bar.start_ms: bar.volume for bar in snapshot.bars}
                 newest = max(expected, default=0)
-                for start, observed, valid in state['bars']:
+                for start, observed, valid, *_prices in state['bars']:
                     if not valid or start < (clock_start // MINUTE + 1) * MINUTE or start + MINUTE + 15_000 > now():
                         continue
                     if start in expected and start < newest:
@@ -180,7 +181,7 @@ async def validate(args):
                         if stream:
                             stream.healthy_since, stream.last_cum = now(), None
                             if stream.bars:
-                                stream.bars[-1].valid = False
+                                stream.bars[-1].invalidate()
                         metrics['public_ws_dropped'] += frame['dropped']
                     for entry in frame['data']:
                         if entry.get('kind') == 'trade':

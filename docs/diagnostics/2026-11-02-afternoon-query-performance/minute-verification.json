@@ -1,0 +1,63 @@
+{
+  "base": "a712f83d0c26b86acbb91bbbadc27e6ab36f78aa",
+  "head": "b8e90598a377d6579ae543960c72fa441edb9983",
+  "tree": "365a8027107081c0cf0b4b556fb9308ccc50db5a",
+  "python": "3.14.7",
+  "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+  "ruff": "ruff 0.15.13",
+  "credentials": "empty .env; no live provider configuration",
+  "inputs": {
+    "hoga/live/volume_state.py": "b734497eb881eec44e4f5ac4a7dd0dc320ac0fb1eaf6e1f0e22359a38b621dd2",
+    "hoga/api/screener_continuous.py": "e2081b214ce51625c5db9c1af8964ae6686100fd6ae1ec97450c59f536b13d98",
+    "hoga/api/screener_continuous_bars.py": "ee1af95870e039a44a7bb8b6205051113e357bd30b3343cccec5291045e4051e",
+    "hoga/api/screener_bar_volume.py": "437c4b155328f90b39b37886ec075eea6d7cc35b656c99e7d3e87aa3852d3794",
+    "scripts/probe_continuous_volume_shadow.py": "eb6c62bdf3bcc502027818f21d65bdc10f44c78ef35e82728dea6f86f125cda4",
+    "tests/api/test_screener_continuous.py": "9bd4acb8f5d83187b82fa60c67820f7e7ccbec4f6b8a9aa0addd878ce7740574",
+    "tests/api/test_screener_continuous_multiframe.py": "9123b258ddfb41e188ab8de8c4150eb1632eacad27ec0f8d13a97c2fcbd1696a",
+    "tests/api/test_screener_continuous_prices.py": "2a654d55642d5e3df2930868cc4b6ce4b1873af9ba1420fac4c4cdbd04dab050",
+    "tests/api/test_screener_minute_queue_deadline.py": "179013a1bfaab16c22262e33e4d405106c489ab6524c124717d912498381e5cf",
+    "tests/unit/live/test_volume_state.py": "578f8db7acb1b549972a4e507f3e7c3b0da2672a5d9046222151a60170a1505b",
+    "tests/unit/live/test_volume_process.py": "5f9609aa3c708bf2e09faa1d0cb1ee2ce1ced989ca84dde40b3305a1006f6818",
+    "tests/unit/live/test_collector_process.py": "623733e4363b3d3feb81fad4fafb6fa41d41ae86ba3836fc3707b6fb61fa7d48",
+    "tests/unit/live/test_minute_day_cache.py": "f7395a842f6861aa08813b31cd1b6a4d757c8e6eb26111a9b2bb03f85c6351bd",
+    "tests/unit/live/test_kiwoom_rest_seam.py": "4fb10163eb8b51a51a85adaf0216a0911a1c30fa665a7c3ef39a1872e858f064",
+    "tests/unit/live/test_kiwoom_rest_scheduling.py": "bd85b46e346d6f594b54c8ceb294b668ff4781dfdc6e18815f0583c8ec28821f",
+    "tests/api/test_screener_bar_threshold.py": "9df8f62017ae1f130b106d8abde8ed62072e1ca1b07d5d868ae80de0f3834fcc",
+    "tests/api/test_screener_bar_volume.py": "987d151857547ffb8f077cb13b09caea0006a7a77e05eba4c6271d0d3dc9f3b6",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock' --ignore=tests/api/test_screener_minute_queue_deadline.py",
+      "head": "054b497a63f165acf1c8cbb53948506291986211",
+      "passed": 8317,
+      "failed": 2,
+      "skipped": 2,
+      "deselected": 13,
+      "failures": "BUY/SELL preopen #2385 independently reproduced by root at a712f83d0",
+      "log": "stage2-pytest.txt"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener_continuous_prices.py tests/api/test_screener_continuous.py tests/api/test_screener_continuous_multiframe.py tests/unit/live/test_volume_state.py tests/unit/live/test_collector_process.py tests/unit/live/test_volume_process.py --tb=short",
+      "head": "042aa3b46ba50618056dfaa73adfa88558060e27",
+      "passed": 156,
+      "failed": 0,
+      "log": "stage2-final-focused.txt"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener_minute_queue_deadline.py tests/unit/live/test_minute_day_cache.py tests/unit/live/test_kiwoom_rest_seam.py tests/unit/live/test_kiwoom_rest_scheduling.py tests/api/test_screener_bar_volume.py tests/api/test_screener_bar_threshold.py tests/api/test_screener_continuous_prices.py --tb=short",
+      "head": "b8e90598a377d6579ae543960c72fa441edb9983",
+      "passed": 171,
+      "failed": 0,
+      "log": "stage3-pytest.txt"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "head": "b8e90598a377d6579ae543960c72fa441edb9983",
+      "result": "passed"
+    }
+  ],
+  "full_suite_reuse": "Final changes after 054b are replay reservation/admission, version epoch/generation, used observation timestamp, bounded probe generation, and minute outer timeout deletion. Affected minute/collector/capacity/transport/predicate paths are covered by the 156 and 171 focused passes; other full-suite inputs unchanged.",
+  "deslop": "Reviewed own diff against a712f83d0. Boundary guards remain only at raw input and IPC validation; no production I/O on ingest, no second minute owner, no new narration comments in queue fix."
+}

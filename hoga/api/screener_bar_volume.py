@@ -280,12 +280,14 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
     bars_by_ms = {}
     chart_bars = []
     reason = None
+    response_received_ms = None
     for page_index in range(MAX_MINUTE_PAGES):
         page = await kiwoom_access.run_with_capacity(scheduler,
             key=("screener-bars", code, timeframe, cursor, as_of.date().isoformat()),
             api_id="ka10080", priority="background", client=client,
             fetch_fn=lambda c, cur=cursor: c.call("ka10080", {
                 "stk_cd": code, "tic_scope": scope, "upd_stkpc_tp": "0", "base_dt": cur}))
+        response_received_ms = int(time.time() * 1000)
         observation = screener_minute_scope.current.get()
         if observation is not None and observation.live and observation.clock:
             as_of = min(observation.clock(), dt.datetime.combine(observation.day, dt.time(15, 30), KST))
@@ -328,7 +330,7 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
             reason = "fetch_budget_exhausted"
     return MinuteSnapshot([bars_by_ms[ms] for ms in sorted(bars_by_ms)], fetched_at, reason,
                           chart_bars=chart_bars if observation is not None and timeframe == '1m' else None,
-                          cutoff_ms=int(as_of.timestamp()*1000))
+                          cutoff_ms=int(as_of.timestamp()*1000), response_received_ms=response_received_ms)
 
 
 def aggregate_day_minutes(bars, timeframe, cutoff_ms):
@@ -411,9 +413,9 @@ async def _load_minutes(key, data_dir, code, timeframe, needed, lower, as_of):
             # needed=1 stops after the first page. Previous dates are never
             # fetched to satisfy a lookback; filtering happens before evaluation.
             result = await _fetch_minutes(data_dir, code, timeframe, 0, None, as_of)
-            result = MinuteSnapshot([bar for bar in result.bars
+            result = replace(result, bars=[bar for bar in result.bars
                 if dt.datetime.fromtimestamp(bar.start_ms / 1000, KST).date() == scope.day],
-                int(time.time() * 1000), result.reason)
+                fetched_at_ms=int(time.time() * 1000))
         else:
             result = await _fetch_minutes(data_dir, code, timeframe, needed, lower, as_of)
     except Exception as exc:
@@ -559,33 +561,32 @@ async def _evaluate_minute_window(leaf, code, *, data_dir, as_of, now, basis, fe
     if not live and code not in fetch_codes and not _fresh_snapshot(cached, historical):
         return leaf, code, [], False, "fetch_budget_exhausted"
     try:
-        async with asyncio.timeout(20):
-            async with sem:
-                if live:
-                    data, received_ms, lower_bounds = live
-                    snapshot = MinuteSnapshot(data, received_ms,
-                        volume_runtime.reason(code, leaf) if hasattr(volume_runtime, 'reason') else None)
-                else:
-                    snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff,
-                                                     **({"historical": True} if historical else {}))
-                    if realtime:
-                        realtime.seed(leaf, code, snapshot, int(time.time() * 1000))
-                        merged = realtime.snapshot(leaf, code, int(time.time() * 1000))
-                        if merged:
-                            data, received_ms, lower_bounds = merged
-                            snapshot = MinuteSnapshot(data, received_ms)
-                data, adjustment_reason = (_historical_minutes(snapshot.bars, p.include_open_bar, cutoff)
-                                           if historical else (snapshot.bars, None))
-                if leaf.type not in VOLUME_TYPES:
-                    # Pages contain more bars than requested. Only the actual
-                    # predicate window needs factors; today's window is factor 1.
-                    data = [bar for bar in data if p.include_open_bar or not bar.is_open]
-                    if lower is None:
-                        data = data[-(comparison_period(leaf) + lookback(leaf) - 1):]
-                    data, price_reason = await screener_bar_threshold.prepare_minutes(
-                        leaf, data, data_dir, code, (now.astimezone(KST) if now.tzinfo else
-                                               now.replace(tzinfo=KST)).strftime("%Y%m%d"), operation=operation)
-                    adjustment_reason = adjustment_reason or price_reason
+        async with sem:
+            if live:
+                data, received_ms, lower_bounds = live
+                snapshot = MinuteSnapshot(data, received_ms,
+                    volume_runtime.reason(code, leaf) if hasattr(volume_runtime, 'reason') else None)
+            else:
+                snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff,
+                                                 **({"historical": True} if historical else {}))
+                if realtime:
+                    realtime.seed(leaf, code, snapshot, int(time.time() * 1000))
+                    merged = realtime.snapshot(leaf, code, int(time.time() * 1000))
+                    if merged:
+                        data, received_ms, lower_bounds = merged
+                        snapshot = MinuteSnapshot(data, received_ms)
+            data, adjustment_reason = (_historical_minutes(snapshot.bars, p.include_open_bar, cutoff)
+                                       if historical else (snapshot.bars, None))
+            if leaf.type not in VOLUME_TYPES:
+                # Pages contain more bars than requested. Only the actual
+                # predicate window needs factors; today's window is factor 1.
+                data = [bar for bar in data if p.include_open_bar or not bar.is_open]
+                if lower is None:
+                    data = data[-(comparison_period(leaf) + lookback(leaf) - 1):]
+                data, price_reason = await screener_bar_threshold.prepare_minutes(
+                    leaf, data, data_dir, code, (now.astimezone(KST) if now.tzinfo else
+                                           now.replace(tzinfo=KST)).strftime("%Y%m%d"), operation=operation)
+                adjustment_reason = adjustment_reason or price_reason
     except TimeoutError:
         return leaf, code, [], False, "fetch_timeout"
     events, complete = await run_read_sync(operation, records, leaf, data,

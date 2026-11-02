@@ -1,0 +1,20 @@
+{
+  "owner_head": "b8e90598a377d6579ae543960c72fa441edb9983",
+  "integrated_source_head": "bde2f885fea1bd5938a2b6c97cc5753e946de816",
+  "module_docstrings_ignored": true,
+  "matching_ast_for_changed_files": {
+    "hoga/api/screener_continuous.py": "668133576e6a6cc5a96b237297d3d998e396583a13c775e323423a6b43db09c2",
+    "hoga/api/screener_continuous_bars.py": "50edace1c9e28c726e71a36026b8a3ed342cfeb0356ec8b2325bfe0a2d4d8466",
+    "hoga/api/screener_daily_projection.py": "dcfac307fbbc6cbc2b0d28d4c5b7845bc2390981d96b7e9037620221f1f47251",
+    "hoga/api/screener_snapshot_cache.py": "c2f07985bc31fd7e8efeb76b3f46e4eb4d37b35d3632209134ceb046b41d5275",
+    "tests/api/test_screener_continuous_prices.py": "856d95e78b0fdbce17916369d304dd3f6f3bcd3a69869f1450602d4f758eaace",
+    "tests/api/test_screener_daily_projection.py": "ba5bfcfc890be9f1896630ca08a1348f19f86daa572b17bd5a962db634408c82",
+    "tests/api/test_screener_minute_queue_deadline.py": "8133bb5968b296f64aedb3f304139ac919c293b9f9ce484b0f2e2123c90e3260"
+  },
+  "commands": [
+    "git ls-files -z *.py *.pyi | xargs -0 .venv/bin/ruff check",
+    "git diff --check"
+  ],
+  "ruff": "PASS",
+  "diff_check": "PASS"
+}
