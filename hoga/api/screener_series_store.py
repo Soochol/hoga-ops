@@ -122,6 +122,7 @@ def _write_object(base: Path, value) -> str:
         with path.open("rb") as handle:
             os.fsync(handle.fileno())
         _sync_dir(path.parent)
+        _sync_dir(base)
     return identity
 
 

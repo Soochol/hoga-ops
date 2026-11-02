@@ -369,6 +369,7 @@ def _write_query_file(path, encoded, *, limit):
             handle.flush()
             os.fsync(handle.fileno())
         store._sync_dir(path.parent)
+        store._sync_dir(path.parent.parent)
     installed, _ = store._read_file(path, limit=limit)
     if installed != encoded:
         raise ValueError("Installed daily query artifact checksum mismatch")
