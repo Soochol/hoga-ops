@@ -174,6 +174,26 @@ it.each(['KRX', 'NXT', 'UN'] as const)('accepts midday 0H for %s, retains it acr
   expect(result.current.get(code)?.expected_price).toBeUndefined();
 });
 
+it.each(['KRX', 'NXT', 'UN'] as const)('displays the midday VI book pair for %s and clears it when trading resumes', async venue => {
+  const midday = Date.UTC(2026, 8, 14, 3, 30);
+  vi.setSystemTime(midday);
+  const { result } = await setup(venue);
+  act(() => receive({ kind: 'ob', venue, t_ms: midday,
+    expected_price: 121100, expected_qty: 5152 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBe(121100);
+  expect(result.current.get(code)?.expected_qty).toBe(5152);
+  act(() => receive({ kind: 'expected', venue, t_ms: midday,
+    expected_price: 121200, expected_qty: 1 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_qty).toBe(5152);
+  act(() => receive({ kind: 'trade', venue, t_ms: midday + 2000,
+    trades: [{ price: 121000, qty: 1, side: 1 }] }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBeUndefined();
+  expect(result.current.get(code)?.expected_qty).toBeUndefined();
+});
+
 it('expires 0H without a new frame and rejects another venue or invalid values', async () => {
   const { result } = await setup();
   for (const frame of [

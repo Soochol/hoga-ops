@@ -13,11 +13,17 @@ trigger_price 는 발동 후 정적기준가의 근사(해제 단일가 ≈ 발�
 from __future__ import annotations
 
 import logging
+import re
+from datetime import datetime
 from typing import Any
+
+from hoga.api.params import CODE_PATTERN
+from hoga.util.timeenc import KST
 
 from .stock_sessions import krx_aftermarket_introduced, krx_capture_partition
 
 _log = logging.getLogger(__name__)
+_CODE_RE = re.compile(CODE_PATTERN)
 
 # 실측 legend (2026-07-21, 60건 전건 무모순)
 _DIRECTION = {"1": "up", "2": "down"}
@@ -56,7 +62,7 @@ def parse_vi_row(row: dict[str, Any], now_ms: int) -> dict[str, Any] | None:
     item = row.get("item")
     code = (values.get("9001") or "").strip() or (item if isinstance(item, str) else "")
     code = code.split("_", 1)[0]  # _AL/_NX 접미 제거 — 상태 키는 bare
-    if len(code) != 6 or not code.isdigit():  # noqa: PLR2004
+    if _CODE_RE.fullmatch(code) is None:
         return None
     direction = _DIRECTION.get((values.get("9069") or "").strip())
     kind = _KIND.get((values.get("9068") or "").strip())
@@ -105,3 +111,12 @@ class KiwoomViState:
 
     def get(self, code: str) -> dict[str, Any] | None:
         return self._by_code.get(code)
+
+    def is_active_at(self, code: str, t_ms: int) -> bool:
+        """시장 접미를 포함한 Code의 당일 발동 이후 호가인지. 미확인은 닫는다."""
+        state = self.get(code)
+        if state is None or not state["active"] or state["triggered_at"] is None:
+            return False
+        observed = datetime.fromtimestamp(t_ms / 1000, KST)
+        received = datetime.fromtimestamp(state["recv_ms"] / 1000, KST)
+        return observed.date() == received.date() and observed.strftime("%H%M%S") >= state["triggered_at"]

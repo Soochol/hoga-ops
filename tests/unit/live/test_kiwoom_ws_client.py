@@ -120,6 +120,37 @@ async def _cancel(task):
         await task
 
 
+async def test_vi_event_opens_expected_pair_gate_for_other_account_connection():
+    from hoga.live.kiwoom_vi_state import KiwoomViState
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
+
+    state = KiwoomViState()
+    ticks = []
+
+    async def on_tick(tick):
+        ticks.append(tick)
+
+    observer = _client(FakeServer(), on_vi_row=state.on_row)
+    receiver = _client(FakeServer(), on_tick=on_tick, is_vi_active=state.is_active_at)
+    event = {"type": "1h", "item": "005930", "values": {
+        "9001": "005930", "9069": "1", "9068": "1",
+        "1223": "135600", "1224": "000000",
+    }}
+    book = {**REAL_0D["data"][0], "values": {
+        **REAL_0D["data"][0]["values"], "23": "+6480", "24": "12345",
+    }}
+    now = hhmmssms_to_unix_ms(DATE, 135622000)
+    await observer._dispatch_real({"data": [event]}, now)
+    await receiver._dispatch_real({"data": [book]}, now)
+    assert ticks[-1].payload["expected_price"] == 6480
+    assert ticks[-1].payload["expected_qty"] == 12345
+    await observer._dispatch_real({"data": [{
+        **event, "values": {**event["values"], "1224": "135700"},
+    }]}, now + 38_000)
+    await receiver._dispatch_real({"data": [book]}, now + 38_000)
+    assert "expected_price" not in ticks[-1].payload
+
+
 async def test_receive_failure_always_closes_socket_and_rejects_pending_ack():
     from unittest.mock import AsyncMock
 
