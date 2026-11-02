@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import asyncio
 import json
 import time
@@ -10,7 +11,7 @@ import websockets
 
 async def main(args):
     records = {'started_at_ms': int(time.time() * 1000), 'label': args.label,
-               'queries': [], 'health': [], 'pongs_ms': [], 'probe_errors': []}
+               'queries': [], 'health': [], 'pongs_ms': [], 'ws_frames': 0, 'probe_errors': []}
     running = True
     async with httpx.AsyncClient(base_url='http://127.0.0.1:8000', timeout=120) as http:
         health = await http.get('/health')
@@ -20,14 +21,24 @@ async def main(args):
         async def probes():
             try:
                 async with websockets.connect('ws://127.0.0.1:8000/api/ws', ping_interval=None) as ws:
-                    while running:
-                        begun = time.perf_counter()
-                        pong = await ws.ping()
-                        await asyncio.wait_for(pong, timeout=5)
-                        records['pongs_ms'].append((time.perf_counter() - begun) * 1000)
-                        response = await http.get('/health')
-                        records['health'].append(response.status_code)
-                        await asyncio.sleep(3)
+                    async def drain():
+                        async for _frame in ws:
+                            records['ws_frames'] += 1
+
+                    receiver = asyncio.create_task(drain())
+                    try:
+                        while running:
+                            begun = time.perf_counter()
+                            pong = await ws.ping()
+                            await asyncio.wait_for(pong, timeout=5)
+                            records['pongs_ms'].append((time.perf_counter() - begun) * 1000)
+                            response = await http.get('/health')
+                            records['health'].append(response.status_code)
+                            await asyncio.sleep(3)
+                    finally:
+                        receiver.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await receiver
             except Exception as exc:
                 records['probe_errors'].append(f'{type(exc).__name__}: {exc}')
 
@@ -40,6 +51,7 @@ async def main(args):
         created_at = time.monotonic()
         path = f'/api/screener/monitors/{monitor}'
         complete_at = None
+        prepared_at = None
         try:
             while time.monotonic() - created_at < args.seconds:
                 await http.post(path + '/heartbeat')
@@ -58,14 +70,19 @@ async def main(args):
                 print(json.dumps({'query': len(records['queries']), 'elapsed_s': elapsed,
                                   'total': coverage.get('total'), 'complete': coverage.get('complete'),
                                   'prepared': status.get('prepared'), 'rows': item['rows']}), flush=True)
-                if coverage.get('total') and coverage['complete'] == coverage['total']:
-                    if complete_at is None:
-                        complete_at = time.monotonic() - created_at
-                    if sum(q['coverage'].get('complete') == q['coverage'].get('total') for q in records['queries']) >= 5:
+                if coverage.get('total') and coverage['complete'] == coverage['total'] and complete_at is None:
+                    complete_at = time.monotonic() - created_at
+                if coverage.get('total') and status.get('prepared') == coverage['total']:
+                    if prepared_at is None:
+                        prepared_at = time.monotonic() - created_at
+                    prepared_queries = sum(q['coverage'].get('realtime', {}).get('prepared') == q['coverage'].get('total')
+                                           for q in records['queries'])
+                    if prepared_queries >= 5 and time.monotonic() - created_at >= 35:
                         break
                 args.output.write_text(json.dumps(records, indent=2))
                 await asyncio.sleep(3)
             records['all_candidates_complete_at_s'] = complete_at
+            records['all_candidates_prepared_at_s'] = prepared_at
         finally:
             deleted = await http.delete(path)
             records['own_monitor_delete_status'] = deleted.status_code
