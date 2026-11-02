@@ -1,0 +1,16 @@
+{
+  "platform": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+  "python": "3.14.7",
+  "cores": 32,
+  "load_average_observed": [
+    6.16,
+    5.39,
+    5.12
+  ],
+  "before_sha": "a712f83d0c26b86acbb91bbbadc27e6ab36f78aa",
+  "after_daily_sha": "f9e869b08265b62f943051be806016d9bf021f85",
+  "integrated_daily_sha": "af3972504",
+  "live_before_commit": "e276f0586",
+  "live_before_collector_pid": 3986014,
+  "no_new_vendor_credential_process": true
+}

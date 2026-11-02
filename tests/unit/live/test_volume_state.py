@@ -133,7 +133,7 @@ def test_alphanumeric_stock_code_survives_source_to_replica_wire(code):
     replica.reset('alpha')
     for frame in producer.frames(START):
         replica.apply(json.loads(encode(frame)[4:]), START)
-    assert replica.get(code, START)['bars'] == [[START, 10, True]]
+    assert replica.get(code, START)['bars'] == [[START, 10, True, None, None, None, None, False, START, START]]
     assert '005930' in replica.streams
 
 
@@ -145,3 +145,79 @@ def test_replica_rejects_malformed_codes_without_relaxing_frame_quality(code):
     replica.reset('invalid')
     with pytest.raises(ValueError, match='invalid volume state'):
         replica.apply(producer.frames(START)[0], START)
+
+
+def priced_frame():
+    s = source()
+    payload = tick(1, 1, START)
+    payload['trades'][0]['price'] = 100
+    s.ingest('005930', payload, START)
+    return s.frames(START)[0]
+
+
+@pytest.mark.parametrize('field,value', [
+    ('revision', True), ('generation', 'x' * 257), ('ready', 1), ('tick_ms', 'bad'),
+    ('since_ms', START + 5000), ('replay_since_ms', START + 1), ('bars', None),
+])
+def test_replica_normalizes_invalid_ohlcv_frame_fields(field, value):
+    frame = priced_frame()
+    frame['streams']['005930'][field] = value
+    replica = VolumeReplica()
+    replica.reset('epoch')
+    with pytest.raises(ValueError):
+        replica.apply(frame, START)
+    assert not replica.streams
+
+
+@pytest.mark.parametrize('row', [
+    [START, 1, True],
+    [START, 1, True, 100, 99, 100, 100, True, START, START],
+    [START, 1, True, 100, float('inf'), 100, 100, True, START, START],
+    [START, 1, True, None, None, None, None, True, START, START],
+    [START, 1, True, 100, 100, 100, 100, True, START + 1, START],
+    [START, 1, True, 100, 100, 100, 100, True, START, START + MINUTE],
+    [START, 1, True, 100, 100, 100, 100, True, START - 1, START],
+])
+def test_replica_rejects_incomplete_protocol_geometry_and_trade_bounds(row):
+    frame = priced_frame()
+    frame['streams']['005930']['bars'] = [row]
+    replica = VolumeReplica()
+    replica.reset('epoch')
+    with pytest.raises(ValueError):
+        replica.apply(frame, START)
+    assert not replica.streams
+
+
+def test_malformed_later_stream_cannot_publish_part_of_a_chunk():
+    import copy
+
+    frame = priced_frame()
+    frame['streams']['000660'] = copy.deepcopy(frame['streams']['005930'])
+    frame['streams']['000660']['bars'][0][4] = -1
+    replica = VolumeReplica()
+    replica.reset('epoch')
+    with pytest.raises(ValueError):
+        replica.apply(frame, START)
+    assert not replica.streams
+
+
+def test_replica_owns_validated_rows_and_rejects_the_old_protocol():
+    frame = priced_frame()
+    replica = VolumeReplica()
+    replica.reset('epoch')
+    replica.apply(frame, START)
+    frame['streams']['005930']['bars'][0][6] = 999
+    assert replica.get('005930', START)['bars'][0][6] == 100
+    frame['protocol'] = 1
+    with pytest.raises(ValueError, match='protocol'):
+        replica.apply(frame, START)
+
+
+def test_extra_fields_cannot_escape_the_replica_byte_bound():
+    frame = priced_frame()
+    frame['streams']['005930']['padding'] = 'x' * DISPLAY_MAX_FRAME_BYTES
+    replica = VolumeReplica()
+    replica.reset('epoch')
+    with pytest.raises(ValueError, match='chunk'):
+        replica.apply(frame, START)
+    assert not replica.streams

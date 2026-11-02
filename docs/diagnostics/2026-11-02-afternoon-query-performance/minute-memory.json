@@ -1,0 +1,11 @@
+{
+  "streams": 512,
+  "producer_bars": 8192,
+  "replica_bars": 8192,
+  "chunks": 8,
+  "largest_encoded_frame": 137100,
+  "frame_limit": 262144,
+  "producer_retained_python_bytes": 1699607,
+  "replica_retained_python_bytes": 3322341,
+  "scope": "recursive Python object sizes; excludes allocator/RSS and transient encode buffers"
+}

@@ -915,10 +915,12 @@ class LiveMinuteCandleBackfill:
                 key=('live-candle-backfill', 'minute', venue, code, date_s, 'today'),
                 api_id=kiwoom_minute_candles.API_ID, priority='user_visible', client=client,
                 fetch_fn=lambda c: self._fetch_past_today_once(c, venue, code, date_s))
+            response_received_ms = int(monotonic_time.time() * 1000)
             data = [MinuteBar(row['t_ms'], row['volume'],
                 min(row['t_ms'] + 60_000, close_ms(date_s)) > now_ms, open=row['open'], high=row['high'],
                 low=row['low'], close=row['close']) for row in rows]
-            return MinuteSnapshot(data, now_ms, chart_bars=data, cutoff_ms=now_ms)
+            return MinuteSnapshot(data, now_ms, chart_bars=data, cutoff_ms=now_ms,
+                                  response_received_ms=response_received_ms)
         snapshot = await shared_days.obtain(key, now_ms, load, full_session=True, ttl_ms=60_000, allow_advance=True)
         return [dict(t_ms=b.start_ms, open=b.open, high=b.high, low=b.low, close=b.close, volume=b.volume)
                 for b in (snapshot.chart_bars if snapshot.chart_bars is not None else snapshot.bars)]

@@ -233,16 +233,16 @@ def prepare_review(data_dir, request: CorrectionRequest, manifest, *, now=None, 
     return review
 
 
-def apply_review(data_dir, manifest, code, original, conflicts, observation, confirmed):
+def apply_review(data_dir, manifest, code, original, conflicts, candidate_id, candidate_rows, confirmed):
     identity = manifest.get("corrections", {}).get(code)
     if not identity:
         return set()
     review = store.read_object(data_dir, identity)
     if (review.get("kind") != "screener_correction_review" or review.get("baseline") != manifest["baseline"]
             or review.get("observation_id") != manifest["observations"].get(code)
-            or review.get("candidate_id") != store.digest(observation)):
+            or review.get("candidate_id") != candidate_id):
         return set()
-    candidates = {row["date"]: row for row in observation["unadjusted"]}
+    candidates = {row["date"]: row for row in candidate_rows}
     corrected = set()
     for row in review["accepted"]:
         day = dt.date.fromisoformat(row["date"])

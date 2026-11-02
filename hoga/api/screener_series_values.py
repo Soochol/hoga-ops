@@ -10,7 +10,11 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api import screener_series_store as store, screener_snapshot_cache as snapshots
+from hoga.api import (
+    screener_daily_projection as projection,
+    screener_series_store as store,
+    screener_snapshot_cache as snapshots,
+)
 
 
 @dataclass
@@ -65,29 +69,8 @@ def valid_row(row: dict) -> bool:
     return valid_price(row) and valid_quantity(row)
 
 
-def _violation_dates(observation, basis):
-    dates = set()
-    for violation in observation.get("violations", []):
-        if violation.get("basis", "unadjusted") != basis:
-            continue
-        try:
-            dates.add(dt.datetime.strptime(violation["date_yyyymmdd"], "%Y%m%d").date())
-        except (ValueError, KeyError):
-            return None
-    return dates
-
-
 def _dated(rows):
     return {dt.date.fromisoformat(row["date"]): row for row in rows}
-
-
-def _confirmed_observation(data_dir, manifest, observation):
-    candidate = store.current_observation(data_dir, observation)
-    if candidate.get("confirmation"):
-        from hoga.api.screener_daily_confirmation import confirmed_dates  # noqa: PLC0415
-
-        return candidate, confirmed_dates(candidate)
-    return candidate, set() if manifest.get("daily_contract_required") else None
 
 
 def load_series(
@@ -121,12 +104,15 @@ def _load_series(data_dir, manifest, codes, *, first, last):
         observation_id = manifest["observations"].get(code)
         prices, conflicts = {}, set()
         if observation_id:
-            observation = store.read_object(data_dir, observation_id)
-            candidate, confirmed = _confirmed_observation(data_dir, manifest, observation)
-            conflicts.update(dt.date.fromisoformat(day) for day in observation.get("conflicts", []))
-            invalid_raw = _violation_dates(observation, "unadjusted")
-            invalid_prices = _violation_dates(observation, "adjusted")
-            for day, row in _dated(observation["unadjusted"]).items():
+            observation = projection.read(data_dir, observation_id)
+            candidate = observation.candidate
+            confirmed = candidate.confirmed_dates if candidate.confirmed_dates is not None else (
+                set() if manifest.get("daily_contract_required") else None
+            )
+            conflicts.update(observation.conflicts)
+            invalid_raw = observation.invalid_unadjusted
+            invalid_prices = observation.invalid_adjusted
+            for day, row in _dated(observation.unadjusted).items():
                 if not first <= day <= last or not row.get("complete", True):
                     continue
                 old = original.get(day)
@@ -139,10 +125,10 @@ def _load_series(data_dir, manifest, codes, *, first, last):
             conflicts.update(original if invalid_raw is None else invalid_raw)
             if confirmed is not None:
                 conflicts.update(day for day in original if day.isoformat() not in confirmed)
-            if observation["adjusted_as_of"] == manifest["adjusted_as_of"] and invalid_prices is not None:
+            if observation.adjusted_as_of == manifest["adjusted_as_of"] and invalid_prices is not None:
                 prices = {
                     day: row
-                    for day, row in _dated(observation["adjusted"]).items()
+                    for day, row in _dated(observation.adjusted).items()
                     if first <= day <= last
                     and valid_price(row)
                     and row.get("complete", True)
@@ -151,7 +137,8 @@ def _load_series(data_dir, manifest, codes, *, first, last):
                 }
             from hoga.api.screener_corrections import apply_review  # noqa: PLC0415 — avoid import cycle
 
-            corrected = apply_review(data_dir, manifest, code, original, conflicts, candidate, confirmed or set())
+            corrected = apply_review(data_dir, manifest, code, original, conflicts, candidate.identity,
+                                     candidate.unadjusted, confirmed or set())
         else:
             corrected = set()
             if manifest.get("daily_contract_required"):

@@ -1,0 +1,18 @@
+{"head": "83b6da72e84f69ba4880265e6a2f2e239e98a65d", "rows": 0, "coverage": {"total": 1, "complete": 1, "incomplete": [], "realtime": {"prepared": 1, "receiving": 1, "continuous": true, "monitor_error": null, "insufficient": 0, "preparing": 0, "recovering": 0, "unavailable": 0, "last_verified_ms": 1792551620000}, "trading_date": "2026-10-21"}, "bar": "MinuteBar(start_ms=1792551600000, volume=15, is_open=True, valid=True, open=100, high=105, low=100, close=105, trade_value_won=None, previous_day_close=None, previous_day_ms=None)", "corpus": "/tmp/hoga-delayed-rest-http-qww0rrlu"}
+Traceback (most recent call last):
+  File "/tmp/afternoon-delayed-rest-http.py", line 79, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/home/dev/.local/share/uv/python/cpython-3.14.7-linux-x86_64-gnu/lib/python3.14/asyncio/runners.py", line 205, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/home/dev/.local/share/uv/python/cpython-3.14.7-linux-x86_64-gnu/lib/python3.14/asyncio/runners.py", line 128, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/dev/.local/share/uv/python/cpython-3.14.7-linux-x86_64-gnu/lib/python3.14/asyncio/base_events.py", line 720, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/tmp/afternoon-delayed-rest-http.py", line 72, in main
+    assert [r['code'] for r in body['rows']]==[CODE],body
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'rank_basis': None, 'calculation': {'policy': 'separate_bases_v2', 'snapshot_id': '0c67ac886dce5a323984ecb8e5c02bf4fbc15117243958992255883da9407ec2', 'adjusted_as_of': '2026-10-21', 'price_basis': 'vendor_adjusted', 'event_revision': '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a', 'replayable': False, 'execution_id': None, 'daily_session_scope': 'legacy_unknown', 'daily_confirmation_policy': 'legacy_unverified', 'correction_revision': '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a'}, 'history_coverage': None, 'bar_coverage': {'total': 1, 'complete': 1, 'incomplete': [], 'realtime': {'prepared': 1, 'receiving': 1, 'continuous': True, 'monitor_error': None, 'insufficient': 0, 'preparing': 0, 'recovering': 0, 'unavailable': 0, 'last_verified_ms': 1792551620000}, 'trading_date': '2026-10-21'}, 'status': 'ok', 'rows': [], 'has_more': False, 'scanned_at_ms': 1792551630000, 'basis_at_ms': 1792551630000, 'fallback_basis_at_ms': None, 'warnings': ['etf_filter_stale_master_unavailable', 'intraday_fallback_eod'], 'intraday_failure': None, 'depth_coverage': None, 'depth_values': None}
