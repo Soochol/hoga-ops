@@ -349,7 +349,11 @@ def _commit_snapshot(data_dir, manifest, *, changed_codes=()):
     manifest = projection._prepare_publication(data_dir, manifest, set(changed_codes))
     base = root(data_dir)
     snapshot_id = _write_object(base, manifest)
+    snapshot_path = base / "objects" / f"{snapshot_id}.json"
+    stamp = snapshots.signature(snapshot_path)
+    read_object(data_dir, snapshot_id)
     projection._attest_publication(data_dir, manifest)
+    _assert_file(snapshot_path, stamp)
     atomic_write_json(base / "current.json", {"id": snapshot_id})
     _sync_dir(base)
     return snapshot_id

@@ -157,12 +157,11 @@ def test_mutation_during_compact_read_cannot_return_unverified_facts(corpus, mon
 
     monkeypatch.setattr(store, '_read_file', mutate)
     monkeypatch.setattr(store, 'read_object', checked)
-    if target == 'raw':
-        with pytest.raises(ValueError):
-            projection.read(corpus, manifest, '005930')
-    else:
-        assert projection.read(corpus, manifest, '005930') == expected
+    with pytest.raises(ValueError):
+        projection.read(corpus, manifest, '005930')
     assert source_reads == [value['observation_id']]
+    if target != 'raw':
+        assert projection.read(corpus, manifest, '005930') == expected
 
 
 def test_legacy_none_empty_and_candidate_vs_merged_masks_survive_codec(corpus):

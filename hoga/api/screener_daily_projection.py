@@ -300,6 +300,15 @@ def _read_header(data_dir, identity, observation_id, *, stop=None):
     return header, files
 
 
+def _read_body(data_dir, header, files, *, stop=None):
+    path = _body_path(data_dir, header.body_id)
+    packed, stamp = store._read_file(path, limit=MAX_COMPRESSED_BYTES, stop=stop)
+    files[path] = stamp
+    if len(packed) != header.compressed_bytes or hashlib.sha256(packed).hexdigest() != header.body_id:
+        raise ValueError("Daily query body checksum mismatch")
+    return packed
+
+
 def _compact(data_dir, manifest, code, *, rows, stop=None):
     identity = _header_id(manifest, code)
     if identity is None:
@@ -308,11 +317,7 @@ def _compact(data_dir, manifest, code, *, rows, stop=None):
     if not rows:
         _attest(files, stop=stop)
         return header.summary()
-    path = _body_path(data_dir, header.body_id)
-    packed, stamp = store._read_file(path, limit=MAX_COMPRESSED_BYTES, stop=stop)
-    files[path] = stamp
-    if len(packed) != header.compressed_bytes or hashlib.sha256(packed).hexdigest() != header.body_id:
-        raise ValueError("Daily query body checksum mismatch")
+    packed = _read_body(data_dir, header, files, stop=stop)
     facts = _decode(_decompress(packed, decoded_bytes=header.decoded_bytes, maximum=MAX_DECODED_BYTES, stop=stop))
     if facts.candidate.identity != header.candidate_id or _summary(facts) != header.summary():
         raise ValueError("Daily query body binding mismatch")
@@ -434,8 +439,12 @@ def _prepare_publication(data_dir, manifest, changed_codes):
 
 
 def _attest_publication(data_dir, manifest):
+    files = {}
     for code in manifest.get("daily_query", {}).get("headers", {}):
-        _read_header(data_dir, _header_id(manifest, code), manifest["observations"][code])
+        header, dependencies = _read_header(data_dir, _header_id(manifest, code), manifest["observations"][code])
+        files.update(dependencies)
+        _read_body(data_dir, header, files)
+    _attest(files)
 
 
 def prepare_existing_query_data(data_dir: Path, *, expected_snapshot: str, codes: list[str]):
@@ -475,13 +484,18 @@ def prepare_existing_query_data(data_dir: Path, *, expected_snapshot: str, codes
             snapshot_id = current[0]
         else:
             snapshot_id = store._commit_snapshot(data_dir, {**updated, "parent": current[0]})
-        compressed = decoded = 0
+        sizes, sources = {}, {}
         for code, identity in headers.items():
             header, _ = _read_header(data_dir, identity, selected[code])
-            compressed += header.compressed_bytes
-            decoded += header.decoded_bytes
+            sizes[code] = {"compressed_bytes": header.compressed_bytes, "decoded_bytes": header.decoded_bytes}
+            sources.update({source.identity: source.stamp[2] for source in header.sources})
     return {
-        "previous_snapshot": current[0], "snapshot_id": snapshot_id, "no_op": snapshot_id == current[0],
+        "expected_snapshot": expected_snapshot, "previous_snapshot": current[0],
+        "snapshot_id": snapshot_id, "no_op": snapshot_id == current[0],
         "prepared": sorted(prepared), "reused": sorted(set(headers) - set(prepared)), "oversized": sorted(oversized),
-        "compressed_bytes": compressed, "decoded_bytes": decoded, "elapsed_seconds": time.monotonic() - started,
+        "compressed_bytes": sum(size["compressed_bytes"] for size in sizes.values()),
+        "decoded_bytes": sum(size["decoded_bytes"] for size in sizes.values()),
+        "max_compressed_bytes": max((size["compressed_bytes"] for size in sizes.values()), default=0),
+        "max_decoded_bytes": max((size["decoded_bytes"] for size in sizes.values()), default=0),
+        "source_bytes": sum(sources.values()), "sizes": sizes, "elapsed_seconds": time.monotonic() - started,
     }

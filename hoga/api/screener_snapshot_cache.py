@@ -97,7 +97,7 @@ class SnapshotCache:
                 with self.lock:
                     if self.entries.get(key) is entry:
                         self.entries.move_to_end(key)
-                return self.unpack(entry)
+                return self.unpack_stable(entry, stop)
             with self.lock:
                 if self.generation != generation or self.entries.get(key) is not entry:
                     continue
@@ -115,14 +115,11 @@ class SnapshotCache:
         try:
             value = loader()
             checkpoint(stop)
-            reads = _reads.get()
-            payload = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-            size = len(payload) + sum(len(str(path).encode()) + 128 for path in reads.files) + len(repr(key))
-            entry = Entry(payload, reads, size)
-            reads.stable &= self.valid(entry, stop)
+            entry = self._pack_entry(key, value, stop)
+            size = entry.size
             with self.lock:
                 checkpoint(stop)
-                if (flight[0] == self.generation and reads.stable and size <= MAX_ENTRY_BYTES
+                if (flight[0] == self.generation and size <= MAX_ENTRY_BYTES
                         and size <= MAX_BYTES and MAX_ENTRIES > 0):
                     previous = self.entries.pop(key, None)
                     self.bytes -= previous.size if previous else 0
@@ -140,7 +137,16 @@ class SnapshotCache:
             with self.lock:
                 if self.flights.get(flight) is future:
                     self.flights.pop(flight, None)
-        return self.unpack(entry)
+        return self.unpack_stable(entry, stop)
+
+    def _pack_entry(self, key, value, stop):
+        reads = _reads.get()
+        payload = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+        size = len(payload) + sum(len(str(path).encode()) + 128 for path in reads.files) + len(repr(key))
+        entry = Entry(payload, reads, size)
+        if not self.valid(entry, stop):
+            raise ValueError("Snapshot dependencies changed during read")
+        return entry
 
     def _wait_entry(self, flight, future, key, loader, stop):
         while True:
@@ -148,7 +154,7 @@ class SnapshotCache:
             try:
                 entry = future.result(timeout=0.1)
                 checkpoint(stop)
-                return self.unpack(entry)
+                return self.unpack_stable(entry, stop)
             except TimeoutError:
                 if future.done():
                     raise
@@ -160,6 +166,12 @@ class SnapshotCache:
                     if self.flights.get(flight) is future:
                         self.flights.pop(flight, None)
                 return self.obtain(key, loader, stop=stop)
+
+    def unpack_stable(self, entry, stop):
+        value = self.unpack(entry)
+        if not self.valid(entry, stop):
+            raise ValueError("Snapshot dependencies changed during read")
+        return value
 
     @staticmethod
     def unpack(entry):

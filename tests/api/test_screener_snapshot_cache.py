@@ -87,7 +87,8 @@ def test_file_change_during_build_is_never_promoted(tmp_path):
         path.write_text('{"value": 2}')
         return value
 
-    assert memo.obtain('key', load) == {'value': 1}
+    with pytest.raises(ValueError, match='dependencies changed during read'):
+        memo.obtain('key', load)
     assert not memo.entries
 
 
@@ -153,3 +154,60 @@ def test_reset_during_preparation_does_not_restore_old_cache():
         release.set()
         assert task.result() == 1
     assert memo.obtain('key', lambda: 3) == 2
+
+
+def test_mutation_during_entry_packing_is_rejected(tmp_path, monkeypatch):
+    memo = cache.SnapshotCache()
+    identity, path = object_file(tmp_path, {'value': 1})
+    dumps = cache.pickle.dumps
+
+    def mutate(value, **kwargs):
+        packed = dumps(value, **kwargs)
+        path.write_text('{"value": 2}')
+        return packed
+
+    monkeypatch.setattr(cache.pickle, 'dumps', mutate)
+    with pytest.raises(ValueError, match='dependencies changed during read'):
+        memo.obtain('key', lambda: store.read_object(tmp_path, identity))
+    assert not memo.entries and not memo.flights
+
+
+def test_waiter_rejects_source_changed_after_owner_completion(tmp_path, monkeypatch):
+    memo = cache.SnapshotCache()
+    identity, path = object_file(tmp_path, {'value': 1})
+    entered, release, waiter_entered, owner_returned = (threading.Event() for _ in range(4))
+    thread = threading.local()
+    unpack, wait = memo.unpack, memo._wait_entry
+
+    def load():
+        value = store.read_object(tmp_path, identity)
+        entered.set()
+        assert release.wait(5)
+        return value
+
+    def unpack_after_change(entry):
+        if getattr(thread, 'waiter', False):
+            assert owner_returned.wait(5)
+            path.write_text('{"value": 2}')
+        return unpack(entry)
+
+    def waiting(*args):
+        waiter_entered.set()
+        return wait(*args)
+
+    def second():
+        thread.waiter = True
+        return memo.obtain('key', load)
+
+    monkeypatch.setattr(memo, 'unpack', unpack_after_change)
+    monkeypatch.setattr(memo, '_wait_entry', waiting)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(memo.obtain, 'key', load)
+        assert entered.wait(5)
+        other = pool.submit(second)
+        assert waiter_entered.wait(5)
+        release.set()
+        assert first.result(5) == {'value': 1}
+        owner_returned.set()
+        with pytest.raises(ValueError, match='dependencies changed during read'):
+            other.result(5)
