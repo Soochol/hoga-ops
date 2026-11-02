@@ -10,9 +10,10 @@ import { useOccurrenceExclusions } from '../screener/useOccurrenceExclusions';
 import { OccurrenceExclusionToolbar } from '../screener/OccurrenceExclusions';
 import { ScreenerPreparationStatus } from '../screener/ScreenerPreparationStatus';
 import type { ScanRequest, ScreenerResponse } from '../api/screener';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
 import { useScreener } from '../screener/useScreener';
+import { hasContinuousVolume } from '../screener/continuousClient';
 import { useScreenerMonitor, monitorPeriod } from '../screener/useScreenerMonitor';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
@@ -157,7 +158,7 @@ export function Screener() {
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
   useExpireScreenerScan();
 
-  const [volumeRefreshStopped, setVolumeRefreshStopped] = useState(false);
+  const [monitorKey, setMonitorKey] = useState<string | null>(null);
   const { data: liveSettings } = useLiveSettings();
   const { data: savesData } = useSavedScreeners();
   const { data: status } = useScreenerStatus();
@@ -197,6 +198,7 @@ export function Screener() {
     [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe, venue],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
+  useEffect(() => { setMonitorKey(null); }, [scanKey, invalidEditor]);
   const publishScan = (res: ScreenerResponse, body: ScanRequest, newInteraction = false) => {
     const anchored = !editor.dirty && editor.anchorId != null;
     const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
@@ -226,7 +228,8 @@ export function Screener() {
       dataStale: false,
     }, true);
   };
-  const screener = useScreener({ continuous: !volumeRefreshStopped && !invalidEditor, anchor: scanKey,
+  const monitoring = monitorKey === scanKey && !invalidEditor;
+  const screener = useScreener({ continuous: !!monitoring, anchor: scanKey,
     request: scanBody, onProgress: publishScan });
   // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
   // 드로어 스캔은 scanKey null → 비교 불가 시 stale 판정하지 않는다.
@@ -246,15 +249,17 @@ export function Screener() {
     if (editorDirty) { setPendingSwitch({ save, restore }); return; }
     loadEditor(save);
   };
-  const runScan = async (background = false): Promise<boolean> => {
+  const runScan = async (mode: 'once' | 'monitor' | 'refresh' = 'once'): Promise<boolean> => {
     if (invalidEditor || !hasConditions || screener.isPending) return false;
-    if (!background) setVolumeRefreshStopped(false);
+    const background = mode === 'refresh';
+    if (mode === 'once') setMonitorKey(null);
     try {
-      await screener.mutateAsync(scanBody, {
+      await screener.mutateAsync({ request: scanBody, mode: mode === 'once' ? 'once' : 'monitor' }, {
         onSuccess: (res) => {
           // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
           // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
           publishScan(res, scanBody, !background);
+          if (mode === 'monitor') setMonitorKey(scanKey);
           if (!background) setSortMode('default');
         },
       });
@@ -264,12 +269,10 @@ export function Screener() {
     }
   };
   const liveVolume = editor.conditions.some(isRankCondition)
-    || !!editor.universe.scopes?.length && editor.conditions.some(leaf =>
-    (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
-    && 'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m'));
+    || !!editor.universe.scopes?.length && hasContinuousVolume(scanBody);
   useScreenerMonitor({
     acceptsVolumeEvent: screener.acceptsVolumeEvent,
-    active: liveVolume && lastScan?.scanKey === scanKey && !volumeRefreshStopped,
+    active: liveVolume && lastScan?.scanKey === scanKey && !!monitoring,
     selectedId: scanKey,
     disabled: notSeeded || !!invalidEditor,
     periodMs: monitorPeriod(editor.conditions, !!editor.universe.scopes?.length),
@@ -277,9 +280,9 @@ export function Screener() {
     hasResults: lastScan !== null,
     conditions: editor.conditions,
     startImmediately: false,
-    scanOnce: () => runScan(true),
+    scanOnce: () => runScan('refresh'),
     onAutoStop: message => {
-      setVolumeRefreshStopped(true);
+      setMonitorKey(null);
       useScreenerUpdateFeedback.getState().setFeedback({ tone: 'error', message, atMs: Date.now(), source: 'monitor' });
     },
   });
@@ -379,9 +382,7 @@ export function Screener() {
             expression={editor.expression} onExpressionChange={editor.editExpression} expressionScope={editor.anchorId}>
             {!invalidEditor && !screener.preparation?.minute_date && <ScreenerPreparationStatus run={screener.preparation} />}
           </ConditionBuilder>
-          {!editor.universe.scopes?.length && editor.conditions.some(leaf =>
-            (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
-            && 'timeframe' in leaf.params && leaf.params.timeframe === '1m') &&
+          {!editor.universe.scopes?.length && hasContinuousVolume(scanBody) &&
             <p className="text-xs text-fg-dim">전체 시장은 수동 조회만 지원합니다. 실시간 감시는 관심종목·히트맵 범위를 선택하세요.</p>}
         </div>
       </PanelCard>
@@ -398,6 +399,11 @@ export function Screener() {
               className="px-lg py-sm text-base">
               {screener.isPending ? '조회 중…' : '조회'}
             </ToolbarButton>
+            {liveVolume && <ToolbarButton
+              onClick={() => { if (monitoring) { setMonitorKey(null); screener.reset(); } else void runScan('monitor'); }}
+              disabled={!monitoring && (screener.isPending || notSeeded || !hasConditions || !!invalidEditor)}>
+              {monitoring ? '실시간 감시 종료' : '실시간 감시 시작'}
+            </ToolbarButton>}
             {!notSeeded && (
               <>
                 <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()}
@@ -507,7 +513,7 @@ export function Screener() {
                 </EmptyState>
               ) : (
                 <div className={`flex min-h-0 flex-1 flex-col ${screener.isPending ? 'opacity-60' : ''}`}>
-                  {rows.length === 0 && screener.preparation && screener.preparation.status !== 'complete'
+                  {rows.length === 0 && screener.preparation && ['queued', 'preparing'].includes(screener.preparation.status)
                     ? <InlineState>확인된 일치 종목이 없습니다 · 준비·검증 대기 중인 종목은 아직 판정하지 않았습니다</InlineState>
                     : <ScreenerResults
                     key={`${lastScan.interactionStartedAtMs ?? lastScan.scannedAtMs}:${lastScan.requestJson ?? lastScan.scanKey ?? ''}`}

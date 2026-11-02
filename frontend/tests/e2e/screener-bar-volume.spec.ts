@@ -103,7 +103,7 @@ for (const timeframe of ['1m', '3m', '5m', '10m'] as const) {
     });
     await page.goto('/screener');
     await expect(page.getByText(`${timeframe.slice(0, -1)}분봉 · 최근 5봉 이내 · 100봉 신고거래량`, { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '조회', exact: true }).click();
+    await page.getByRole('button', { name: '실시간 감시 시작', exact: true }).click();
     await expect(page.getByText('실시간 감시 12/100종목 · 준비 중 36 · 연결 확인 필요 52')).toBeVisible();
     await expect.poll(() => !!socket).toBe(true);
     const initialScans = scans;

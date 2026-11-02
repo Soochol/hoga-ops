@@ -15,6 +15,7 @@ export const monitorPeriod = (conditions: ConditionLeaf[], scoped: boolean) =>
 /** 에러 백오프 상한 + 자동 종료 임계(연속 실패 횟수). */
 export const MONITOR_MAX_BACKOFF_MS = 300_000;
 export const MONITOR_FAIL_LIMIT = 5;
+export const MONITOR_VOLUME_MIN_MS = 2_000;
 const NO_TICK_CODES: string[] = [];
 
 export type MonitorPausedReason = 'closed' | null;
@@ -97,6 +98,9 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
     let stopped = false;
     let urgent = false;
     let volumeSignal = false;
+    let lastVolumeQueryAt = -Infinity;
+
+    const volumeDelay = () => Math.max(250, lastVolumeQueryAt + MONITOR_VOLUME_MIN_MS - Date.now());
 
     const schedule = (ms: number) => {
       window.clearTimeout(timer);
@@ -107,6 +111,10 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
       urgent = false;
       if (cancelled || stopped) return;
       if (inFlight) { queued = true; return; }
+      if (volumeSignal && Date.now() < lastVolumeQueryAt + MONITOR_VOLUME_MIN_MS) {
+        schedule(volumeDelay());
+        return;
+      }
       const closingTrade = volumeSignal;
       volumeSignal = false;
       // 게이트: 탭 숨김·장마감이면 조회를 건너뛰고 나중에 재확인만(무요청 no-op).
@@ -117,13 +125,14 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
         return;
       }
       inFlight = true;
+      if (closingTrade) lastVolumeQueryAt = Date.now();
       let ok = false;
       try { ok = await scanOnceRef.current(); } catch { /* same backoff as failed scans */ }
       inFlight = false;
       if (cancelled) return;
       if (ok) {
         failStreak = 0;
-        schedule(queued ? 250 : periodMs);
+        schedule(queued ? (volumeSignal ? volumeDelay() : 250) : periodMs);
         queued = false;
         return;
       }
@@ -149,9 +158,9 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
       // The server volume event already passed the KRX regular-session gate.
       if (event.type === 'screener_volume_changed' && acceptsVolumeEventRef.current
         && !acceptsVolumeEventRef.current(event.monitor_id)) return;
-      volumeSignal = event.type === 'screener_volume_changed';
+      volumeSignal ||= event.type === 'screener_volume_changed';
       if (inFlight) queued = true;
-      else if (!urgent) { urgent = true; schedule(250); }
+      else if (!urgent) { urgent = true; schedule(volumeSignal ? volumeDelay() : 250); }
     });
 
     // 시작·재앵커 즉시 1회 조회.

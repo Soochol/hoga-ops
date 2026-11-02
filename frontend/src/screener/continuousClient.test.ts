@@ -58,4 +58,32 @@ describe('continuous monitor ownership', () => {
     expect(hasContinuousVolume({ ...request, conditions: [{ id: 'x', type: 'new_high_vol',
       params: { timeframe: '15m', period: 100, lookback: 5 } }] })).toBe(false);
   });
+
+  it('an expired monitor does not prevent releasing ownership for a manual query', async () => {
+    vi.mocked(apiCall).mockResolvedValueOnce({ id: 'expired' });
+    vi.mocked(readContinuousResult).mockResolvedValue({ status: 'ok', rows: [], warnings: [] });
+    const owner = new ContinuousClient();
+    await owner.scan(request);
+    vi.mocked(apiCall).mockRejectedValueOnce(Object.assign(new Error('expired'), { status: 404 }));
+    await expect(owner.stop()).resolves.toBeUndefined();
+    expect(owner.acceptsEvent('expired')).toBe(false);
+  });
+
+  it('does not publish an old in-flight result after monitoring stops', async () => {
+    vi.mocked(apiCall).mockResolvedValue({ id: 'stopped' });
+    let finish!: (value: Awaited<ReturnType<typeof readContinuousResult>>) => void;
+    let reading!: () => void;
+    const started = new Promise<void>(resolve => { reading = resolve; });
+    vi.mocked(readContinuousResult).mockImplementationOnce(() => new Promise(resolve => {
+      finish = resolve;
+      reading();
+    }));
+    const owner = new ContinuousClient();
+    const pending = owner.scan(request);
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await started;
+    await owner.stop();
+    finish({ status: 'ok', rows: [], warnings: [] });
+    await rejected;
+  });
 });
