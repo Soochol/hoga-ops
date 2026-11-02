@@ -1,7 +1,7 @@
-"""Server-owned scoped minute-volume monitors and shared memory history.
+"""Server-owned scoped minute OHLCV monitors and shared memory history.
 
 Preparation/repair has its own bounded background queue. Reading a supported
-volume result never initiates a vendor fetch; legacy predicates keep their path.
+current-day result never initiates a vendor fetch; legacy predicates keep their path.
 """
 from __future__ import annotations
 
@@ -26,6 +26,8 @@ from hoga.api import (
     symbols,
 )
 from hoga.api.models import ScanRequest, ScreenerResponse
+from hoga.api.screener_bar_policy import CHANGE_TYPES, RANGE_PARAMS
+from hoga.api.screener_bar_price import valid_prices
 from hoga.api.screener_timing import monitor_scan
 from hoga.live.volume_state import MINUTE, VolumeReplica
 from hoga.util.timeenc import KST
@@ -87,6 +89,21 @@ class History:
     identity: object = field(default_factory=object, repr=False, compare=False)
 
 
+@dataclass(frozen=True)
+class PreparedSnapshot:
+    bars: tuple
+    lower: frozenset[int]
+    coverage_start_ms: int
+    fetched_ms: int
+    observed_ms: int
+    version: tuple | None
+    current_day: bool
+    reason: str | None
+    cutoff_ms: int
+    live_ready: bool
+    repair_until_ms: int
+
+
 @dataclass
 class ResultFlight:
     task: asyncio.Task[ScreenerResponse]
@@ -110,33 +127,30 @@ class ContinuousAdapter:
     def __init__(self, owner, monitor):
         self.owner, self.monitor = owner, monitor
         self.coverage_monitor = monitor
+        self._snapshots: dict[str, PreparedSnapshot] = {}
 
     @staticmethod
-    def supports(leaf):
-        return (leaf.type in {'new_high_vol', 'new_high_vol_today'}
-                and leaf.params.timeframe in candles.TIMEFRAMES and not hasattr(leaf.params, 'mode')
-                and leaf.params.include_open_bar)
+    def eligible(leaf):
+        family = (leaf.type in {'new_high_vol', 'new_high_vol_today'} or
+                  leaf.type in CHANGE_TYPES and leaf.params.change_reference in {'previous_bar', 'bar_open'})
+        return (family and leaf.params.timeframe in candles.TIMEFRAMES
+                and not isinstance(leaf.params, RANGE_PARAMS) and leaf.params.include_open_bar)
+
+    def supports(self, leaf):
+        now = self.owner.now()
+        return self.eligible(leaf) and (leaf.type not in CHANGE_TYPES or
+            self.owner.selected_day(now) == datetime.fromtimestamp(now / 1000, KST).date())
 
     def snapshot(self, leaf, code, now):
-        history = self.owner.histories.get(code)
-        # An empty tuple snapshot is deliberate: the scan cannot turn preparation
-        # into another REST fan-out. Quality/coverage carries the unknown state.
-        if not history:
-            return [], now, set()
-        self.owner.merge(code, history, now)
-        state = self.owner.replica.get(code, now)
-        if history.bars and not self.owner.current_day(history, now):
-            return [], now, set()
-        data, lower = candles.window(history, leaf, now)
-        if history.repair_until_ms or (self.owner.live_clock(now) and (not state or not state['ready'])):
-            data = [volume.VolumeBar(b.start_ms, b.volume, b.is_open, False) for b in data]
-        return data, now, lower
+        snapshot = self.owner.snapshot(code, now)
+        data, lower = candles.window(snapshot, leaf, now)
+        return data, snapshot.observed_ms, lower
 
     async def evaluate_leaf(self, leaf, code, now):
-        history = self.owner.histories.get(code)
-        if history:
-            self.owner.merge(code, history, now)
-        version = self.owner.version(code, history, now) if history else None
+        if code not in self._snapshots:
+            self._snapshots[code] = self.owner.snapshot(code, now)
+        snapshot = self._snapshots[code]
+        version = snapshot.version
         key = code, leaf.model_dump_json()
         cached = self.owner.evaluations.get(key)
         if cached is not None and cached[0] == version:
@@ -145,21 +159,23 @@ class ContinuousAdapter:
             flight = key, version
             task = self.owner.evaluation_flights.get(flight)
             if task is None:
-                task = asyncio.create_task(self._evaluate_changed(leaf, code, now, key, version))
+                task = asyncio.create_task(self._evaluate_changed(leaf, code, now, key, snapshot))
                 self.owner.evaluation_flights[flight] = task
                 task.add_done_callback(lambda _task: self.owner.evaluation_flights.pop(flight, None))
             cached = await asyncio.shield(task)
         return leaf, code, [event.model_copy(deep=True) for event in cached[1]], cached[2], cached[3]
 
-    async def _evaluate_changed(self, leaf, code, now, key, version):
+    async def _evaluate_changed(self, leaf, code, now, key, snapshot):
+        now = snapshot.cutoff_ms
+        version = snapshot.version
         cached = self.owner.evaluations.get(key)
         if cached is None or cached[0] != version:
-            data, observed, lower = self.snapshot(leaf, code, now)
-            events, complete = await asyncio.to_thread(volume.records, leaf, data, fetched_at_ms=observed)
+            data, lower = candles.window(snapshot, leaf, now)
+            events, complete = await asyncio.to_thread(volume.records, leaf, data, fetched_at_ms=snapshot.observed_ms)
             for event in events:
                 if event.bar_match and event.bar_start_ms in lower:
                     event.bar_match.volume_is_lower_bound = True
-            reason = self.reason(code, leaf)
+            reason = self._reason(snapshot, [leaf], now)
             if not reason and not complete and lower and any(not bar.valid for bar in data):
                 reason = 'live_bar_unconfirmed'
             cached = version, events, complete and reason is None, reason
@@ -182,25 +198,33 @@ class ContinuousAdapter:
 
     def counts(self, leaves, codes, now):
         self.coverage_monitor = replace(self.monitor, codes=list(codes))
-        status = self.owner.status(self.coverage_monitor, now)
+        for code in codes:
+            if code not in self._snapshots:
+                self._snapshots[code] = self.owner.snapshot(code, now)
+        status = self.owner.status(self.coverage_monitor, now, snapshots=self._snapshots)
         return status.prepared, status.receiving
 
     def reason(self, code, leaf=None):
-        history = self.owner.histories.get(code)
+        now = self.owner.now()
+        snapshot = self._snapshots.get(code) or self.owner.snapshot(code, now)
         leaves = [leaf] if leaf else self.monitor.leaves
-        if history and history.reason and not candles.prepared(history, leaves, self.owner.now()):
-            return history.reason
-        if not history or not history.fetched_ms:
+        return self._reason(snapshot, leaves, snapshot.cutoff_ms)
+
+    @staticmethod
+    def _reason(snapshot, leaves, now):
+        if snapshot.reason and not candles.prepared(snapshot, leaves, now):
+            return snapshot.reason
+        if not snapshot.fetched_ms or not snapshot.current_day:
             return 'volume_preparing'
-        if not self.owner.current_day(history, self.owner.now()):
-            return 'volume_preparing'
-        if not candles.prepared(history, leaves, self.owner.now()):
-            return history.reason or 'insufficient_minute_history'
+        if not candles.prepared(snapshot, leaves, now):
+            if any(len(candles.window(snapshot, leaf, now)[0]) < candles.candle_count(leaf) for leaf in leaves):
+                return 'insufficient_minute_history'
+            return 'live_bar_unconfirmed'
         return None
 
     def coverage(self):
         now = self.owner.now()
-        status = self.owner.status(self.coverage_monitor, now)
+        status = self.owner.status(self.coverage_monitor, now, snapshots=self._snapshots)
         return {**status.model_dump(exclude={'id', 'total', 'error'}), 'monitor_error': status.error,
                 'trading_date': self.owner.selected_day(now).isoformat()}
 
@@ -244,13 +268,31 @@ class ContinuousMonitors:
         return bool(history.bars) and datetime.fromtimestamp(
             history.bars[-1].start_ms / 1000, KST).date() == self.selected_day(now)
 
+    def snapshot(self, code, now):
+        history = self.histories.get(code)
+        if history is None:
+            return PreparedSnapshot((), frozenset(), 0, 0, now, None, False, None, now, False, 0)
+        state = self.replica.get(code, now)
+        if state:
+            now = max(now, state['observed_ms'], state['tick_ms'])
+        self.merge(code, history, now)
+        state = self.replica.get(code, now)
+        current = self.current_day(history, now)
+        data = tuple(history.bars) if current else ()
+        if history.repair_until_ms or (self.live_clock(now) and (not state or not state['ready'])):
+            data = tuple(replace(bar, valid=False) for bar in data)
+        return PreparedSnapshot(data, frozenset(history.lower), history.coverage_start_ms,
+            history.fetched_ms, max(history.fetched_ms, state['tick_ms'] if state else 0),
+            self.version(code, history, now), current, history.reason, now,
+            bool(self.live_clock(now) and state and state['ready']), history.repair_until_ms)
+
     def live_clock(self, now):
         return (self.market_clock(now) and now < candles.session_start(now) + 390 * MINUTE
                 and self.selected_day(now) == datetime.fromtimestamp(now / 1000, KST).date())
 
     async def start(self, client_id, request):
         leaves = [leaf for leaf in screener_expression.active_conditions(request.conditions, request.expression)
-                  if ContinuousAdapter.supports(leaf)]
+                  if ContinuousAdapter.eligible(leaf)]
         if not leaves or not request.universe.scopes or request.basis == 'eod':
             raise HTTPException(422, '1·3·5·10분봉 신고거래량 감시는 관심종목·히트맵 범위를 선택해야 합니다.')
         old = next((m for m in self.monitors.values() if m.client_id == client_id), None)
@@ -388,28 +430,36 @@ class ContinuousMonitors:
         quality = self._quality.get(key)
         if quality is None or quality[0] != version:
             ready = self.current_day(history, now) and candles.prepared(history, monitor.leaves, now)
-            damaged = bool(history.repair_until_ms) or any(not b.valid for leaf in monitor.leaves
-                for b in candles.window(history, leaf, now)[0][-candles.candle_count(leaf):])
+            damaged = candles.damaged(history, monitor.leaves, now)
             quality = version, ready, damaged
             self._quality[key] = quality
         return quality[1:]
 
-    def status(self, monitor, now):
+    def status(self, monitor, now, *, snapshots=None):
         prepared = receiving = recovering = unavailable = insufficient = preparing = 0
         verified = []
         needed = candles.requirement(monitor.leaves)
         for code in monitor.codes:
-            history = self.histories.get(code, History(needed))
+            snapshot = snapshots.get(code) if snapshots is not None else None
+            history = snapshot or self.histories.get(code, History(needed))
             state = self.replica.get(code, now)
-            ready, damaged = self.monitor_quality(monitor, code, history, now)
+            if snapshot:
+                ready = snapshot.current_day and candles.prepared(snapshot, monitor.leaves, snapshot.cutoff_ms)
+                damaged = candles.damaged(snapshot, monitor.leaves, snapshot.cutoff_ms)
+                receiving_live = snapshot.live_ready
+                live_clock = self.live_clock(snapshot.cutoff_ms)
+            else:
+                ready, damaged = self.monitor_quality(monitor, code, history, now)
+                live_clock = self.live_clock(now)
+                receiving_live = bool(live_clock and state and state['ready'])
             prepared += ready
             insufficient += bool(not ready and history.reason == 'insufficient_minute_history')
             failed = bool(not ready and history.reason and history.reason != 'insufficient_minute_history')
             unavailable += failed
             preparing += bool(not ready and not history.reason)
             recovering += bool(ready and damaged)
-            receiving += bool(ready and not damaged and self.live_clock(now) and state and state['ready'])
-            unavailable += bool(ready and self.live_clock(now) and (not state or not state['ready']))
+            receiving += bool(ready and not damaged and receiving_live)
+            unavailable += bool(ready and live_clock and not receiving_live)
             if history.fetched_ms:
                 verified.append(history.fetched_ms)
         return ContinuousStatus(id=monitor.id, total=len(monitor.codes), prepared=prepared, receiving=receiving,
@@ -439,13 +489,17 @@ class ContinuousMonitors:
         incoming = candles.source_bars(history, state)
         self.track_source(history, state, now)
         data = {bar.start_ms: bar for bar in history.bars}
-        for start, observed, valid in incoming:
+        for start, observed, valid, o, h, low, close, prices_complete, _first, last in incoming:
             is_open = start + MINUTE > now and datetime.fromtimestamp(start / 1000, KST).strftime('%H%M') != '1530'
             old = data.get(start)
             previous = history.observed.get(start)
             anchored = bool(previous and previous[2] >= history.baseline_after_ms)
             # A completed authoritative REST bar supersedes older producer state.
             if old and old.valid and not old.is_open and start in history.canonical:
+                continue
+            if (old and is_open and valid_prices(old) and last <= history.fetched_ms
+                    and observed <= old.volume):
+                history.observed[start] = (observed, state['revision'], state['observed_ms'], last)
                 continue
             if not valid:
                 if is_open:
@@ -463,7 +517,9 @@ class ContinuousMonitors:
             else:
                 data[start] = volume.VolumeBar(start, observed, is_open, True)
                 history.lower.discard(start)
-            history.observed[start] = (observed, state['revision'], state['observed_ms'])
+            if prices_complete:
+                data[start] = replace(data[start], open=o, high=h, low=low, close=close)
+            history.observed[start] = (observed, state['revision'], state['observed_ms'], last)
         # Clock closure also occurs without a new trade; never fabricate 0 bars.
         history.bars = candles.close_minutes(sorted(data.values(), key=lambda b: b.start_ms), history.lower, now)
         candles.trim(history)
@@ -471,14 +527,11 @@ class ContinuousMonitors:
         history.lower.intersection_update(retained)
         history.observed = {k: v for k, v in history.observed.items() if k in retained}
         history.canonical = {k: v for k, v in history.canonical.items() if k in retained}
-        window = history.bars[-history.needed:]
-        if (len(window) == history.needed and window[0].start_ms >= history.repair_until_ms
-                and all(bar.valid for bar in window)):
-            history.repair_until_ms = 0
 
     def track_source(self, history, state, now):
         if (history.source_epoch and (history.source_epoch != self.replica.epoch
-                or history.generation != state['generation']) and history.bars and history.bars[-1].is_open):
+                or history.generation != state['generation']) and history.bars and history.bars[-1].is_open
+                and history.fetched_ms < state['since_ms']):
             history.bars[-1] = replace(history.bars[-1], valid=False)
         changed = bool(history.source_epoch and (history.source_epoch != self.replica.epoch
                                                   or history.generation != state['generation']))
@@ -508,13 +561,16 @@ class ContinuousMonitors:
             for bar in history.bars:
                 if bar.start_ms not in incoming or (bar.is_open and incoming[bar.start_ms].is_open):
                     if bar.start_ms in incoming:
-                        incoming[bar.start_ms] = replace(
-                            bar, volume=max(bar.volume, incoming[bar.start_ms].volume))
+                        observed = history.observed.get(bar.start_ms)
+                        selected = (bar if observed and observed[3] > snapshot.fetched_at_ms
+                                    and valid_prices(bar) else incoming[bar.start_ms])
+                        incoming[bar.start_ms] = replace(selected,
+                            volume=max(bar.volume, incoming[bar.start_ms].volume))
                     else:
                         incoming[bar.start_ms] = bar
             history.bars = sorted(incoming.values(), key=lambda b: b.start_ms)
             candles.trim(history)
-            if snapshot.bars:
+            if snapshot.bars and snapshot.fetched_at_ms >= history.repair_until_ms:
                 history.repair_until_ms = 0
             history.baseline_after_ms = self.now()
             history.observed.clear()
@@ -618,7 +674,8 @@ class ContinuousMonitors:
                     or (not opened and (history.fetched_ms or history.failures)
                         and history.attempt_day == self.selected_day(now).isoformat())):
                 continue
-            damaged = bool(history.repair_until_ms) or any(not b.valid for b in history.bars[-history.needed:])
+            damaged = any(candles.damaged(history, monitor.leaves, now)
+                          for monitor in self.monitors.values() if code in monitor.codes)
             short = not self.current_day(history, now) or any(
                         code in monitor.codes and not self.monitor_quality(monitor, code, history, now)[0]
                         for monitor in self.monitors.values())
@@ -666,6 +723,11 @@ class ContinuousMonitors:
         flags, windows = [], []
         for leaf in monitor.leaves:
             bars, _ = candles.window(history, leaf, now if now is not None else history.bars[-1].start_ms)
+            if leaf.type in CHANGE_TYPES:
+                events, complete = volume.records(leaf, bars, fetched_at_ms=0)
+                flags.append(bool(events))
+                windows.append((bars[-1].start_ms, bars[-1].is_open, complete))
+                continue
             previous = bars[-leaf.params.period:-1]
             known = len(previous) == leaf.params.period - 1 and all(b.valid for b in previous)
             threshold = max((b.volume for b in previous), default=0)

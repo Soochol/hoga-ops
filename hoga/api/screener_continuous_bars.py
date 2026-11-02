@@ -1,8 +1,10 @@
-"""Derive scoped 3/5/10-minute volume candles from one shared 1-minute history."""
+"""Derive scoped OHLCV candles from one shared one-minute history."""
 from dataclasses import replace
 from datetime import datetime
 from itertools import groupby
 
+from hoga.api.screener_bar_policy import CHANGE_TYPES, comparison_period, lookback
+from hoga.api.screener_bar_price import valid_prices
 from hoga.api.screener_bar_volume import VolumeBar
 from hoga.live.volume_state import MINUTE
 from hoga.util.timeenc import KST
@@ -11,7 +13,7 @@ TIMEFRAMES = {'1m', '3m', '5m', '10m'}
 
 
 def candle_count(leaf):
-    return leaf.params.period + getattr(leaf.params, 'lookback', 1) - 1
+    return comparison_period(leaf) + lookback(leaf) - 1
 
 
 def minute_count(leaf):
@@ -49,8 +51,12 @@ def aggregate(history, leaf, now):
         is_open = now < min(start + interval, closing)
         valid = start >= history.coverage_start_ms and all(b.valid for b in minutes)
         bounded = any(b.start_ms in history.lower for b in minutes)
+        prices = {}
+        if start >= history.coverage_start_ms and all(valid_prices(bar) for bar in minutes):
+            prices = dict(open=minutes[0].open, high=max(bar.high for bar in minutes),
+                          low=min(bar.low for bar in minutes), close=minutes[-1].close)
         result.append(VolumeBar(start, sum(b.volume for b in minutes), is_open,
-                                valid and (is_open or not bounded)))
+                                valid and (is_open or not bounded), **prices))
         if bounded:
             lower.add(start)
     return result, lower
@@ -62,8 +68,20 @@ def window(history, leaf, now):
 
 
 def prepared(history, leaves, now):
-    return bool(history.fetched_ms) and all(len(window(history, leaf, now)[0]) >= candle_count(leaf)
-                                           for leaf in leaves)
+    if not history.fetched_ms:
+        return False
+    for leaf in leaves:
+        data = window(history, leaf, now)[0]
+        count = candle_count(leaf)
+        if len(data) < count or (leaf.type in CHANGE_TYPES and not all(valid_prices(bar) for bar in data[-count:])):
+            return False
+    return True
+
+
+def damaged(history, leaves, now):
+    return bool(history.repair_until_ms) or any(
+        not bar.valid or leaf.type in CHANGE_TYPES and not valid_prices(bar)
+        for leaf in leaves for bar in window(history, leaf, now)[0][-candle_count(leaf):])
 
 
 def trim(history):
