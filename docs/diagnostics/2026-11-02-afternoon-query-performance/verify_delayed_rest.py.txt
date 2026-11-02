@@ -1,0 +1,47 @@
+import asyncio, datetime as dt
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import patch
+from hoga.api import screener_bar_volume as v
+from hoga.api.screener_continuous import ContinuousMonitors, History
+from hoga.live.volume_state import VolumeSource, VolumeReplica
+from hoga.util.timeenc import KST
+START=int(dt.datetime(2026,10,21,12,tzinfo=KST).timestamp()*1000)
+CODE='005930'
+clock=SimpleNamespace(now=START+20000)
+source=VolumeSource('probe'); source.configure({CODE}); source.health({CODE:'account:1'},START-60000)
+def trade(stamp,cum,price,qty):
+    source.ingest(CODE,dict(kind='trade',t_ms=stamp,cum_volume=cum,trades=[dict(t_ms=stamp,price=price,qty=qty)]),stamp)
+trade(START-1000,1000,100,1)
+trade(START+1000,1010,100,10)
+replica=VolumeReplica(); replica.reset('probe')
+async def targets(_): pass
+async def main():
+  with TemporaryDirectory() as tmp:
+    owner=ContinuousMonitors(Path(tmp),None,SimpleNamespace(volume_replica=replica),targets,now=lambda:clock.now)
+    history=History(needed=1,bars=[v.VolumeBar(START,10,True,True,100,100,100,100)],fetched_ms=START+10000,coverage_start_ms=START)
+    owner.histories[CODE]=history
+    for f in source.frames(clock.now): replica.apply(f,clock.now)
+    owner.merge(CODE,history,clock.now)
+    async def capacity(*a,**k):
+      trade(START+21000,1015,105,5)
+      clock.now=START+30000
+      for f in source.frames(clock.now): replica.apply(f,clock.now)
+      owner.merge(CODE,history,clock.now)
+      return SimpleNamespace(rows=[dict(cntr_tm='20261021120000',open_pric='100',high_pric='110',low_pric='100',cur_prc='110',trde_qty='20')])
+    async def loader(data_dir,code,timeframe,needed,lower,asof):
+      return await v._fetch_minutes(data_dir,code,timeframe,needed,lower,asof)
+    owner.loader=loader
+    with patch.object(v.time,'time',lambda:clock.now/1000),patch.object(v.kiwoom_rest_runtime,'ensure_rest_client',lambda _:object()),patch.object(v.kiwoom_rest_runtime,'ensure_scheduler',lambda _:None),patch.object(v.kiwoom_access,'run_with_capacity',capacity):
+      await owner.prepare(CODE,history)
+    from hoga.api.models import ScanRequest
+    leaf=ScanRequest.model_validate(dict(conditions=[dict(id='price',type='change_pct',params=dict(timeframe='1m',change_reference='bar_open',op='gte',pct=8))])).conditions[0]
+    actual=v.records(leaf,history.bars,fetched_at_ms=history.fetched_ms)
+    expected=v.records(leaf,[v.VolumeBar(START,20,True,True,100,110,100,110)],fetched_at_ms=clock.now)
+    print('predicate_actual_match_complete',bool(actual[0]),actual[1])
+    print('predicate_expected_match_complete',bool(expected[0]),expected[1])
+    print('rest_response_ohlcv',100,110,100,110,20)
+    print('retained_bar',history.bars[-1])
+    print('fetched_at_ms',history.fetched_ms,'response_ms',clock.now)
+asyncio.run(main())
