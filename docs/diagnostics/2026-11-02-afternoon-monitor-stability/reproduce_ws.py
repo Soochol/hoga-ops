@@ -1,4 +1,3 @@
-"""Drive the repository WS router over real, isolated Uvicorn TCP transport."""
 import argparse
 import asyncio
 import json

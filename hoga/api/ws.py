@@ -30,8 +30,7 @@ logger = logging.getLogger(__name__)
 _PING_TIMEOUT_S = 30.0
 _MAX_CODE_SUBSCRIPTIONS = 512
 _MAX_US_SUBSCRIPTIONS = 200
-# Initial subscriptions plus a complete unsubscribe/resubscribe replacement burst.
-_MAX_PENDING_COMMANDS = 3 * (_MAX_CODE_SUBSCRIPTIONS + _MAX_US_SUBSCRIPTIONS)
+_MAX_INITIAL_AND_REPLACEMENT_COMMANDS = 3 * (_MAX_CODE_SUBSCRIPTIONS + _MAX_US_SUBSCRIPTIONS)
 _CODE_RE = re.compile(CODE_PATTERN)
 _BATCH_PROTOCOL = 2
 # UN 은 **자체 venue** 다 — `_AL` 직결이라 {KRX,NXT} 합성이 아니다(ADR-0140 §5).
@@ -102,7 +101,8 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         out = LiveOutbox()
         overflow = asyncio.Event()
         inbound_overflow = asyncio.Event()
-        commands: asyncio.Queue[_DomesticCommand | _UsCommand] = asyncio.Queue(maxsize=_MAX_PENDING_COMMANDS)
+        commands: asyncio.Queue[_DomesticCommand | _UsCommand] = asyncio.Queue(
+            maxsize=_MAX_INITIAL_AND_REPLACEMENT_COMMANDS)
         observed_buffer = get_buffer()
         if observed_buffer is not None:
             observed_buffer.observe_outbox(out)
@@ -191,7 +191,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                     commands.put_nowait(command)
                 except asyncio.QueueFull:
                     logger.warning('WS input command queue full capacity=%d; disconnecting client',
-                                   _MAX_PENDING_COMMANDS)
+                                   _MAX_INITIAL_AND_REPLACEMENT_COMMANDS)
                     inbound_overflow.set()
                     return
 

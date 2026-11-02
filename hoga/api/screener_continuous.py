@@ -346,7 +346,6 @@ class ContinuousMonitors:
             self._require_current(monitor)
             flight = monitor.result_flight
             if flight and not flight.task.done() and flight.task.cancelling():
-                # A successor cannot overlap the previous scan's async cleanup.
                 await flight.finished.wait()
                 continue
             if flight is None or flight.task.done():

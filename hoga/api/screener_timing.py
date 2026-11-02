@@ -1,5 +1,3 @@
-"""Request-local monitor scan timings shared across async and thread phases."""
-
 from __future__ import annotations
 
 import asyncio
