@@ -22,6 +22,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from hoga.api import screener_snapshot_cache as snapshots, trading_days
+from hoga.api.read_shutdown import checkpoint
 from hoga.util.atomic_write import atomic_write_json
 
 _HASH = re.compile(r"^[a-f0-9]{64}$")
@@ -124,13 +125,49 @@ def _write_object(base: Path, value) -> str:
     return identity
 
 
-def read_object(data_dir: Path, identity: str):
+def _stamp(stat):
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def _assert_file(path, stamp):
+    if snapshots.signature(path) != stamp:
+        raise ValueError("Immutable file changed during read")
+    snapshots.after_read(path, stamp)
+
+
+def _read_file(path, *, limit=None, stop=None):
+    checkpoint(stop)
+    with path.open("rb") as handle:
+        stamp = _stamp(os.fstat(handle.fileno()))
+        _assert_file(path, stamp)
+        if limit is not None and stamp[2] > limit:
+            raise ValueError("Immutable file exceeds read budget")
+        chunks, size = [], 0
+        while True:
+            checkpoint(stop)
+            chunk = handle.read(256 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if limit is not None and size > limit:
+                raise ValueError("Immutable file exceeds read budget")
+            chunks.append(chunk)
+        if _stamp(os.fstat(handle.fileno())) != stamp:
+            raise ValueError("Immutable file changed during read")
+        _assert_file(path, stamp)
+    checkpoint(stop)
+    return b"".join(chunks), stamp
+
+
+def read_object(data_dir: Path, identity: str, *, stop=None):
     path = root(data_dir) / "objects" / f"{_checked(identity)}.json"
-    stamp = snapshots.before_read(path)
-    value = json.loads(path.read_text())
+    encoded, stamp = _read_file(path, stop=stop)
+    value = json.loads(encoded)
+    checkpoint(stop)
     if digest(value) != identity:
         raise ValueError("Snapshot object checksum mismatch")
-    snapshots.after_read(path, stamp)
+    _assert_file(path, stamp)
+    checkpoint(stop)
     return value
 
 
@@ -300,10 +337,22 @@ def _publish_many(data_dir, section, incoming, *, anchor=None, expected_snapshot
         if old and refresh_metadata and ({key: value for key, value in manifest.items() if key != "parent"}
                                          == {key: value for key, value in old[1].items() if key != "parent"}):
             return old[0]
-        snapshot_id = _write_object(base, manifest)
-        atomic_write_json(base / "current.json", {"id": snapshot_id})
-        _sync_dir(base)
-        return snapshot_id
+        previous_ids = old[1].get(section, {}) if old else {}
+        changed = {code for code, _ in incoming if manifest[section].get(code) != previous_ids.get(code)}
+        return _commit_snapshot(data_dir, manifest, changed_codes=changed if section == "observations" else ())
+
+
+def _commit_snapshot(data_dir, manifest, *, changed_codes=()):
+    """Caller owns .writer.lock; query artifacts precede the single pointer commit."""
+    from hoga.api import screener_daily_projection as projection  # noqa: PLC0415
+
+    manifest = projection._prepare_publication(data_dir, manifest, set(changed_codes))
+    base = root(data_dir)
+    snapshot_id = _write_object(base, manifest)
+    projection._attest_publication(data_dir, manifest)
+    atomic_write_json(base / "current.json", {"id": snapshot_id})
+    _sync_dir(base)
+    return snapshot_id
 
 
 def publish_share_evidence(data_dir: Path, evidence: ShareEvidence) -> str:
@@ -327,10 +376,7 @@ def publish_correction_reviews(data_dir: Path, reviews: dict[str, dict], *, expe
         identities = {code: _write_object(base, review) for code, review in reviews.items()}
         updated = {**manifest, "parent": current[0],
                    "corrections": {**manifest.get("corrections", {}), **identities}}
-        identity = _write_object(base, updated)
-        atomic_write_json(base / "current.json", {"id": identity})
-        _sync_dir(base)
-        return identity
+        return _commit_snapshot(data_dir, updated)
 
 
 def publish_pair(

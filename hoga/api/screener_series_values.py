@@ -107,7 +107,7 @@ def _load_series(data_dir, manifest, codes, *, first, last, stop=None):
         observation_id = manifest["observations"].get(code)
         prices, conflicts = {}, set()
         if observation_id:
-            observation = projection.read(data_dir, observation_id, stop=stop)
+            observation = projection.read(data_dir, manifest, code, stop=stop)
             candidate = observation.candidate
             confirmed = candidate.confirmed_dates if candidate.confirmed_dates is not None else (
                 set() if manifest.get("daily_contract_required") else None
