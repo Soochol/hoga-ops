@@ -29,9 +29,14 @@ async def run_screener_scan(*, data_dir: Path, req: ScanRequest,
                             now: dt.datetime | None = None, volume_runtime=None,
                                 operation: ReadOperation | None = None) -> ScreenerResponse:
     now = now or now_kst()
+    prioritize = getattr(volume_runtime, 'prioritize_rank_candidates', None)
+    if prioritize is not None:
+        prioritize(None)
     with phase('ranks'):
         rank_eval = await screener_rankings.evaluate(data_dir, req, now, None, operation=operation)
     screener_rankings.validate_stored_conditions(req, rank_eval)
+    if prioritize is not None:
+        prioritize(rank_eval)
     if req.calculation_policy == "separate_bases_v2":
         from hoga.api.screener_series_runner import run_scan  # noqa: PLC0415 — isolate optional v2 path
         return await run_scan(data_dir=data_dir, req=req, now=now, volume_runtime=volume_runtime, rank_eval=rank_eval,

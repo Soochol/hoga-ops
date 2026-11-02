@@ -1,0 +1,466 @@
+{
+  "server": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "2f61dfa27"
+  },
+  "monitor_total": 350,
+  "first_response_s": 4.902682471991284,
+  "first_prepared": 15,
+  "all_candidate_minutes_prepared_s": 95.23298674699618,
+  "candidate_total": 154,
+  "candidate_prepared": 154,
+  "candidate_complete": 145,
+  "rows": 4,
+  "incomplete": [
+    {
+      "code": "000100",
+      "condition_id": "VCRNdqJE",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000150",
+      "condition_id": "VCRNdqJE",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000270",
+      "condition_id": "VCRNdqJE",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000500",
+      "condition_id": "VCRNdqJE",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000660",
+      "condition_id": "VCRNdqJE",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000720",
+      "condition_id": "VCRNdqJE",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000810",
+      "condition_id": "VCRNdqJE",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "001440",
+      "condition_id": "VCRNdqJE",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000100",
+      "condition_id": "458H4rG8",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000150",
+      "condition_id": "458H4rG8",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000270",
+      "condition_id": "458H4rG8",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000500",
+      "condition_id": "458H4rG8",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000660",
+      "condition_id": "458H4rG8",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000720",
+      "condition_id": "458H4rG8",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000810",
+      "condition_id": "458H4rG8",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "001440",
+      "condition_id": "458H4rG8",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000100",
+      "condition_id": "fqesNYUG",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000150",
+      "condition_id": "fqesNYUG",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000270",
+      "condition_id": "fqesNYUG",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000500",
+      "condition_id": "fqesNYUG",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000660",
+      "condition_id": "fqesNYUG",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000720",
+      "condition_id": "fqesNYUG",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000810",
+      "condition_id": "fqesNYUG",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "001440",
+      "condition_id": "fqesNYUG",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000100",
+      "condition_id": "Li8Hi7bR",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000150",
+      "condition_id": "Li8Hi7bR",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000270",
+      "condition_id": "Li8Hi7bR",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000500",
+      "condition_id": "Li8Hi7bR",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000660",
+      "condition_id": "Li8Hi7bR",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000720",
+      "condition_id": "Li8Hi7bR",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000810",
+      "condition_id": "Li8Hi7bR",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "001440",
+      "condition_id": "Li8Hi7bR",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000100",
+      "condition_id": "ZGpsKBdV",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000150",
+      "condition_id": "ZGpsKBdV",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000270",
+      "condition_id": "ZGpsKBdV",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000500",
+      "condition_id": "ZGpsKBdV",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000660",
+      "condition_id": "ZGpsKBdV",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000720",
+      "condition_id": "ZGpsKBdV",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000810",
+      "condition_id": "ZGpsKBdV",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "001440",
+      "condition_id": "ZGpsKBdV",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000100",
+      "condition_id": "zKZoWoSy",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000150",
+      "condition_id": "zKZoWoSy",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000270",
+      "condition_id": "zKZoWoSy",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000500",
+      "condition_id": "zKZoWoSy",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000660",
+      "condition_id": "zKZoWoSy",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000720",
+      "condition_id": "zKZoWoSy",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "000810",
+      "condition_id": "zKZoWoSy",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "001440",
+      "condition_id": "zKZoWoSy",
+      "reason": "insufficient_minute_history",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    },
+    {
+      "code": "069540",
+      "condition_id": "display_price",
+      "reason": "vendor_price_unavailable",
+      "missing_days": null,
+      "required_from": null,
+      "required_to": null,
+      "name": null
+    }
+  ],
+  "health_count": 36,
+  "health_all200": true,
+  "pongs": 36,
+  "max_pong_ms": 2.983073005452752,
+  "probe_errors": [],
+  "own_monitor_delete": 204,
+  "snapshot": "a29e4bcfde82fb27dcd37c89bce6ae7a42645ae92016f1b2eb59e50446e8afe5",
+  "notes": "One actual cold restart before change; afterKRXclose; candidates154 within scope350. Allprepared includesnine displayprice unavailable (not minute shortage). Preptime sampled every3s; no lowerbound complete0 or failedresults used."
+}

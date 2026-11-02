@@ -1,0 +1,132 @@
+import asyncio
+import hashlib
+import heapq
+import importlib.util
+import json
+import socket
+import subprocess
+import tempfile
+import types
+from datetime import datetime
+from pathlib import Path
+from unittest.mock import patch
+
+from hoga.api import screener_bar_volume as volume, screener_continuous as head, screener_rankings
+from hoga.api.models import ScanRequest
+from hoga.live import kiwoom_capacity as capacity
+from hoga.live.buffer import LiveBuffer
+from hoga.util.timeenc import KST
+from tests.api.test_screener_continuous_prices import minute_fixture, OPEN
+
+OUT=Path('.audit/minute-preparation-dispatch')
+BASE_SHA='2f61dfa274ac436f554be834ce92a08b52b2af69'
+BASE=1793606400000
+source=subprocess.check_output(['git','show',f'{BASE_SHA}:hoga/api/screener_continuous.py'],text=True)
+(OUT/'base_continuous.py').write_text(source)
+spec=importlib.util.spec_from_file_location('preparation_baseline', OUT/'base_continuous.py')
+base=importlib.util.module_from_spec(spec)
+import sys
+sys.modules[spec.name]=base
+spec.loader.exec_module(base)
+
+class VirtualLoop(asyncio.SelectorEventLoop):
+    def __init__(self):
+        self.stamp=1000.
+        super().__init__()
+    def time(self):
+        return self.stamp
+    def _run_once(self):
+        while self._scheduled and self._scheduled[0]._cancelled:
+            heapq.heappop(self._scheduled)
+            self._timer_cancelled_count-=1
+        if not self._ready and self._scheduled:
+            self.stamp=max(self.stamp,self._scheduled[0]._when)
+        super()._run_once()
+
+async def measure(module, loop, directory):
+    codes=[f'{i:06d}' for i in range(350)]
+    preferred=set(codes[-154:])
+    request=ScanRequest.model_validate(json.loads(Path('docs/diagnostics/2026-11-02-afternoon-query-performance/request.json').read_text()))
+    opening=1793577600000
+    data=[module.volume.VolumeBar(b.start_ms-OPEN+opening,b.volume,False,True,b.open,b.high,b.low,b.close)
+          for b in minute_fixture(221)]
+    scheduler=capacity.KiwoomCapacityScheduler()
+    scheduler.set_clients([object() for _ in range(6)])
+    calls=[]; active=set(); maximum=0; complete={}; finished=asyncio.Event()
+    async def targets(_codes):
+        pass
+    async def loader(_dir,code,frame,_needed,_lower,_asof):
+        nonlocal maximum
+        assert frame=='1m'
+        active.add(code);maximum=max(maximum,len(active));calls.append(code)
+        async def provider(_client):
+            await asyncio.sleep(.1)
+            return volume.MinuteSnapshot(list(data),BASE,cutoff_ms=BASE)
+        try:
+            return await scheduler.submit(key=code,api_id='ka10080',priority='background',call=provider)
+        finally:
+            active.remove(code)
+    owner=module.ContinuousMonitors(directory,None,LiveBuffer(),targets,loader=loader,
+        now=lambda:BASE+int((loop.time()-1000)*1000))
+    async def resolve(_req):
+        return codes
+    owner.resolve=resolve
+    prepare=owner.prepare
+    async def observed(code,history):
+        await prepare(code,history)
+        assert not history.reason,history.reason
+        complete[code]=loop.time()-1000
+        if len(complete)==len(codes):finished.set()
+    owner.prepare=observed
+    notifications=[]
+    notify=owner.notify
+    def counted():
+        notifications.append(loop.time()-1000)
+        return notify()
+    owner.notify=counted
+    try:
+        status=await owner.start('benchmark',request)
+        monitor=owner.get(status.id)
+        async def rank_ready():
+            await asyncio.sleep(.25)
+            if module is head:
+                module.ContinuousAdapter(owner,monitor).prioritize_rank_candidates(
+                    screener_rankings.RankEvaluation({request.conditions[-1].id:[(code,None) for code in preferred]},BASE))
+        rank=asyncio.create_task(rank_ready())
+        await asyncio.wait_for(finished.wait(),timeout=180)
+        await rank
+        await asyncio.sleep(0)
+        owner.now=lambda:BASE+600_000
+        clock=datetime.fromtimestamp(owner.now()/1000,KST)
+        result=await volume.evaluate(data_dir=directory,conditions=request.conditions,codes=sorted(preferred),
+            basis='intraday',now=clock,volume_runtime=module.ContinuousAdapter(owner,monitor))
+        assert result.coverage.complete==result.coverage.realtime.prepared==len(preferred)
+        assert len(calls)==len(set(calls))==350 and maximum==4
+        payload={'coverage':result.coverage.model_dump(mode='json'),
+            'events':{k:[(code,event.model_dump(mode='json')) for code,event in values] for k,values in result.events.items()}}
+        return {'all_candidates_virtual_s':max(complete[code] for code in preferred),
+            'all_scope_virtual_s':max(complete.values()),'calls':len(calls),'max_parallel':maximum,
+            'notification_passes':len(notifications),'result_sha256':hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest(),
+            'complete':result.coverage.complete,'all_scope_prepared':owner.status(monitor,owner.now()).prepared,
+            'scheduler_calls':sum(scheduler.snapshot()['calls_by_account'].values()),'failures':0}
+    finally:
+        try:await owner.close()
+        finally:await scheduler.aclose()
+
+results=[]
+with tempfile.TemporaryDirectory(prefix='hoga-preparation-benchmark-') as temporary:
+    directory=Path(temporary)
+    (directory/'calendar').mkdir()
+    (directory/'calendar/trading_days.txt').write_text('20261030\n20261102\n')
+    for repeat in range(5):
+        for side,module in [('base',base),('head',head)]:
+            loop=VirtualLoop()
+            try:
+                with patch.object(capacity,'time',types.SimpleNamespace(monotonic=loop.time)),patch.object(
+                        socket.socket,'connect',side_effect=AssertionError('external network forbidden')):
+                    result=loop.run_until_complete(measure(module,loop,directory))
+                result.update(side=side,repeat=repeat);results.append(result)
+                assert len({r['result_sha256'] for r in results})==1
+                (OUT/'benchmark-results.json').write_text(json.dumps(results,indent=2))
+                print(json.dumps(result),flush=True)
+            finally:loop.close()

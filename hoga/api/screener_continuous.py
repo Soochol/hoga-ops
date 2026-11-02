@@ -17,6 +17,7 @@ from hoga.api import (
     screener_continuous_bars as candles,
     screener_expression,
     screener_minute_scope,
+    screener_rankings,
     screener_universe,
     symbols,
 )
@@ -24,6 +25,7 @@ from hoga.api.models import ScanRequest, ScreenerResponse
 from hoga.api.read_shutdown import ReadDrainReport, ReadFlight, ReadInterrupted, ReadOperation, ReadWork, run_read_sync
 from hoga.api.screener_bar_policy import CHANGE_TYPES, RANGE_PARAMS
 from hoga.api.screener_bar_price import valid_prices
+from hoga.api.screener_continuous_preparation import MAX_PENDING, Preparation, PreparationQueue
 from hoga.api.screener_timing import monitor_scan
 from hoga.live.volume_state import MAX_REPLAY_BARS, MINUTE, VolumeReplica
 from hoga.util.timeenc import KST
@@ -124,6 +126,9 @@ class Monitor:
     fingerprint: tuple = ()
     result_flight: ResultFlight | None = field(default=None, repr=False, compare=False)
     read_shutdown: bool = field(default=False, repr=False, compare=False)
+    preferred: frozenset[str] = frozenset()
+    preferred_at_ms: int = 0
+    preferred_day: str = ""
 
 
 class ContinuousAdapter:
@@ -132,6 +137,16 @@ class ContinuousAdapter:
         self.coverage_monitor = monitor
         self._snapshots: dict[str, PreparedSnapshot] = {}
         self._bars = candles.ReadBars()
+
+    def prioritize_rank_candidates(self, evaluation):
+        if (self.owner.closed or self.monitor.read_shutdown
+                or self.owner.monitors.get(self.monitor.id) is not self.monitor):
+            return
+        now = self.owner.now()
+        self.monitor.preferred = frozenset(screener_rankings.candidate_codes(
+            self.monitor.request, self.monitor.codes, evaluation)) if evaluation is not None else frozenset()
+        self.monitor.preferred_at_ms = now
+        self.monitor.preferred_day = self.owner.selected_day(now).isoformat()
 
     @staticmethod
     def eligible(leaf):
@@ -243,6 +258,7 @@ class ContinuousMonitors:
         self.monitors: dict[str, Monitor] = {}
         self.histories: dict[str, History] = {}
         self.pending: dict[str, asyncio.Task] = {}
+        self._preparations = PreparationQueue()
         self.loop_task: asyncio.Task | None = None
         self.closed = False
         self._last_targets = 0
@@ -259,6 +275,7 @@ class ContinuousMonitors:
         self.result_tasks = self._reads.tasks
 
     def begin_read_shutdown(self) -> None:
+        self._preparations.clear()
         for monitor in self.monitors.values():
             monitor.read_shutdown = True
         self._reads.begin_read_shutdown()
@@ -637,7 +654,6 @@ class ContinuousMonitors:
         finally:
             history.revision += 1
             history.merge_token = None
-            self.pending.pop(code, None)
 
     @staticmethod
     def canonicalize(snapshot, history):
@@ -713,7 +729,8 @@ class ContinuousMonitors:
         return clock.weekday() < 5 and 900 <= clock.hour * 100 + clock.minute <= 1535  # noqa: PLR2004
 
     def schedule(self, active, now):
-        candidates = []
+        candidates = {}
+        day = self.selected_day(now)
         opened = (self.market_clock(now)
                   and self.selected_day(now) == datetime.fromtimestamp(now / 1000, KST).date())
         for code in active:
@@ -728,9 +745,40 @@ class ContinuousMonitors:
                         code in monitor.codes and not self.monitor_quality(monitor, code, history, now)[0]
                         for monitor in self.monitors.values())
             if not history.fetched_ms or damaged or (short and now - history.fetched_ms >= AUDIT_MS):
-                candidates.append((bool(history.fetched_ms and not damaged), history.fetched_ms, code))
-        for _, _, code in sorted(candidates)[:max(0, 4 - len(self.pending))]:
-            self.pending[code] = asyncio.create_task(self.prepare(code, self.histories[code]))
+                candidates[code] = Preparation(history, history.fetched_ms, history.needed, day,
+                                               bool(history.fetched_ms and damaged))
+        self._preparations.replace(candidates)
+        self._fill_preparations()
+
+    def _fill_preparations(self):
+        if self.closed or not any(not m.read_shutdown for m in self.monitors.values()):
+            return
+        now = self.now()
+        day = self.selected_day(now)
+        active = {code for monitor in self.monitors.values() if not monitor.read_shutdown for code in monitor.codes}
+        preferred = {code for monitor in self.monitors.values() if not monitor.read_shutdown
+                     and 0 <= now - monitor.preferred_at_ms <= SCOPE_REFRESH_MS
+                     and monitor.preferred_day == day.isoformat() for code in monitor.preferred}
+        while len(self.pending) < MAX_PENDING:
+            selected = self._preparations.take(preferred)
+            if selected is None:
+                return
+            code, job = selected
+            history = self.histories.get(code)
+            if (code not in active or code in self.pending or history is not job.history
+                    or history.fetched_ms != job.fetched_ms or history.needed != job.needed
+                    or job.day != day or now < history.retry_at):
+                continue
+            task = asyncio.create_task(self.prepare(code, history))
+            self.pending[code] = task
+            task.add_done_callback(lambda done, code=code: self._preparation_finished(code, done))
+
+    def _preparation_finished(self, code, task):
+        if self.pending.get(code) is task:
+            self.pending.pop(code)
+        if not task.cancelled():
+            task.exception()
+        self._fill_preparations()
     def version(self, code, history, now):
         state = self.replica.get(code, now)
         closing = candles.session_start(history.bars[-1].start_ms) + 390 * MINUTE if history.bars else now
