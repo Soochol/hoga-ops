@@ -1,0 +1,72 @@
+{
+  "recorded_at_kst": "2026-11-02T16:26:45.187200+09:00",
+  "base": "e16041ff2efd6c674961f952971b810485898610",
+  "validated_source_commit": "9d648452590be6640d9f019163c1f831911ce289",
+  "branch": "codex/live-shutdown-drain",
+  "input_fingerprint": {
+    "base": "e16041ff2efd6c674961f952971b810485898610",
+    "sha256": "4b9e80473f7b7437fb082b763695051fb5d2bc2985b9d796e17c63fa6905c3ea",
+    "excluded": "docs/diagnostics/2026-11-02-live-shutdown-review/"
+  },
+  "algorithm": "SHA256(sorted git ls-files -co --exclude-standard path + NUL + binary SHA256(file bytes) + LF); existing files only; excludes diagnostic directory recorded above",
+  "validated_tree": "Source input bytes match the passing final full suite. Subsequent record-only commit changes this excluded diagnostic directory.",
+  "environment": {
+    "python": "3.14.7",
+    "pytest": "9.0.3",
+    "ruff": "0.15.13",
+    "websockets": "16.0",
+    "uvicorn": "0.47.0",
+    "fastapi": "0.136.1"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "8376 passed, 2 skipped, 13 deselected, 82 warnings in 382.39s",
+      "log_sha256": "260254476de7f9c03c68a8fcafc4eec9fab6254ce989a90f3ff22f364af122e3"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/test_shutdown.py tests/unit/live/test_kiwoom_shutdown.py tests/unit/live/test_kiwoom_ws_client.py tests/unit/live/test_kiwoom_session.py tests/unit/live/test_kiwoom_session_retirement.py tests/unit/live/test_collector_process.py tests/unit/live/test_program_trade_collector.py tests/unit/live/test_volume_process.py tests/api/test_startup_runtime.py",
+      "result": "143 passed in 19.47s; included in final full suite"
+    },
+    {
+      "command": "uv run --extra dev python docs/diagnostics/2026-11-02-live-shutdown-review/implementation-probe.py.txt",
+      "result": "2 barrier probes and 10 alternating comparison runs passed; actual baseline e16041ff2 manager versus implemented manager; all transport/flush/final-ACK assertions passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "negative_controls": {
+    "notification_retirement": {
+      "result": "expected failure reproduced before correction",
+      "log_sha256": "1ad11582e10b43aba396a9bbf1dc8b2f6b237cf0c229ab63e7dbb18552084a29"
+    },
+    "cancelled_receiver_reconnect": {
+      "result": "expected failure reproduced before correction",
+      "log_sha256": "e30611408b44d39ab4ce5b12e08bce10761d08cb0945348f095fb64c21d8115e"
+    },
+    "baseline_after_hours_volume_fixture": {
+      "result": "expected failure reproduced before correction",
+      "log_sha256": "6942e21c5fd2ee8cbafc9f658d4d3f02ab345157a452b2215db2b06359ebcfff"
+    }
+  },
+  "preserved_invariants": [
+    "Per-account subscription -> WS -> flush ordering",
+    "All accounts terminal before shared final seconds flush",
+    "Actual native thread completion before capture lock release",
+    "Old collector exit before replacement",
+    "Repeated caller cancellation does not cancel cleanup again or release lock",
+    "No new connection after explicit cancellation, even if cleanup notification fails",
+    "Existing 30s join/5s forced retirement policy unchanged"
+  ],
+  "limits": [
+    "Synthetic 50ms socket waits do not establish production speedup",
+    "Production runtime measurement follows deployment separately",
+    "Forced process termination retains existing possibility of unsaved-data loss"
+  ]
+}

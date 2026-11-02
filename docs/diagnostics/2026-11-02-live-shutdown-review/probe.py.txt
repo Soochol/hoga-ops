@@ -1,0 +1,105 @@
+"""Offline real-manager shutdown comparison; fake sockets, no vendor or user server."""
+import asyncio
+import json
+from pathlib import Path
+import statistics
+import sys
+import tempfile
+import time
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[3]))
+from hoga.live import kiwoom_session as session, kiwoom_ws_client as wire
+from hoga.live.buffer import LiveBuffer
+from tests.unit.live.test_kiwoom_session_retirement import Socket, client
+
+wire._REG_PACING_S = 0
+wire._BACKOFF_S = (0,)
+
+class ControlledSocket(Socket):
+    def __init__(self, gate=None, delay=0):
+        super().__init__()
+        self.gate,self.delay=gate,delay
+    async def close(self):
+        self.close_entered.set()
+        if self.gate is not None:
+            await self.gate.wait()
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        self.terminated.set()
+
+async def settle(predicate):
+    async with asyncio.timeout(5):
+        while not predicate():
+            await asyncio.sleep(0)
+
+async def assembly(root, *, gate=None, delay=0):
+    manager=session.KiwoomSessionManager(buffer=LiveBuffer(), data_dir=Path(root), date_fn=lambda:'20261102')
+    sockets,flush_done=[],set()
+    async def flush(index):
+        try: await asyncio.Event().wait()
+        finally: flush_done.add(index)
+    for index in range(5):
+        socket=ControlledSocket(gate,delay)
+        instance=client(lambda _,socket=socket:asyncio.sleep(0,result=socket))
+        instance.account_id=index
+        task=asyncio.create_task(instance.run(['005930']))
+        manager._conns[index]=session._KiwoomConn(index,object(),instance,task,asyncio.create_task(flush(index)),('005930',))
+        sockets.append(socket)
+    await settle(lambda: all(conn.client.registration_ready for conn in manager._conns.values()))
+    class Seconds:
+        async def finish_flush(self, **kwargs):
+            assert all(socket.terminated.is_set() for socket in sockets)
+            assert flush_done==set(range(5))
+    manager._seconds=Seconds()
+    return manager,sockets,flush_done
+
+async def parallel_prototype(manager):
+    # Only the independent account retirement is overlapped. Actual terminal
+    # transport/consumer/writer ACKs still precede manager's real final flush.
+    async with manager._lock:
+        await manager._us.stop()
+        reports=await asyncio.gather(*(manager._teardown(account) for account in list(manager._conns)),
+                                     return_exceptions=True)
+        await manager._stop_locked()
+        failures=[value for value in reports if isinstance(value,BaseException)]
+        if failures:
+            raise BaseExceptionGroup('retirement failures',failures)
+
+async def run(mode,root,*,barrier=False,delay=0):
+    gate=asyncio.Event() if barrier else None
+    manager,sockets,flush_done=await assembly(root,gate=gate,delay=delay)
+    started=time.monotonic()
+    task=asyncio.create_task(manager.stop() if mode=='serial' else parallel_prototype(manager))
+    entered=None
+    if barrier:
+        await settle(lambda:sockets[0].close_entered.is_set())
+        for _ in range(20): await asyncio.sleep(0)
+        entered=sum(socket.close_entered.is_set() for socket in sockets)
+        assert not task.done()
+        gate.set()
+    await asyncio.wait_for(task,5)
+    elapsed=time.monotonic()-started
+    assert all(socket.terminated.is_set() and not socket.receiver_active for socket in sockets)
+    assert flush_done==set(range(5)) and not manager._conns and manager._seconds is None
+    return dict(mode=mode,elapsed_s=elapsed,accounts_entered_close_before_release=entered,
+                all_transports_terminated=True,all_flush_tasks_joined=True,final_shared_flush_after_all=True)
+
+async def main():
+    with tempfile.TemporaryDirectory(prefix='hoga-live-shutdown-review-') as temp:
+        barriers=[await run(mode,temp,barrier=True) for mode in ('serial','parallel')]
+        assert [item['accounts_entered_close_before_release'] for item in barriers]==[1,5]
+        samples=[]
+        for _ in range(5):
+            for mode in ('serial','parallel'):
+                samples.append(await run(mode,temp,delay=0.05))
+    data={'scope':'offline real KiwoomSessionManager + real KiwoomWsClient, synthetic transport close 50ms/account; no production changes',
+          'accounts':5,'barriers':barriers,'samples':samples,'summary':{}}
+    for mode in ('serial','parallel'):
+        values=[item['elapsed_s'] for item in samples if item['mode']==mode]
+        data['summary'][mode]={'n':len(values),'median_s':statistics.median(values),'min_s':min(values),'max_s':max(values)}
+    target=Path(__file__).with_name('probe-results.json')
+    target.write_text(json.dumps(data,indent=2)+'\n')
+    print(json.dumps({'barrier_close_started':[item['accounts_entered_close_before_release'] for item in barriers],
+                      'summary':data['summary'],'evidence':str(target)},indent=2))
+
+asyncio.run(main())

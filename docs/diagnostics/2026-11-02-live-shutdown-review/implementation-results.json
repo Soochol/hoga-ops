@@ -1,0 +1,118 @@
+{
+  "scope": "offline real baseline e16041ff2 manager vs implemented manager, real KiwoomWsClient, synthetic close 50ms/account",
+  "accounts": 5,
+  "barriers": [
+    {
+      "mode": "serial",
+      "elapsed_s": 0.0003424239985179156,
+      "accounts_entered_close_before_release": 1,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "implemented",
+      "elapsed_s": 0.00028351299988571554,
+      "accounts_entered_close_before_release": 5,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    }
+  ],
+  "samples": [
+    {
+      "mode": "serial",
+      "elapsed_s": 0.2522723669972038,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "implemented",
+      "elapsed_s": 0.05082949700590689,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "serial",
+      "elapsed_s": 0.25172986699908506,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "implemented",
+      "elapsed_s": 0.05040643099346198,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "serial",
+      "elapsed_s": 0.2522643319971394,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "implemented",
+      "elapsed_s": 0.05045682600757573,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "serial",
+      "elapsed_s": 0.25175965299422387,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "implemented",
+      "elapsed_s": 0.050794651004252955,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "serial",
+      "elapsed_s": 0.2519843350019073,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    },
+    {
+      "mode": "implemented",
+      "elapsed_s": 0.05049101999611594,
+      "accounts_entered_close_before_release": null,
+      "all_transports_terminated": true,
+      "all_flush_tasks_joined": true,
+      "final_shared_flush_after_all": true
+    }
+  ],
+  "summary": {
+    "serial": {
+      "n": 5,
+      "median_s": 0.2519843350019073,
+      "min_s": 0.25172986699908506,
+      "max_s": 0.2522723669972038
+    },
+    "implemented": {
+      "n": 5,
+      "median_s": 0.05049101999611594,
+      "min_s": 0.05040643099346198,
+      "max_s": 0.05082949700590689
+    }
+  }
+}

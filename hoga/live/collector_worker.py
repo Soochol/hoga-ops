@@ -18,6 +18,7 @@ import weakref
 from datetime import datetime
 from pathlib import Path
 
+from hoga.util.shutdown import shutdown_phase
 from hoga.util.timeenc import KST
 
 from .buffer import LiveBuffer
@@ -349,16 +350,22 @@ class CollectorWorker:
     async def shutdown(self) -> None:
         # Socket owners stop first, then seal the remaining partial windows.
         streams = self.manager.capture_streams()
-        await self.manager.stop()
-        for stream in streams:
-            await stream.flush_once(now_ms=now_ms(), seal_candle_venues=frozenset({"KRX", "NXT", "UN"}))
-        await self.program.stop()
-        await self.program.run_once()
+        with shutdown_phase("capture_sessions", epoch=self.epoch):
+            await self.manager.stop()
+        with shutdown_phase("capture_final_stream_flush", epoch=self.epoch):
+            for index, stream in enumerate(streams):
+                with shutdown_phase("capture_stream_flush", stream_index=index, epoch=self.epoch):
+                    await stream.flush_once(now_ms=now_ms(), seal_candle_venues=frozenset({"KRX", "NXT", "UN"}))
+        with shutdown_phase("capture_program_join", epoch=self.epoch):
+            await self.program.stop()
+        with shutdown_phase("capture_program_final_drain", epoch=self.epoch):
+            await self.program.run_once()
         snapshot = await self.buffer.changed_last_ob_snapshot(None)
         if snapshot is not None:
             from .last_ob_store import save  # noqa: PLC0415
             entries, version = snapshot
-            await asyncio.to_thread(save, self.root, entries, allow_empty=version[1] > 0)
+            with shutdown_phase("capture_last_ob_save", epoch=self.epoch):
+                await asyncio.to_thread(save, self.root, entries, allow_empty=version[1] > 0)
 
 
 def _parent_watch(parent_pid: int, loop: asyncio.AbstractEventLoop, stop: asyncio.Event) -> None:
@@ -425,13 +432,21 @@ async def run_worker(root: str, epoch: str, sockets: tuple[socket.socket, ...], 
                 await worker.shutdown()
                 # to_thread cancellation cannot stop an existing disk write.
             finally:
-                await asyncio.get_running_loop().shutdown_default_executor()
-                ownership.release("capture")
+                await _release_capture(epoch)
         for _, writer in channels:
             writer.close()
             with contextlib.suppress(OSError):
                 await writer.wait_closed()
         uninstall()
+
+
+async def _release_capture(epoch: str) -> None:
+    from hoga.api import ownership  # noqa: PLC0415 — flock registry, no app
+
+    with shutdown_phase("capture_executor_drain", epoch=epoch):
+        await asyncio.get_running_loop().shutdown_default_executor()
+    with shutdown_phase("capture_lock_release", epoch=epoch):
+        ownership.release("capture")
 
 
 def entry(root: str, epoch: str, sockets: tuple[socket.socket, ...], parent_pid: int) -> None:

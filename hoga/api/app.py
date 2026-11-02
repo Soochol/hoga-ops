@@ -54,7 +54,6 @@ from hoga.api.routes import build_router
 from hoga.api.scheduler import start_scheduler
 from hoga.api.screener import build_router as build_screener_router
 from hoga.api.sentiment_routes import build_router as build_sentiment_router
-from hoga.api.shutdown_timing import shutdown_phase
 from hoga.api.signal_alert_routes import build_router as build_signal_alert_router
 from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
 from hoga.api.study_view_routes import build_router as build_study_view_router
@@ -109,6 +108,7 @@ from hoga.live.trade_spot_api import build_router as build_trade_spot_router
 from hoga.trading.multi_broker import BrokerTradingService
 from hoga.trading.paper import PaperTradingService
 from hoga.trading.service import TradingService
+from hoga.util.shutdown import shutdown_phase
 
 
 def _gc_health_section(gc_objects: bool) -> dict:

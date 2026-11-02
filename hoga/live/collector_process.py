@@ -17,6 +17,8 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
+from hoga.util.shutdown import finish_shutdown, shutdown_phase
+
 from .collector_ipc import (
     DISPLAY_MAX_FRAME_BYTES,
     RPC_TIMEOUT_S,
@@ -579,24 +581,35 @@ class CaptureProcessSession:
 
     async def _retire(self) -> None:
         if self.alive() and self.peer is not None and not self.peer.closed.is_set():
-            with contextlib.suppress(ConnectionError, TimeoutError):
+            with (contextlib.suppress(ConnectionError, TimeoutError),
+                  shutdown_phase("collector_stop_rpc", epoch=self.epoch)):
                 await self.peer.call("stop")
         # Closing control also asks child to retire if the stop ACK was lost.
-        await self._close_channels()
+        with shutdown_phase("collector_channels", epoch=self.epoch):
+            await self._close_channels()
         if self.process is not None:
-            await asyncio.to_thread(self.process.join, 30)
+            with shutdown_phase("collector_child_join", epoch=self.epoch):
+                await asyncio.to_thread(self.process.join, 30)
             if self.process.is_alive():
                 self.error = "collector_shutdown_timeout"
                 self.forced_terminations += 1
                 self.process.terminate()
-                await asyncio.to_thread(self.process.join, 5)
+                with shutdown_phase("collector_forced_join", epoch=self.epoch):
+                    await asyncio.to_thread(self.process.join, 5)
             if self.process.is_alive():
                 raise RuntimeError("old collector exit unconfirmed; replacement forbidden")
 
     async def stop(self) -> None:
-        async with self.lock:
+        with shutdown_phase("collector_stop_lock", epoch=self.epoch):
+            await self.lock.acquire()
+        try:
             self.stopping = True
-            await self._retire()
-            if self.process is not None:
-                self.process.close()
-                self.process = None
+            await finish_shutdown(asyncio.create_task(self._finish_stop(), name="collector-stop-drain"))
+        finally:
+            self.lock.release()
+
+    async def _finish_stop(self) -> None:
+        await self._retire()
+        if self.process is not None:
+            self.process.close()
+            self.process = None

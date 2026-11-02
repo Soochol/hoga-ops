@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from hoga.util.shutdown import finish_shutdown, shutdown_phase
 from hoga.util.timeenc import KST
 
 from . import kiwoom_runtime
@@ -941,24 +942,39 @@ class KiwoomSessionManager:
         }
 
     async def stop(self) -> None:
-        async with self._lock:
+        with shutdown_phase("kiwoom_stop_lock"):
+            await self._lock.acquire()
+        try:
             await self._stop_locked()
+        finally:
+            self._lock.release()
 
     async def _stop_locked(self) -> None:
-        await self._us.stop()
-        for account_id in list(self._conns):
-            await self._teardown(account_id)
+        await finish_shutdown(asyncio.create_task(self._finish_stop_locked(), name="kiwoom-stop-drain"))
+
+    async def _finish_stop_locked(self) -> None:
+        with shutdown_phase("kiwoom_us_stop"):
+            await self._us.stop()
+        with shutdown_phase("kiwoom_accounts_stop"):
+            reports = await asyncio.gather(
+                *(self._teardown(account_id) for account_id in list(self._conns)), return_exceptions=True)
+            failures = [report for report in reports if isinstance(report, BaseException)]
+            if failures:
+                raise BaseExceptionGroup("account retirement failed", failures)
         if self._seconds_task is not None:
             task, self._seconds_task = self._seconds_task, None
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                current = asyncio.current_task()
-                if current is not None and current.cancelling():
-                    raise
+            with shutdown_phase("kiwoom_seconds_join"):
+                if not task.done() and not task.cancelling():
+                    task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    if current is not None and current.cancelling():
+                        raise
         if self._seconds is not None:
-            await self._seconds.finish_flush(now_ms=self._now_fn(), force=True)
+            with shutdown_phase("kiwoom_seconds_final_flush"):
+                await self._seconds.finish_flush(now_ms=self._now_fn(), force=True)
             self._seconds = None
         # 전체 휴면 — 라우팅·표시 장부도 비운다(재활성 시 재파생).
         self._storage_members.clear()
@@ -984,21 +1000,22 @@ class KiwoomSessionManager:
             self._kick_cooldowns.setdefault(account_id, self._now_fn() + _KICK_COOLDOWN_MS)
         self._pending_subscriptions.pop(account_id, None)
         subscription_task = self._subscription_tasks.pop(account_id, None)
-        tasks = (conn.ws_task, conn.flush_task)
+        tasks = [("kiwoom_account_ws", conn.ws_task), ("kiwoom_account_flush", conn.flush_task)]
         if subscription_task is not None:
-            tasks = (subscription_task, *tasks)
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    cur = asyncio.current_task()
-                    if cur is not None and cur.cancelling() > 0:
-                        raise
-                except Exception:  # noqa: BLE001 — teardown 중 예외는 삼킴
-                    _log.warning("live.kiwoom.teardown_task_err account=%d", account_id,
-                                 exc_info=True)
+            tasks.insert(0, ("kiwoom_account_subscription", subscription_task))
+        for phase, task in tasks:
+            try:
+                with shutdown_phase(phase, account_id=account_id):
+                    if not task.done() and not task.cancelling():
+                        task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        current = asyncio.current_task()
+                        if current is not None and current.cancelling():
+                            raise
+            except Exception:  # noqa: BLE001 — teardown observes failures and continues remaining cleanup
+                _log.exception("live.kiwoom.teardown_task_err account=%d", account_id)
 
     def _ensure_seconds_flusher(self, seconds: SecondTradeStore) -> None:
         """One normal flush clock for the shared store, independent of account 0."""

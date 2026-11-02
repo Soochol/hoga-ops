@@ -7,6 +7,52 @@ from typing import Any
 import pytest
 
 
+async def test_cancelled_runtime_stop_finishes_and_shares_protected_cleanup(monkeypatch):
+    from types import SimpleNamespace
+
+    from hoga.api.startup_runtime import AppStartupRuntime
+    from hoga.live import futures_runtime
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def stop_promoter(task):
+        calls.append('producer')
+
+    async def stop_live():
+        entered.set()
+        await release.wait()
+        calls.append('live-stopped')
+
+    async def close_futures():
+        calls.append('futures')
+
+    async def close_capacity():
+        calls.append('capacity')
+
+    async def close_clients():
+        calls.append('clients')
+
+    monkeypatch.setattr(futures_runtime, 'aclose_runtime', close_futures)
+    runtime = AppStartupRuntime([], None, SimpleNamespace(
+        close_symbol_capture_counts=None, stop_today_promoter=stop_promoter,
+        stop_live_stream=stop_live, aclose_kis_capacity_scheduler=close_capacity,
+        aclose_kis_client=close_clients))
+    first = asyncio.create_task(runtime.stop())
+    await entered.wait()
+    for _ in range(2):
+        first.cancel()
+        await asyncio.sleep(0)
+        assert not first.done()
+    second = asyncio.create_task(runtime.stop())
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    await second
+    await runtime.stop()
+    assert calls == ['producer', 'producer', 'producer', 'live-stopped', 'futures', 'capacity', 'clients']
+
+
 def test_startup_runtime_env_defaults_are_safe() -> None:
     from hoga.api.startup_runtime import (
         live_startup_enabled_from_env,
