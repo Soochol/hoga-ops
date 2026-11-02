@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import datetime
+import json
 
+import httpx
 import pytest
 
 from hoga.api import trading_days as td
@@ -155,3 +157,54 @@ def test_partially_covered_month_does_not_confirm_a_holiday() -> None:
 def test_parser_ignores_comments_and_blank_lines() -> None:
     got = td.parse_seed("# 주석\n\n20260803\n  20260731  \nnot-a-date\n2026080\n")
     assert got == frozenset({"20260803", "20260731"})
+
+
+async def test_refresh_preserves_calendar_on_service_error_then_records_success_even_without_new_days(
+    tmp_path, monkeypatch, caplog,
+):
+    from hoga.live import kiwoom_access, kiwoom_rest_runtime
+    from hoga.live.kiwoom_errors import KiwoomApiError
+    from hoga.live.kiwoom_rest import KiwoomRestClient
+
+    class Provider:
+        def get_token(self):
+            return "synthetic"
+
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(200, json={
+                "return_code": 7, "return_msg": "서비스를 처리하는 중에 오류가 발생했습니다[1631]",
+            })
+        return httpx.Response(200, json={
+            "return_code": 0, "inds_dt_pole_qry": [{"dt": "20261102"}, {"dt": "20261030"}],
+        })
+
+    client = KiwoomRestClient(Provider(), transport=httpx.MockTransport(handle))
+    calls = []
+
+    async def run(_scheduler, **kwargs):
+        calls.append((kwargs["api_id"], kwargs["priority"]))
+        return await kwargs["fetch_fn"](kwargs["client"])
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_: client)
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda *_: object())
+    monkeypatch.setattr(kiwoom_access, "run_with_capacity", run)
+    td.append_overlay(tmp_path, ["20261030"])
+    before = td.overlay_path(tmp_path).read_bytes()
+    try:
+        with pytest.raises(KiwoomApiError, match=r"7:.*\[1631\]"):
+            await td.refresh_overlay(tmp_path)
+        assert td.overlay_path(tmp_path).read_bytes() == before
+        with caplog.at_level("INFO"):
+            assert await td.refresh_overlay(tmp_path) == 1
+            assert await td.refresh_overlay(tmp_path) == 0
+        assert td.is_trading_day("20261102", tmp_path) is True
+        assert calls == [("ka20006", "background")] * 3
+        assert all(r.url.path == "/api/dostk/chart" and r.headers["api-id"] == "ka20006" for r in requests)
+        assert all(json.loads(r.content)["inds_cd"] == "001" for r in requests)
+        assert "latest=20261102 added=0" in caplog.text
+    finally:
+        await client.aclose()
