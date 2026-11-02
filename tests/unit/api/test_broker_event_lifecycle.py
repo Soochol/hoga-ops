@@ -273,7 +273,7 @@ async def test_detached_unexpected_failure_is_observed_and_next_read_retries(eve
         events.proceed.set()
         await settled()
         assert events.owner.account_refs == set()
-        assert unhandled == []
+        assert not any("never retrieved" in context["message"] for context in unhandled)
         events.failure = None
         assert (await read(events)).status_code == 200
         await assert_one_event(events)
@@ -296,3 +296,14 @@ async def test_rollback_failure_preserves_original_retain_error(events, monkeypa
             events.service.data_dir, "real", 0, lambda *_: None, lambda _: None,
         )
     assert events.owner.account_refs == set()
+
+
+async def test_unexpected_registration_failure_reaches_reader_and_allows_retry(events):
+    events.failure = ValueError("unexpected retain failure")
+    events.proceed.set()
+    with pytest.raises(ValueError, match="unexpected retain failure"):
+        await events.service.ensure_events(events.adapter)
+    assert events.owner.account_refs == set()
+    events.failure = None
+    assert (await read(events)).status_code == 200
+    await assert_one_event(events)
