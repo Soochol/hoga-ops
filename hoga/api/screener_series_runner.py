@@ -34,6 +34,7 @@ from hoga.api.models import (
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR
 from hoga.api.screener_expression import active_conditions, parse_expression
 from hoga.api.screener_minute_scope import current as minute_scope
+from hoga.api.screener_timing import phase
 from hoga.util.timeenc import KST
 
 
@@ -258,15 +259,16 @@ async def _auxiliary(data_dir, req, inputs, now, volume_runtime, events, failure
     selected = active_conditions(req.conditions, req.expression)
     minutes = [leaf for leaf in selected if getattr(leaf.params, "timeframe", "D").endswith("m")]
     if minutes:
-        result = await screener_bar_volume.evaluate(
-            data_dir=data_dir,
-            conditions=minutes,
-            codes=inputs["codes"],
-            basis=inputs["basis"],
-            now=now,
-            volume_runtime=volume_runtime,
-            cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None,
-        )
+        with phase('minute'):
+            result = await screener_bar_volume.evaluate(
+                data_dir=data_dir,
+                conditions=minutes,
+                codes=inputs["codes"],
+                basis=inputs["basis"],
+                now=now,
+                volume_runtime=volume_runtime,
+                cutoff=rank_eval.cutoff if rank_eval and rank_eval.historical else None,
+            )
         events.update(result.events)
         failures.extend(result.coverage.incomplete)
         minute_coverage = result.coverage
@@ -375,7 +377,8 @@ async def run_scan(
     screener_rankings.validate_stored_conditions(req, rank_eval)
     if rank_eval and rank_eval.historical:
         now, volume_runtime = rank_eval.cutoff, None
-    pinned = input_snapshot or await asyncio.to_thread(store.load_snapshot, data_dir, req.snapshot_id)
+    with phase('snapshot'):
+        pinned = input_snapshot or await asyncio.to_thread(store.load_snapshot, data_dir, req.snapshot_id)
     if pinned is None:
         return ScreenerResponse(
             status="ok",
@@ -384,16 +387,20 @@ async def run_scan(
             calculation=ScreenerCalculation(policy=req.calculation_policy, price_basis="vendor_adjusted"),
         )
     identity, manifest = pinned
-    inputs = await _inputs(data_dir, req, manifest, now, replay, rank_eval)
+    with phase('inputs'):
+        inputs = await _inputs(data_dir, req, manifest, now, replay, rank_eval)
     inputs["ready_codes"] = ready_codes
     available = inputs if ready_codes is None else {**inputs, "codes": [code for code in inputs["codes"]
                                                                       if code in ready_codes]}
     clock = dt.datetime.fromisoformat(inputs["clock"])
-    overlay, warnings, overlay_at, intraday_failure = await _overlay(data_dir, req, available, now)
+    with phase('overlay'):
+        overlay, warnings, overlay_at, intraday_failure = await _overlay(data_dir, req, available, now)
     fallback_clock = _eod_clock(now, inputs["confirmed_at"]) if inputs["basis"] == "intraday" else None
-    series, events, failures = await asyncio.to_thread(
-        calendar_evaluate, data_dir, req, pinned, available["codes"], clock, overlay, fallback_clock, blocked_conditions
-    )
+    with phase('calendar'):
+        series, events, failures = await asyncio.to_thread(
+            calendar_evaluate, data_dir, req, pinned, available["codes"], clock, overlay,
+            fallback_clock, blocked_conditions
+        )
     blocked_by_code = {}
     for (code, condition), reason in (blocked_conditions or {}).items():
         blocked_by_code.setdefault(code, []).append((condition, reason))
@@ -406,9 +413,12 @@ async def run_scan(
                                               now, volume_runtime, events, failures, rank_eval)
     events.update(rank_eval.events if rank_eval else {})
     days = [dt.datetime.strptime(day, "%Y%m%d").date() for day in store.snapshot_calendar(data_dir, manifest)]
-    rows = await asyncio.to_thread(_rows, req, inputs, series, events, failures, days, clock)
+    with phase('rows'):
+        rows = await asyncio.to_thread(_rows, req, inputs, series, events, failures, days, clock)
     if failures:
         warnings.append("separate_bases_partial")
+    with phase('daily_contract'):
+        daily_contract = await asyncio.to_thread(_daily_contract, data_dir, manifest, inputs["codes"])
     response = ScreenerResponse(
         status="ok",
         rows=rows[: req.limit],
@@ -433,7 +443,7 @@ async def run_scan(
             adjusted_as_of=manifest["adjusted_as_of"],
             price_basis="vendor_adjusted",
             event_revision=store.digest(manifest["quantity"]),
-            **await asyncio.to_thread(_daily_contract, data_dir, manifest, inputs["codes"]),
+            **daily_contract,
         ),
         bar_coverage=BarVolumeCoverage(
             total=len(inputs["codes"]),

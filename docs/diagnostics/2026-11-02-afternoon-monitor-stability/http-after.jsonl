@@ -1,0 +1,3 @@
+{"stage": "overlay_blocked", "request_pending": true, "minute_windows": [], "phases": ["ranking", "ka10095_overlay_enter"]}
+{"stage": "after_delete", "delete_status": 204, "fresh_get_status": 404, "original_get_pending": true}
+{"stage": "original_get_completed_after_delete", "status": 404, "minute_windows": [], "phases": ["ranking", "ka10095_overlay_enter"]}

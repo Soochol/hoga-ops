@@ -1,0 +1,4 @@
+{"case": "router", "compression": true, "count": 96, "delay": 0.015, "keepalive": 0.2, "subscribed": 25, "work_started": 27, "work_completed": 26, "client_pongs": 1, "queue_max": 32, "put_waiter_seen": true, "pings_pending_max": 1, "loop_lag_max": 0.017753250996174755, "close_code": 1011, "close_reason": "keepalive ping timeout", "health_status": 200, "transport_error": "keepalive ping timeout"}
+{"cases": 1, "passed_assertions": true}
+{"case": "inline", "compression": true, "count": 214, "delay": 0.5, "keepalive": 20, "subscribed": 79, "work_started": 80, "work_completed": 79, "client_pongs": 1, "queue_max": 32, "put_waiter_seen": true, "pings_pending_max": 1, "loop_lag_max": 0.022939926003455183, "close_code": 1011, "close_reason": "keepalive ping timeout", "health_status": 200, "transport_error": "keepalive ping timeout"}
+{"cases": 1, "passed_assertions": true}

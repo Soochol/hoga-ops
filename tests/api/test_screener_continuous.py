@@ -258,6 +258,239 @@ async def test_http_monitor_contract_start_heartbeat_result_and_stop(fixture, mo
     assert clock.now > 0
 
 
+@pytest.mark.parametrize('retire', ['delete', 'replace', 'expire', 'close'])
+async def test_result_retirement_cancels_scan_before_later_minute_work(fixture, monkeypatch, retire):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from hoga.api import screener_runner
+    from hoga.api.models import ScreenerResponse
+    from hoga.api.screener_continuous import build_router
+
+    owner, clock, _ = fixture
+    monitor = await start(owner)
+    entered, release, cancelled = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    later = []
+
+    async def scan(**kwargs):
+        entered.set()
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        later.append('minute')
+        return ScreenerResponse(status='ok', rows=[])
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    app = FastAPI()
+    app.include_router(build_router(owner))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        reader = asyncio.create_task(client.get(f'/monitors/{monitor.id}/result'))
+        await entered.wait()
+        if retire == 'delete':
+            assert (await client.delete(f'/monitors/{monitor.id}')).status_code == 204
+        elif retire == 'replace':
+            await start(owner, request(period=101))
+        elif retire == 'expire':
+            clock.now += 301_000
+            owner.collect_active(clock.now)
+        else:
+            await owner.close()
+        for _ in range(10):
+            await asyncio.sleep(0)
+        was_cancelled = cancelled.is_set()
+        release.set()
+        response = await reader
+        assert (was_cancelled, response.status_code, later) == (True, 404, [])
+
+
+async def test_overlapping_result_readers_share_work_and_cancel_independently(fixture, monkeypatch):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from hoga.api import screener_runner
+    from hoga.api.models import ScreenerResponse
+    from hoga.api.screener_continuous import build_router
+
+    owner, _, _ = fixture
+    monitor = await start(owner)
+    release, entered = asyncio.Event(), asyncio.Event()
+    calls, cancelled = [], []
+
+    async def scan(**kwargs):
+        calls.append(kwargs)
+        entered.set()
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+        return ScreenerResponse(status='ok', rows=[])
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    app = FastAPI()
+    app.include_router(build_router(owner))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        first = asyncio.create_task(client.get(f'/monitors/{monitor.id}/result'))
+        await entered.wait()
+        second = asyncio.create_task(client.get(f'/monitors/{monitor.id}/result'))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        entries = len(calls)
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+        release.set()
+        assert (await second).status_code == 200
+        assert (entries, cancelled) == (1, [])
+        assert (await client.get(f'/monitors/{monitor.id}/result')).status_code == 200
+        assert len(calls) == 2
+
+
+async def test_new_result_reader_waits_for_cancelled_flight_to_finish(fixture, monkeypatch):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from hoga.api import screener_runner
+    from hoga.api.models import ScreenerResponse
+    from hoga.api.screener_continuous import build_router
+
+    owner, _, _ = fixture
+    monitor = await start(owner)
+    entered, retired = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def scan(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await retired.wait()
+                raise
+        return ScreenerResponse(status='ok', rows=[])
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    app = FastAPI()
+    app.include_router(build_router(owner))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        first = asyncio.create_task(client.get(f'/monitors/{monitor.id}/result'))
+        await entered.wait()
+        first.cancel()
+        for _ in range(10):
+            await asyncio.sleep(0)
+        second = asyncio.create_task(client.get(f'/monitors/{monitor.id}/result'))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        before_retirement = first.done(), len(calls)
+        retired.set()
+        await asyncio.gather(first, return_exceptions=True)
+        assert (await second).status_code == 200
+        assert before_retirement == (True, 1)
+        assert len(calls) == 2
+
+
+async def test_retiring_result_tasks_count_toward_admission(fixture, monkeypatch):
+    from hoga.api import screener_continuous, screener_runner
+    from hoga.api.models import ScreenerResponse
+
+    owner, _, _ = fixture
+    monitor = await start(owner)
+    entered, retired = asyncio.Event(), asyncio.Event()
+
+    async def scan(**kwargs):
+        if kwargs['volume_runtime'].monitor is monitor:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await retired.wait()
+                raise
+        return ScreenerResponse(status='ok', rows=[])
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    monkeypatch.setattr(screener_continuous, 'MAX_MONITORS', 1)
+    reader = asyncio.create_task(owner.result(monitor.id))
+    await entered.wait()
+    owner.stop(monitor.id)
+    replacement = await start(owner)
+    with pytest.raises(HTTPException, match='409'):
+        await owner.result(replacement.id)
+    retired.set()
+    outcome = await asyncio.gather(reader, return_exceptions=True)
+    assert isinstance(outcome[0], HTTPException)
+    assert outcome[0].status_code == 404
+    assert (await owner.result(replacement.id)).status == 'ok'
+
+
+async def test_shared_result_readers_receive_independent_models_and_later_requests_retry(fixture, monkeypatch):
+    from hoga.api import screener_runner
+    from hoga.api.models import ScreenerResponse
+
+    owner, _, _ = fixture
+    monitor = await start(owner)
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = ScreenerResponse(status='ok', rows=[])
+    calls = []
+
+    async def scan(**kwargs):
+        calls.append(kwargs)
+        entered.set()
+        await release.wait()
+        if len(calls) == 2:
+            raise ValueError('provider failed')
+        return original
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    first = asyncio.create_task(owner.result(monitor.id))
+    await entered.wait()
+    second = asyncio.create_task(owner.result(monitor.id))
+    await asyncio.sleep(0)
+    release.set()
+    a, b = await asyncio.gather(first, second)
+    a.warnings.append('changed by reader')
+    assert b.warnings == original.warnings == []
+    with pytest.raises(ValueError, match='provider failed'):
+        await owner.result(monitor.id)
+    assert (await owner.result(monitor.id)).status == 'ok'
+    assert len(calls) == 3
+
+
+async def test_result_phase_logs_keep_each_monitor_and_scan_correlated(fixture, monkeypatch, caplog):
+    import logging
+
+    from hoga.api import screener_runner
+    from hoga.api.models import ScreenerResponse
+    from hoga.api.screener_timing import phase
+
+    owner, _, _ = fixture
+    first, second = await start(owner), await start(owner, client='second')
+
+    async def scan(**kwargs):
+        with phase('overlay'):
+            await asyncio.sleep(0)
+        return ScreenerResponse(status='ok', rows=[])
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    caplog.set_level(logging.DEBUG, logger='hoga.api.screener_timing')
+    await asyncio.gather(owner.result(first.id), owner.result(second.id))
+    messages = [record.getMessage() for record in caplog.records if record.name == 'hoga.api.screener_timing']
+    assert len(messages) == 4
+    scan_ids = set()
+    for monitor in [first, second]:
+        matching = [message for message in messages if f'monitor_id={monitor.id} ' in message]
+        assert len(matching) == 2
+        fields = [dict(field.split('=', 1) for field in message.split()[1:]) for message in matching]
+        assert {field['phase'] for field in fields} == {'overlay', 'total'}
+        assert len({field['scan_id'] for field in fields}) == 1
+        scan_ids.add(fields[0]['scan_id'])
+    assert len(scan_ids) == 2
+    with phase('standalone'):
+        pass
+    assert len(caplog.records) == 4
+
+
 async def test_full_regular_session_338_symbols_shared_conditions_and_targeted_repair(fixture, tmp_path):
     from hoga.live.volume_state import MINUTE, VolumeSource
     from hoga.util.retained_size import retained_size
