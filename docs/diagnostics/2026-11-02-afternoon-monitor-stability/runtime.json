@@ -1,0 +1,26 @@
+{
+  "source_head": "bc4700b82026389e45ca102f1d163c980c6dd8d9",
+  "base": "ef1adbd1e50a415d2646c947da380f10d4b20dc4",
+  "python": "3.14.7",
+  "packages": {
+    "pytest": "9.0.3",
+    "ruff": "0.15.13",
+    "fastapi": "0.136.1",
+    "starlette": "1.0.0",
+    "uvicorn": "0.47.0",
+    "websockets": "16.0",
+    "pydantic": "2.13.4",
+    "polars": "1.41.0"
+  },
+  "input_scope": [
+    "hoga",
+    "tests",
+    "frontend/src",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version"
+  ],
+  "input_path_count": 2762,
+  "input_sha256": "76fd53c8a285035b2935d24da382b87c3e9c53faf5cab7e9aa461443fd1f1584",
+  "fingerprint_method": "Sorted git-tracked path bytes, NUL, then file bytes, SHA256."
+}
