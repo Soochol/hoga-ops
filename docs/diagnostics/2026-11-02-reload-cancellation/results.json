@@ -1,0 +1,2860 @@
+{
+  "scope": "Synthetic work; real Uvicorn reload, ContinuousMonitors and ComputeExecutor. Not a production restart benchmark or a measured production speedup.",
+  "head": "e276f0586c804055c4de4523f458d0aec7f6e816",
+  "environment": {
+    "python": "3.14.7",
+    "uvicorn": "0.47.0",
+    "fastapi": "0.136.1",
+    "httpx": "0.28.1",
+    "cpu_count": 32,
+    "load_average": [
+      5.8330078125,
+      6.20947265625,
+      5.69287109375
+    ]
+  },
+  "duration_s": 2.0,
+  "primary_metric": "file_change_to_health_s",
+  "summary": {
+    "baseline_async": {
+      "runs": 5,
+      "median_s": 2.6001867720042355,
+      "min_s": 2.5676243100024294,
+      "max_s": 2.624196969001787
+    },
+    "early_async": {
+      "runs": 5,
+      "median_s": 0.8782812989957165,
+      "min_s": 0.8355486260043108,
+      "max_s": 1.0237623549983255
+    },
+    "early_thread": {
+      "runs": 5,
+      "median_s": 0.8575032049993752,
+      "min_s": 0.8351462880018516,
+      "max_s": 0.8977291390037863
+    },
+    "early_thread_joined": {
+      "runs": 5,
+      "median_s": 2.6496455230007996,
+      "min_s": 2.6282672689994797,
+      "max_s": 2.747293496999191
+    },
+    "early_thread_tracked": {
+      "runs": 5,
+      "median_s": 2.54622201899474,
+      "min_s": 2.509750040000654,
+      "max_s": 2.6305343760031974
+    },
+    "early_cooperative": {
+      "runs": 5,
+      "median_s": 0.9380948079997324,
+      "min_s": 0.8785707239949261,
+      "max_s": 0.9608143660007045
+    },
+    "early_process": {
+      "runs": 5,
+      "median_s": 2.808292417001212,
+      "min_s": 2.73185297800228,
+      "max_s": 2.8927251899949624
+    }
+  },
+  "runs": [
+    {
+      "mode": "baseline_async",
+      "protected_write": false,
+      "response_status": 200,
+      "file_change_to_ready_s": 2.5556216609984403,
+      "file_change_to_health_s": 2.5676243100024294,
+      "shutdown_to_ready_s": 2.464190876999055,
+      "shutdown_to_read_response_s": 1.890115533999051,
+      "lifespan_closed_to_ready_s": 0.5604333279989078,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4137448,
+          "at": 62050.048517334
+        },
+        {
+          "event": "scan_started",
+          "pid": 4137448,
+          "at": 62050.438829934
+        },
+        {
+          "event": "work_started",
+          "pid": 4137448,
+          "at": 62050.438911748
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4137448,
+          "at": 62050.549653425
+        },
+        {
+          "event": "work_completed",
+          "pid": 4137448,
+          "at": 62052.439112734
+        },
+        {
+          "event": "scan_completed",
+          "pid": 4137448,
+          "at": 62052.439279578
+        },
+        {
+          "event": "result_returned",
+          "pid": 4137448,
+          "at": 62052.439768959,
+          "status": 200
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4137448,
+          "at": 62052.453287862
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4137448,
+          "at": 62052.453410974
+        },
+        {
+          "event": "ready",
+          "pid": 4137516,
+          "at": 62053.013844302
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-8tslep8d/watch']\nINFO:     Uvicorn running on http://127.0.0.1:33501 (Press CTRL+C to quit)\nINFO:     Started reloader process [4137382] using WatchFiles\nINFO:     Started server process [4137448]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4137448]\nINFO:     Started server process [4137516]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4137516]\nINFO:     Stopping reloader process [4137382]\n",
+      "repetition": 1
+    },
+    {
+      "mode": "early_async",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8233322750020307,
+      "file_change_to_health_s": 0.8355486260043108,
+      "shutdown_to_ready_s": 0.7181153159981477,
+      "shutdown_to_read_response_s": 0.10106526500021573,
+      "lifespan_closed_to_ready_s": 0.5158482890037703,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4137652,
+          "at": 62054.452988697
+        },
+        {
+          "event": "scan_started",
+          "pid": 4137652,
+          "at": 62054.829713394
+        },
+        {
+          "event": "work_started",
+          "pid": 4137652,
+          "at": 62054.829834612
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4137652,
+          "at": 62054.954955781
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4137652,
+          "at": 62055.0555074
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4137652,
+          "at": 62055.055829957
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4137652,
+          "at": 62055.055898997
+        },
+        {
+          "event": "result_returned",
+          "pid": 4137652,
+          "at": 62055.056021046,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4137652,
+          "at": 62055.056250338
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4137652,
+          "at": 62055.157018123
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4137652,
+          "at": 62055.157222808
+        },
+        {
+          "event": "ready",
+          "pid": 4137727,
+          "at": 62055.673071097
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-xruwy7sj/watch']\nINFO:     Uvicorn running on http://127.0.0.1:47481 (Press CTRL+C to quit)\nINFO:     Started reloader process [4137584] using WatchFiles\nINFO:     Started server process [4137652]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4137652]\nINFO:     Started server process [4137727]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4137727]\nINFO:     Stopping reloader process [4137584]\n",
+      "repetition": 1
+    },
+    {
+      "mode": "early_thread",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8202420290035661,
+      "file_change_to_health_s": 0.8377358420038945,
+      "shutdown_to_ready_s": 0.7125868820003234,
+      "shutdown_to_read_response_s": 0.10087662000296405,
+      "lifespan_closed_to_ready_s": 0.5106141880023642,
+      "work_outcome": "completion_unacknowledged_at_exit",
+      "cleanup_acknowledged": false,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4137861,
+          "at": 62057.177113841
+        },
+        {
+          "event": "scan_started",
+          "pid": 4137861,
+          "at": 62057.550876323
+        },
+        {
+          "event": "work_started",
+          "pid": 4137861,
+          "at": 62057.551450043
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4137861,
+          "at": 62057.678417937
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4137861,
+          "at": 62057.778926144
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4137861,
+          "at": 62057.779226028
+        },
+        {
+          "event": "result_returned",
+          "pid": 4137861,
+          "at": 62057.779294557,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4137861,
+          "at": 62057.779425704
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4137861,
+          "at": 62057.880165227
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4137861,
+          "at": 62057.880390631
+        },
+        {
+          "event": "ready",
+          "pid": 4137929,
+          "at": 62058.391004819
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-z6ncrkui/watch']\nINFO:     Uvicorn running on http://127.0.0.1:54461 (Press CTRL+C to quit)\nINFO:     Started reloader process [4137795] using WatchFiles\nINFO:     Started server process [4137861]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4137861]\nINFO:     Started server process [4137929]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4137929]\nINFO:     Stopping reloader process [4137795]\n",
+      "repetition": 1
+    },
+    {
+      "mode": "early_thread_joined",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.62709200700192,
+      "file_change_to_health_s": 2.6496455230007996,
+      "shutdown_to_ready_s": 2.5079475570018985,
+      "shutdown_to_read_response_s": 1.8670763650006847,
+      "lifespan_closed_to_ready_s": 0.5399645549987326,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4138225,
+          "at": 62059.86264947
+        },
+        {
+          "event": "scan_started",
+          "pid": 4138225,
+          "at": 62060.228948927
+        },
+        {
+          "event": "work_started",
+          "pid": 4138225,
+          "at": 62060.22941323
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4138225,
+          "at": 62060.363182605
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4138225,
+          "at": 62060.463726048
+        },
+        {
+          "event": "work_completed",
+          "pid": 4138225,
+          "at": 62062.229657388
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4138225,
+          "at": 62062.23007292
+        },
+        {
+          "event": "result_returned",
+          "pid": 4138225,
+          "at": 62062.23025897,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4138225,
+          "at": 62062.230405576
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4138225,
+          "at": 62062.33101327
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4138225,
+          "at": 62062.331165607
+        },
+        {
+          "event": "ready",
+          "pid": 4138451,
+          "at": 62062.871130162
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-fu1zetwt/watch']\nINFO:     Uvicorn running on http://127.0.0.1:57973 (Press CTRL+C to quit)\nINFO:     Started reloader process [4138154] using WatchFiles\nINFO:     Started server process [4138225]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4138225]\nINFO:     Started server process [4138451]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4138451]\nINFO:     Stopping reloader process [4138154]\n",
+      "repetition": 1
+    },
+    {
+      "mode": "early_thread_tracked",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.5054368720011553,
+      "file_change_to_health_s": 2.509750040000654,
+      "shutdown_to_ready_s": 2.402399243997934,
+      "shutdown_to_read_response_s": 0.10117983099917183,
+      "lifespan_closed_to_ready_s": 0.5239618380001048,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4138584,
+          "at": 62064.316756406
+        },
+        {
+          "event": "scan_started",
+          "pid": 4138584,
+          "at": 62064.694899583
+        },
+        {
+          "event": "work_started",
+          "pid": 4138584,
+          "at": 62064.695578411
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4138584,
+          "at": 62064.8179421
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4138584,
+          "at": 62064.918646055
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4138584,
+          "at": 62064.918976096
+        },
+        {
+          "event": "result_returned",
+          "pid": 4138584,
+          "at": 62064.919121931,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4138584,
+          "at": 62064.919354588
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4138584,
+          "at": 62065.020161808
+        },
+        {
+          "event": "work_ack_drain_started",
+          "pid": 4138584,
+          "at": 62065.020353559
+        },
+        {
+          "event": "work_completed",
+          "pid": 4138584,
+          "at": 62066.695818911
+        },
+        {
+          "event": "work_ack_drain_finished",
+          "pid": 4138584,
+          "at": 62066.696292032
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4138584,
+          "at": 62066.696379506
+        },
+        {
+          "event": "ready",
+          "pid": 4138711,
+          "at": 62067.220341344
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-lpe1l_vu/watch']\nINFO:     Uvicorn running on http://127.0.0.1:38065 (Press CTRL+C to quit)\nINFO:     Started reloader process [4138517] using WatchFiles\nINFO:     Started server process [4138584]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4138584]\nINFO:     Started server process [4138711]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4138711]\nINFO:     Stopping reloader process [4138517]\n",
+      "repetition": 1
+    },
+    {
+      "mode": "early_cooperative",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.872844746998453,
+      "file_change_to_health_s": 0.8819958699968993,
+      "shutdown_to_ready_s": 0.7698961369969766,
+      "shutdown_to_read_response_s": 0.10086464799678652,
+      "lifespan_closed_to_ready_s": 0.5678186570003163,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4139598,
+          "at": 62068.777252558
+        },
+        {
+          "event": "scan_started",
+          "pid": 4139598,
+          "at": 62069.156025059
+        },
+        {
+          "event": "work_started",
+          "pid": 4139598,
+          "at": 62069.156640066
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4139598,
+          "at": 62069.278806394
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4139598,
+          "at": 62069.37929325
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4139598,
+          "at": 62069.379361038
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4139598,
+          "at": 62069.379546026
+        },
+        {
+          "event": "result_returned",
+          "pid": 4139598,
+          "at": 62069.379671042,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4139598,
+          "at": 62069.379874264
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4139598,
+          "at": 62069.48071673
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4139598,
+          "at": 62069.480883874
+        },
+        {
+          "event": "ready",
+          "pid": 4139667,
+          "at": 62070.048702531
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-3k144fys/watch']\nINFO:     Uvicorn running on http://127.0.0.1:57945 (Press CTRL+C to quit)\nINFO:     Started reloader process [4139298] using WatchFiles\nINFO:     Started server process [4139598]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4139598]\nINFO:     Started server process [4139667]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4139667]\nINFO:     Stopping reloader process [4139298]\n",
+      "repetition": 1
+    },
+    {
+      "mode": "early_process",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.7116224040000816,
+      "file_change_to_health_s": 2.73185297800228,
+      "shutdown_to_ready_s": 2.5966600339961587,
+      "shutdown_to_read_response_s": 0.10104876399418572,
+      "lifespan_closed_to_ready_s": 0.5508517650014255,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4139799,
+          "at": 62071.499329176
+        },
+        {
+          "event": "scan_started",
+          "pid": 4139799,
+          "at": 62071.860902659
+        },
+        {
+          "event": "work_started",
+          "pid": 4139867,
+          "at": 62072.378117099
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4139799,
+          "at": 62072.504377331
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4139799,
+          "at": 62072.604995324
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4139799,
+          "at": 62072.60532245
+        },
+        {
+          "event": "result_returned",
+          "pid": 4139799,
+          "at": 62072.605426095,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4139799,
+          "at": 62072.605611604
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4139799,
+          "at": 62072.706319657
+        },
+        {
+          "event": "work_completed",
+          "pid": 4139867,
+          "at": 62074.378298077
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4139799,
+          "at": 62074.5501856
+        },
+        {
+          "event": "ready",
+          "pid": 4139945,
+          "at": 62075.101037365
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-sjrlur6n/watch']\nINFO:     Uvicorn running on http://127.0.0.1:60861 (Press CTRL+C to quit)\nINFO:     Started reloader process [4139733] using WatchFiles\nINFO:     Started server process [4139799]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4139799]\nINFO:     Started server process [4139945]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4139945]\nINFO:     Stopping reloader process [4139733]\n",
+      "repetition": 1
+    },
+    {
+      "mode": "baseline_async",
+      "protected_write": false,
+      "response_status": 200,
+      "file_change_to_ready_s": 2.5950492629999644,
+      "file_change_to_health_s": 2.6001867720042355,
+      "shutdown_to_ready_s": 2.48816473599436,
+      "shutdown_to_read_response_s": 1.8738238039950375,
+      "lifespan_closed_to_ready_s": 0.58457734699914,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4141182,
+          "at": 62076.786203274
+        },
+        {
+          "event": "scan_started",
+          "pid": 4141182,
+          "at": 62077.160399934
+        },
+        {
+          "event": "work_started",
+          "pid": 4141182,
+          "at": 62077.160479504
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4141182,
+          "at": 62077.287292095
+        },
+        {
+          "event": "work_completed",
+          "pid": 4141182,
+          "at": 62079.160508205
+        },
+        {
+          "event": "scan_completed",
+          "pid": 4141182,
+          "at": 62079.160670451
+        },
+        {
+          "event": "result_returned",
+          "pid": 4141182,
+          "at": 62079.161115899,
+          "status": 200
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4141182,
+          "at": 62079.190689026
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4141182,
+          "at": 62079.190879484
+        },
+        {
+          "event": "ready",
+          "pid": 4141727,
+          "at": 62079.775456831
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-115ggfcb/watch']\nINFO:     Uvicorn running on http://127.0.0.1:44975 (Press CTRL+C to quit)\nINFO:     Started reloader process [4140402] using WatchFiles\nINFO:     Started server process [4141182]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4141182]\nINFO:     Started server process [4141727]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4141727]\nINFO:     Stopping reloader process [4140402]\n",
+      "repetition": 2
+    },
+    {
+      "mode": "early_async",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 1.0148562640024466,
+      "file_change_to_health_s": 1.0237623549983255,
+      "shutdown_to_ready_s": 0.9073218840057962,
+      "shutdown_to_read_response_s": 0.10089429400250083,
+      "lifespan_closed_to_ready_s": 0.7056522010025219,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4141862,
+          "at": 62081.306949426
+        },
+        {
+          "event": "scan_started",
+          "pid": 4141862,
+          "at": 62081.680632639
+        },
+        {
+          "event": "work_started",
+          "pid": 4141862,
+          "at": 62081.680798842
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4141862,
+          "at": 62081.807693348
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4141862,
+          "at": 62081.908309288
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4141862,
+          "at": 62081.908504746
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4141862,
+          "at": 62081.908531837
+        },
+        {
+          "event": "result_returned",
+          "pid": 4141862,
+          "at": 62081.908587642,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4141862,
+          "at": 62081.908716414
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4141862,
+          "at": 62082.009237946
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4141862,
+          "at": 62082.009363031
+        },
+        {
+          "event": "ready",
+          "pid": 4142116,
+          "at": 62082.715015232
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-w2_gbip8/watch']\nINFO:     Uvicorn running on http://127.0.0.1:39867 (Press CTRL+C to quit)\nINFO:     Started reloader process [4141793] using WatchFiles\nINFO:     Started server process [4141862]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4141862]\nINFO:     Started server process [4142116]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4142116]\nINFO:     Stopping reloader process [4141793]\n",
+      "repetition": 2
+    },
+    {
+      "mode": "early_thread",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8441897490047268,
+      "file_change_to_health_s": 0.8575032049993752,
+      "shutdown_to_ready_s": 0.7386037750038668,
+      "shutdown_to_read_response_s": 0.10080681800172897,
+      "lifespan_closed_to_ready_s": 0.536998693998612,
+      "work_outcome": "completion_unacknowledged_at_exit",
+      "cleanup_acknowledged": false,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4142691,
+          "at": 62084.188398465
+        },
+        {
+          "event": "scan_started",
+          "pid": 4142691,
+          "at": 62084.564763946
+        },
+        {
+          "event": "work_started",
+          "pid": 4142691,
+          "at": 62084.565425441
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4142691,
+          "at": 62084.690407418
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4142691,
+          "at": 62084.790914131
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4142691,
+          "at": 62084.791130398
+        },
+        {
+          "event": "result_returned",
+          "pid": 4142691,
+          "at": 62084.791214236,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4142691,
+          "at": 62084.791350142
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4142691,
+          "at": 62084.891888035
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4142691,
+          "at": 62084.892012499
+        },
+        {
+          "event": "ready",
+          "pid": 4142760,
+          "at": 62085.429011193
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-yixvkmnq/watch']\nINFO:     Uvicorn running on http://127.0.0.1:45959 (Press CTRL+C to quit)\nINFO:     Started reloader process [4142625] using WatchFiles\nINFO:     Started server process [4142691]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4142691]\nINFO:     Started server process [4142760]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4142760]\nINFO:     Stopping reloader process [4142625]\n",
+      "repetition": 2
+    },
+    {
+      "mode": "early_thread_joined",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.6303488870034926,
+      "file_change_to_health_s": 2.6391516240037163,
+      "shutdown_to_ready_s": 2.5243642830027966,
+      "shutdown_to_read_response_s": 1.8752440769967507,
+      "lifespan_closed_to_ready_s": 0.548119052000402,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4142894,
+          "at": 62086.96094602
+        },
+        {
+          "event": "scan_started",
+          "pid": 4142894,
+          "at": 62087.33656666
+        },
+        {
+          "event": "work_started",
+          "pid": 4142894,
+          "at": 62087.337130611
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4142894,
+          "at": 62087.462536806
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4142894,
+          "at": 62087.563020827
+        },
+        {
+          "event": "work_completed",
+          "pid": 4142894,
+          "at": 62089.337318663
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4142894,
+          "at": 62089.337682497
+        },
+        {
+          "event": "result_returned",
+          "pid": 4142894,
+          "at": 62089.337780883,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4142894,
+          "at": 62089.337914865
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4142894,
+          "at": 62089.438569016
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4142894,
+          "at": 62089.438782037
+        },
+        {
+          "event": "ready",
+          "pid": 4142963,
+          "at": 62089.986901089
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-zsw2e7um/watch']\nINFO:     Uvicorn running on http://127.0.0.1:42107 (Press CTRL+C to quit)\nINFO:     Started reloader process [4142826] using WatchFiles\nINFO:     Started server process [4142894]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4142894]\nINFO:     Started server process [4142963]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4142963]\nINFO:     Stopping reloader process [4142826]\n",
+      "repetition": 2
+    },
+    {
+      "mode": "early_thread_tracked",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.6166027970029972,
+      "file_change_to_health_s": 2.6305343760031974,
+      "shutdown_to_ready_s": 2.502082099003019,
+      "shutdown_to_read_response_s": 0.10073591599939391,
+      "lifespan_closed_to_ready_s": 0.6354557200029376,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4143095,
+          "at": 62091.658224917
+        },
+        {
+          "event": "scan_started",
+          "pid": 4143095,
+          "at": 62092.026421986
+        },
+        {
+          "event": "work_started",
+          "pid": 4143095,
+          "at": 62092.026877393
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4143095,
+          "at": 62092.161051268
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4143095,
+          "at": 62092.261517036
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4143095,
+          "at": 62092.261724596
+        },
+        {
+          "event": "result_returned",
+          "pid": 4143095,
+          "at": 62092.261787184,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4143095,
+          "at": 62092.261922158
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4143095,
+          "at": 62092.362536805
+        },
+        {
+          "event": "work_ack_drain_started",
+          "pid": 4143095,
+          "at": 62092.362704571
+        },
+        {
+          "event": "work_completed",
+          "pid": 4143095,
+          "at": 62094.027097014
+        },
+        {
+          "event": "work_ack_drain_finished",
+          "pid": 4143095,
+          "at": 62094.027523977
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4143095,
+          "at": 62094.027677647
+        },
+        {
+          "event": "ready",
+          "pid": 4143175,
+          "at": 62094.663133367
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-p36c8vqw/watch']\nINFO:     Uvicorn running on http://127.0.0.1:38335 (Press CTRL+C to quit)\nINFO:     Started reloader process [4143029] using WatchFiles\nINFO:     Started server process [4143095]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4143095]\nINFO:     Started server process [4143175]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4143175]\nINFO:     Stopping reloader process [4143029]\n",
+      "repetition": 2
+    },
+    {
+      "mode": "early_cooperative",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8591147279948927,
+      "file_change_to_health_s": 0.8785707239949261,
+      "shutdown_to_ready_s": 0.7351905619943864,
+      "shutdown_to_read_response_s": 0.10082574499392649,
+      "lifespan_closed_to_ready_s": 0.5336140840008738,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4143310,
+          "at": 62096.109334543
+        },
+        {
+          "event": "scan_started",
+          "pid": 4143310,
+          "at": 62096.467465858
+        },
+        {
+          "event": "work_started",
+          "pid": 4143310,
+          "at": 62096.467982139
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4143310,
+          "at": 62096.611412666
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4143310,
+          "at": 62096.711864848
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4143310,
+          "at": 62096.711923067
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4143310,
+          "at": 62096.712080854
+        },
+        {
+          "event": "result_returned",
+          "pid": 4143310,
+          "at": 62096.712238411,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4143310,
+          "at": 62096.7123657
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4143310,
+          "at": 62096.812884287
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4143310,
+          "at": 62096.812989144
+        },
+        {
+          "event": "ready",
+          "pid": 4143378,
+          "at": 62097.346603228
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-jqwdwvf2/watch']\nINFO:     Uvicorn running on http://127.0.0.1:41161 (Press CTRL+C to quit)\nINFO:     Started reloader process [4143244] using WatchFiles\nINFO:     Started server process [4143310]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4143310]\nINFO:     Started server process [4143378]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4143378]\nINFO:     Stopping reloader process [4143244]\n",
+      "repetition": 2
+    },
+    {
+      "mode": "early_process",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.805591144002392,
+      "file_change_to_health_s": 2.825450488999195,
+      "shutdown_to_ready_s": 2.6888384350022534,
+      "shutdown_to_read_response_s": 0.10115500399842858,
+      "lifespan_closed_to_ready_s": 0.6403294330011704,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4143513,
+          "at": 62098.9120527
+        },
+        {
+          "event": "scan_started",
+          "pid": 4143513,
+          "at": 62099.273668232
+        },
+        {
+          "event": "work_started",
+          "pid": 4143580,
+          "at": 62099.888142114
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4143513,
+          "at": 62100.021624518
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4143513,
+          "at": 62100.122329756
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4143513,
+          "at": 62100.122659226
+        },
+        {
+          "event": "result_returned",
+          "pid": 4143513,
+          "at": 62100.122779522,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4143513,
+          "at": 62100.1229961
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4143513,
+          "at": 62100.223773133
+        },
+        {
+          "event": "work_completed",
+          "pid": 4143580,
+          "at": 62101.888401289
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4143513,
+          "at": 62102.07013352
+        },
+        {
+          "event": "ready",
+          "pid": 4143652,
+          "at": 62102.710462953
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-_s_lzh0_/watch']\nINFO:     Uvicorn running on http://127.0.0.1:45613 (Press CTRL+C to quit)\nINFO:     Started reloader process [4143447] using WatchFiles\nINFO:     Started server process [4143513]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4143513]\nINFO:     Started server process [4143652]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4143652]\nINFO:     Stopping reloader process [4143447]\n",
+      "repetition": 2
+    },
+    {
+      "mode": "baseline_async",
+      "protected_write": false,
+      "response_status": 200,
+      "file_change_to_ready_s": 2.5955279339978006,
+      "file_change_to_health_s": 2.6047232989949407,
+      "shutdown_to_ready_s": 2.4753568719970644,
+      "shutdown_to_read_response_s": 1.8608905239962041,
+      "lifespan_closed_to_ready_s": 0.5705624510010239,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4143786,
+          "at": 62104.125895603
+        },
+        {
+          "event": "scan_started",
+          "pid": 4143786,
+          "at": 62104.486255852
+        },
+        {
+          "event": "work_started",
+          "pid": 4143786,
+          "at": 62104.486332556
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4143786,
+          "at": 62104.626441211
+        },
+        {
+          "event": "work_completed",
+          "pid": 4143786,
+          "at": 62106.486786018
+        },
+        {
+          "event": "scan_completed",
+          "pid": 4143786,
+          "at": 62106.486895634
+        },
+        {
+          "event": "result_returned",
+          "pid": 4143786,
+          "at": 62106.487331735,
+          "status": 200
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4143786,
+          "at": 62106.530933614
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4143786,
+          "at": 62106.531235632
+        },
+        {
+          "event": "ready",
+          "pid": 4144612,
+          "at": 62107.101798083
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-0ep_ao18/watch']\nINFO:     Uvicorn running on http://127.0.0.1:49447 (Press CTRL+C to quit)\nINFO:     Started reloader process [4143720] using WatchFiles\nINFO:     Started server process [4143786]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4143786]\nINFO:     Started server process [4144612]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4144612]\nINFO:     Stopping reloader process [4143720]\n",
+      "repetition": 3
+    },
+    {
+      "mode": "early_async",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8235572379999212,
+      "file_change_to_health_s": 0.8408135639983811,
+      "shutdown_to_ready_s": 0.7215011480002431,
+      "shutdown_to_read_response_s": 0.10096338300354546,
+      "lifespan_closed_to_ready_s": 0.519626879999123,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4144747,
+          "at": 62108.650585597
+        },
+        {
+          "event": "scan_started",
+          "pid": 4144747,
+          "at": 62109.029326118
+        },
+        {
+          "event": "work_started",
+          "pid": 4144747,
+          "at": 62109.029445984
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4144747,
+          "at": 62109.15117061
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4144747,
+          "at": 62109.251801447
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4144747,
+          "at": 62109.252043703
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4144747,
+          "at": 62109.25207399
+        },
+        {
+          "event": "result_returned",
+          "pid": 4144747,
+          "at": 62109.252133993,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4144747,
+          "at": 62109.252281912
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4144747,
+          "at": 62109.35286558
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4144747,
+          "at": 62109.353044878
+        },
+        {
+          "event": "ready",
+          "pid": 4144814,
+          "at": 62109.872671758
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-dmns3kxx/watch']\nINFO:     Uvicorn running on http://127.0.0.1:58831 (Press CTRL+C to quit)\nINFO:     Started reloader process [4144681] using WatchFiles\nINFO:     Started server process [4144747]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4144747]\nINFO:     Started server process [4144814]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4144814]\nINFO:     Stopping reloader process [4144681]\n",
+      "repetition": 3
+    },
+    {
+      "mode": "early_thread",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8718654440017417,
+      "file_change_to_health_s": 0.8856085389998043,
+      "shutdown_to_ready_s": 0.7639335760031827,
+      "shutdown_to_read_response_s": 0.10120517799805384,
+      "lifespan_closed_to_ready_s": 0.5616831299994374,
+      "work_outcome": "completion_unacknowledged_at_exit",
+      "cleanup_acknowledged": false,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4144947,
+          "at": 62111.308575785
+        },
+        {
+          "event": "scan_started",
+          "pid": 4144947,
+          "at": 62111.682876951
+        },
+        {
+          "event": "work_started",
+          "pid": 4144947,
+          "at": 62111.683575896
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4144947,
+          "at": 62111.810599275
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4144947,
+          "at": 62111.911346732
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4144947,
+          "at": 62111.911677685
+        },
+        {
+          "event": "result_returned",
+          "pid": 4144947,
+          "at": 62111.911804453,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4144947,
+          "at": 62111.912040037
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4144947,
+          "at": 62112.01271641
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4144947,
+          "at": 62112.012849721
+        },
+        {
+          "event": "ready",
+          "pid": 4145015,
+          "at": 62112.574532851
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-qqplrvwd/watch']\nINFO:     Uvicorn running on http://127.0.0.1:54847 (Press CTRL+C to quit)\nINFO:     Started reloader process [4144880] using WatchFiles\nINFO:     Started server process [4144947]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4144947]\nINFO:     Started server process [4145015]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145015]\nINFO:     Stopping reloader process [4144880]\n",
+      "repetition": 3
+    },
+    {
+      "mode": "early_thread_joined",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.724399419996189,
+      "file_change_to_health_s": 2.747293496999191,
+      "shutdown_to_ready_s": 2.6074855779952486,
+      "shutdown_to_read_response_s": 1.864737352996599,
+      "lifespan_closed_to_ready_s": 0.6415875499951653,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4145161,
+          "at": 62114.197800707
+        },
+        {
+          "event": "scan_started",
+          "pid": 4145161,
+          "at": 62114.561885326
+        },
+        {
+          "event": "work_started",
+          "pid": 4145161,
+          "at": 62114.56256208
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4145161,
+          "at": 62114.698703298
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4145161,
+          "at": 62114.799242734
+        },
+        {
+          "event": "work_completed",
+          "pid": 4145161,
+          "at": 62116.562832486
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4145161,
+          "at": 62116.563246926
+        },
+        {
+          "event": "result_returned",
+          "pid": 4145161,
+          "at": 62116.563440651,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4145161,
+          "at": 62116.563667869
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4145161,
+          "at": 62116.664402732
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4145161,
+          "at": 62116.664601326
+        },
+        {
+          "event": "ready",
+          "pid": 4145233,
+          "at": 62117.306188876
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-gq2m9ddk/watch']\nINFO:     Uvicorn running on http://127.0.0.1:55377 (Press CTRL+C to quit)\nINFO:     Started reloader process [4145093] using WatchFiles\nINFO:     Started server process [4145161]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145161]\nINFO:     Started server process [4145233]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145233]\nINFO:     Stopping reloader process [4145093]\n",
+      "repetition": 3
+    },
+    {
+      "mode": "early_thread_tracked",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.5632716079999227,
+      "file_change_to_health_s": 2.5692004960001213,
+      "shutdown_to_ready_s": 2.4501208570000017,
+      "shutdown_to_read_response_s": 0.10092602300574072,
+      "lifespan_closed_to_ready_s": 0.5813548119986081,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4145365,
+          "at": 62118.797654861
+        },
+        {
+          "event": "scan_started",
+          "pid": 4145365,
+          "at": 62119.166643158
+        },
+        {
+          "event": "work_started",
+          "pid": 4145365,
+          "at": 62119.167396336
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4145365,
+          "at": 62119.299578734
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4145365,
+          "at": 62119.40012371
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4145365,
+          "at": 62119.40038981
+        },
+        {
+          "event": "result_returned",
+          "pid": 4145365,
+          "at": 62119.400504757,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4145365,
+          "at": 62119.400712378
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4145365,
+          "at": 62119.501255841
+        },
+        {
+          "event": "work_ack_drain_started",
+          "pid": 4145365,
+          "at": 62119.501421943
+        },
+        {
+          "event": "work_completed",
+          "pid": 4145365,
+          "at": 62121.167738908
+        },
+        {
+          "event": "work_ack_drain_finished",
+          "pid": 4145365,
+          "at": 62121.168172274
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4145365,
+          "at": 62121.168344779
+        },
+        {
+          "event": "ready",
+          "pid": 4145436,
+          "at": 62121.749699591
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-mdnu97it/watch']\nINFO:     Uvicorn running on http://127.0.0.1:58675 (Press CTRL+C to quit)\nINFO:     Started reloader process [4145299] using WatchFiles\nINFO:     Started server process [4145365]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145365]\nINFO:     Started server process [4145436]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145436]\nINFO:     Stopping reloader process [4145299]\n",
+      "repetition": 3
+    },
+    {
+      "mode": "early_cooperative",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.9183613190034521,
+      "file_change_to_health_s": 0.9380948079997324,
+      "shutdown_to_ready_s": 0.8083382660042844,
+      "shutdown_to_read_response_s": 0.10083341899735387,
+      "lifespan_closed_to_ready_s": 0.6065799960051663,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4145568,
+          "at": 62123.308527611
+        },
+        {
+          "event": "scan_started",
+          "pid": 4145568,
+          "at": 62123.680328562
+        },
+        {
+          "event": "work_started",
+          "pid": 4145568,
+          "at": 62123.680846056
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4145568,
+          "at": 62123.810562312
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4145568,
+          "at": 62123.911080648
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4145568,
+          "at": 62123.91115069
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4145568,
+          "at": 62123.911323325
+        },
+        {
+          "event": "result_returned",
+          "pid": 4145568,
+          "at": 62123.911395731,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4145568,
+          "at": 62123.911528601
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4145568,
+          "at": 62124.012216516
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4145568,
+          "at": 62124.012320582
+        },
+        {
+          "event": "ready",
+          "pid": 4145637,
+          "at": 62124.618900578
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-ybmkgy_h/watch']\nINFO:     Uvicorn running on http://127.0.0.1:33357 (Press CTRL+C to quit)\nINFO:     Started reloader process [4145502] using WatchFiles\nINFO:     Started server process [4145568]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145568]\nINFO:     Started server process [4145637]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145637]\nINFO:     Stopping reloader process [4145502]\n",
+      "repetition": 3
+    },
+    {
+      "mode": "early_process",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.8722427719985717,
+      "file_change_to_health_s": 2.8927251899949624,
+      "shutdown_to_ready_s": 2.7881807169978856,
+      "shutdown_to_read_response_s": 0.10081621599965729,
+      "lifespan_closed_to_ready_s": 0.6508954279997852,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4145771,
+          "at": 62126.386781437
+        },
+        {
+          "event": "scan_started",
+          "pid": 4145771,
+          "at": 62126.755595056
+        },
+        {
+          "event": "work_started",
+          "pid": 4145840,
+          "at": 62127.287636199
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4145771,
+          "at": 62127.390830301
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4145771,
+          "at": 62127.491319532
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4145771,
+          "at": 62127.491559594
+        },
+        {
+          "event": "result_returned",
+          "pid": 4145771,
+          "at": 62127.491646517,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4145771,
+          "at": 62127.491795868
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4145771,
+          "at": 62127.591415162
+        },
+        {
+          "event": "work_completed",
+          "pid": 4145840,
+          "at": 62129.287827056
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4145771,
+          "at": 62129.52811559
+        },
+        {
+          "event": "ready",
+          "pid": 4145909,
+          "at": 62130.179011018
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-gc6aoehf/watch']\nINFO:     Uvicorn running on http://127.0.0.1:60853 (Press CTRL+C to quit)\nINFO:     Started reloader process [4145703] using WatchFiles\nINFO:     Started server process [4145771]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145771]\nINFO:     Started server process [4145909]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4145909]\nINFO:     Stopping reloader process [4145703]\n",
+      "repetition": 3
+    },
+    {
+      "mode": "baseline_async",
+      "protected_write": false,
+      "response_status": 200,
+      "file_change_to_ready_s": 2.584409779003181,
+      "file_change_to_health_s": 2.5881170159991598,
+      "shutdown_to_ready_s": 2.466839972003072,
+      "shutdown_to_read_response_s": 1.8635887810014538,
+      "lifespan_closed_to_ready_s": 0.5616493960042135,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4146053,
+          "at": 62131.722672415
+        },
+        {
+          "event": "scan_started",
+          "pid": 4146053,
+          "at": 62132.085920439
+        },
+        {
+          "event": "work_started",
+          "pid": 4146053,
+          "at": 62132.086007894
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4146053,
+          "at": 62132.223744805
+        },
+        {
+          "event": "work_completed",
+          "pid": 4146053,
+          "at": 62134.086451917
+        },
+        {
+          "event": "scan_completed",
+          "pid": 4146053,
+          "at": 62134.086639741
+        },
+        {
+          "event": "result_returned",
+          "pid": 4146053,
+          "at": 62134.087333586,
+          "status": 200
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4146053,
+          "at": 62134.128808552
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4146053,
+          "at": 62134.128935381
+        },
+        {
+          "event": "ready",
+          "pid": 4146132,
+          "at": 62134.690584777
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-8nkx0_rk/watch']\nINFO:     Uvicorn running on http://127.0.0.1:33767 (Press CTRL+C to quit)\nINFO:     Started reloader process [4145976] using WatchFiles\nINFO:     Started server process [4146053]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146053]\nINFO:     Started server process [4146132]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146132]\nINFO:     Stopping reloader process [4145976]\n",
+      "repetition": 4
+    },
+    {
+      "mode": "early_async",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8645660170004703,
+      "file_change_to_health_s": 0.8782812989957165,
+      "shutdown_to_ready_s": 0.7623656750001828,
+      "shutdown_to_read_response_s": 0.10089147799590137,
+      "lifespan_closed_to_ready_s": 0.5604274069992243,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4146267,
+          "at": 62136.292072614
+        },
+        {
+          "event": "scan_started",
+          "pid": 4146267,
+          "at": 62136.671419887
+        },
+        {
+          "event": "work_started",
+          "pid": 4146267,
+          "at": 62136.671543309
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4146267,
+          "at": 62136.793532233
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4146267,
+          "at": 62136.894015442
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4146267,
+          "at": 62136.894275923
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4146267,
+          "at": 62136.89433298
+        },
+        {
+          "event": "result_returned",
+          "pid": 4146267,
+          "at": 62136.894423711,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4146267,
+          "at": 62136.894626453
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4146267,
+          "at": 62136.995316391
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4146267,
+          "at": 62136.995470501
+        },
+        {
+          "event": "ready",
+          "pid": 4146364,
+          "at": 62137.555897908
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-ufqvbxxb/watch']\nINFO:     Uvicorn running on http://127.0.0.1:33981 (Press CTRL+C to quit)\nINFO:     Started reloader process [4146201] using WatchFiles\nINFO:     Started server process [4146267]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146267]\nINFO:     Started server process [4146364]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146364]\nINFO:     Stopping reloader process [4146201]\n",
+      "repetition": 4
+    },
+    {
+      "mode": "early_thread",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8894069470043178,
+      "file_change_to_health_s": 0.8977291390037863,
+      "shutdown_to_ready_s": 0.7641370390047086,
+      "shutdown_to_read_response_s": 0.10076721400400857,
+      "lifespan_closed_to_ready_s": 0.5624118510022527,
+      "work_outcome": "completion_unacknowledged_at_exit",
+      "cleanup_acknowledged": false,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4146498,
+          "at": 62139.107094035
+        },
+        {
+          "event": "scan_started",
+          "pid": 4146498,
+          "at": 62139.465162712
+        },
+        {
+          "event": "work_started",
+          "pid": 4146498,
+          "at": 62139.465880853
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4146498,
+          "at": 62139.610078073
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4146498,
+          "at": 62139.710582072
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4146498,
+          "at": 62139.710784202
+        },
+        {
+          "event": "result_returned",
+          "pid": 4146498,
+          "at": 62139.710845287,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4146498,
+          "at": 62139.710970303
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4146498,
+          "at": 62139.811610568
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4146498,
+          "at": 62139.811803261
+        },
+        {
+          "event": "ready",
+          "pid": 4146566,
+          "at": 62140.374215112
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-y4p757m_/watch']\nINFO:     Uvicorn running on http://127.0.0.1:51779 (Press CTRL+C to quit)\nINFO:     Started reloader process [4146430] using WatchFiles\nINFO:     Started server process [4146498]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146498]\nINFO:     Started server process [4146566]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146566]\nINFO:     Stopping reloader process [4146430]\n",
+      "repetition": 4
+    },
+    {
+      "mode": "early_thread_joined",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.6486300520045916,
+      "file_change_to_health_s": 2.663843093003379,
+      "shutdown_to_ready_s": 2.5338245470047696,
+      "shutdown_to_read_response_s": 1.8665781970048556,
+      "lifespan_closed_to_ready_s": 0.5662683590053348,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4146698,
+          "at": 62141.915851398
+        },
+        {
+          "event": "scan_started",
+          "pid": 4146698,
+          "at": 62142.282396357
+        },
+        {
+          "event": "work_started",
+          "pid": 4146698,
+          "at": 62142.282900495
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4146698,
+          "at": 62142.41715856
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4146698,
+          "at": 62142.517644785
+        },
+        {
+          "event": "work_completed",
+          "pid": 4146698,
+          "at": 62144.283154311
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4146698,
+          "at": 62144.283611702
+        },
+        {
+          "event": "result_returned",
+          "pid": 4146698,
+          "at": 62144.283736757,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4146698,
+          "at": 62144.283896628
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4146698,
+          "at": 62144.384575125
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4146698,
+          "at": 62144.384714748
+        },
+        {
+          "event": "ready",
+          "pid": 4146776,
+          "at": 62144.950983107
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-bifghfgh/watch']\nINFO:     Uvicorn running on http://127.0.0.1:55983 (Press CTRL+C to quit)\nINFO:     Started reloader process [4146632] using WatchFiles\nINFO:     Started server process [4146698]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146698]\nINFO:     Started server process [4146776]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146776]\nINFO:     Stopping reloader process [4146632]\n",
+      "repetition": 4
+    },
+    {
+      "mode": "early_thread_tracked",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.5120018669986166,
+      "file_change_to_health_s": 2.5300713739998173,
+      "shutdown_to_ready_s": 2.402788706996944,
+      "shutdown_to_read_response_s": 0.10092508099478437,
+      "lifespan_closed_to_ready_s": 0.5307006599978195,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4146910,
+          "at": 62146.4335108
+        },
+        {
+          "event": "scan_started",
+          "pid": 4146910,
+          "at": 62146.805126693
+        },
+        {
+          "event": "work_started",
+          "pid": 4146910,
+          "at": 62146.805660908
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4146910,
+          "at": 62146.934338901
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4146910,
+          "at": 62147.034936295
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4146910,
+          "at": 62147.035187969
+        },
+        {
+          "event": "result_returned",
+          "pid": 4146910,
+          "at": 62147.035263982,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4146910,
+          "at": 62147.035425997
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4146910,
+          "at": 62147.136018863
+        },
+        {
+          "event": "work_ack_drain_started",
+          "pid": 4146910,
+          "at": 62147.136141444
+        },
+        {
+          "event": "work_completed",
+          "pid": 4146910,
+          "at": 62148.805950792
+        },
+        {
+          "event": "work_ack_drain_finished",
+          "pid": 4146910,
+          "at": 62148.80637509
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4146910,
+          "at": 62148.806426948
+        },
+        {
+          "event": "ready",
+          "pid": 4146979,
+          "at": 62149.337127608
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-juhaptas/watch']\nINFO:     Uvicorn running on http://127.0.0.1:52559 (Press CTRL+C to quit)\nINFO:     Started reloader process [4146842] using WatchFiles\nINFO:     Started server process [4146910]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146910]\nINFO:     Started server process [4146979]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4146979]\nINFO:     Stopping reloader process [4146842]\n",
+      "repetition": 4
+    },
+    {
+      "mode": "early_cooperative",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.9499753669952042,
+      "file_change_to_health_s": 0.9608143660007045,
+      "shutdown_to_ready_s": 0.8422489959993982,
+      "shutdown_to_read_response_s": 0.10101125400251476,
+      "lifespan_closed_to_ready_s": 0.6408399029969587,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4147119,
+          "at": 62150.806122483
+        },
+        {
+          "event": "scan_started",
+          "pid": 4147119,
+          "at": 62151.180310576
+        },
+        {
+          "event": "work_started",
+          "pid": 4147119,
+          "at": 62151.180787273
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4147119,
+          "at": 62151.308168004
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4147119,
+          "at": 62151.408741043
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4147119,
+          "at": 62151.408833898
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4147119,
+          "at": 62151.409081183
+        },
+        {
+          "event": "result_returned",
+          "pid": 4147119,
+          "at": 62151.409179258,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4147119,
+          "at": 62151.409369847
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4147119,
+          "at": 62151.509438797
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4147119,
+          "at": 62151.509577097
+        },
+        {
+          "event": "ready",
+          "pid": 4147189,
+          "at": 62152.150417
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-6slmqvla/watch']\nINFO:     Uvicorn running on http://127.0.0.1:35099 (Press CTRL+C to quit)\nINFO:     Started reloader process [4147045] using WatchFiles\nINFO:     Started server process [4147119]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4147119]\nINFO:     Started server process [4147189]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4147189]\nINFO:     Stopping reloader process [4147045]\n",
+      "repetition": 4
+    },
+    {
+      "mode": "early_process",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.794111930001236,
+      "file_change_to_health_s": 2.808292417001212,
+      "shutdown_to_ready_s": 2.6745180639991304,
+      "shutdown_to_read_response_s": 0.10107094600243727,
+      "lifespan_closed_to_ready_s": 0.5543356019989005,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4147324,
+          "at": 62153.711320547
+        },
+        {
+          "event": "scan_started",
+          "pid": 4147324,
+          "at": 62154.085534609
+        },
+        {
+          "event": "work_started",
+          "pid": 4147395,
+          "at": 62154.590680415
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4147324,
+          "at": 62154.71641591
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4147324,
+          "at": 62154.81699487
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4147324,
+          "at": 62154.817365337
+        },
+        {
+          "event": "result_returned",
+          "pid": 4147324,
+          "at": 62154.817486856,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4147324,
+          "at": 62154.817636007
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4147324,
+          "at": 62154.918208665
+        },
+        {
+          "event": "work_completed",
+          "pid": 4147395,
+          "at": 62156.590872895
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4147324,
+          "at": 62156.836598372
+        },
+        {
+          "event": "ready",
+          "pid": 4147464,
+          "at": 62157.390933974
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-o0q8ci_e/watch']\nINFO:     Uvicorn running on http://127.0.0.1:46069 (Press CTRL+C to quit)\nINFO:     Started reloader process [4147256] using WatchFiles\nINFO:     Started server process [4147324]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4147324]\nINFO:     Started server process [4147464]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4147464]\nINFO:     Stopping reloader process [4147256]\n",
+      "repetition": 4
+    },
+    {
+      "mode": "baseline_async",
+      "protected_write": false,
+      "response_status": 200,
+      "file_change_to_ready_s": 2.6184194360030233,
+      "file_change_to_health_s": 2.624196969001787,
+      "shutdown_to_ready_s": 2.4997714499986614,
+      "shutdown_to_read_response_s": 1.8624856549940887,
+      "lifespan_closed_to_ready_s": 0.5956208909992711,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4147600,
+          "at": 62158.926862507
+        },
+        {
+          "event": "scan_started",
+          "pid": 4147600,
+          "at": 62159.289195119
+        },
+        {
+          "event": "work_started",
+          "pid": 4147600,
+          "at": 62159.289369958
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4147600,
+          "at": 62159.427616799
+        },
+        {
+          "event": "work_completed",
+          "pid": 4147600,
+          "at": 62161.289558049
+        },
+        {
+          "event": "scan_completed",
+          "pid": 4147600,
+          "at": 62161.289690599
+        },
+        {
+          "event": "result_returned",
+          "pid": 4147600,
+          "at": 62161.290102454,
+          "status": 200
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4147600,
+          "at": 62161.331619159
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4147600,
+          "at": 62161.331767358
+        },
+        {
+          "event": "ready",
+          "pid": 4147668,
+          "at": 62161.927388249
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-qlib5ota/watch']\nINFO:     Uvicorn running on http://127.0.0.1:33213 (Press CTRL+C to quit)\nINFO:     Started reloader process [4147532] using WatchFiles\nINFO:     Started server process [4147600]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4147600]\nINFO:     Started server process [4147668]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4147668]\nINFO:     Stopping reloader process [4147532]\n",
+      "repetition": 5
+    },
+    {
+      "mode": "early_async",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.891552765002416,
+      "file_change_to_health_s": 0.9000118749972899,
+      "shutdown_to_ready_s": 0.7779054210041068,
+      "shutdown_to_read_response_s": 0.10106879199884133,
+      "lifespan_closed_to_ready_s": 0.5757418280045385,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4147801,
+          "at": 62163.432925726
+        },
+        {
+          "event": "scan_started",
+          "pid": 4147801,
+          "at": 62163.799838096
+        },
+        {
+          "event": "work_started",
+          "pid": 4147801,
+          "at": 62163.799990072
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4147801,
+          "at": 62163.933387697
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4147801,
+          "at": 62164.034064371
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4147801,
+          "at": 62164.034313149
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4147801,
+          "at": 62164.034367642
+        },
+        {
+          "event": "result_returned",
+          "pid": 4147801,
+          "at": 62164.034456489,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4147801,
+          "at": 62164.034662256
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4147801,
+          "at": 62164.135367805
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4147801,
+          "at": 62164.13555129
+        },
+        {
+          "event": "ready",
+          "pid": 4147869,
+          "at": 62164.711293118
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-4puzuij0/watch']\nINFO:     Uvicorn running on http://127.0.0.1:38175 (Press CTRL+C to quit)\nINFO:     Started reloader process [4147734] using WatchFiles\nINFO:     Started server process [4147801]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4147801]\nINFO:     Started server process [4147869]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4147869]\nINFO:     Stopping reloader process [4147734]\n",
+      "repetition": 5
+    },
+    {
+      "mode": "early_thread",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.8209604910007329,
+      "file_change_to_health_s": 0.8351462880018516,
+      "shutdown_to_ready_s": 0.7116571020014817,
+      "shutdown_to_read_response_s": 0.10095169100532075,
+      "lifespan_closed_to_ready_s": 0.5098457019994385,
+      "work_outcome": "completion_unacknowledged_at_exit",
+      "cleanup_acknowledged": false,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4148003,
+          "at": 62166.241489744
+        },
+        {
+          "event": "scan_started",
+          "pid": 4148003,
+          "at": 62166.614171062
+        },
+        {
+          "event": "work_started",
+          "pid": 4148003,
+          "at": 62166.614787983
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4148003,
+          "at": 62166.743419989
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4148003,
+          "at": 62166.84405275
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4148003,
+          "at": 62166.844302089
+        },
+        {
+          "event": "result_returned",
+          "pid": 4148003,
+          "at": 62166.84437168,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4148003,
+          "at": 62166.84451479
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4148003,
+          "at": 62166.945103729
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4148003,
+          "at": 62166.945231389
+        },
+        {
+          "event": "ready",
+          "pid": 4148071,
+          "at": 62167.455077091
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-hkwckmte/watch']\nINFO:     Uvicorn running on http://127.0.0.1:60535 (Press CTRL+C to quit)\nINFO:     Started reloader process [4147935] using WatchFiles\nINFO:     Started server process [4148003]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4148003]\nINFO:     Started server process [4148071]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4148071]\nINFO:     Stopping reloader process [4147935]\n",
+      "repetition": 5
+    },
+    {
+      "mode": "early_thread_joined",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.608391173002019,
+      "file_change_to_health_s": 2.6282672689994797,
+      "shutdown_to_ready_s": 2.502244043003884,
+      "shutdown_to_read_response_s": 1.875865355003043,
+      "lifespan_closed_to_ready_s": 0.5249168860027567,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4148204,
+          "at": 62169.045400896
+        },
+        {
+          "event": "scan_started",
+          "pid": 4148204,
+          "at": 62169.422089626
+        },
+        {
+          "event": "work_started",
+          "pid": 4148204,
+          "at": 62169.422850538
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4148204,
+          "at": 62169.548096121
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4148204,
+          "at": 62169.648745643
+        },
+        {
+          "event": "work_completed",
+          "pid": 4148204,
+          "at": 62171.423172331
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4148204,
+          "at": 62171.423711446
+        },
+        {
+          "event": "result_returned",
+          "pid": 4148204,
+          "at": 62171.423961476,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4148204,
+          "at": 62171.424299873
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4148204,
+          "at": 62171.525219845
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4148204,
+          "at": 62171.525423278
+        },
+        {
+          "event": "ready",
+          "pid": 4148283,
+          "at": 62172.050340164
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-kjigts6v/watch']\nINFO:     Uvicorn running on http://127.0.0.1:43269 (Press CTRL+C to quit)\nINFO:     Started reloader process [4148138] using WatchFiles\nINFO:     Started server process [4148204]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4148204]\nINFO:     Started server process [4148283]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4148283]\nINFO:     Stopping reloader process [4148138]\n",
+      "repetition": 5
+    },
+    {
+      "mode": "early_thread_tracked",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.5381727409985615,
+      "file_change_to_health_s": 2.54622201899474,
+      "shutdown_to_ready_s": 2.433297265000874,
+      "shutdown_to_read_response_s": 0.10087678999843774,
+      "lifespan_closed_to_ready_s": 0.5570427970014862,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4148421,
+          "at": 62173.588567744
+        },
+        {
+          "event": "scan_started",
+          "pid": 4148421,
+          "at": 62173.965130256
+        },
+        {
+          "event": "work_started",
+          "pid": 4148421,
+          "at": 62173.965701852
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4148421,
+          "at": 62174.090060716
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4148421,
+          "at": 62174.190674331
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4148421,
+          "at": 62174.19087558
+        },
+        {
+          "event": "result_returned",
+          "pid": 4148421,
+          "at": 62174.190937506,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4148421,
+          "at": 62174.191074754
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4148421,
+          "at": 62174.291734847
+        },
+        {
+          "event": "work_ack_drain_started",
+          "pid": 4148421,
+          "at": 62174.291949301
+        },
+        {
+          "event": "work_completed",
+          "pid": 4148421,
+          "at": 62175.965985123
+        },
+        {
+          "event": "work_ack_drain_finished",
+          "pid": 4148421,
+          "at": 62175.966253097
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4148421,
+          "at": 62175.966315184
+        },
+        {
+          "event": "ready",
+          "pid": 4148490,
+          "at": 62176.523357981
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-vdjbdd8y/watch']\nINFO:     Uvicorn running on http://127.0.0.1:34143 (Press CTRL+C to quit)\nINFO:     Started reloader process [4148349] using WatchFiles\nINFO:     Started server process [4148421]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4148421]\nINFO:     Started server process [4148490]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4148490]\nINFO:     Stopping reloader process [4148349]\n",
+      "repetition": 5
+    },
+    {
+      "mode": "early_cooperative",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 0.9242263880005339,
+      "file_change_to_health_s": 0.9399989119992824,
+      "shutdown_to_ready_s": 0.8187249330003397,
+      "shutdown_to_read_response_s": 0.10110028099734336,
+      "lifespan_closed_to_ready_s": 0.6167251389997546,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4148622,
+          "at": 62178.235606028
+        },
+        {
+          "event": "scan_started",
+          "pid": 4148622,
+          "at": 62178.612336677
+        },
+        {
+          "event": "work_started",
+          "pid": 4148622,
+          "at": 62178.612777236
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4148622,
+          "at": 62178.737742291
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4148622,
+          "at": 62178.838235199
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4148622,
+          "at": 62178.838299991
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4148622,
+          "at": 62178.838532729
+        },
+        {
+          "event": "result_returned",
+          "pid": 4148622,
+          "at": 62178.838842572,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4148622,
+          "at": 62178.838987474
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4148622,
+          "at": 62178.939579359
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4148622,
+          "at": 62178.939742085
+        },
+        {
+          "event": "ready",
+          "pid": 4149469,
+          "at": 62179.556467224
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-pn8h_w5d/watch']\nINFO:     Uvicorn running on http://127.0.0.1:49805 (Press CTRL+C to quit)\nINFO:     Started reloader process [4148556] using WatchFiles\nINFO:     Started server process [4148622]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4148622]\nINFO:     Started server process [4149469]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4149469]\nINFO:     Stopping reloader process [4148556]\n",
+      "repetition": 5
+    },
+    {
+      "mode": "early_process",
+      "protected_write": false,
+      "response_status": 503,
+      "file_change_to_ready_s": 2.757228425005451,
+      "file_change_to_health_s": 2.7756668260044535,
+      "shutdown_to_ready_s": 2.6349446560052456,
+      "shutdown_to_read_response_s": 0.10104028800560627,
+      "lifespan_closed_to_ready_s": 0.5468054700031644,
+      "work_outcome": "work_completed",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4149601,
+          "at": 62181.187646149
+        },
+        {
+          "event": "scan_started",
+          "pid": 4149601,
+          "at": 62181.559373692
+        },
+        {
+          "event": "work_started",
+          "pid": 4149668,
+          "at": 62182.152467006
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4149601,
+          "at": 62182.292495981
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4149601,
+          "at": 62182.393133451
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4149601,
+          "at": 62182.393441461
+        },
+        {
+          "event": "result_returned",
+          "pid": 4149601,
+          "at": 62182.393536269,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4149601,
+          "at": 62182.393725996
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4149601,
+          "at": 62182.49351012
+        },
+        {
+          "event": "work_completed",
+          "pid": 4149668,
+          "at": 62184.15269854
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4149601,
+          "at": 62184.380635167
+        },
+        {
+          "event": "ready",
+          "pid": 4149740,
+          "at": 62184.927440637
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-c436k0qq/watch']\nINFO:     Uvicorn running on http://127.0.0.1:58033 (Press CTRL+C to quit)\nINFO:     Started reloader process [4149535] using WatchFiles\nINFO:     Started server process [4149601]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4149601]\nINFO:     Started server process [4149740]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4149740]\nINFO:     Stopping reloader process [4149535]\n",
+      "repetition": 5
+    },
+    {
+      "mode": "early_cooperative",
+      "protected_write": true,
+      "response_status": 503,
+      "file_change_to_ready_s": 1.3641816849994939,
+      "file_change_to_health_s": 1.3727565930021228,
+      "shutdown_to_ready_s": 1.2823593849971076,
+      "shutdown_to_read_response_s": 0.10104808199685067,
+      "lifespan_closed_to_ready_s": 0.5791486099988106,
+      "work_outcome": "work_cancelled",
+      "cleanup_acknowledged": true,
+      "events": [
+        {
+          "event": "ready",
+          "pid": 4149876,
+          "at": 62186.502829495
+        },
+        {
+          "event": "scan_started",
+          "pid": 4149876,
+          "at": 62186.881292033
+        },
+        {
+          "event": "work_started",
+          "pid": 4149876,
+          "at": 62186.881955001
+        },
+        {
+          "event": "write_started",
+          "pid": 4149876,
+          "at": 62186.903507934
+        },
+        {
+          "event": "shutdown_entered",
+          "pid": 4149876,
+          "at": 62187.003949716
+        },
+        {
+          "event": "early_cancel_started",
+          "pid": 4149876,
+          "at": 62187.104529627
+        },
+        {
+          "event": "work_cancelled",
+          "pid": 4149876,
+          "at": 62187.1046054
+        },
+        {
+          "event": "scan_cancelled",
+          "pid": 4149876,
+          "at": 62187.10485532
+        },
+        {
+          "event": "result_returned",
+          "pid": 4149876,
+          "at": 62187.104997798,
+          "status": 503
+        },
+        {
+          "event": "early_cancel_finished",
+          "pid": 4149876,
+          "at": 62187.10531241
+        },
+        {
+          "event": "write_committed",
+          "pid": 4149876,
+          "at": 62187.704127733
+        },
+        {
+          "event": "lifespan_shutdown",
+          "pid": 4149876,
+          "at": 62187.707017171
+        },
+        {
+          "event": "lifespan_closed",
+          "pid": 4149876,
+          "at": 62187.707160491
+        },
+        {
+          "event": "ready",
+          "pid": 4149946,
+          "at": 62188.286309101
+        }
+      ],
+      "supervisor_exit_code": 0,
+      "server_log": "INFO:     Will watch for changes in these directories: ['/tmp/hoga-reload-probe-naphzchv/watch']\nINFO:     Uvicorn running on http://127.0.0.1:59817 (Press CTRL+C to quit)\nINFO:     Started reloader process [4149808] using WatchFiles\nINFO:     Started server process [4149876]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nWARNING:  WatchFiles detected changes in 'watch/trigger.py'. Reloading...\nINFO:     Shutting down\nINFO:     Waiting for connections to close. (CTRL+C to force quit)\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4149876]\nINFO:     Started server process [4149946]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Shutting down\nINFO:     Waiting for application shutdown.\nINFO:     Application shutdown complete.\nINFO:     Finished server process [4149946]\nINFO:     Stopping reloader process [4149808]\n"
+    }
+  ],
+  "probe_sources": {
+    "run_probe.py": "c34bfa6fd2de45f665c956843a4ce0dfcd1a0d6f665facd9760eebab8d6210d9",
+    "probe_app.py": "954793bf7bcb988096541a1340cc9926b40b7a74cfc9d648fbab9af8cf467339"
+  }
+}

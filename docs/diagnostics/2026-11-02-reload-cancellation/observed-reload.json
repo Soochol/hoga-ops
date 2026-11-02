@@ -1,0 +1,32 @@
+{
+  "source": "/home/dev/.local/share/hoga-ops/logs/hoga.log",
+  "date": "2026-11-02",
+  "timezone": "Asia/Seoul",
+  "samples": 1,
+  "scope": "One observed production reload; no restart was triggered for this design investigation.",
+  "observed_seconds": {
+    "connections_drain": 40.666,
+    "lifespan_shutdown": 13.159,
+    "spawn_and_startup": 3.7,
+    "file_change_to_startup": 58.902
+  },
+  "limitations": [
+    "13.159s lifespan shutdown has no per-resource spans; cause is not attributed.",
+    "A single production sample is not a general restart bound."
+  ],
+  "lines": [
+    "2026-11-02 12:47:07,557 INFO uvicorn.error Shutting down",
+    "2026-11-02 12:47:08,002 INFO uvicorn.error Waiting for connections to close. (CTRL+C to force quit)",
+    "2026-11-02 12:47:11,179 INFO hoga.api.screener_timing screener.monitor.phase monitor_id=[redacted] scan_id=[redacted] phase=calendar elapsed_ms=30918.7 outcome=completed",
+    "2026-11-02 12:47:20,611 INFO hoga.api.screener_timing screener.monitor.phase monitor_id=[redacted] scan_id=[redacted] phase=minute elapsed_ms=9431.4 outcome=completed",
+    "2026-11-02 12:47:48,618 INFO hoga.api.screener_timing screener.monitor.phase monitor_id=[redacted] scan_id=[redacted] phase=daily_contract elapsed_ms=27986.3 outcome=completed",
+    "2026-11-02 12:47:48,621 INFO hoga.api.screener_timing screener.monitor.phase monitor_id=[redacted] scan_id=[redacted] phase=total elapsed_ms=93959.1 outcome=completed",
+    "2026-11-02 12:47:48,622 WARNING hoga.api.request_timing hoga_perf http_request pid=3950261 port=8000 status=200 method=GET path=/api/screener/monitors/[redacted]/result ttfb_ms=93960.5 duration_ms=93960.7 body_bytes=45593 slow=1",
+    "2026-11-02 12:47:48,668 INFO uvicorn.error Waiting for application shutdown.",
+    "2026-11-02 12:48:01,827 INFO uvicorn.error Application shutdown complete.",
+    "2026-11-02 12:48:01,827 INFO uvicorn.error Finished server process [3950261]",
+    "2026-11-02 12:48:02,951 INFO uvicorn.error Started server process [3985904]",
+    "2026-11-02 12:48:02,951 INFO uvicorn.error Waiting for application startup.",
+    "2026-11-02 12:48:05,528 INFO uvicorn.error Application startup complete."
+  ]
+}

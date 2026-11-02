@@ -1,0 +1,67 @@
+{
+  "recorded_at_kst": "2026-11-02T13:48:33.566280+09:00",
+  "head": "8896f08e674a14caf66cb2082885d9a6256e6863",
+  "base": "8896f08e674a14caf66cb2082885d9a6256e6863",
+  "measured_head": "e276f0586c804055c4de4523f458d0aec7f6e816",
+  "reuse": "Fast-forward to 8896f08e6 changes frontend files only. git diff e276f0586..HEAD -- hoga tests pyproject.toml uv.lock .python-version ruff.toml is empty. Repeated reload measurements and 60 passing substrate tests remain valid for identical backend inputs.",
+  "environment": {
+    "python": "3.14.7",
+    "pytest": "9.0.3",
+    "ruff": "0.15.13",
+    "uvicorn": "0.47.0",
+    "fastapi": "0.136.1",
+    "httpx": "0.28.1"
+  },
+  "input_fingerprint": {
+    "paths": [
+      "hoga",
+      "tests",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version",
+      "ruff.toml"
+    ],
+    "sha256": "f4e742b37ae7b237f9e6749b9cdd8c8728cc58c6667918801a72357fdb33a60d",
+    "algorithm": "SHA256(sorted git tracked path + NUL + binary SHA256(file bytes) + LF)"
+  },
+  "probe_fingerprints": {
+    "run_probe.py": "c34bfa6fd2de45f665c956843a4ce0dfcd1a0d6f665facd9760eebab8d6210d9",
+    "probe_app.py": "954793bf7bcb988096541a1340cc9926b40b7a74cfc9d648fbab9af8cf467339"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener_continuous.py tests/api/test_screener_history_shutdown.py tests/unit/api/test_request_coalescer.py tests/unit/api/test_compute_pools.py tests/integration/test_compute_shutdown.py -m 'not wallclock'",
+      "result": "60 passed"
+    },
+    {
+      "command": "uv run --extra dev python docs/diagnostics/2026-11-02-reload-cancellation/run_probe.py --repeats 5 --output docs/diagnostics/2026-11-02-reload-cancellation/results.json",
+      "result": "36 reload observations; 31 with actual completion acknowledgement, 5 intentional untracked-thread negative controls without completion acknowledgement; expected HTTP statuses and process cleanup verified"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "product_diff": "No changes to hoga, desktop, .vscode, README.md, pyproject.toml, or uv.lock in this worktree; test fixtures and design only.",
+  "limits": [
+    "synthetic mechanism experiment, not production speedup",
+    "no attribution for observed 13.2s production lifespan shutdown",
+    "selective owner retirement, real root/router assembly, cancellation provenance, order/capture mixed work, and official launcher migration are future implementation gates"
+  ],
+  "review": {
+    "models": [
+      "gpt-6.1-sol",
+      "gpt-6-astra"
+    ],
+    "decision": "server adapter base plus synchronous begin, per-flight retirement event, actual execution ACK tracking",
+    "required_corrections_incorporated": [
+      "router finalizer waits before observer/volume release, in addition to root dependency guard",
+      "terminal execution failures are collected into a report while all ACK drains and protected finalizers continue",
+      "state lookup is inside ordinary-drain fallback"
+    ]
+  }
+}
