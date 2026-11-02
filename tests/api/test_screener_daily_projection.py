@@ -1,5 +1,3 @@
-"""Query projections preserve full confirmation trust and transitive dependencies."""
-
 import datetime as dt
 import json
 import os

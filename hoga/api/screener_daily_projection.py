@@ -1,5 +1,3 @@
-"""Attested daily query facts without retaining original provider samples."""
-
 from __future__ import annotations
 
 import datetime as dt
