@@ -127,7 +127,10 @@ def _reject_if_not_today(tick: WsTick, *, now_ms: int) -> WsTick | None:
 _BAD_FIELD_SEEN: set[tuple[str | None, str]] = set()
 
 
-def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | None:
+def parse_real_row(
+    row: dict[str, Any], *, date: str, now_ms: int,
+    is_vi_active: Callable[[str, int], bool] | None = None,
+) -> WsTick | None:
     """REAL 메시지의 data[] 원소 1개 → WsTick. 미지원 type·불량 프레임은 None.
 
     row = {"type": "0D", "item": "005930_NX", "values": {fid: str, ...}}
@@ -148,7 +151,11 @@ def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | N
         date_parser = _DATE_STAMPED_PARSERS.get(typ)
         if date_parser is not None:
             tick = date_parser(code, values, date=date, venue=venue)
-            return _reject_if_not_today(tick, now_ms=now_ms) if tick is not None else None
+            tick = _reject_if_not_today(tick, now_ms=now_ms) if tick is not None else None
+            if (tick is not None and typ == K.TYPE_ORDERBOOK
+                    and is_vi_active is not None and is_vi_active(item, tick.t_ms)):
+                _add_expected_fill(tick.payload, values)
+            return tick
         now_parser = _NOW_STAMPED_PARSERS.get(typ)
         if now_parser is not None:
             return now_parser(code, values, now_ms=now_ms, venue=venue)
@@ -182,7 +189,10 @@ def parse_real_row(row: dict[str, Any], *, date: str, now_ms: int) -> WsTick | N
     return None
 
 
-def parse_real_message(msg: dict[str, Any], *, date: str, now_ms: int) -> list[WsTick]:
+def parse_real_message(
+    msg: dict[str, Any], *, date: str, now_ms: int,
+    is_vi_active: Callable[[str, int], bool] | None = None,
+) -> list[WsTick]:
     """REAL 메시지 전체 → WsTick 목록. data[] 각 원소를 parse_real_row로.
 
     ws_client가 trnm=="REAL"만 넘긴다(LOGIN/PING/REG ACK는 별도 처리). data 부재·
@@ -203,7 +213,7 @@ def parse_real_message(msg: dict[str, Any], *, date: str, now_ms: int) -> list[W
     ticks: list[WsTick] = []
     for row in data:
         if isinstance(row, dict):
-            tick = parse_real_row(row, date=date, now_ms=now_ms)
+            tick = parse_real_row(row, date=date, now_ms=now_ms, is_vi_active=is_vi_active)
             if tick is not None:
                 ticks.append(tick)
     return ticks
@@ -227,35 +237,21 @@ def _parse_orderbook(
         "total_ask_qty": _qty(values, K.OB_TOTAL_ASK_QTY),
         "total_bid_qty": _qty(values, K.OB_TOTAL_BID_QTY),
     }
-    # 예상체결가/량 — **venue 별 시각 게이트(is_auction_window) AND 값>0** 일 때만
-    # 싣는다. 이 필드는 parquet 스키마에 없어(`tables.snapshots.PARQUET_SCHEMA`) 저장이
-    # 아니라 **표시 전용**이고, 소비자는 프론트 `expectedSignal` 하나다.
-    #
-    # 게이트의 venue 축이 사라졌다 — `== "KRX"`(#1180 이전) → `!= "NXT"`(#1181) →
-    # **없음**. 대신 `is_auction_window` 가 venue 마다 다른 창을 갖는다. 각 시장의
-    # 단일가 시각을 알아내는 것이 애초의 막힌 지점이었고, 그게 풀리자 venue 축이
-    # 시계 축으로 흡수됐다(창 표와 근거는 `session_gate` 에 있다):
-    #
-    # - **KRX**: 예상체결 공개 08:50–09:00 · 15:20–15:30 (장전 접수는 08:30부터).
-    # - **NXT**: 15:30–15:40 만. 이전엔 통째로 막혀 있었다 — 그래서 NXT 를 고른
-    #   사용자는 **애프터마켓 시가단일가 10분의 예상체결을 한 번도 못 봤다**. 그 창은
-    #   호가접수만 되고 체결은 15:40 부터라, 예상체결이 유일한 신호인 구간이다.
-    #   차단의 원래 사유(연속매매 중 오염값, 2026-07-22 실측)는 창 밖이 여전히
-    #   닫혀 있으므로 그대로 유지된다.
-    # - **UN(`_AL`)**: 셋 전부. 병합 스트림이라 KRX 단일가 창에는 KRX 값이,
-    #   15:30–15:40 에는 NXT 값이 실린다(그 시각 KRX 는 틱이 없다).
-    #
-    # 2026-10-15 08:41 원본 WS에서 `_AL`·`_NX`에 같은 잔존 23/24 값이 확인됐다.
-    # 통합도 장전 공개 시작(08:50) 전에는 막는다. 291/292 전환과 불규칙 VI 판정은
-    # 실제 유효 예상값의 수신 검증 후 별도 변경한다.
-    #
-    # 키 미포함 규약(요약·OHLC 동형): 소비자는 "미수신"과 "진짜 0"을 구분할 필요가 없다.
+    # 예정 단일가는 venue별 시각, 불규칙 VI는 parse_real_row의 1h 상태로 허용한다.
+    # 값만으로 열면 접속매매 중 NXT·통합의 잔존 23/24가 노출된다(ADR-0140 §6.1).
+    # 두 값이 양수일 때만 표시하며 parquet에는 저장하지 않는다.
+    if is_auction_window(t_ms, venue):
+        _add_expected_fill(payload, values)
+    return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload, venue=venue)
+
+
+def _add_expected_fill(payload: dict, values: dict[str, str]) -> None:
+    """0D의 검증된 예상가·수량 쌍만 표시한다. 0H 거래량으로 보완하지 않는다."""
     exp_price = _price(values, K.OB_EXPECTED_PRICE)
     exp_qty = _qty(values, K.OB_EXPECTED_QTY)
-    if is_auction_window(t_ms, venue) and exp_price > 0 and exp_qty > 0:
+    if exp_price > 0 and exp_qty > 0:
         payload["expected_price"] = exp_price
         payload["expected_qty"] = exp_qty
-    return WsTick(code=code, t_ms=t_ms, kind=SnapshotKind.OB, payload=payload, venue=venue)
 
 
 def _parse_after_hours(

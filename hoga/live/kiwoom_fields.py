@@ -100,8 +100,8 @@ OB_ASK_QTY = [str(f) for f in range(61, 71)]  # 매도잔량 1~10
 OB_BID_QTY = [str(f) for f in range(71, 81)]  # 매수잔량 1~10
 OB_TOTAL_ASK_QTY = "121"
 OB_TOTAL_BID_QTY = "125"
-# 예상체결가/예상체결량 — 동시호가(단일가) 개념. 파서가 **venue 별 시각 게이트
-# (session_gate.is_auction_window) AND 값>0** 일 때만 payload 에 싣는다. 창이 venue
+# 예상체결가/예상체결량 — 동시호가(단일가) 개념. 파서가 예정 단일가 시각 또는
+# 종목·시장별 1h VI 발동 상태를 확인하고, 두 값>0일 때만 payload 에 싣는다. 창이 venue
 # 마다 다르다: KRX 08:50–09:00·15:20–15:30 / NXT 15:30–15:40(애프터마켓 시가단일가)
 # / UN(`_AL`) 셋 전부. 값>0 만으론 부족한 이유는 NXT 가 접속매매 중에도 예상체결값을
 # 흘리기 때문이다(2026-07-22 실측) — 근거는 `session_gate` 창 표와

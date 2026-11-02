@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from hoga.live.kiwoom_frames import parse_real_message, parse_real_row
+from hoga.live.kiwoom_vi_state import KiwoomViState
 from hoga.live.snapshot import SnapshotKind
 from hoga.util.timeenc import hhmmssms_to_unix_ms
 
@@ -155,6 +156,51 @@ def test_orderbook_expected_fill_dropped_outside_auction_window():
     assert t is not None
     assert "expected_price" not in t.payload
     assert "expected_qty" not in t.payload
+
+
+@pytest.mark.parametrize("suffix", ["", "_NX", "_AL"])
+@pytest.mark.parametrize("code", ["000020", "0000D0"])
+def test_intraday_vi_expected_pair_requires_active_same_market(suffix, code):
+    date = "20260914"  # 시장별 VI를 분리한 이후. 이전 AL→KRX 호환 규칙은 별도 계약이다.
+    state = KiwoomViState()
+    item = code + suffix
+    row = {**REAL_0D_KRX, "item": item, "values": {
+        **REAL_0D_KRX["values"], "23": "+6480", "24": "12345",
+    }}
+    event = {"type": "1h", "item": item, "values": {
+        "9001": code, "9069": "1", "9068": "1",
+        "1223": "135600", "1224": "000000",
+    }}
+    now = hhmmssms_to_unix_ms(date, 135622000)
+
+    def parse(candidate=row):
+        tick = parse_real_row(candidate, date=date, now_ms=now, is_vi_active=state.is_active_at)
+        assert tick is not None
+        return tick.payload
+
+    assert "expected_price" not in parse()
+    state.on_row(event, now)
+    assert parse()["expected_price"] == 6480
+    assert parse()["expected_qty"] == 12345
+    for other in {code, code + "_NX", code + "_AL"} - {item}:
+        assert "expected_price" not in parse({**row, "item": other})
+    for change in ({"23": "0"}, {"24": "0"}, {"24": ""}):
+        assert "expected_price" not in parse({**row, "values": {**row["values"], **change}})
+    assert "expected_price" not in parse({**row, "values": {**row["values"], "21": "135559"}})
+    state.on_row({**event, "values": {**event["values"], "1224": "135700"}}, now + 38_000)
+    assert "expected_price" not in parse()
+
+
+def test_previous_day_vi_does_not_publish_intraday_expected_pair():
+    state = KiwoomViState()
+    state.on_row({"item": "000020", "values": {
+        "9001": "000020", "9069": "1", "9068": "1",
+        "1223": "135600", "1224": "000000",
+    }}, hhmmssms_to_unix_ms("20260715", 135600000))
+    row = {**REAL_0D_KRX, "values": {**REAL_0D_KRX["values"], "23": "6480", "24": "12345"}}
+    ticks = parse_real_message({"data": [row]}, date=DATE, now_ms=NOW_MS, is_vi_active=state.is_active_at)
+    assert len(ticks) == 1
+    assert "expected_price" not in ticks[0].payload
 
 
 @pytest.mark.parametrize("suffix", ["", "_AL"])

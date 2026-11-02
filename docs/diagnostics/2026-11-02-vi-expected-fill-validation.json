@@ -1,0 +1,78 @@
+{
+  "recorded_at_kst": "2026-11-02T12:42:06.253952+09:00",
+  "head": "4fd786158e3173ef356a2417c71679b996ed7936",
+  "base": "4fd786158e3173ef356a2417c71679b996ed7936",
+  "state": "uncommitted working-tree changes included in the input fingerprints",
+  "environment": {
+    "platform": "Linux",
+    "python": "3.14.7",
+    "pytest": "9.0.3",
+    "ruff": "0.15.13",
+    "node": "v24.13.1",
+    "vitest": "4.1.7",
+    "vite": "8.0.16"
+  },
+  "fingerprint_algorithm": "SHA256 of sorted tracked relative path + NUL + binary SHA256(file bytes) + LF; git ls-files -- paths selects inputs",
+  "backend_inputs": {
+    "paths": [
+      "hoga",
+      "tests",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ],
+    "files": 890,
+    "sha256": "ddfaf89571a9d6c9d1d30e83e5b6fe735264607d879046ca78796080fb3208b8"
+  },
+  "frontend_inputs": {
+    "paths": [
+      "frontend",
+      "VERSION"
+    ],
+    "files": 2123,
+    "sha256": "1c4eca97fb8bf1b2b941fb5d4aadfb490091981d986ffccb2e85062e167e3071"
+  },
+  "checks": [
+    {
+      "cwd": ".",
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "cwd": ".",
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_kiwoom_frames.py tests/unit/live/test_kiwoom_vi_state.py tests/unit/live/test_kiwoom_ws_client.py tests/unit/live/test_kiwoom_session.py tests/unit/live/test_kiwoom_control_isolation.py tests/unit/live/test_kiwoom_session_retirement.py tests/api/test_ws.py tests/api/test_ws_control_ownership.py -m 'not wallclock'",
+      "result": "227 passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vitest run src/api/liveExpectedLifecycle.test.tsx src/live/workspace/BookPanel.test.tsx src/live/workspace/OrderWindow.test.tsx",
+      "result": "329 passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build",
+      "result": "passed; existing Browserslist age and chunk-size warnings"
+    },
+    {
+      "cwd": ".",
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "frontend_result_reuse": "Frontend checks ran before the fast-forward from ef1adbd1e50a415d2646c947da380f10d4b20dc4 to the recorded base. git diff between those commits -- frontend is empty; frontend source, tests, dependency locks, configuration, and installed environment remained unchanged.",
+  "coverage": [
+    "intraday VI book price/quantity for KRX, NXT, UN, including alphanumeric Code",
+    "unobserved, released, previous-day, pre-trigger, and other-market VI cannot enable an intraday book pair",
+    "VI observed on one account enables the shared gate on another connection",
+    "0H does not replace confirmed 0D quantity; execution clears the expected display"
+  ],
+  "not_verified": [
+    "live intraday VI original 0D WS traffic",
+    "browser visual QA; no layout or interaction changes"
+  ]
+}

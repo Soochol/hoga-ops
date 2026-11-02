@@ -160,6 +160,7 @@ class KiwoomWsClient:
         tick_yield_interval_s: float = _TICK_YIELD_INTERVAL_S,
         invalidate_fn: Callable[[], None] | None = None,
         on_vi_row: Callable[[dict, int], None] | None = None,
+        is_vi_active: Callable[[str, int], bool] | None = None,
         on_sector_row: Callable[[dict, int], None] | None = None,
         _connect: Callable[[str], Awaitable[_WsLike]] | None = None,
         stable_session_s: float = 30.0,
@@ -182,6 +183,7 @@ class KiwoomWsClient:
         # 전체 스트림이라 **연결 하나에만** 설정해야 중복 기록이 없다(session 이 계정
         # 0 에만 배선). 훅·REG 실패는 본 캡처를 해치지 않는다(best-effort).
         self._on_vi_row = on_vi_row
+        self._is_vi_active = is_vi_active
         # 0J/0U 업종·지수 관측 훅. 시장 전체 스트림이라 **연결 하나에만** 설정한다
         # (session 이 마지막 계정에 배선). REG·훅 실패는 본 캡처를 해치지 않는다.
         # ⚠ VI 와 달리 item 이 업종코드 목록이라 **슬롯을 먹는다** — 그래서 그 계정에
@@ -996,7 +998,7 @@ class KiwoomWsClient:
         self._capture_vi_rows(msg, now_ms)
         self._capture_sector_rows(msg, now_ms)
         date = self._date_fn()
-        for tick in parse_real_message(msg, date=date, now_ms=now_ms):
+        for tick in parse_real_message(msg, date=date, now_ms=now_ms, is_vi_active=self._is_vi_active):
             if self._retiring_failure is not None:
                 raise self._retiring_failure
             self.last_tick_ms = now_ms

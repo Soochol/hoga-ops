@@ -1080,6 +1080,8 @@ class KiwoomSessionManager:
             if self._token_invalidator is not None else prov.invalidate,  # one parent token owner
             # VI 는 계정 0 전용(시장 전체 스트림 중복 방지 — __init__ 주석).
             on_vi_row=self._on_vi_row if account_id == 0 and self._environment == "real" else None,
+            # 발동 관측은 계정 0 하나, 판정은 모든 저장·표시 연결이 공유한다.
+            is_vi_active=self._vi_state.is_active_at,
             # 0J/0U 는 **마지막 계정** 하나만 태운다. 계정마다 걸면 같은 틱을 4번 받고,
             # 무엇보다 **슬롯을 4배로 먹는다**(코드당 1개 — 2026-08-07 실측).
             on_sector_row=(
