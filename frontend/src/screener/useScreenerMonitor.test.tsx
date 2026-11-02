@@ -5,6 +5,7 @@ import {
   MONITOR_PERIOD_SCOPED_MS,
   MONITOR_PERIOD_FULL_MS,
   MONITOR_FAIL_LIMIT,
+  MONITOR_VOLUME_MIN_MS,
   type UseScreenerMonitorArgs,
 } from './useScreenerMonitor';
 import * as liveQuotes from '../api/liveQuotes';
@@ -180,6 +181,22 @@ describe('useScreenerMonitor', () => {
     expect(scanOnce).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(scanOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it('지속되는 거래량 이벤트도 최소 간격으로 합쳐 요청하고 마지막 변화는 반영한다', async () => {
+    const scanOnce = vi.fn().mockResolvedValue(true);
+    renderHook(() => useScreenerMonitor(baseArgs({ scanOnce, conditions: volumeConditions })));
+    await act(async () => { await Promise.resolve(); });
+    act(() => { push({ type: 'screener_volume_changed', condition_ids: ['volume'] }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(scanOnce).toHaveBeenCalledTimes(2);
+    for (let index = 0; index < 10; index += 1) {
+      act(() => { push({ type: 'screener_volume_changed', condition_ids: ['volume'] }); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    }
+    expect(scanOnce).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(MONITOR_VOLUME_MIN_MS - 1000); });
+    expect(scanOnce).toHaveBeenCalledTimes(3);
   });
 
   it('조회 도중 푸시와 탭 복귀가 겹쳐도 동시 요청 없이 후속 조회 하나만 수행한다', async () => {

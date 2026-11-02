@@ -76,3 +76,26 @@ it.each(['3m', '5m', '10m'] as const)('keeps unscoped %s on the full API prepara
   expect(liveScan).not.toHaveBeenCalled();
   unmount();
 });
+
+it('an explicit one-shot invocation never starts a scoped WS monitor', async () => {
+  const scoped: ScanRequest = { universe: { scopes: ['watchlist'] }, conditions: [
+    { id: 'minute', type: 'new_high_vol', params: { timeframe: '3m', period: 40, lookback: 3 } },
+  ] };
+  vi.mocked(runPreparedScan).mockResolvedValue(response);
+  const { result } = renderHook(() => useScreener({ continuous: true }), { wrapper });
+  await act(async () => { await result.current.mutateAsync({ request: scoped, mode: 'once' }); });
+  expect(runPreparedScan).toHaveBeenCalledTimes(1);
+  expect(runPreparedScan).toHaveBeenCalledWith(scoped, expect.any(AbortSignal), expect.any(Function), undefined);
+  expect(liveScan).not.toHaveBeenCalled();
+});
+
+it('an explicit monitor invocation starts immediately before the active-state render', async () => {
+  const scoped: ScanRequest = { universe: { scopes: ['watchlist'] }, conditions: [
+    { id: 'minute', type: 'new_high_vol', params: { timeframe: '3m', period: 40, lookback: 3 } },
+  ] };
+  liveScan.mockResolvedValue(response);
+  const { result } = renderHook(() => useScreener({ continuous: false }), { wrapper });
+  await act(async () => { await result.current.mutateAsync({ request: scoped, mode: 'monitor' }); });
+  expect(liveScan).toHaveBeenCalledWith(scoped);
+  expect(runPreparedScan).not.toHaveBeenCalled();
+});

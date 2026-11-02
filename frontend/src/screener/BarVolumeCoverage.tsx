@@ -22,6 +22,7 @@ export function BarVolumeCoverage({ coverage, hideSummary = false }: { coverage?
       {coverage.realtime.continuous ? <>
         실시간 감시 {coverage.realtime.receiving}/{coverage.total}종목
         {!!coverage.realtime.preparing && ` · 준비 중 ${coverage.realtime.preparing}`}
+        {!!coverage.realtime.insufficient && ` · 비교 봉 대기 ${coverage.realtime.insufficient}`}
         {!!coverage.realtime.recovering && ` · 복구 중 ${coverage.realtime.recovering}`}
         {!!coverage.realtime.monitor_error && ` · ${coverage.realtime.monitor_error}`}
         {!!coverage.realtime.unavailable && ` · 연결 확인 필요 ${coverage.realtime.unavailable}`}

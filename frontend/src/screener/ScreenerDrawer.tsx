@@ -1,5 +1,6 @@
 import { rankingBasisText } from '../api/rankingBasis';
 import { emptyResultText } from './emptyResultText';
+import { minuteHistoryDetail } from './minuteHistoryState';
 import { isRankCondition, hasRankEvidence } from './rankConditions';
 import { PriceOccurrenceButtons, usePriceOccurrenceDetails, type PriceOccurrenceDetailsProps } from './PriceOccurrenceDetails';
 import { MarketRankEvidence } from './MarketRankEvidence';
@@ -549,7 +550,9 @@ export function ScreenerDrawer() {
               </InlineState>
             )}
             {lastScan.rows.length === 0 ? (
-              <RailState>{emptyResultText(lastScan)}</RailState>
+              <RailState>{emptyResultText(lastScan)}
+                {minuteHistoryDetail(lastScan) && <span className="mt-2 block text-xs text-fg-dim">{minuteHistoryDetail(lastScan)}</span>}
+              </RailState>
             ) : (
               <DndContext
                 sensors={sensors}

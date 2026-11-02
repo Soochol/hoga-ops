@@ -4,6 +4,8 @@ import { runScan, type ScanRequest, type ScreenerResponse } from '../api/screene
 import { activeRunId, needsDailyPreparation, needsPreparation, preparationKey, runPreparedScan, type ScreenerRun } from '../api/screenerRuns';
 import { ContinuousClient, hasContinuousVolume } from './continuousClient';
 
+type ScanInvocation = ScanRequest | { request: ScanRequest; mode: 'once' | 'monitor' };
+
 export const useScreener = ({ continuous = false, anchor = '', request, onProgress }: {
   continuous?: boolean; anchor?: string; request?: ScanRequest;
   onProgress?: (result: ScreenerResponse, request: ScanRequest) => void;
@@ -23,11 +25,13 @@ export const useScreener = ({ continuous = false, anchor = '', request, onProgre
       void owner.stop().catch(() => {});
     };
   }, [continuous, anchor]);
-  const mutation = useMutation({ mutationFn: async (body: ScanRequest) => {
+  const mutation = useMutation({ mutationFn: async (input: ScanInvocation) => {
+    const body = 'mode' in input ? input.request : input;
+    const monitor = 'mode' in input ? input.mode === 'monitor' : continuous;
     active.current?.controller.abort();
     const controller = new AbortController();
     const ownAnchor = current.current.anchor;
-    const liveVolume = continuous && hasContinuousVolume(body) && !!body.universe.scopes?.length;
+    const liveVolume = monitor && hasContinuousVolume(body) && !!body.universe.scopes?.length;
     const preparing = needsPreparation(body) && (!liveVolume || needsDailyPreparation(body));
     active.current = { controller, anchor: ownAnchor, preparing };
     const check = () => {
@@ -36,6 +40,7 @@ export const useScreener = ({ continuous = false, anchor = '', request, onProgre
         throw new DOMException('검색 조건 변경됨', 'AbortError');
       }
     };
+    if (!liveVolume) { await client.current!.stop(); check(); }
     let result: ScreenerResponse;
     if (preparing) {
       result = await runPreparedScan(body, controller.signal, run => {

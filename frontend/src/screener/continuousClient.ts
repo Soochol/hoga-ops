@@ -19,7 +19,10 @@ export class ContinuousClient {
     this.id = null;
     this.key = null;
     this.pending = null;
-    if (id) await apiCall<void>(`/api/screener/monitors/${id}`, { method: 'DELETE' });
+    if (id) {
+      try { await apiCall<void>(`/api/screener/monitors/${id}`, { method: 'DELETE' }); }
+      catch (error) { if ((error as ApiError).status !== 404) throw error; }
+    }
   }
 
   acceptsEvent(monitorId?: string) {
@@ -54,9 +57,11 @@ export class ContinuousClient {
       await this.pending;
     }
     try {
-      return await readContinuousResult(this.id!);
+      const result = await readContinuousResult(this.id!);
+      if (generation !== this.generation) throw new DOMException('감시 조건이 변경되었습니다.', 'AbortError');
+      return result;
     } catch (error) {
-      if ((error as ApiError).status === 404) {
+      if (generation === this.generation && (error as ApiError).status === 404) {
         this.id = null;
         throw new Error('감시가 만료되었습니다. 다시 조회하면 준비를 재개합니다.');
       }

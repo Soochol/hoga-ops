@@ -1,0 +1,26 @@
+{
+  "base_sha": "b32261d5454f2de360f6e4bd71dfd703a49eda46",
+  "input_count": 2478,
+  "path_content_sha256": "41909aaec3ccd5649110d60fc62947e70fa18c1a8d353fbe8e32babdbba033ce",
+  "algorithm": "sorted path + NUL + file contents + NUL",
+  "inputs": [
+    "frontend/** tracked and untracked nonignored files",
+    "hoga/**",
+    "pyproject.toml",
+    "uv.lock",
+    "VERSION"
+  ],
+  "node": "24.13.1",
+  "npm": "11.8.0",
+  "vitest": "4.1.7",
+  "playwright": "1.60.0",
+  "env": "empty worktree .env; playwright config blank vendor credentials; single worker",
+  "checks": {
+    "typecheck": "passed",
+    "screener_unit": "551 passed in 57 files",
+    "e2e": "6 passed; includes production build",
+    "ruff": "passed",
+    "diff_check": "passed",
+    "full_unit": "initial 9801 passed, 1 failed (fixed and affected scope rerun); unrelated unhandled error reproduced on base"
+  }
+}
