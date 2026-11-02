@@ -542,11 +542,11 @@ def test_daily_snapshot_facts_reuse_and_publication_invalidates(corpus, monkeypa
     from hoga.api import screener_series_runner as runner
     _, manifest = store.load_snapshot(corpus)
     calls = []
-    original = store.read_object
-    def read(*args):
-        calls.append(args[1])
-        return original(*args)
-    monkeypatch.setattr(store, 'read_object', read)
+    original = store._read_file
+    def read(*args, **kwargs):
+        calls.append(args[0])
+        return original(*args, **kwargs)
+    monkeypatch.setattr(store, '_read_file', read)
     def facts(current):
         return (runner._confirmed_at(corpus, current, ['005930'], NOW.date()),
                 values.load_series(corpus, current, ['005930'], first=DAYS[0], last=DAYS[-1]),
@@ -554,7 +554,7 @@ def test_daily_snapshot_facts_reuse_and_publication_invalidates(corpus, monkeypa
     first = facts(manifest)
     count = len(calls)
     assert count > 0 and facts(manifest) == first and len(calls) == count
-    observation = original(corpus, manifest['observations']['005930'])
+    observation = store.read_object(corpus, manifest['observations']['005930'])
     adjusted = [{**row, **{key: row[key] * 1.1 for key in ('open', 'high', 'low', 'close')}}
                 for row in observation['adjusted']]
     store.publish_pair(corpus, '005930', observation['unadjusted'], adjusted,
@@ -621,7 +621,7 @@ async def test_small_price_events_keep_vendor_prices_and_do_not_reprice_quantity
     assert len(result.rows) == 1 and result.rows[0].occurrences[0].volume_evidence.compared_volume == "400"
 
 
-def test_daily_readers_share_observation_validation_across_parent_snapshots(corpus, monkeypatch):
+def test_published_daily_readers_skip_source_validation_across_parent_snapshots(corpus, monkeypatch):
     from collections import Counter
 
     from hoga.api import screener_series_runner as runner, screener_snapshot_cache as cache
@@ -631,9 +631,9 @@ def test_daily_readers_share_observation_validation_across_parent_snapshots(corp
     calls = Counter()
     read = store.read_object
 
-    def counted(data_dir, identity):
+    def counted(data_dir, identity, **kwargs):
         calls[identity] += 1
-        return read(data_dir, identity)
+        return read(data_dir, identity, **kwargs)
 
     monkeypatch.setattr(store, "read_object", counted)
     identity = manifest["observations"]["005930"]
@@ -641,4 +641,4 @@ def test_daily_readers_share_observation_validation_across_parent_snapshots(corp
         runner._confirmed_at(corpus, current, ["005930"], NOW.date())
         values.load_series(corpus, current, ["005930"], first=DAYS[0], last=DAYS[-1])
         runner._daily_contract(corpus, current, ["005930"])
-    assert calls[identity] == 1
+    assert calls[identity] == 0

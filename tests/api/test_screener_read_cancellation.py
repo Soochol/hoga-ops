@@ -3,7 +3,11 @@ import threading
 
 import pytest
 
-from hoga.api import screener_series_runner as runner, screener_snapshot_cache as snapshots
+from hoga.api import (
+    screener_daily_projection as projection,
+    screener_series_runner as runner,
+    screener_snapshot_cache as snapshots,
+)
 from hoga.api.read_shutdown import ReadInterrupted, ReadOperation, ReadWork, run_read_sync
 
 
@@ -57,13 +61,13 @@ async def test_daily_contract_stops_before_next_file_and_does_not_cache_cancelle
     calls = []
     manifest = {'observations': {'005930': 'first', '000660': 'second'}, 'corrections': {}}
 
-    def read(_data_dir, identity):
-        calls.append(identity)
+    def read(_data_dir, _manifest, code, *, stop=None):
+        calls.append(code)
         loop.call_soon_threadsafe(entered.set)
         assert release.wait(5)
-        return {'unadjusted': [], 'adjusted': [], 'adjusted_as_of': '2026-11-02'}
+        return projection.DailySummary('2026-11-02', 'legacy_unknown', 'legacy_unverified', None, ())
 
-    monkeypatch.setattr(runner.store, 'read_object', read)
+    monkeypatch.setattr(projection, 'summary', read)
 
     async def query(operation):
         return await run_read_sync(operation, runner._daily_contract, tmp_path, manifest,
@@ -76,5 +80,5 @@ async def test_daily_contract_stops_before_next_file_and_does_not_cache_cancelle
     with pytest.raises(ReadInterrupted):
         await flight.result()
     assert (await work.wait_read_work()).failures == ()
-    assert calls == ['first']
+    assert calls == ['005930']
     assert not any(key[0] == str(tmp_path.resolve()) for key in snapshots.shared.entries)
