@@ -237,3 +237,28 @@ def test_malformed_optional_query_reference_uses_checked_sources(corpus, monkeyp
     assert projection.summary(corpus, malformed, '005930') is not None
     assert projection.read(corpus, malformed, '005930') == expected
     assert manifest['observations']['005930'] in calls
+
+
+@pytest.mark.parametrize('warm', [False, True])
+@pytest.mark.parametrize('ready', [False, True])
+def test_original_change_during_final_decode_is_rejected(corpus, monkeypatch, warm, ready):
+    manifest = publish(corpus)
+    if not ready:
+        manifest.pop('daily_query')
+    if warm:
+        projection.read(corpus, manifest, '005930')
+    source = projection._source_path(corpus, manifest['observations']['005930'])
+    decompress = projection._decompress
+    changed = []
+
+    def change_after_decode(packed, **kwargs):
+        result = decompress(packed, **kwargs)
+        if kwargs['maximum'] == kwargs['decoded_bytes']:
+            source.write_text('{}')
+            changed.append(True)
+        return result
+
+    monkeypatch.setattr(projection, '_decompress', change_after_decode)
+    with pytest.raises(ValueError, match='changed'):
+        projection.read(corpus, manifest, '005930')
+    assert changed == [True]
