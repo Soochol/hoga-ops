@@ -3,6 +3,7 @@ import { render, screen, within, waitFor, cleanup, fireEvent, act } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import * as watchlistApi from '../api/watchlist';
+import * as heatmapApi from '../api/heatmap';
 import * as client from '../api/client';
 import { useLivePageStore } from '../state/livePage';
 import { useEntryDragStore } from '../state/entryDrag';
@@ -125,6 +126,11 @@ describe('WatchlistDrawer drag wiring', () => {
     vi.restoreAllMocks();
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
+    // The row menu also reads heatmap memberships; the generic apiCall quote
+    // response is not a valid HeatmapResponse.
+    vi.spyOn(heatmapApi, 'getHeatmap').mockResolvedValue({
+      folders: [], entries: [], capture_markers: {}, next_run_at_ms: 0,
+    });
     vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
   });
 
@@ -318,20 +324,25 @@ describe('WatchlistDrawer drag wiring', () => {
 
     act(() => { h.onDragStart!(DRAG_START); });
     // 드래그 도중 서버 갱신이 착지한다(순서 뒤집힘).
+    const refreshed = {
+      ...DATA,
+      entries: [
+        { ...ENTRIES[1], order: 0 },
+        { ...ENTRIES[0], order: 1 },
+      ],
+    };
+    // Opening the membership menu may refetch watchlist data. Keep the mocked
+    // server consistent with the update already delivered to the query cache.
+    vi.mocked(watchlistApi.getWatchlist).mockResolvedValue(refreshed);
     await act(async () => {
-      qc.setQueryData(WATCHLIST_KEY, {
-        ...DATA,
-        entries: [
-          { ...ENTRIES[1], order: 0 },
-          { ...ENTRIES[0], order: 1 },
-        ],
-      });
+      qc.setQueryData(WATCHLIST_KEY, refreshed);
     });
     // 캐시 갱신만으로는 이 시점에 리렌더가 보장되지 않는다(react-query 알림이 배치된다).
     // 그래서 **행 목록에 영향이 없는 상호작용**으로 리렌더를 확정적으로 일으킨 뒤 잰다 —
     // 우클릭은 setMenu 만 건드린다. 이 강제 리렌더가 없으면 동결을 제거해도 테스트가
     // 통과하는 가짜 가드가 된다(red-check 로 실제로 확인했다).
     fireEvent.contextMenu(screen.getByTestId('watchlist-row-005930'));
+    await waitFor(() => expect(screen.getByRole('tab', { name: '히트맵' })).toHaveTextContent('0'));
     expect(rowNames()).toEqual(['watchlist-row-005930', 'watchlist-row-000660']);
 
     act(() => {
