@@ -1,0 +1,92 @@
+{
+  "server": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "6b23591d8"
+  },
+  "main_head": "6b23591d8675e725c26e2e2e3547a946e5f0eec8",
+  "pr": 2396,
+  "first_response_s": 4.905411483996431,
+  "first_coverage": {
+    "total": 154,
+    "complete": 15
+  },
+  "candidate_minutes_prepared_at_s": 88.09492237000086,
+  "first_run_status": "Stopped own client after16fullyprepared samples; first probe had unread-client backpressure and is not counted as server-liveness PASS.",
+  "warm_repeat": {
+    "count": 12,
+    "median_s": 0.15344549700967036,
+    "min_s": 0.1328225180041045,
+    "max_s": 0.2548329819983337,
+    "rows": 4,
+    "total": 154,
+    "complete": 153,
+    "prepared": 154,
+    "receiving": 0,
+    "incomplete": [
+      {
+        "code": "069540",
+        "condition_id": "display_price",
+        "reason": "vendor_price_unavailable",
+        "missing_days": null,
+        "required_from": null,
+        "required_to": null,
+        "name": null
+      }
+    ]
+  },
+  "corrected_liveness_probe": {
+    "started_at_ms": 1793607030827,
+    "ended_at_ms": 1793607066916,
+    "health": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "pongs_ms": [
+      1.971570003661327,
+      0.3442779998295009,
+      0.34090099507011473,
+      0.44115999480709434,
+      0.21975398703943938,
+      0.6304659909801558,
+      0.6416969990823418,
+      0.4205510049359873,
+      0.40769699262455106,
+      0.41782700282055885,
+      0.4292279918445274,
+      0.4102220118511468
+    ],
+    "ws_frames": 2,
+    "probe_errors": [],
+    "own_monitor_delete_status": 204
+  },
+  "local_preparation": {
+    "scope_count": 350,
+    "observation_count": 233,
+    "semantic_fields_unchanged": true,
+    "expected_snapshot": "2aecd12fe03c67a7b5ab1794f0ebc4a10b9a246e443f72af94eed219949ac94e",
+    "snapshot_id": "a29e4bcfde82fb27dcd37c89bce6ae7a42645ae92016f1b2eb59e50446e8afe5",
+    "compressed_bytes": 31058952,
+    "decoded_bytes": 219584668,
+    "source_bytes": 3578854412,
+    "elapsed_seconds": 40.16091553999286,
+    "oversized": []
+  },
+  "user_work": {
+    "dirty_files": 39,
+    "stashes": 14,
+    "all_file_bytes_and_status_unchanged": true,
+    "all_stash_ids_unchanged": true
+  },
+  "interpretation": "ActualaftercloseKRX; receiving0expected. First response and API minute preparation are separate. No performance claim combines this live run with fixedfixture medians."
+}
