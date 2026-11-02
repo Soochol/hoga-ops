@@ -352,7 +352,8 @@ describe('ScreenerDrawer', () => {
       render(<ScreenerDrawer />, { wrapper: wrap(queryClient, '/live') });
       await screen.findByText(SAVE.name);
       act(() => useScreenerPanelStore.setState({ monitoringActive: true }));
-      expect(await screen.findByText(/거래대금 상위 2건만 표시/)).toBeInTheDocument();
+      await waitFor(() => expect(useScreenerPanelStore.getState().lastScan?.hasMore).toBe(true));
+      expect(screen.queryByText(/거래대금 상위 2건만 표시/)).not.toBeInTheDocument();
       const first = useScreenerPanelStore.getState().lastScan!;
       expect(first.rows).toBe(previous.rows);
       expect(first.scannedAtMs).toBeGreaterThan(previous.scannedAtMs);
@@ -377,7 +378,7 @@ describe('ScreenerDrawer', () => {
     }
   });
 
-  it('shows that drawer scans use the intraday quote basis and surfaces EOD fallback', async () => {
+  it('preserves EOD fallback data without an explanatory panel banner', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(screenerApi, 'runScan').mockResolvedValue({
       status: 'ok',
@@ -391,7 +392,9 @@ describe('ScreenerDrawer', () => {
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
 
-    await waitFor(() => expect(screen.getByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).toBeInTheDocument());
+    await waitFor(() => expect(useScreenerPanelStore.getState().lastScan?.warnings).toEqual(['intraday_fallback_eod']));
+    expect(screen.queryByText('장중 조회 불가 · 전일 확정 데이터로 표시 중')).not.toBeInTheDocument();
+    expect(screen.getByText('조건에 맞는 종목이 없습니다')).toBeInTheDocument();
   });
 
   it('keeps sorting outside the scroll body without a result count', async () => {
@@ -655,7 +658,7 @@ describe('ScreenerDrawer', () => {
     vi.unstubAllGlobals();
   });
 
-  it('flags when the dropdown selection differs from the last scan', async () => {
+  it('keeps rows without a selection-mismatch explanation', async () => {
     const SAVE2 = { ...SAVE, id: 's2', name: '두번째조건' };
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE, SAVE2] });
     useScreenerPanelStore.setState({
@@ -663,10 +666,12 @@ describe('ScreenerDrawer', () => {
       lastScan: makeScan({ savedId: 's1' }),
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
-    await waitFor(() => expect(screen.getByText(/선택한 조건과 다름/)).toBeInTheDocument());
+    await screen.findByText(SAVE2.name);
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+    expect(screen.queryByText(/선택한 조건과 다름/)).not.toBeInTheDocument();
   });
 
-  it('flags the last result when the saved screener definition changed after the scan', async () => {
+  it('keeps rows without a saved-definition explanation', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({
       schema_version: 1,
       saves: [{ ...SAVE, updated_at_ms: 20 }],
@@ -679,12 +684,12 @@ describe('ScreenerDrawer', () => {
 
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
 
-    await waitFor(() => expect(screen.getByText(/조건 저장본 변경됨/)).toBeInTheDocument());
+    await screen.findByText(SAVE.name);
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+    expect(screen.queryByText(/조건 저장본 변경됨/)).not.toBeInTheDocument();
   });
 
-  it('flags the last result when a finished update marks data stale', async () => {
-    // dataStale 마킹은 이벤트 주도(useScreenerUpdateSync, updated>0 조건)로 이동 —
-    // 여기서는 드로어 몫인 '데이터 갱신됨' 힌트 렌더링만 핀한다.
+  it('keeps rows without a stale-data explanation after an update', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     useScreenerPanelStore.setState({ selectedSavedId: 's1', lastScan: makeScan() });
 
@@ -693,7 +698,8 @@ describe('ScreenerDrawer', () => {
 
     act(() => useScreenerPanelStore.getState().markLastScanDataStale());
 
-    await waitFor(() => expect(screen.getByText(/데이터 갱신됨/)).toBeInTheDocument());
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+    expect(screen.queryByText(/데이터 갱신됨/)).not.toBeInTheDocument();
   });
 
   it('overlays live price + 전일대비 on result rows, overriding corpus pct', async () => {
@@ -786,7 +792,7 @@ describe('ScreenerDrawer', () => {
     expect(screen.getByText(/모니터링을 종료했습니다/)).toBeInTheDocument();
   });
 
-  it('갱신이 끝나면 결과 라벨이 다시 보인다 — 감추는 것이지 지우는 것이 아니다', async () => {
+  it('갱신이 끝나도 보조 결과 안내는 패널에 표시하지 않는다', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({
       status: 'ok', last_raw_date: '20260902', days_behind: 0,
@@ -796,7 +802,8 @@ describe('ScreenerDrawer', () => {
     });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
 
-    await waitFor(() => expect(screen.getByText(/1거래일 추가됨/)).toBeInTheDocument());
+    await screen.findByText(SAVE.name);
+    expect(screen.queryByText(/1거래일 추가됨/)).not.toBeInTheDocument();
   });
 
   it('a member row is pre-checked in the right-click group menu (v3)', async () => {

@@ -1,17 +1,11 @@
-import { rankingBasisText } from '../api/rankingBasis';
 import { emptyResultText } from './emptyResultText';
-import { minuteHistoryDetail } from './minuteHistoryState';
-import { InfoButton } from '../ui/InfoButton';
 import { DismissExitedButton } from './DismissExitedButton';
 import { isRankCondition, hasRankEvidence } from './rankConditions';
 import { PriceOccurrenceButtons, usePriceOccurrenceDetails, type PriceOccurrenceDetailsProps } from './PriceOccurrenceDetails';
 import { MarketRankEvidence } from './MarketRankEvidence';
-import { CalculationNotice } from "./CalculationNotice";
 import { useScreenerJump } from "./useScreenerJump";
-import { BarVolumeCoverage } from './BarVolumeCoverage';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
-import { InlineState } from '../ui/DataSurface';
 import { catalogEntry } from './catalog';
 import { useOccurrenceExclusions } from './useOccurrenceExclusions';
 import { OccurrenceExclusionToolbar } from './OccurrenceExclusions';
@@ -38,8 +32,6 @@ import { useScreenerStatus } from './useScreenerStatus';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from './useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
 import { ScreenerUpdateFeedbackText } from './ScreenerUpdateFeedbackText';
-import { intradayDegradationText } from './intradayDegradation';
-import { resultLimitText } from './resultLimitText';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { useScreenerRowsLive } from './useScreenerRowsLive';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
@@ -244,19 +236,6 @@ export function ScreenerDrawer() {
   const screener = useScreener({ continuous: monitoringActive, request: drawerRequest, onProgress: publishScan,
     anchor: selected ? `${selected.id}:${selected.updated_at_ms}` : '' });
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
-  // 강등 사유별 문구 — 페이지와 같은 매핑을 쓴다(ADR-0137 R6).
-  const intradayDegradation = intradayDegradationText(lastScan?.warnings, lastScan?.intradayFailure);
-  const limitNotice = resultLimitText(lastScan?.rows.length ?? 0, lastScan?.hasMore);
-  const lastScanStaleReason = (() => {
-    if (!lastScan) return null;
-    // 풀페이지 Screener 에서 임시 조건으로 조회한 결과 — 드로어의 저장본 선택과 신원이
-    // 다르므로 재조회를 유도한다(savedId null 이면 신원 비교 자체가 성립 안 함).
-    if (lastScan.savedId === null) return '페이지에서 조회한 결과';
-    if (selectedSavedId !== lastScan.savedId) return '선택한 조건과 다름';
-    if (selected && lastScan.savedUpdatedAtMs !== null && selected.updated_at_ms !== lastScan.savedUpdatedAtMs) return '조건 저장본 변경됨';
-    if (lastScan.dataStale) return '데이터 갱신됨';
-    return null;
-  })();
 
   // 1회 조회 + 결과 처리. 수동 버튼과 실시간 모니터링 루프가 공유하는 단일 seam(두
   // 경로의 결과 처리 드리프트 방지). 메타는 항상 갱신하고, 같은 행의 참조를
@@ -416,7 +395,6 @@ export function ScreenerDrawer() {
             버린다(옛 리스트가 조회 왕복 동안 새 결과인 척 남지 않게). */}
         {continuousNeedsScope && <div className="flex items-center gap-1 text-xs text-fg-dim">
           관심종목·히트맵 범위 필요
-          <InfoButton label="분봉 감시 범위 안내" text="1·3·5·10분봉 실시간 감시는 스크리너 페이지의 사전필터에서 관심종목·히트맵 범위를 선택하세요. 전체 시장은 페이지에서 한 번씩 조회할 수 있습니다." />
         </div>}
         {!monitoringActive ? (
           <ToolbarButton
@@ -486,9 +464,9 @@ export function ScreenerDrawer() {
           </div>
         )}
         <ScreenerPreparationStatus run={screener.preparation} />
-        {visibleFeedback && (
+        {visibleFeedback?.tone === 'error' && (
           <RailState
-            tone={visibleFeedback.tone === 'info' ? undefined : visibleFeedback.tone}
+            tone="error"
             className="p-0"
           >
             <ScreenerUpdateFeedbackText feedback={visibleFeedback} />
@@ -498,21 +476,9 @@ export function ScreenerDrawer() {
           <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 시작하세요</RailState>
         )}
         {lastScan && !screener.isError && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-sm text-xs text-fg-dim">
-            <div className="min-w-0 flex-1 truncate">
-              {lastScanStaleReason && (
-                <span className="normal-case" style={{ color: 'var(--warn)' }}>
-                  {lastScanStaleReason}
-                </span>
-              )}
-            </div>
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-sm text-xs text-fg-dim">
             <DismissExitedButton onClick={dismissExited} disabled={exitedCodes.size === 0} />
             <ScreenerResultSortControl mode={sortMode} onChange={handleSortChange} disabled={lastScan.rows.length === 0} />
-            <CalculationNotice scan={lastScan} />
-            <InfoButton label="패널 결과 안내" text={[
-              lastScanStaleReason ? `${lastScanStaleReason}. 실시간 감시를 다시 시작하면 선택한 조건으로 갱신합니다.` : '',
-              '시세는 마지막 수신값입니다. 조건에서 이탈한 음영 행은 이탈 제외로 한 번에 제거합니다. 다시 충족하면 재편입됩니다.',
-            ].filter(Boolean).join('\n')} />
           </div>
         )}
       </RailDrawerSection>
@@ -530,37 +496,8 @@ export function ScreenerDrawer() {
           </RailState>
         ) : lastScan ? (
           <>
-            {lastScan.rankBasis && <div className="flex items-center gap-1 text-xs text-fg-dim">
-              {rankingBasisText(lastScan.rankBasis)}
-              {lastScan.rankBasis.source === 'provider' && lastScan.rankBasis.message &&
-                <InfoButton label="순위 기준 안내" text={lastScan.rankBasis.message} />}
-            </div>}
-            <BarVolumeCoverage coverage={lastScan.barCoverage} hideSummary={!!screener.preparation?.minute_date} />
-            {lastScan.dailyCoverage && lastScan.dailyCoverage.complete < lastScan.dailyCoverage.total &&
-              <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan.dailyCoverage.total - lastScan.dailyCoverage.complete}종목</div>}
-            {limitNotice && <RailState tone="warn">{limitNotice}</RailState>}
-            {!!lastScan?.historyCoverage?.incomplete.length && <RailState tone="warn">
-              과거 일봉이 부족한 종목은 데이터 준비·검증 상태를 확인하세요.
-            </RailState>}
-            {intradayDegradation && (
-              <InlineState tone="warn" className="mx-md mt-sm">
-                {intradayDegradation}
-              </InlineState>
-            )}
-            {(lastScan.warnings ?? []).includes('scope_universe_empty') && (
-              <InlineState tone="warn" className="mx-md mt-sm">
-                종목 범위가 비어 있음 · 관심종목·히트맵에 종목을 추가하세요
-              </InlineState>
-            )}
-            {(lastScan.warnings ?? []).includes('etf_filter_stale_master_unavailable') && (
-              <InlineState tone="warn" className="mx-md mt-sm">
-                종목 마스터 없음 · ETF 제외가 오래된 목록 기준입니다
-              </InlineState>
-            )}
             {lastScan.rows.length === 0 ? (
-              <RailState>{emptyResultText(lastScan)}
-                {minuteHistoryDetail(lastScan) && <span className="mt-2 block text-xs text-fg-dim">{minuteHistoryDetail(lastScan)}</span>}
-              </RailState>
+              <RailState>{emptyResultText(lastScan)}</RailState>
             ) : (
               <DndContext
                 sensors={sensors}
@@ -596,7 +533,7 @@ export function ScreenerDrawer() {
           <RailState>조회 중…</RailState>
         ) : (
           <RailState>{selected
-            ? <>선택한 조건으로 실시간 감시를 시작하세요<span className="mt-2 block text-xs text-fg-dim">시작하면 바로 조회합니다 · 장중에는 자동 갱신하고 장 마감 후에는 다음 장까지 대기합니다</span></>
+            ? '실시간 감시를 시작하세요'
             : '저장된 조건을 선택하세요'}</RailState>
         )}
       </RailDrawerBody>

@@ -4,11 +4,14 @@ import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
 import { installScreenerRunsMock } from './helpers/screenerRuns';
 
-test('page and narrow panel share dismissal controls and keep explanations in accessible help', async ({ page }, testInfo) => {
+test('page retains accessible help while the narrow panel shows results without auxiliary details', async ({ page }, testInfo) => {
   await installLiveMocks(page);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   const response: ScreenerResponse = { status: 'ok', warnings: [],
+    bar_coverage: { total: 2, complete: 1, trading_date: '2026-11-02',
+      incomplete: [{ code: '000660', condition_id: 'a', reason: 'insufficient_minute_history' }],
+      realtime: { continuous: true, receiving: 1, prepared: 1, preparing: 0, insufficient: 1 } },
     calculation: { policy: 'separate_bases_v2', snapshot_id: 'a'.repeat(64), adjusted_as_of: '2026-10-30',
       price_basis: 'vendor_adjusted', event_revision: 'b'.repeat(64), replayable: false },
     rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 70000, change_pct: 2, trade_value_won: 1e11 }] };
@@ -27,6 +30,7 @@ test('page and narrow panel share dismissal controls and keep explanations in ac
   const results = page.getByTestId('screener-results-pane');
   const dismiss = results.getByRole('button', { name: '이탈 제외', exact: true });
   await expect(dismiss).toBeVisible();
+  await expect(results.getByText('실시간 감시 1/2종목 · 비교 봉 대기 1', { exact: true })).toBeVisible();
   const buttonStyle = await dismiss.evaluate(el => {
     const s = getComputedStyle(el);
     return [s.fontSize, s.padding, s.borderRadius];
@@ -59,19 +63,16 @@ test('page and narrow panel share dismissal controls and keep explanations in ac
     const s = getComputedStyle(el);
     return [s.fontSize, s.padding, s.borderRadius];
   })).toEqual(buttonStyle);
-  const panelHelp = panel.getByRole('button', { name: '패널 결과 안내', exact: true });
-  await panelHelp.click();
-  await expect(page.getByRole('tooltip')).toContainText('이탈한 음영 행');
-  const tip = (await page.getByRole('tooltip').boundingBox())!;
-  expect(tip.x).toBeGreaterThanOrEqual(0);
-  expect(tip.x + tip.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await page.keyboard.press('Escape');
-  for (const button of [panelDismiss, panelHelp, panel.getByRole('button', { name: '스크리너 결과 정렬' })]) {
+  await expect(panel.getByRole('button', { name: /패널 결과 안내|순위 기준 안내|분봉 감시 범위 안내/ })).toHaveCount(0);
+  await expect(panel.getByLabel('계산 기준 펼치기', { exact: true })).toHaveCount(0);
+  await expect(panel.getByText(/분봉 · 판정|상세 사유|비교 분봉 부족|실시간 감시 1\/2|가격·거래량 분리|차트는 현재 기준/)).toHaveCount(0);
+  await expect(panel.getByTestId('screener-row-005930')).toBeVisible();
+  for (const button of [panelDismiss, panel.getByRole('button', { name: '스크리너 결과 정렬' })]) {
     await expect(button).toBeInViewport();
     const box = (await button.boundingBox())!, bounds = (await panel.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(bounds.x);
     expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
   }
-  await panel.screenshot({ path: testInfo.outputPath('panel-compact-help.png') });
+  await panel.screenshot({ path: testInfo.outputPath('panel-results-only.png') });
   expect(errors).toEqual([]);
 });
