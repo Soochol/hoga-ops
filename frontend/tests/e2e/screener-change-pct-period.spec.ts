@@ -1,6 +1,7 @@
+import { installScreenerRunsMock } from './helpers/screenerRuns';
 import { addCondition, openConditionSettings, closeConditionSettings } from './helpers/screenerEditor';
 import { test, expect } from '@playwright/test';
-import type { ConditionLeaf, ScanRequest, ScreenerExclusion } from '../../src/api/screener';
+import type { ConditionLeaf, ScanRequest, ScreenerResponse, ScreenerOccurrence, ScreenerExclusion } from '../../src/api/screener';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
 
@@ -27,20 +28,21 @@ test('period change supports save/reload, candle evidence, per-bar exclusions an
     }
     return route.fulfill({ json: { schema_version: 1, exclusions: excluded } });
   });
-  await page.route(apiExact('screener/scan'), route => {
-    const req: ScanRequest = route.request().postDataJSON();
+  const respond = (req: ScanRequest): ScreenerResponse => {
     scans.push(req);
     const leaf = req.conditions.find(c => c.type === 'change_pct_period')!;
-    const occurrences = [0, 1].map(i => ({ condition_id: leaf.id, condition_key: 'period-key', date: '2026-07-28',
+    const occurrences = [0, 1].map((i): ScreenerOccurrence => ({ condition_id: leaf.id, condition_key: 'period-key', date: '2026-07-28',
       bar_start_ms: Date.parse(`2026-07-28T10:0${i * 5}:00+09:00`),
       bar_change_match: { timeframe: '5m', change_reference: 'previous_bar', change_pct: 10 + i * 5,
         close: 110 + i * 5, reference_close: 100, reference_start_ms: 1, is_open: false, fetched_at_ms: 1 } }))
       .filter(event => !excluded.some(e => e.bar_start_ms === event.bar_start_ms));
-    return route.fulfill({ json: { status: 'ok', warnings: [],
+    return { status: 'ok', warnings: [],
       bar_coverage: { total: 1, complete: 1, incomplete: [] },
       rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 110,
-        trade_value_won: 1e8, change_pct: 0, occurrences }] } });
-  });
+        trade_value_won: 1e8, change_pct: 0, occurrences }] };
+  };
+  await page.route(apiExact('screener/scan'), route => route.fulfill({ json: respond(route.request().postDataJSON()) }));
+  await installScreenerRunsMock(page, respond);
   await page.goto('/screener');
   await addCondition(page, '기간내 등락률');
   const card = page.getByRole('group', { name: '기간내 등락률 조건', exact: true });
@@ -120,9 +122,8 @@ test('period change supports save/reload, candle evidence, per-bar exclusions an
   await closeConditionSettings(page);
   await page.getByRole('button', { name: '스크리너 패널 토글', exact: true }).click();
   const panel = page.getByTestId('screener-panel');
-  await panel.getByRole('button', { name: '삼성전자 기간내 등락률 발생 1건', exact: true }).click();
-  await expect(dialog).toContainText('직전 봉 종가 대비 10%');
-  await page.keyboard.press('Escape');
+  await expect(panel.getByTestId('screener-row-005930')).toBeVisible();
+  await expect(panel.getByRole('button', { name: /삼성전자 .*발생 \d+건/ })).toHaveCount(0);
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/screener$/);
   expect(errors).toEqual([]);
