@@ -287,3 +287,84 @@ async def test_asgi_cancellation_while_actual_us_unsubscribe_waits_for_lock(monk
         assert len(session._us_refs) == 2
         group.cancel_scope.cancel()
     assert session._us_refs == {('NASDAQ', 'AAPL', 'other-tab')}
+
+
+@pytest.fixture
+async def collector_rpc(monkeypatch, tmp_path):
+    import socket as sockets
+
+    from hoga.api import symbols
+    from hoga.live import lifecycle, session_gate
+    from hoga.live.collector_ipc import RpcPeer, open_channel
+    from hoga.live.collector_process import CaptureProcessSession
+    from hoga.live.collector_worker import CollectorWorker
+    from hoga.live.kiwoom_diagnostics import configure_failure_context
+
+    monkeypatch.setattr(symbols, 'nxt_enabled_by_code', lambda: {})
+    monkeypatch.setattr(session_gate, 'is_trading_day_now', lambda _: True)
+    parent_socket, child_socket = sockets.socketpair()
+    parent_peer = RpcPeer(*(await open_channel(parent_socket)), 'test')
+    child_peer = RpcPeer(*(await open_channel(child_socket)), 'test')
+    buffer = LiveBuffer()
+    owner = CaptureProcessSession(buffer=buffer, data_dir=tmp_path)
+    owner.peer = parent_peer
+    owner.process = SimpleNamespace(pid=123)
+    monkeypatch.setattr(owner, 'alive', lambda: True)
+    monkeypatch.setattr(owner, '_health', lambda: ('ready', True))
+    monkeypatch.setattr(lifecycle._state, 'kiwoom_session', owner)
+    worker = CollectorWorker(tmp_path, 'test', child_peer)
+    entered, applied = asyncio.Event(), asyncio.Event()
+
+    async def dispatch():
+        while True:
+            command = await child_peer.commands.get()
+            if command['method'] == 'view_subscribe' and command['args']['ref'] != 'other-tab':
+                entered.set()
+            result = await worker.command(command['method'], command['args'])
+            if entered.is_set():
+                applied.set()
+            await child_peer.reply(command, result=result)
+
+    readers = [asyncio.create_task(parent_peer.read()), asyncio.create_task(child_peer.read()),
+               asyncio.create_task(dispatch())]
+    try:
+        yield owner, worker, entered, applied
+    finally:
+        if worker.manager._lock.locked():
+            worker.manager._lock.release()
+        for task in readers:
+            task.cancel()
+        await asyncio.gather(*readers, return_exceptions=True)
+        await worker.manager.stop()
+        configure_failure_context(None)
+        for peer in (parent_peer, child_peer):
+            peer.writer.close()
+            await peer.writer.wait_closed()
+
+
+async def test_watchdog_removes_late_child_subscription_after_ws_cancellation(collector_rpc):
+    owner, worker, entered, applied = collector_rpc
+    buffer = owner.buffer
+    try:
+        await owner.on_view_subscribe('005930', {'KRX'}, ref='other-tab')
+        await owner.sync((), n_accounts=0)
+        baseline_version = owner.version
+        await worker.manager._lock.acquire()
+        socket = Socket([dict(action='subscribe', code='005930', venues=['KRX'])])
+        async with anyio.create_task_group() as group:
+            group.start_soon(build_ws_router(EventBus(), lambda: buffer).routes[0].endpoint, socket)
+            await entered.wait()
+            group.cancel_scope.cancel()
+        assert owner.views == {('005930', 'other-tab'): {'KRX'}}
+        worker.manager._lock.release()
+        await applied.wait()
+        assert len(worker.views) == 2
+        await owner.watchdog_pass(0)
+        assert worker.views == {('005930', 'other-tab'): {'KRX'}}
+        assert worker.manager._display[('005930', 'KRX')].refs == {'other-tab'}
+        assert owner.version == baseline_version + 1
+        await owner.watchdog_pass(0)
+        assert owner.version == baseline_version + 1
+    finally:
+        if worker.manager._lock.locked():
+            worker.manager._lock.release()
