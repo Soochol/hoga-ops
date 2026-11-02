@@ -57,6 +57,7 @@ class Observation:
 class _PackedRows:
     data: bytes
     decoded_bytes: int
+    files: dict[Path, tuple[int, ...]]
 
 
 @dataclass(frozen=True)
@@ -332,7 +333,7 @@ def _compact(data_dir, manifest, code, *, rows, stop=None):
     if facts.candidate.identity != header.candidate_id or _summary(facts) != header.summary():
         raise ValueError("Daily query body binding mismatch")
     _attest(files, stop=stop)
-    return _PackedRows(packed, header.decoded_bytes)
+    return _PackedRows(packed, header.decoded_bytes, dict(files))
 
 
 def _load(data_dir, manifest, code, *, rows, stop=None):
@@ -345,7 +346,7 @@ def _load(data_dir, manifest, code, *, rows, stop=None):
     facts, files = _compile_legacy(data_dir, manifest["observations"][code], stop=stop)
     if rows:
         encoded = _encode(facts)
-        result = _PackedRows(zlib.compress(encoded), len(encoded))
+        result = _PackedRows(zlib.compress(encoded), len(encoded), dict(files))
     else:
         result = _summary(facts)
     _attest(files, stop=stop)
@@ -372,7 +373,7 @@ def read(data_dir: Path, manifest: dict, code: str, *, stop=None) -> Observation
     checkpoint(stop)
     facts = _decode(_decompress(packed.data, decoded_bytes=packed.decoded_bytes,
                                maximum=packed.decoded_bytes, stop=stop))
-    checkpoint(stop)
+    _attest(packed.files, stop=stop)
     return facts
 
 
