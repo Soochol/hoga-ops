@@ -156,6 +156,27 @@ test('두 창 동시 편집 충돌은 초안을 보존하고 새 보드로 복�
   await second.close();
 });
 
+test('확정 거절 뒤 수정한 보드가 현재 내용으로 저장된다', async ({ page, request }) => {
+  const doc = await create(request, '저장 전 이름');
+  await open(page, doc.id);
+  const rejectedName = '용량을 초과한 초안';
+  await page.route(`**/api/whiteboards/${doc.id}`, async route => {
+    if (route.request().method() === 'PUT' && route.request().postDataJSON().name === rejectedName) {
+      return route.fulfill({ status: 413, json: {
+        detail: { code: 'whiteboard_too_large', message: '보드 문서는 최대 12MB까지 저장할 수 있습니다' },
+      } });
+    }
+    return route.continue();
+  });
+  await page.getByRole('textbox', { name: '보드 이름' }).fill(rejectedName);
+  await expect(page.getByText('보드 문서는 최대 12MB까지 저장할 수 있습니다', { exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: '보드 이름' }).fill('크기를 수정한 초안');
+  await expect.poll(async () => (await read(request, doc.id)).name).toBe('크기를 수정한 초안');
+  await expect(page.getByText('저장됨', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('textbox', { name: '보드 이름' })).toHaveValue('크기를 수정한 초안');
+});
+
 test('서버 저장 실패 후 새로고침해도 로컬 초안을 복구한다', async ({ page, request }) => {
   const doc = await create(request, '복구 검증');
   await open(page, doc.id);
