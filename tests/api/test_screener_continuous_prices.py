@@ -181,3 +181,36 @@ async def test_full_152_saved_expression_is_complete_and_warm_reads_fetch_nothin
             clock.now += 16_000
     finally:
         await owner.close()
+
+
+@pytest.mark.parametrize('bad_price', [None, True, 0, -1, '100', float('inf'), float('nan')])
+def test_bad_trade_price_preserves_volume_but_cannot_certify_ohlc(bad_price):
+    source = VolumeSource('prices')
+    source.configure({CODE})
+    source.health({CODE: 'account:1'}, OPEN)
+    source.ingest(CODE, trade(OPEN, 1, 100), OPEN)
+    source.ingest(CODE, trade(OPEN + MINUTE, 2, bad_price), OPEN + MINUTE)
+    row = source.frames(OPEN + MINUTE)[0]['streams'][CODE]['bars'][-1]
+    assert row[1:3] == [1, True]
+    assert row[7] is False
+
+
+def test_cumulative_gap_can_repair_volume_without_recovering_missed_trade_prices():
+    source = VolumeSource('prices')
+    source.configure({CODE})
+    source.health({CODE: 'account:1'}, OPEN)
+    source.ingest(CODE, trade(OPEN, 1, 100), OPEN)
+    source.ingest(CODE, trade(OPEN + MINUTE, 2, 110), OPEN + MINUTE)
+    source.ingest(CODE, trade(OPEN + MINUTE + 1000, 20, 120), OPEN + MINUTE + 1000)
+    row = source.frames(OPEN + MINUTE + 1000)[0]['streams'][CODE]['bars'][-1]
+    assert row[1] == 19
+    assert row[7] is False
+
+
+def test_source_prices_never_claim_an_unobserved_first_minute_prefix():
+    source = VolumeSource('prices')
+    source.configure({CODE})
+    source.health({CODE: 'account:1'}, OPEN)
+    source.ingest(CODE, trade(OPEN + 1000, 100, 110), OPEN + 1000)
+    row = source.frames(OPEN + 1000)[0]['streams'][CODE]['bars'][-1]
+    assert row[3:8] == [110, 110, 110, 110, False]
