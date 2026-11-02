@@ -124,13 +124,13 @@ for (const timeframe of ['1m', '3m', '5m', '10m'] as const) {
     await panel.getByRole('button', { name: '실시간 감시 시작' }).click();
     await panel.getByText('적용 조건 1개', { exact: true }).click();
     await expect(panel.getByText(`${timeframe.slice(0, -1)}분봉 · 최근 5봉 이내 · 100봉 신고거래량`)).toBeVisible();
-    await expect(panel.getByText('실시간 감시 12/100종목 · 준비 중 36 · 연결 확인 필요 52')).toBeVisible();
+    await expect(panel.getByText('실시간 감시 12/100종목 · 준비 중 36 · 연결 확인 필요 52')).toHaveCount(0);
     await expect(panel.getByText('삼성전자', { exact: true })).toHaveCount(0);
     crossed = true;
     socket!.send(JSON.stringify({ ch: 'event', data: { type: 'screener_volume_changed', condition_ids: ['volume'] } }));
     await expect(panel.getByText('삼성전자', { exact: true })).toBeVisible({ timeout: 5000 });
     await panel.getByRole('button', { name: '종료', exact: true }).click();
-    await expect(panel.getByText('실시간 감시 12/100종목 · 준비 중 36 · 연결 확인 필요 52')).toBeVisible();
+    await expect(panel.getByText('실시간 감시 12/100종목 · 준비 중 36 · 연결 확인 필요 52')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('live-volume-drawer.png'), fullPage: true });
     expect(monitorRequests).toHaveLength(2);
     expect(monitorRequests.every(req => 'timeframe' in req.conditions[0].params && req.conditions[0].params.timeframe === timeframe
