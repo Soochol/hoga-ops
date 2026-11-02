@@ -56,7 +56,7 @@ export function ConditionRow({
           aria-label={`${entry.label} 도움말`} aria-describedby={help.id}
           onMouseEnter={e => help.show(e.currentTarget)} onMouseLeave={help.hide}
           onFocus={e => help.showOnFocus(e.currentTarget)} onBlur={help.hide}
-          onClick={e => help.show(e.currentTarget)}>ⓘ</button>}
+          onClick={e => help.show(e.currentTarget)}><AppIcon name="info" /></button>}
         <button type="button" aria-label="조건 제거" disabled={structureDisabled} onClick={onRemove}
           className="condition-icon-button"><AppIcon name="close" /></button>
       </div>

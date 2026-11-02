@@ -46,7 +46,7 @@ describe('조회 결과 활용', () => {
     expect(screen.getByText('조건에 맞는 종목이 없습니다')).toBeInTheDocument();
   });
 
-  it('보기별 가격을 정렬하고 조회 당시 가격의 기준일을 표시한다', () => {
+  it('보기별 가격을 정렬하고 조회 당시 가격의 기준일을 표시한다', async () => {
     mount();
     expect(screen.getAllByRole('button', { name: /호가창 열기/ })[0]).toHaveAccessibleName('SK하이닉스 000660 호가창 열기');
     fireEvent.click(screen.getByRole('button', { name: '조회 당시' }));
@@ -54,7 +54,9 @@ describe('조회 결과 활용', () => {
     expect(rows[0]).toHaveAccessibleName('삼성전자 005930 호가창 열기');
     expect(rows[0]).toHaveTextContent('100 (+1.00%)');
     expect(within(rows[0]).getByText('2026-09-07')).toBeInTheDocument();
-    expect(screen.getByText(/거래대금: 조회 당시 추정치/)).toBeInTheDocument();
+    expect(screen.queryByText(/거래대금: 조회 당시 추정치/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '결과 시세 기준' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('거래대금: 조회 당시 추정치');
   });
 
   it('선택·CSV UI 없이 종목명과 코드로 검색하고 결과 행을 연다', () => {

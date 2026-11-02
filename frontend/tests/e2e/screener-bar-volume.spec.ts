@@ -122,7 +122,7 @@ for (const timeframe of ['1m', '3m', '5m', '10m'] as const) {
     await page.getByRole('button', { name: '스크리너 패널 토글' }).click();
     const panel = page.getByTestId('screener-panel');
     await panel.getByRole('button', { name: '실시간 감시 시작' }).click();
-    await panel.getByText('적용 조건 1개 · 모두 충족', { exact: true }).click();
+    await panel.getByText('적용 조건 1개', { exact: true }).click();
     await expect(panel.getByText(`${timeframe.slice(0, -1)}분봉 · 최근 5봉 이내 · 100봉 신고거래량`)).toBeVisible();
     await expect(panel.getByText('실시간 감시 12/100종목 · 준비 중 36 · 연결 확인 필요 52')).toBeVisible();
     await expect(panel.getByText('삼성전자', { exact: true })).toHaveCount(0);

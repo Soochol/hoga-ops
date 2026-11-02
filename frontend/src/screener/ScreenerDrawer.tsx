@@ -1,6 +1,8 @@
 import { rankingBasisText } from '../api/rankingBasis';
 import { emptyResultText } from './emptyResultText';
 import { minuteHistoryDetail } from './minuteHistoryState';
+import { InfoButton } from '../ui/InfoButton';
+import { DismissExitedButton } from './DismissExitedButton';
 import { isRankCondition, hasRankEvidence } from './rankConditions';
 import { PriceOccurrenceButtons, usePriceOccurrenceDetails, type PriceOccurrenceDetailsProps } from './PriceOccurrenceDetails';
 import { MarketRankEvidence } from './MarketRankEvidence';
@@ -404,7 +406,7 @@ export function ScreenerDrawer() {
           />
         )}
         {selected && <details className="text-xs text-fg-dim">
-          <summary className="cursor-pointer rounded py-1 hover:text-fg">적용 조건 {selected.conditions.length}개 · 모두 충족</summary>
+          <summary className="cursor-pointer rounded py-1 hover:text-fg">적용 조건 {selected.conditions.length}개</summary>
           <ul className="mt-1 space-y-1">
             {selected.conditions.map((condition) => <li key={condition.id}>{catalogEntry(condition.type).label} {catalogEntry(condition.type).summarize(condition.params)}</li>)}
           </ul>
@@ -412,9 +414,10 @@ export function ScreenerDrawer() {
         {/* 대기 = 시작(즉시 1회 조회 + 실시간 유지)만. 별도의 수동 조회 버튼은 두지
             않는다 — 시작이 즉시 조회를 겸한다. 시작 = 새 검색이므로 이전 결과를 먼저
             버린다(옛 리스트가 조회 왕복 동안 새 결과인 척 남지 않게). */}
-        {continuousNeedsScope && <p className="text-xs text-fg-dim">
-          1·3·5·10분봉 실시간 감시는 조건검색의 사전필터에서 관심종목·히트맵 범위를 선택하세요.
-        </p>}
+        {continuousNeedsScope && <div className="flex items-center gap-1 text-xs text-fg-dim">
+          관심종목·히트맵 범위 필요
+          <InfoButton label="분봉 감시 범위 안내" text="1·3·5·10분봉 실시간 감시는 스크리너 페이지의 사전필터에서 관심종목·히트맵 범위를 선택하세요. 전체 시장은 페이지에서 한 번씩 조회할 수 있습니다." />
+        </div>}
         {!monitoringActive ? (
           <ToolbarButton
             tone="primary"
@@ -495,17 +498,21 @@ export function ScreenerDrawer() {
           <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 시작하세요</RailState>
         )}
         {lastScan && !screener.isError && (
-          <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase text-fg-dim">
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-sm text-xs text-fg-dim">
             <div className="min-w-0 flex-1 truncate">
               {lastScanStaleReason && (
                 <span className="normal-case" style={{ color: 'var(--warn)' }}>
-                  {lastScanStaleReason} — 시작으로 갱신
+                  {lastScanStaleReason}
                 </span>
               )}
             </div>
-            <ToolbarButton type="button" onClick={dismissExited} disabled={exitedCodes.size === 0}
-              className="shrink-0 text-xs">이탈 제외</ToolbarButton>
+            <DismissExitedButton onClick={dismissExited} disabled={exitedCodes.size === 0} />
             <ScreenerResultSortControl mode={sortMode} onChange={handleSortChange} disabled={lastScan.rows.length === 0} />
+            <CalculationNotice scan={lastScan} />
+            <InfoButton label="패널 결과 안내" text={[
+              lastScanStaleReason ? `${lastScanStaleReason}. 실시간 감시를 다시 시작하면 선택한 조건으로 갱신합니다.` : '',
+              '시세는 마지막 수신값입니다. 조건에서 이탈한 음영 행은 이탈 제외로 한 번에 제거합니다. 다시 충족하면 재편입됩니다.',
+            ].filter(Boolean).join('\n')} />
           </div>
         )}
       </RailDrawerSection>
@@ -523,10 +530,11 @@ export function ScreenerDrawer() {
           </RailState>
         ) : lastScan ? (
           <>
-            <CalculationNotice scan={lastScan} />
-            {lastScan.rankBasis && <RailState>{rankingBasisText(lastScan.rankBasis)}</RailState>}
-            {lastScan.rankBasis?.source === 'provider' && lastScan.rankBasis.message &&
-              <RailState>{lastScan.rankBasis.message}</RailState>}
+            {lastScan.rankBasis && <div className="flex items-center gap-1 text-xs text-fg-dim">
+              {rankingBasisText(lastScan.rankBasis)}
+              {lastScan.rankBasis.source === 'provider' && lastScan.rankBasis.message &&
+                <InfoButton label="순위 기준 안내" text={lastScan.rankBasis.message} />}
+            </div>}
             <BarVolumeCoverage coverage={lastScan.barCoverage} hideSummary={!!screener.preparation?.minute_date} />
             {lastScan.dailyCoverage && lastScan.dailyCoverage.complete < lastScan.dailyCoverage.total &&
               <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan.dailyCoverage.total - lastScan.dailyCoverage.complete}종목</div>}

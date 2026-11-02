@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { emptyResultText } from './emptyResultText';
 import { minuteHistoryDetail } from './minuteHistoryState';
+import { InfoButton } from '../ui/InfoButton';
+import { DismissExitedButton } from './DismissExitedButton';
 import { useScreenerPanelStore, type PanelScan } from '../state/screenerPanel';
 import { EmptyState } from '../ui/DataSurface';
 import { SegmentedControl, ToolbarButton } from '../ui/PageShell';
@@ -58,7 +60,7 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
           표시 {filtered.length.toLocaleString('ko-KR')} / {scan.rows.length.toLocaleString('ko-KR')}종목
         </span>
         <span className="flex-1" />
-        <ToolbarButton type="button" onClick={dismissExited} disabled={exitedCodes.size === 0}>이탈 제외</ToolbarButton>
+        <DismissExitedButton onClick={dismissExited} disabled={exitedCodes.size === 0} />
         <SegmentedControl aria-label="결과 시세 보기">
           {(['live', 'snapshot'] as const).map((value) => (
             <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)}
@@ -67,13 +69,14 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
             </button>
           ))}
         </SegmentedControl>
+        <InfoButton label="결과 시세 기준" text={[
+          mode === 'live' ? '가격·등락률: 현재 시세(마지막 수신값)' : '가격·등락률: 조회 당시 값 · 가격 아래 날짜는 조회 가격의 기준일',
+          scan.calculation?.policy === 'separate_bases_v2'
+            ? '거래대금: 조회 당시 실제치 또는 원주가 추정치(행에서 방법 확인)'
+            : '거래대금: 조회 당시 추정치(일봉 기준)',
+          '등락률: 전일 종가 대비',
+        ].join('\n')} />
       </div>
-      <p className="pb-sm text-xs text-fg-dim">
-        {mode === 'live' ? '가격·등락률: 현재 시세(마지막 수신값)' : '가격·등락률: 조회 당시 값 · 가격 아래 날짜는 조회 가격의 기준일'}
-        {' · '}{scan.calculation?.policy === 'separate_bases_v2'
-          ? '거래대금: 조회 당시 실제치 또는 원주가 추정치(행에서 방법 확인)'
-          : '거래대금: 조회 당시 추정치(일봉 기준)'} · 등락률: 전일 종가 대비
-      </p>
       {scan.rows.length === 0 ? <EmptyState className="flex-1" title={emptyResultText(scan)}>{minuteHistoryDetail(scan)}</EmptyState>
         : filtered.length === 0 ? (
         <EmptyState className="flex-1" title="검색어에 맞는 결과가 없습니다">
