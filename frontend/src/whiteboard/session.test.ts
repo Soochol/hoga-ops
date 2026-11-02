@@ -49,6 +49,7 @@ describe('whiteboard durable saves', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vi.mocked(writeBoard).mockReset();
     vi.mocked(writeLocal).mockResolvedValue();
   });
   afterEach(() => {
@@ -95,6 +96,95 @@ describe('whiteboard durable saves', () => {
     await session.flush();
     expect(vi.mocked(writeBoard).mock.calls[1][1]).toEqual(req);
     expect(session.state.status).toBe('saved');
+  });
+
+  it.each([
+    new Error('connection lost'),
+    Object.assign(new Error('storage unavailable'), { status: 503, code: 'whiteboard_write_failed' }),
+    Object.assign(new Error('unknown rejection'), { status: 413, code: 'upstream_error' }),
+    Object.assign(new Error('unconfirmed size failure'), { status: 503, code: 'whiteboard_too_large' }),
+  ])('replays the exact ambiguous request before saving newer edits after %s', async (error) => {
+    const doc = document(), session = new BoardSession(doc, {}, 'ambiguous-edit');
+    session.change(element(1), {} as AppState, {});
+    vi.mocked(writeBoard).mockRejectedValueOnce(error);
+    await session.flush();
+    const originalRequest = vi.mocked(writeBoard).mock.calls[0][1];
+    const original = JSON.stringify(originalRequest);
+    session.change(element(2), {} as AppState, {});
+    vi.mocked(writeBoard).mockImplementationOnce(async (_, req) => acknowledgement(doc, req));
+    await session.flush();
+    expect(JSON.stringify(vi.mocked(writeBoard).mock.calls[1][1])).toBe(original);
+    expect(session.state.status).toBe('dirty');
+    vi.mocked(writeBoard).mockImplementationOnce(async (_, req) => acknowledgement(doc, req));
+    await session.flush();
+    const current = vi.mocked(writeBoard).mock.calls[2][1];
+    expect(current.mutation_id).not.toBe(originalRequest.mutation_id);
+    expect(current.expected_revision).toBe(2);
+    expect(current.scene.elements[0].text).toBe('내용 2');
+    expect(session.state.status).toBe('saved');
+  });
+
+  it('saves the corrected scene with a new mutation after confirmed size rejection', async () => {
+    const doc = document(), session = new BoardSession(doc, {}, 'size-validation');
+    session.change(element(1), {} as AppState, {});
+    vi.mocked(writeBoard).mockRejectedValueOnce(Object.assign(new Error('too large'), {
+      status: 413, code: 'whiteboard_too_large',
+    }));
+    await session.flush();
+    const rejected = vi.mocked(writeBoard).mock.calls[0][1];
+    expect(session.state.status).toBe('error');
+    expect(writeLocal).toHaveBeenCalledWith('size-validation', expect.objectContaining({ elements: element(1) }));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(writeBoard).toHaveBeenCalledTimes(1);
+    session.change(element(2), {} as AppState, {});
+    vi.mocked(writeBoard).mockImplementationOnce(async (_, req) => acknowledgement(doc, req));
+    await session.flush();
+    const current = vi.mocked(writeBoard).mock.calls[1][1];
+    expect(current.scene.elements[0].text).toBe('내용 2');
+    expect(current.mutation_id).not.toBe(rejected.mutation_id);
+    expect(current.expected_revision).toBe(1);
+    expect(session.document.revision).toBe(2);
+    expect(session.state.status).toBe('saved');
+  });
+
+  it('automatically saves an edit made before the size rejection arrives', async () => {
+    const doc = document(), session = new BoardSession(doc, {}, 'size-race');
+    session.change(element(1), {} as AppState, {});
+    let reject!: (error: Error) => void;
+    vi.mocked(writeBoard).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const saving = session.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    const rejected = vi.mocked(writeBoard).mock.calls[0][1];
+    session.change(element(2), {} as AppState, {});
+    await vi.advanceTimersByTimeAsync(750);
+    reject(Object.assign(new Error('too large'), { status: 413, code: 'whiteboard_too_large' }));
+    await saving;
+    vi.mocked(writeBoard).mockImplementationOnce(async (_, req) => acknowledgement(doc, req));
+    await vi.advanceTimersByTimeAsync(750);
+    expect(writeBoard).toHaveBeenCalledTimes(2);
+    const current = vi.mocked(writeBoard).mock.calls[1][1];
+    expect(current.scene.elements[0].text).toBe('내용 2');
+    expect(current.mutation_id).not.toBe(rejected.mutation_id);
+    expect(session.state.status).toBe('saved');
+  });
+
+  it('stops after the newer generation is also rejected for size', async () => {
+    const doc = document(), session = new BoardSession(doc, {}, 'size-still-invalid');
+    session.change(element(1), {} as AppState, {});
+    let reject!: (error: Error) => void;
+    vi.mocked(writeBoard).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const saving = session.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    session.change(element(2), {} as AppState, {});
+    const error = Object.assign(new Error('too large'), { status: 413, code: 'whiteboard_too_large' });
+    reject(error);
+    await saving;
+    vi.mocked(writeBoard).mockRejectedValueOnce(error);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(writeBoard).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(writeBoard).mock.calls[1][1].scene.elements[0].text).toBe('내용 2');
+    expect(session.state.status).toBe('error');
+    expect(writeLocal).toHaveBeenLastCalledWith('size-still-invalid', expect.objectContaining({ elements: element(2) }));
   });
 
   it('stops automatic writes on conflict and forks the local content', async () => {

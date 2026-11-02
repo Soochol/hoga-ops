@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const { mkdtempSync, writeFileSync, readdirSync, rmSync, readFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+const { runInNewContext } = require('node:vm');
+const ts = require('typescript');
 const { canonicalOrigin, validateProfile, sessionKey, readSettings, saveSettings, fitBounds } = require('../dist/profiles');
 const { appNavigation, networkAllowed, externalLink } = require('../dist/navigation');
 const { probeServer } = require('../dist/connection');
@@ -26,6 +28,37 @@ test('navigation and request guard prevent remote fallback and malicious child w
   assert.equal(appNavigation(`${remote.origin}/api/trading`, remote), false);
   assert.equal(externalLink('file:///tmp/file'), false);
   assert.equal(externalLink('https://u:p@example.com/'), false);
+});
+test('trusted app paths exactly match the frontend registry and legacy redirects', () => {
+  const frontend = readFileSync(join(__dirname, '../../frontend/src/nav/items.ts'), 'utf8');
+  const exports = {};
+  runInNewContext(ts.transpileModule(frontend, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS },
+  }).outputText, { exports });
+  const expected = ['/', '/settings', '/study', ...exports.WORKSPACE_NAV_ITEMS.map(item => item.to)].sort();
+  const navigation = ts.createSourceFile('navigation.ts', readFileSync(join(__dirname, '../src/navigation.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
+  let routes;
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(navigation) === 'ROUTES') routes = node.initializer;
+    ts.forEachChild(node, visit);
+  }
+  visit(navigation);
+  assert.ok(routes && ts.isNewExpression(routes) && routes.expression.getText(navigation) === 'Set');
+  const paths = routes.arguments?.[0];
+  assert.ok(paths && ts.isArrayLiteralExpression(paths) && paths.elements.every(ts.isStringLiteral));
+  assert.deepEqual(paths.elements.map(path => path.text).sort(), expected);
+  for (const path of expected) {
+    assert.ok(appNavigation(`${remote.origin}${path}?code=005930&workspaceTransfer=abc#settings`, remote), path);
+  }
+});
+test('app paths do not grant trust to unsupported URLs', () => {
+  for (const url of [
+    `${remote.origin}/api/trading`, `${remote.origin}/whiteboard/`, `${remote.origin}/whiteboard-malicious`,
+    `${remote.origin}/etfs/extra`, `${remote.origin}/breadth-extra`, `${remote.origin}/%77hiteboard`,
+    'http://other-server:8000/whiteboard', 'https://hoga-prod:8000/whiteboard',
+    'http://hoga-prod:8001/whiteboard', 'http://user:secret@hoga-prod:8000/whiteboard',
+    'file:///whiteboard', 'javascript:alert(1)', 'invalid url',
+  ]) assert.equal(appNavigation(url, remote), false, url);
 });
 test('atomic settings roundtrip and corrupt original preservation', () => {
   const dir = mkdtempSync(join(tmpdir(), 'hoga-desktop-core-')); const path = join(dir, 'connections.json');
