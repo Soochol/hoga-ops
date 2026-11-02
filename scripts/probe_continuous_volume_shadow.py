@@ -66,7 +66,8 @@ async def validate(args):
 
     def generations(status):
         accounts = status['kiwoom'].get('accounts', [])
-        signature = repr([(a['account_id'], a.get('connection_generation')) for a in accounts])
+        signature = hashlib.sha256(repr([(a['account_id'], a.get('connection_generation'))
+                                         for a in accounts]).encode()).hexdigest()
         return dict.fromkeys(set(status['kiwoom']['ready_codes']) & requested, signature)
 
     source.health(generations(health), now())

@@ -24,7 +24,7 @@ from hoga.api.models import ScanRequest, ScreenerResponse
 from hoga.api.screener_bar_policy import CHANGE_TYPES, RANGE_PARAMS
 from hoga.api.screener_bar_price import valid_prices
 from hoga.api.screener_timing import monitor_scan
-from hoga.live.volume_state import MINUTE, VolumeReplica
+from hoga.live.volume_state import MAX_REPLAY_BARS, MINUTE, VolumeReplica
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ MAX_STREAMS = 512
 MAX_BARS = 250_000
 MAX_BYTES = 64 * 1024 * 1024
 BAR_RESERVATION_BYTES = 512  # Conservative admission includes objects, indexes and evidence.
+REPLAY_RESERVATION_BYTES = MAX_REPLAY_BARS * 1024
 LEASE_MS = 300_000
 AUDIT_MS = 300_000
 TARGET_REFRESH_MS = 1000
@@ -277,7 +278,7 @@ class ContinuousMonitors:
         if history.repair_until_ms or (self.live_clock(now) and (not state or not state['ready'])):
             data = tuple(replace(bar, valid=False) for bar in data)
         return PreparedSnapshot(data, frozenset(history.lower), history.coverage_start_ms,
-            history.fetched_ms, max(history.fetched_ms, state['tick_ms'] if state else 0),
+            history.fetched_ms, max([history.fetched_ms, *(item[3] for item in history.observed.values())]),
             self.version(code, history, now), current, history.reason, now,
             bool(self.live_clock(now) and state and state['ready']), history.repair_until_ms)
 
@@ -323,8 +324,9 @@ class ContinuousMonitors:
 
     @staticmethod
     def admit(requirements):
-        bars = sum(requirements.values())
-        if len(requirements) > MAX_STREAMS or bars > MAX_BARS or bars * BAR_RESERVATION_BYTES > MAX_BYTES:
+        bars = sum(count + 1 for count in requirements.values())
+        reserved_bytes = bars * BAR_RESERVATION_BYTES + len(requirements) * REPLAY_RESERVATION_BYTES
+        if len(requirements) > MAX_STREAMS or bars > MAX_BARS or reserved_bytes > MAX_BYTES:
             raise HTTPException(409, '감시 이력 용량을 초과했습니다. 종목 범위나 비교 봉 수를 줄여주세요.')
 
     def reserve(self, requirements):
@@ -682,7 +684,7 @@ class ContinuousMonitors:
         state = self.replica.get(code, now)
         closing = candles.session_start(history.bars[-1].start_ms) + 390 * MINUTE if history.bars else now
         return (history.identity, history.revision, history.fetched_ms, history.reason, history.repair_until_ms,
-                len(history.bars),
+                history.source_epoch, history.generation, len(history.bars),
                 min(now, closing) // MINUTE, bool(state and state['ready']), self.selected_day(now))
 
     def notify(self):

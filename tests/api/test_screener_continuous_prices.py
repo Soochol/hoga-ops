@@ -489,3 +489,56 @@ async def test_accepted_tick_snapshot_uses_actual_boundary_after_an_earlier_scan
     assert not snapshot.bars[-2].is_open
     assert snapshot.bars[-1].is_open
     assert snapshot.bars[-1].start_ms == OPEN + 181 * MINUTE
+
+
+def test_admission_accounts_for_replay_and_extra_history_bar():
+    from fastapi import HTTPException
+
+    from hoga.api.screener_continuous import (
+        BAR_RESERVATION_BYTES,
+        MAX_BYTES,
+        REPLAY_RESERVATION_BYTES,
+        ContinuousMonitors,
+    )
+
+    maximum = (MAX_BYTES - REPLAY_RESERVATION_BYTES) // BAR_RESERVATION_BYTES - 1
+    ContinuousMonitors.admit({CODE: maximum})
+    with pytest.raises(HTTPException):
+        ContinuousMonitors.admit({CODE: maximum + 1})
+    for count in (350, 512):
+        ContinuousMonitors.admit({f'{index:06d}': 79 for index in range(count)})
+
+
+async def test_source_epoch_and_generation_fence_cached_snapshot_versions(live_prices):
+    s = live_prices
+    history = s.owner.histories[CODE]
+    first = s.owner.version(CODE, history, s.clock.now)
+    history.source_epoch = 'replacement'
+    second = s.owner.version(CODE, history, s.clock.now)
+    history.generation = 'next-registration'
+    third = s.owner.version(CODE, history, s.clock.now)
+    assert first != second != third
+
+
+async def test_ignored_closed_replay_cannot_restamp_canonical_prices(live_prices):
+    s = live_prices
+    history = s.owner.histories[CODE]
+    fetched = OPEN + 390 * MINUTE + 20_000
+    history.bars = [replace(bar, start_ms=bar.start_ms + 210 * MINUTE, is_open=False) for bar in s.rows]
+    history.fetched_ms = history.source_seen_ms = fetched
+    history.source_epoch = history.generation = ''
+    history.observed.clear()
+    history.lower.clear()
+    history.canonical = {bar.start_ms: fetched for bar in history.bars}
+    history.merge_token = None
+    s.clock.now = fetched + 1000
+    source = VolumeSource('closed')
+    source.configure({CODE})
+    source.health({CODE: 'closed:1'}, OPEN)
+    source.ingest(CODE, trade(s.clock.now, 10_000, 9999), s.clock.now)
+    s.owner.replica.reset('closed')
+    for frame in source.frames(s.clock.now):
+        s.owner.replica.apply(frame, s.clock.now)
+    snapshot = s.owner.snapshot(CODE, s.clock.now)
+    assert snapshot.bars[-1].close == s.rows[-1].close
+    assert snapshot.observed_ms == fetched
