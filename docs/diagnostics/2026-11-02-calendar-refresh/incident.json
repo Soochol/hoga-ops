@@ -1,0 +1,41 @@
+{
+  "incident_at_kst": "2026-11-02T16:30:42.505+09:00",
+  "code": 7,
+  "detail": 1631,
+  "error": "hoga.live.kiwoom_errors.KiwoomApiError: kiwoom api error 7: 서비스를 처리하는 중에 오류가 발생했습니다[1631]",
+  "error_block_sha256": "8ffbf6d5a78ab10c0392d54d30c580268c06b89ceb17040d2a725e751cb49d72",
+  "request_reconstructed_from_source": {
+    "api_id": "ka20006",
+    "path": "/api/dostk/chart",
+    "body": {
+      "inds_cd": "001",
+      "base_dt": "20261102"
+    },
+    "priority": "background",
+    "note": "Incident body was not logged; these fields follow the deployed source, not a wire capture."
+  },
+  "current_observation_at_utc": "2026-11-02T07:41:12.970319+00:00",
+  "current_existing_api_endpoint": "/api/market/trade-value?days=1",
+  "current_response": {
+    "unit": "eok",
+    "markets": {
+      "KOSPI": [
+        {
+          "date": "20261102",
+          "value_eok": 148702.2
+        }
+      ],
+      "KOSDAQ": [
+        {
+          "date": "20261102",
+          "value_eok": 48000.34
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Upstream internal reason is not exposed in its generic service error.",
+    "Existing market endpoint uses the same TR/body and a TTL cache; this observation is not a direct retry of the failed calendar task.",
+    "Known earlier calendar errors on 2026-10-27/29 were terminal-auth 8050/IP errors, not this 1631 incident."
+  ]
+}

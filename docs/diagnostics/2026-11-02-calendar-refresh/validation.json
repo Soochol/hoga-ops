@@ -1,0 +1,50 @@
+{
+  "recorded_at_utc": "2026-11-02T07:46:33.798473+00:00",
+  "validated_source_commit": "dd88b06e1fd0c1905b42a5e5b2c8807b56dd351e",
+  "base": "6c5d84198a3a2681f93ca7f844b823e4f3f492ab",
+  "input_fingerprint": {
+    "base": "6c5d84198a3a2681f93ca7f844b823e4f3f492ab",
+    "input_sha256": "5fb7015703521efb245880c2914569031af565b665725a762860c1918e007036",
+    "excluded": "docs/diagnostics/2026-11-02-calendar-refresh/",
+    "algorithm": "sorted git ls-files -co --exclude-standard path + NUL + binary SHA256(bytes) + LF; existing files only"
+  },
+  "versions": {
+    "python": "3.14.7",
+    "pytest": "9.0.3",
+    "ruff": "0.15.13",
+    "httpx": "0.28.1",
+    "uvicorn": "0.47.0"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "8386 passed, 2 skipped, 13 deselected, 82 warnings in 392.12s (0:06:32)",
+      "log_sha256": "60ccaad0a7c552ec213fb1c3146b5fd09a0bd47f37948efa992db88bef962b69"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_trading_calendar_refresher.py tests/api/test_trading_days_source.py tests/unit/live/test_kiwoom_access_seam_coverage.py tests/unit/live/test_kiwoom_rest_seam.py tests/unit/live/test_kiwoom_shutdown.py tests/unit/test_shutdown.py tests/unit/live/test_collector_process.py tests/api/test_startup_runtime.py tests/test_api_calendar.py tests/api/test_calendar_policy.py",
+      "result": "144 passed in 23.39s",
+      "log_sha256": "2f3a3c67be8101147c334880efaa7dfc1f09423410991211db6f32f2d19a8b01"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "negative_control": {
+    "target": "test_service_failure_retries_after_close_and_restores_normal_interval",
+    "base": "6c5d84198a3a2681f93ca7f844b823e4f3f492ab",
+    "result": "Expected failure before fix: [21600.0, 21600.0] != [60, 21600]; first retry waited six hours.",
+    "log_sha256": "d4cc77357f0cfc85848dc62195907826fec5dfb94d9caca198fd6c241fd94e10"
+  },
+  "scope": "Calendar background refresh retry and response logging only; no HTTP wire model or frontend changes.",
+  "limits": [
+    "Real upstream internal failure was not reproduced deliberately. The recorded HTTP-200/code-7 response is injected only in isolated local tests.",
+    "The operational market route has a TTL cache. Deployment verification must use the calendar refresher response log itself."
+  ],
+  "reuse": "Source bytes match the passing final full suite. Follow-up validation documentation is excluded from the input fingerprint and does not change code."
+}

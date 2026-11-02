@@ -196,6 +196,6 @@ async def refresh_overlay(data_dir: Path) -> int:
     if not got:
         return 0
     added = append_overlay(data_dir, got)
-    if added:
-        log.info("trading-calendar: 오버레이에 %d일 추가 (최신 %s)", added, max(got))
+    log.info("live.trading_calendar.refreshed api_id=ka20006 base_dt=%s rows=%d latest=%s added=%d",
+             today, len(got), max(got), added)
     return added

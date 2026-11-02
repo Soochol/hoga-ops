@@ -845,21 +845,41 @@ def start_trading_calendar_refresher(
 
     기본 6시간 간격이며 다음 장 시작에는 다시 확인한다. 장중 오늘의 거래일이
     아직 미확인이면 1분 간격으로 갱신해 스크리너가 오후까지 EOD 대체에 머무르지
-    않게 한다. 확인 후에는 기본 간격으로 돌아간다. 조회 경로에는 벤더 호출을 넣지 않는다.
+    않게 한다. 확인 후에는 기본 간격으로 돌아간다. 키움 처리 오류 7/[1631]에는
+    1분부터 최대 15분까지 간격을 늘려 재시도한다. 조회 경로에는 벤더 호출을 넣지 않는다.
     """
+    from .kiwoom_errors import KiwoomApiError  # noqa: PLC0415 — background refresh only
+
     log = logging.getLogger(__name__)
 
     async def loop() -> None:
+        service_failures = 0
         while True:
+            retry_delay = None
             try:
                 from hoga.api.trading_days import refresh_overlay  # noqa: PLC0415
 
                 await refresh_overlay(data_dir)
-            except Exception:
-                # 갱신 실패는 **조회를 막지 않는다** — 시드까지는 그대로 답한다.
-                # 다만 반복되면 커버리지가 더 이상 전진하지 않으므로 ERROR 다.
-                log.exception("live.trading_calendar.refresh_failed")
-            await asyncio.sleep(_trading_calendar_refresh_delay(data_dir, interval_s))
+            except Exception as exc:
+                if isinstance(exc, KiwoomApiError) and str(exc.code) == "7" and "[1631]" in exc.msg:
+                    service_failures += 1
+                    retry_delay = min(
+                        _trading_calendar_refresh_delay(data_dir, interval_s),
+                        60.0 * 2 ** min(service_failures - 1, 4), 15 * 60.0,
+                    )
+                    log.warning(
+                        "live.trading_calendar.refresh_retry api_id=ka20006 code=7 detail=1631 "
+                        "failures=%d retry_s=%.1f", service_failures, retry_delay,
+                    )
+                else:
+                    service_failures = 0
+                    log.exception("live.trading_calendar.refresh_failed")
+            else:
+                if service_failures:
+                    log.info("live.trading_calendar.refresh_recovered failures=%d", service_failures)
+                service_failures = 0
+            await asyncio.sleep(retry_delay if retry_delay is not None
+                                else _trading_calendar_refresh_delay(data_dir, interval_s))
 
     return asyncio.create_task(loop(), name="trading-calendar-refresher")
 
