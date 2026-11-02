@@ -72,8 +72,10 @@ def test_raw_trade_replay_preserves_ordered_ohlc_and_missing_prefix_is_unknown()
     for frame in source.frames(now):
         replica.apply(frame, now)
     bars = replica.get(CODE, now)['bars']
-    assert bars[0][3:] == [110, 110, 105, 105, False]
-    assert bars[1][3:] == [120, 130, 115, 115, True]
+    assert bars[0][3:8] == [110, 110, 105, 105, False]
+    assert bars[1][3:8] == [120, 130, 115, 115, True]
+    assert bars[0][8:] == [OPEN + 20_000, OPEN + 30_000]
+    assert bars[1][8:] == [OPEN + MINUTE, now]
     source.ingest(CODE, trade(now, 104, 999), now)
     assert source.frames(now)[0]['streams'][CODE]['bars'] == bars
 
