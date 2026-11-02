@@ -1,0 +1,17 @@
+{
+  "server": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "26d087e8b"
+  },
+  "all_candidate_minutes_prepared_s": 9.660529675995349,
+  "scope_total": 350,
+  "candidate_total": 155,
+  "prepared": 155,
+  "recovering": 37,
+  "complete": 117,
+  "rows": 2,
+  "first_response_s": 5.9440837939910125,
+  "incomplete_code_count": 38,
+  "meaning": "Dispatch-only intermediate operationalrun beforeclosed-sessioncontinuityfix; NOT finalusabledata certification. This exposedexistinglateACKfalsegap."
+}

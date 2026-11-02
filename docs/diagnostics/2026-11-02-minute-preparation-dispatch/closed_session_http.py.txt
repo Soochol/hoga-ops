@@ -1,0 +1,135 @@
+import asyncio
+import datetime as dt
+import hashlib
+import json
+import socket
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from pytest import MonkeyPatch
+from hoga.api import screener_bar_volume as bars, screener_intraday as overlay, screener_runner
+from hoga.api.screener_continuous import ContinuousMonitors, build_router
+from hoga.live.buffer import LiveBuffer
+from hoga.live.volume_state import MINUTE, REPLAY_MS
+from hoga.live.quote_models import Quote
+from hoga.util.timeenc import KST
+
+DATA=Path('/tmp/hoga-preparation-user-data')
+OUT=Path('/tmp/hoga-preparation-shipping')
+CODE='005930'
+
+async def case(label, transition, revision):
+    opening=int(dt.datetime(2026,11,2,9,tzinfo=KST).timestamp()*1000)
+    closing=opening+390*MINUTE
+    seed=closing+(20000 if label=='settled' else 14000) if label!='intraday' else opening+220*MINUTE+20000
+    clock=SimpleNamespace(now=seed)
+    last=390 if label!='intraday' else 220
+    candles=[bars.VolumeBar(opening+i*MINUTE,10+i,i==last and label=='intraday',
+        open=1000*1.01**i, high=1005*1.01**i, low=995*1.01**i, close=1004*1.01**i)
+        for i in range(last+1)]
+    request=json.loads(Path('docs/diagnostics/2026-11-02-afternoon-query-performance/request.json').read_text())
+    request['conditions']=request['conditions'][:6]
+    request['expression']='(A AND B) OR (C AND D) OR (E AND F)'
+    request['universe']['scopes']=['watchlist']
+    request['limit']=1000
+    buffer=LiveBuffer()
+    source=buffer.volume_source
+    source.configure([CODE])
+    source.health({CODE:'owned:1'},opening)
+    calls=0
+    def frames():
+        for frame in source.frames(clock.now):
+            buffer.volume_replica.apply(frame,clock.now)
+    async def targets(selected):
+        if selected:
+            frames()
+    async def loader(_d,code,timeframe,*_a):
+        nonlocal calls
+        calls+=1
+        assert code==CODE and timeframe=='1m'
+        return bars.MinuteSnapshot(list(candles),seed)
+    async def capacity(_s,*,fetch_fn,client,**_kw):
+        return await fetch_fn(client)
+    async def quotes(_c,selected,**_kw):
+        return [Quote(code=code,price=candles[-1].close,change_pct=1.,open=1000,
+            high=candles[-1].high,low=995,volume=200000) for code in selected]
+    def forbidden(*_a,**_kw):
+        raise AssertionError('External network or result-path minute loading forbidden')
+    mp=MonkeyPatch()
+    mp.setattr(socket.socket,'connect',forbidden)
+    mp.setattr(screener_runner,'now_kst',lambda:dt.datetime.fromtimestamp(clock.now/1000,KST))
+    mp.setattr(bars.time,'time',lambda:clock.now/1000)
+    mp.setattr(bars,'minute_snapshot',forbidden)
+    mp.setattr(overlay.kiwoom_rest_runtime,'ensure_rest_client',lambda *_:object())
+    mp.setattr(overlay.kiwoom_rest_runtime,'ensure_scheduler',lambda *_:object())
+    mp.setattr(overlay.kiwoom_access,'run_with_capacity',capacity)
+    mp.setattr(overlay.kiwoom_multi_quote,'fetch_multi_price',quotes)
+    owner=ContinuousMonitors(DATA,None,buffer,targets,loader=loader,now=lambda:clock.now)
+    app=FastAPI()
+    app.include_router(build_router(owner),prefix='/api/screener')
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app),base_url='http://owned') as client:
+            response=await client.post('/api/screener/monitors',json={'client_id':label+transition,'request':request})
+            response.raise_for_status()
+            identity=response.json()['id']
+            assert response.json()['total']==1,response.text
+            for _ in range(200):
+                if calls==1 and not owner.pending:
+                    break
+                await asyncio.sleep(.01)
+            assert calls==1 and not owner.pending
+            owner.loop_task.cancel()
+            await asyncio.gather(owner.loop_task,return_exceptions=True)
+            owner.loop_task=None
+            before=await client.get(f'/api/screener/monitors/{identity}/result')
+            before.raise_for_status()
+            if transition=='generation':
+                clock.now+=30000
+                source.health({CODE:'owned:2'},clock.now)
+            else:
+                clock.now+=REPLAY_MS+MINUTE
+            frames()
+            after=await client.get(f'/api/screener/monitors/{identity}/result')
+            after.raise_for_status()
+            heartbeat=await client.post(f'/api/screener/monitors/{identity}/heartbeat')
+            heartbeat.raise_for_status()
+            history=owner.histories[CODE]
+            expected_complete=int(label=='settled' and revision!='parent')
+            payload=after.json()
+            assert payload['bar_coverage']['total']==1
+            assert payload['bar_coverage']['complete']==expected_complete, payload
+            assert bool(history.repair_until_ms)==(not expected_complete),history
+            assert len(payload['rows'])==expected_complete, payload['rows']
+            assert calls==1
+            assert (await client.delete(f'/api/screener/monitors/{identity}')).status_code==204
+            evidence=dict(label=label,transition=transition,seed_ms=seed,observed_ms=clock.now,
+                before_coverage=before.json()['bar_coverage'],after_coverage=payload['bar_coverage'],
+                before_rows=len(before.json()['rows']),after_rows=len(payload['rows']),
+                after_status=heartbeat.json(),minute_calls=calls,repair_until_ms=history.repair_until_ms,
+                request=request)
+            stem=OUT/f'closed-{revision}-{label}-{transition}'
+            stem.with_suffix('.json').write_text(json.dumps(evidence,indent=2))
+            Path(str(stem)+'-payload.json').write_text(json.dumps(payload,indent=2))
+            print(json.dumps({k:evidence[k] for k in ('label','transition','before_rows','after_rows','minute_calls','repair_until_ms','after_coverage')}),flush=True)
+            return evidence
+    finally:
+        await owner.close()
+        mp.undo()
+
+async def main():
+    revision=sys.argv[1]
+    path=DATA/'watchlist.json'
+    original=path.read_bytes()
+    try:
+        path.write_text(json.dumps(dict(schema_version=4,
+            folders=[dict(id='f_00000000',name='owned',items=[dict(kind='code',code=CODE)])],
+            entries=[dict(code=CODE,name=CODE,registered_at_kst_date='20261020')])) )
+        results=[await case(label,transition,revision) for label in ('settled','unsettled','intraday')
+            for transition in ('generation','replay_gap')]
+        (OUT/f'closed-{revision}-evidence.json').write_text(json.dumps(results,indent=2))
+    finally:
+        path.write_bytes(original)
+
+asyncio.run(main())

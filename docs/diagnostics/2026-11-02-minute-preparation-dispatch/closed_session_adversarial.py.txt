@@ -1,0 +1,83 @@
+from dataclasses import replace
+
+import pytest
+
+from tests.api.test_screener_continuous_multiframe import CODE, OPEN, MINUTE, REPLAY_MS, setup, ingest
+from hoga.api.screener_continuous import ContinuousAdapter
+from hoga.live.volume_state import VolumeSource
+from hoga.api import screener_continuous_bars as candles
+
+
+def advance_source(s, kind):
+    s.clock.now += REPLAY_MS + MINUTE if kind == "replay" else 30_000
+    if kind == "generation":
+        s.source.health({CODE: "account:next"}, s.clock.now)
+    if kind == "epoch":
+        s.source = VolumeSource("new-epoch")
+        s.source.configure({CODE})
+        s.source.health({CODE: "account:1"}, s.clock.now)
+        s.owner.replica.reset("new-epoch")
+    for frame in s.source.frames(s.clock.now):
+        s.owner.replica.apply(frame, s.clock.now)
+    s.owner.merge(CODE, s.owner.histories[CODE], s.clock.now)
+
+
+async def seed(s, offset):
+    s.clock.now = OPEN + 390 * MINUTE + offset
+    s.oracle.clear()
+    s.oracle.update({OPEN + i * MINUTE: 10 for i in range(391) if OPEN + i * MINUTE <= s.clock.now})
+    for frame in s.source.frames(s.clock.now):
+        s.owner.replica.apply(frame, s.clock.now)
+    history = s.owner.histories[CODE]
+    s.owner.merge(CODE, history, s.clock.now)
+    await s.owner.prepare(CODE, history)
+    return history
+
+
+@pytest.mark.parametrize("transition", ["generation", "replay", "epoch"])
+@pytest.mark.parametrize("offset", [-60_000, -1, 0, 14_000, 14_999, 15_000, 20_000])
+async def test_settlement_fence(setup, transition, offset):
+    s = setup
+    history = await seed(s, offset)
+    advance_source(s, transition)
+    assert bool(history.repair_until_ms) == (offset < 15_000)
+    if offset >= 15_000:
+        assert s.owner.status(s.monitor, s.clock.now).recovering == 0
+        for leaf in s.monitor.leaves:
+            assert (await ContinuousAdapter(s.owner, s.monitor).evaluate_leaf(leaf, CODE, s.clock.now))[3]
+
+
+@pytest.mark.parametrize("transition", ["generation", "replay", "epoch"])
+@pytest.mark.parametrize("damage", ["repair", "invalid", "lower", "prices_conflict"])
+async def test_settled_day_never_erases_existing_damage(setup, transition, damage):
+    s = setup
+    history = await seed(s, 20_000)
+    if damage == "repair":
+        history.repair_until_ms = s.clock.now
+    elif damage == "invalid":
+        history.bars[-1] = replace(history.bars[-1], valid=False)
+    elif damage == "lower":
+        history.lower.add(history.bars[-1].start_ms)
+    else:
+        old = replace(history.bars[-1], open=100, high=100, low=100, close=100)
+        incoming = replace(old, close=101, high=101)
+        history.bars[-1] = candles.reconcile_source(history, old, incoming, s.clock.now, s.clock.now)
+    advance_source(s, transition)
+    assert s.owner.status(s.monitor, s.clock.now).recovering == 1
+    for leaf in s.monitor.leaves:
+        assert not (await ContinuousAdapter(s.owner, s.monitor).evaluate_leaf(leaf, CODE, s.clock.now))[3]
+
+
+@pytest.mark.parametrize("with_trade", [False, True])
+async def test_settled_yesterday_cannot_certify_next_open(setup, with_trade):
+    s = setup
+    history = await seed(s, 20_000)
+    s.clock.now = OPEN + 24 * 60 * MINUTE + 20_000
+    if with_trade:
+        ingest(s, 10, 10)
+        assert history.fetched_ms == 0
+    else:
+        advance_source(s, "generation")
+    assert not s.owner.current_day(history, s.clock.now) or not history.fetched_ms
+    for leaf in s.monitor.leaves:
+        assert not (await ContinuousAdapter(s.owner, s.monitor).evaluate_leaf(leaf, CODE, s.clock.now))[3]

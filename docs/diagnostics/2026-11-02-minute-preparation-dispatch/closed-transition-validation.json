@@ -1,0 +1,20 @@
+{
+  "head": "ab1dec20c22eb9c661a9b02ee0a02baa7ab47375",
+  "base": "26d087e8b653d33193a45014c153a36b05b1ccb8",
+  "changed_since_full": {
+    "hoga/api/screener_continuous.py": {
+      "before": "22a82fe42feb36d47647c3a5eb6439de5b8e2b7bd7df9fd4aae1abe0b467687e",
+      "now": "137d485dbe76b4a56a97425d6793ce121f92b329074499744e9aec82bde0dfd0"
+    },
+    "tests/api/test_screener_continuous_multiframe.py": {
+      "before": "9123b258ddfb41e188ab8de8c4150eb1632eacad27ec0f8d13a97c2fcbd1696a",
+      "now": "918859205bcef66e4f240319b4c6cf88665e829145c08f9653a5ff08de94e085"
+    }
+  },
+  "check": "uv run --extra dev pytest -q -m 'not wallclock' tests/api/test_screener*.py tests/unit/live/test_volume_state.py",
+  "result": "1793passed66warnings88.64s",
+  "full_reuse": "Priorfull8492 result preserved for unchanged domains; only private continuity comparison+4newcases change. Allscreener+VolumeState rerun. No API schema/config/dependency changes.",
+  "ruff": "PASS wholetrackedsource; excludesuntracked.audit",
+  "independent_astra": "117+35+38passed;14.999/15.000sboundary,existingdamage/newday/freshproducer epoch",
+  "independent_http": "6cases each parent/head: settledclose20sACKandREPLAY remaincomplete onlyonhead;unsettled14sandintradayremainunknown withbyteidenticalpayloads. Exactlyone1mseedpercase andzeroresultpathfetches."
+}
