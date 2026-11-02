@@ -126,3 +126,35 @@ def test_candidate_invalid_dates_remain_distinct_from_merged_dates(tmp_path):
     assert facts.invalid_adjusted == {dt.date(2018, 5, 2)}
     assert facts.candidate.invalid_adjusted == set()
     assert facts.candidate.confirmed_dates is None
+
+
+@pytest.mark.parametrize("exact_selection", [True, False])
+def test_correction_selection_matches_full_candidate_rows(corpus, exact_selection):
+    payload = observation(strict_spec().targets[0], NOW.date())
+    selected = payload["unadjusted"][1]
+    selected.update(volume=2**60 + 1, trade_value_won=1234, source_detail={"unit": "shares"})
+    payload = confirmed(payload)
+    store.publish_pair(corpus, **payload)
+    _, manifest = store.load_snapshot(corpus)
+    identity = manifest["observations"]["005930"]
+    candidate = store.current_observation(corpus, store.read_object(corpus, identity))
+    selected = candidate["unadjusted"][1]
+    accepted = dict(selected) if exact_selection else {key: value for key, value in selected.items()
+                                                    if key != "source_detail"}
+    preserved = dict(selected, volume=90)
+    review = {
+        "kind": "screener_correction_review", "baseline": manifest["baseline"],
+        "observation_id": identity, "candidate_id": store.digest(candidate),
+        "accepted": [{"date": DAYS[1].isoformat(), "preserved": preserved, "selected": accepted}],
+    }
+    review_id, _ = object_file(corpus, review)
+    manifest = {**manifest, "corrections": {"005930": review_id}}
+    item = values.load_series(corpus, manifest, ["005930"], first=DAYS[0], last=DAYS[-1])["005930"]
+    if exact_selection:
+        assert item.corrected == {DAYS[1]}
+        assert item.original[DAYS[1]] == selected
+        assert item.quantity(DAYS[1], DAYS[-1], "raw") == 2**60 + 1
+        assert item.amount(DAYS[1]) == 1234
+    else:
+        assert not item.corrected
+        assert DAYS[1] in item.conflicts
