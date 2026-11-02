@@ -72,6 +72,8 @@ test('production React and FastAPI in Electron: settings export/import and nativ
       await expect(routeSettings.getByLabel('현재 화면 배율')).toHaveText('110%');
       await routeSettings.getByRole('button', { name: '100% 복원', exact: true }).click();
       await expect(routeSettings.getByLabel('현재 화면 배율')).toHaveText('100%');
+      await routeSettings.screenshot({ path: join(desktop, 'test-results', `route-${path.slice(1)}.png`) });
+      console.log('desktop route IPC passed', origin + path);
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog', { name: '설정', exact: true })).toBeHidden();
     }
@@ -117,7 +119,6 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     await expect(child.getByRole('button', { name: '관심종목 패널 토글', exact: true })).toBeVisible({ timeout: 15000 });
     await installLiveMocks(page);
     await page.reload();
-    await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
     await page.getByTestId('watchlist-row-098460').click();
     await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
     await page.screenshot({ path: join(desktop, 'test-results/real-chart.png') });

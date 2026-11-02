@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 from collections import defaultdict
@@ -68,9 +69,8 @@ async def subscribe_account(data_dir, environment: str, account: int, callback, 
         await session.retain_account(account)
         state_callback(_states.get(key, False))
     except BaseException:
-        try:
-            await release()
-        except Exception as exc:
-            log.warning("Account event rollback failed (%s)", type(exc).__name__)
+        outcome, = await asyncio.gather(release(), return_exceptions=True)
+        if isinstance(outcome, BaseException):
+            log.warning("Account event rollback failed (%s)", type(outcome).__name__)
         raise
     return release

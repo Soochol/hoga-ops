@@ -218,7 +218,6 @@ export class BoardSession {
       publish();
     } catch (error) {
       const rejected = this.pending;
-      // These validation responses guarantee that the server did not apply the mutation.
       // Network failures remain ambiguous and keep the original idempotent request.
       const failure = error && typeof error === 'object' && 'code' in error ? error : undefined;
       const embedRejected = failure?.code === 'whiteboard_embed_disabled';
