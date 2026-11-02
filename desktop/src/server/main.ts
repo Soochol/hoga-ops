@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, net, protocol, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -157,6 +157,11 @@ else {
       return controller.confirmStop(token);
     });
     ipcMain.handle('server:logs', async event => { trusted(event); return shell.openPath(logFolder); });
+    ipcMain.handle('server:copy-logs', (event, text: unknown) => {
+      trusted(event);
+      if (typeof text !== 'string' || text.length > 2_000_000) throw new Error('복사할 로그를 확인해 주세요.');
+      clipboard.writeText(text);
+    });
     ipcMain.handle('server:open-client', event => { trusted(event); return openClient(); });
     ipcMain.handle('server:window-state', event => { trusted(event); return windowState(); });
     ipcMain.handle('server:minimize', event => { trusted(event); window?.minimize(); });

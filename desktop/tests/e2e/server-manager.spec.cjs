@@ -42,23 +42,75 @@ async function healthy(port) {
   try { return (await fetch(`http://127.0.0.1:${port}/health`)).ok; } catch { return false; }
 }
 
+test('focus console separates sources and copies original records including collapsed tracebacks', async () => {
+  const f = await fixture(); let app; let originalClipboard;
+  try {
+    await appendFile(f.settings.uv, '\nconsole.log("INFO: backend-only"); console.error("ordinary stderr output"); console.error("ERROR: upstream failed"); console.error("Traceback (most recent call last):"); console.error("  File client.py, line 42"); console.error("TimeoutError: upstream timeout");\n');
+    await appendFile(f.settings.npm, '\nconsole.log("INFO: frontend-only");\n');
+    const result = await manager(f); app = result.app; const page = result.page;
+    originalClipboard = await app.evaluate(({ clipboard }) => clipboard.readText());
+    await running(page);
+    await expect(page.getByRole('tab', { name: /백엔드/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#logs')).toContainText('backend-only');
+    await expect(page.locator('#logs')).not.toContainText('frontend-only');
+    await expect(page.locator('#logs').getByText('ordinary stderr output')).toBeVisible();
+    await page.getByLabel('로그 레벨').selectOption('issues');
+    await expect(page.locator('#logs')).toContainText('upstream failed');
+    await expect(page.locator('#logs')).not.toContainText('ordinary stderr output');
+    await expect(page.locator('.log-trace')).toHaveJSProperty('open', false);
+    await page.getByRole('button', { name: '표시 로그 복사', exact: true }).click();
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText());
+    expect(copied).toMatch(/^\d{4}-\d\d-\d\dT\S+Z \[백엔드\] ERROR: upstream failed/);
+    expect(copied).toContain('TimeoutError: upstream timeout');
+    expect(copied).not.toContain('backend-only');
+    await page.getByRole('tab', { name: /프론트엔드/ }).click();
+    await expect(page.locator('#logs')).toContainText('frontend-only');
+    await expect(page.locator('#logs')).not.toContainText('backend-only');
+    await expect(page.getByLabel('로그 레벨')).toHaveValue('all');
+    await page.getByRole('button', { name: '원문', exact: true }).click();
+    await expect(page.locator('#logs')).toContainText('[프론트엔드] INFO: frontend-only');
+    await page.getByRole('button', { name: '전체 로그 복사', exact: true }).click();
+    const all = await app.evaluate(({ clipboard }) => clipboard.readText());
+    expect(all).toContain('[백엔드] INFO: backend-only');
+    expect(all).toContain('[프론트엔드] INFO: frontend-only');
+    expect(all).toContain('[관리]');
+    await page.getByRole('tab', { name: /백엔드/ }).click();
+    await expect(page.getByLabel('로그 레벨')).toHaveValue('issues');
+    await page.reload(); await running(page);
+    await expect(page.getByRole('tab', { name: /백엔드/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByLabel('로그 레벨')).toHaveValue('issues');
+    await expect(page.getByRole('button', { name: '원문', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('tab', { name: /백엔드/ }).press('ArrowRight');
+    await expect(page.getByRole('tab', { name: /프론트엔드/ })).toBeFocused();
+    await expect(page.locator('#logs')).toContainText('frontend-only');
+    await page.getByRole('tab', { name: /관리/ }).click();
+    await expect(page.locator('#logs')).toContainText('서버 관리 창을 열었습니다');
+    await expect(page.locator('#logs')).not.toContainText('backend-only');
+  } finally {
+    if (app) {
+      if (originalClipboard !== undefined) await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), originalClipboard);
+      await app.close();
+    }
+    await f.dispose();
+  }
+});
+
 test('manager automatically starts services, supports manual restart and coexists with Ticklane', async () => {
   const f = await fixture(); let app; let client;
   try {
     const result = await manager(f); app = result.app; const page = result.page;
     await running(page);
-    await expect(page.locator('#log-details')).toHaveJSProperty('open', false);
+    await expect(page.locator('#log-details')).toHaveJSProperty('open', true);
     expect(await page.evaluate(() => typeof window.require)).toBe('undefined');
     expect(await app.evaluate(({ BrowserWindow, app }) => ({ sandbox: BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences().sandbox, unsafe: app.commandLine.hasSwitch('no-sandbox') }))).toEqual({ sandbox: true, unsafe: false });
     const first = [await f.marker('backend'), await f.marker('frontend')];
     expect(first[1].api).toBe(`http://localhost:${f.ports.backend}`);
     expect(first[1].args).toContain('--strictPort');
     await expect(page.getByRole('button', { name: 'Ticklane 열기', exact: true })).toBeEnabled();
-    await page.locator('summary').click();
-    await expect(page.getByLabel('실행 로그 내용')).toContainText('<img src=x onerror=alert(1)>');
+    await expect(page.getByRole('tabpanel')).toContainText('<img src=x onerror=alert(1)>');
     expect(await page.locator('#logs img').count()).toBe(0);
-    await expect(page.locator('#logs time').first()).toHaveText(/^\d\d:\d\d:\d\d$/);
-    await page.locator('summary').click();
+    await expect(page.locator('#logs time').first()).toHaveText(/^\d\d:\d\d:\d\d\.\d{3}$/);
+    await page.locator('#log-details > summary').click();
     client = await electron.launch(options(f, false));
     await expect((await client.firstWindow()).getByRole('heading', { name: 'Ticklane', exact: true })).toBeVisible();
     expect(await app.evaluate(({ app }) => app.getName())).toBe('Ticklane 서버');
@@ -258,7 +310,7 @@ test('port conflicts do not start the other service and can be retried', async (
     await expect(page.getByRole('status')).toContainText('포트가 사용 중');
     await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeEnabled();
     await expect(page.locator('#log-details')).toHaveJSProperty('open', true);
-    await page.locator('summary').click();
+    await page.locator('#log-details > summary').click();
     await page.getByRole('button', { name: '상태 새로고침' }).click();
     await expect(page.locator('#log-details')).toHaveJSProperty('open', false);
     await expect(access(join(f.project, 'frontend.json'))).rejects.toThrow();
@@ -332,10 +384,10 @@ test('status view fits the compact window and live service failure reveals logs'
       await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 650), width);
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await expect(page.getByRole('button', { name: '관리 앱 종료', exact: true })).toBeInViewport();
-      await page.locator('summary').click();
+      await page.locator('#log-details > summary').click();
       await expect(page.getByRole('button', { name: '관리 창 숨기기' })).toBeInViewport();
       await expect(page.getByRole('button', { name: '관리 앱 종료', exact: true })).toBeInViewport();
-      await page.locator('summary').click();
+      await page.locator('#log-details > summary').click();
     }
     await page.screenshot({ path: test.info().outputPath('trading-desk-running.png') });
     const frontend = await f.marker('frontend'); process.kill(-frontend.pid, 'SIGTERM');
@@ -362,16 +414,17 @@ test('expanded logs fill the available height and resize without restarting serv
       const logs = document.getElementById('logs');
       const main = document.querySelector('main');
       return { height: logs.clientHeight, bottom: logs.getBoundingClientRect().bottom,
-        mainBottom: main.getBoundingClientRect().bottom - parseFloat(getComputedStyle(main).paddingBottom),
+        mainBottom: document.querySelector('.log-footer').getBoundingClientRect().top,
         mainOverflow: main.scrollHeight - main.clientHeight,
         logOverflow: logs.scrollHeight - logs.clientHeight,
         tail: logs.scrollHeight - logs.clientHeight - logs.scrollTop };
     });
     // Maximizing must not open a panel that the user left collapsed.
+    await page.locator('#log-details > summary').click();
     await page.getByRole('button', { name: '최대화', exact: true }).click();
     await expect(page.getByRole('button', { name: '이전 크기로 복원', exact: true })).toBeEnabled();
     await expect(page.locator('#log-details')).toHaveJSProperty('open', false);
-    await page.locator('summary').click();
+    await page.locator('#log-details > summary').click();
     await expect(page.locator('#logs')).toContainText('layout fixture log 199');
     await expect.poll(async () => Math.abs((await layout()).bottom - (await layout()).mainBottom)).toBeLessThan(2);
     await page.getByRole('button', { name: '이전 크기로 복원', exact: true }).click();

@@ -2,19 +2,24 @@ const api = window.serverManager;
 const supportsStopPlans = typeof api.prepareStop === 'function' && typeof api.confirmStop === 'function';
 const byId = id => document.getElementById(id);
 const phaseNames = { stopped: '중지됨', starting: '준비 중', running: '실행 중', stopping: '중지 중', error: '확인 필요' };
-const timeFormat = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+const timeFormat = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hourCycle: 'h23' });
 let savedUi = {};
 try { savedUi = JSON.parse(sessionStorage.getItem('ticklane-server-ui') || '{}') || {}; } catch { /* use defaults */ }
 let current;
 let previousPhase = savedUi.phase;
 let autoOpened = savedUi.autoOpened === true;
-let logText = '';
+let logText;
+let logSource = ['backend', 'frontend', 'manager'].includes(savedUi.logSource) ? savedUi.logSource : 'backend';
+let rawLogs = savedUi.rawLogs === true;
+let logEntries = [];
+const logViews = Object.fromEntries(['backend', 'frontend', 'manager'].map(source => [source, { follow: savedUi.follow !== false, scroll: 0, level: 'all', ...savedUi.logViews?.[source] }]));
 let openingClient = false;
 let preparingStop = false;
 let stopPlan;
 let restoringUi = true;
-byId('log-details').open = savedUi.logsOpen === true;
-byId('follow').checked = savedUi.follow !== false;
+byId('log-details').open = savedUi.logsOpen !== false;
+byId('follow').checked = logViews[logSource].follow;
+byId('log-level').value = logViews[logSource].level;
 // Keep the latest line visible when the window or the expanded log panel resizes.
 new ResizeObserver(() => {
   if (byId('follow').checked) byId('logs').scrollTop = byId('logs').scrollHeight;
@@ -23,6 +28,7 @@ new ResizeObserver(() => {
 window.addEventListener('beforeunload', () => {
   try {
     sessionStorage.setItem('ticklane-server-ui', JSON.stringify({
+      logSource, rawLogs, logViews: { ...logViews, [logSource]: { follow: byId('follow').checked, scroll: byId('logs').scrollTop, level: byId('log-level').value } },
       phase: previousPhase, autoOpened, logsOpen: byId('log-details').open, follow: byId('follow').checked,
       logScroll: byId('logs').scrollTop, mainScroll: document.querySelector('main').scrollTop,
     }));
@@ -39,29 +45,103 @@ function renderWindowState(state) {
   byId('minimize').disabled = false;
   byId('maximize').disabled = false;
 }
-function renderLogs(lines) {
+function parseLogs(lines) {
+  const entries = [];
+  const last = new Map();
+  for (const original of lines) {
+    const match = /^(\d{4}-\d\d-\d\dT\S+Z) \[([^\]]+)\] (.*)$/.exec(original);
+    const label = match?.[2];
+    const source = label === '백엔드' ? 'backend' : label === '프론트엔드' ? 'frontend' : 'manager';
+    // eslint-disable-next-line no-control-regex -- Strip subprocess ANSI colors for display; copies preserve the original bytes.
+    const text = (match?.[3] ?? original).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+    const levelMatch = /^(?:\d{4}-\d\d-\d\d[ T]\S+\s+)?\[?(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL|TRACE)\b[ \]:]*/i.exec(text);
+    const level = levelMatch ? /^(ERROR|CRITICAL|FATAL)$/i.test(levelMatch[1]) ? 'ERROR' : /^WARN/i.test(levelMatch[1]) ? 'WARN' : levelMatch[1].toUpperCase() : 'RAW';
+    const previous = last.get(source);
+    const traceback = text.startsWith('Traceback (most recent call last):');
+    if (!levelMatch && previous && (traceback || (previous.tracing && /^(?:\s|[\w.]+(?:Error|Exception):|During handling|The above exception)/.test(text)))) {
+      previous.raw.push(original); previous.detail.push(text); previous.tracing = true;
+      continue;
+    }
+    const entry = { source, timestamp: match?.[1], level, message: levelMatch ? text.slice(levelMatch[0].length) : text, raw: [original], detail: [], tracing: traceback };
+    entries.push(entry); last.set(source, entry);
+  }
+  return entries;
+}
+function visibleLogs() {
+  return logEntries.filter(entry => entry.source === logSource && (byId('log-level').value === 'all' || ['WARN', 'ERROR'].includes(entry.level)));
+}
+function renderLogs(lines, force = false) {
   const next = lines.join('\n');
-  if (next === logText) return;
+  if (!force && next === logText) return;
   logText = next;
+  logEntries = parseLogs(lines);
   const logs = byId('logs');
   const scrollTop = logs.scrollTop;
+  const expanded = new Set([...logs.querySelectorAll('details[open]')].map(detail => detail.dataset.key));
   const fragment = document.createDocumentFragment();
-  for (const line of lines) {
-    const row = document.createElement('div');
-    const match = /^(\d{4}-\d\d-\d\dT\S+Z) \[([^\]]+)\] (.*)$/.exec(line);
-    const date = match && new Date(match[1]);
-    if (date && !Number.isNaN(date.getTime())) {
-      const time = document.createElement('time'); time.className = 'log-time'; time.dateTime = match[1]; time.title = date.toLocaleString('ko-KR'); time.textContent = timeFormat.format(date);
-      const source = document.createElement('span'); source.className = 'log-source'; source.textContent = `[${match[2]}] `;
-      row.append(time, source, document.createTextNode(match[3]));
-    } else row.textContent = line;
+  logs.dataset.raw = String(rawLogs);
+  logs.setAttribute('aria-labelledby', `tab-${logSource}`);
+  byId('raw-logs').setAttribute('aria-pressed', String(rawLogs));
+  for (const tab of document.querySelectorAll('[role="tab"]')) {
+    const selected = tab.dataset.source === logSource;
+    tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+    tab.querySelector('.log-count').textContent = logEntries.filter(entry => entry.source === tab.dataset.source).length;
+  }
+  const visible = visibleLogs();
+  byId('log-count').textContent = `${visible.length} / ${logEntries.filter(entry => entry.source === logSource).length}건`;
+  byId('copy-logs').disabled = !visible.length;
+  byId('copy-all-logs').disabled = !lines.length;
+  for (const entry of visible) {
+    const row = document.createElement('article'); row.className = 'log-entry'; row.dataset.level = entry.level;
+    const line = document.createElement('div'); line.className = 'log-row';
+    const date = new Date(entry.timestamp);
+    if (!rawLogs) {
+      const time = document.createElement('time'); time.className = 'log-time';
+      if (!Number.isNaN(date.getTime())) { time.dateTime = entry.timestamp; time.title = date.toLocaleString('ko-KR'); time.textContent = timeFormat.format(date); }
+      else time.textContent = '—';
+      const level = document.createElement('span'); level.className = 'log-level'; level.textContent = entry.level;
+      line.append(time, level);
+    }
+    const message = document.createElement('span'); message.className = 'log-message'; message.textContent = rawLogs ? entry.raw.join('\n') : entry.message;
+    const copy = document.createElement('button'); copy.className = 'log-copy'; copy.title = '기록 복사 · 오류 상세 포함'; copy.setAttribute('aria-label', '이 기록 복사');
+    copy.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#icon-copy"/></svg>';
+    copy.addEventListener('click', () => { void copyLogs(entry.raw.join('\n')); });
+    line.append(message, copy); row.append(line);
+    if (!rawLogs && entry.detail.length) {
+      const detail = document.createElement('details'); detail.className = 'log-trace'; detail.dataset.key = entry.raw[0]; detail.open = expanded.has(entry.raw[0]);
+      const summary = document.createElement('summary'); summary.textContent = '오류 상세';
+      const pre = document.createElement('pre'); pre.textContent = entry.detail.join('\n'); detail.append(summary, pre); row.append(detail);
+    }
     fragment.append(row);
   }
   logs.replaceChildren(fragment);
-  if (!lines.length) logs.textContent = '아직 실행 로그가 없습니다.';
+  if (!visible.length) {
+    const service = current?.services.find(service => service.id === logSource);
+    logs.textContent = service?.owner === 'external' ? '외부에서 실행한 서버의 표준 출력은 이 앱에서 수집하지 않습니다.' : byId('log-level').value === 'issues' ? '표시할 WARN · ERROR 기록이 없습니다. 레벨이 없는 출력은 모든 레벨에서 확인하세요.' : '이 서비스의 수집된 실행 로그가 없습니다.';
+  }
   if (byId('follow').checked) logs.scrollTop = logs.scrollHeight;
   else logs.scrollTop = scrollTop;
 }
+async function copyLogs(text) {
+  try {
+    if (!api.copyLogs) throw new Error('관리 앱 재실행 필요');
+    await api.copyLogs(text);
+    byId('copy-fallback').hidden = true;
+    byId('log-feedback').textContent = '로그를 복사했습니다. 원래 날짜·시각·출처와 오류 상세를 포함합니다.';
+  } catch {
+    byId('copy-fallback').hidden = false;
+    byId('copy-text').value = text; byId('copy-text').focus(); byId('copy-text').select();
+    byId('log-feedback').textContent = '선택된 내용을 복사하세요. 관리 앱을 다시 실행하면 복사 버튼을 바로 사용할 수 있습니다.';
+  }
+}
+function selectLogSource(source) {
+  logViews[logSource] = { follow: byId('follow').checked, scroll: byId('logs').scrollTop, level: byId('log-level').value };
+  logSource = source;
+  byId('follow').checked = logViews[source].follow; byId('log-level').value = logViews[source].level;
+  renderLogs(current?.logs ?? [], true);
+  if (!byId('follow').checked) byId('logs').scrollTop = logViews[source].scroll;
+}
+
 function render(state) {
   current = state;
   const phase = state.phase;
@@ -97,9 +177,9 @@ function render(state) {
     const row = byId(`service-${service.id}`);
     if (!row) continue;
     row.dataset.phase = service.phase; row.dataset.owner = service.owner ?? '';
-    row.querySelector('.phase').textContent = service.phase === 'running' && service.owner === 'external' ? '외부 실행' : phaseNames[service.phase];
+    row.querySelector('.phase').textContent = phaseNames[service.phase];
     row.querySelector('.service-status').title = service.message;
-    row.querySelector('.address').textContent = `${service.label} · localhost:${service.port}`;
+    row.querySelector('.address').textContent = `localhost:${service.port}${service.owner ? ` · ${service.owner === 'external' ? '외부 실행' : '앱에서 실행'}` : ''}`;
     row.querySelector('.detail').textContent = service.message;
     row.querySelector('.detail').hidden = service.phase !== 'error';
     let actions = row.querySelector('.service-actions');
@@ -119,14 +199,18 @@ function render(state) {
     actions.querySelector('.service-force').hidden = !service.canForce;
     actions.querySelector('.service-force').disabled = Boolean(state.action) || preparingStop;
   }
-  if (phase === 'error' && previousPhase !== 'error') { byId('log-details').open = true; autoOpened = true; }
+  if (phase === 'error' && previousPhase !== 'error') {
+    const failed = state.services.find(service => service.phase === 'error');
+    selectLogSource(failed?.id ?? 'manager');
+    byId('log-details').open = true; autoOpened = true;
+  }
   else if (running && autoOpened) { byId('log-details').open = false; autoOpened = false; }
   previousPhase = phase;
   if (state.action && byId('stop-dialog').open) byId('stop-dialog').close();
   renderLogs(state.logs);
   if (restoringUi) {
     restoringUi = false;
-    if (!byId('follow').checked && Number.isFinite(savedUi.logScroll)) byId('logs').scrollTop = savedUi.logScroll;
+    if (!byId('follow').checked && Number.isFinite(savedUi.logScroll)) byId('logs').scrollTop = logViews[logSource].scroll || savedUi.logScroll;
     if (Number.isFinite(savedUi.mainScroll)) document.querySelector('main').scrollTop = savedUi.mainScroll;
   }
 }
@@ -195,3 +279,19 @@ if (api.windowState && api.onWindowState) {
 }
 api.onState(render);
 run(api.read);
+
+for (const tab of document.querySelectorAll('[role="tab"]')) {
+  tab.addEventListener('click', () => selectLogSource(tab.dataset.source));
+  tab.addEventListener('keydown', event => {
+    const sources = ['backend', 'frontend', 'manager'];
+    const index = sources.indexOf(logSource);
+    const next = { ArrowRight: sources[(index + 1) % 3], ArrowLeft: sources[(index + 2) % 3], Home: sources[0], End: sources[2] }[event.key];
+    if (next) { event.preventDefault(); selectLogSource(next); byId(`tab-${next}`).focus(); }
+  });
+}
+byId('log-level').addEventListener('change', () => renderLogs(current?.logs ?? [], true));
+byId('raw-logs').addEventListener('click', () => { rawLogs = !rawLogs; renderLogs(current?.logs ?? [], true); });
+byId('copy-logs').addEventListener('click', () => { void copyLogs(visibleLogs().map(entry => entry.raw.join('\n')).join('\n')); });
+byId('copy-all-logs').addEventListener('click', () => { void copyLogs((current?.logs ?? []).join('\n')); });
+byId('close-copy').addEventListener('click', () => { byId('copy-fallback').hidden = true; });
+byId('follow').addEventListener('change', () => { if (byId('follow').checked) byId('logs').scrollTop = byId('logs').scrollHeight; });
