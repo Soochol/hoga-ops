@@ -1,0 +1,27 @@
+{
+  "recorded_at": "2026-11-02T15:30:32.782669+00:00",
+  "head_sha": "fa59018b285f4f30648dc4c34925543c70a17bb4",
+  "base_sha": "fa59018b285f4f30648dc4c34925543c70a17bb4",
+  "working_tree": "Uncommitted CSS density correction; fingerprint covers current file contents.",
+  "input_sha256": "e0db15fc428370b3cffdc292fb94ef11ae945906ee7d89b8e431baf6a1ff2485",
+  "input_file_count": 63,
+  "environment": {
+    "node": "v24.13.1",
+    "electron": "44.8.0",
+    "playwright": "1.64.1",
+    "workers": 1,
+    "sandbox": true
+  },
+  "checks": [
+    {
+      "cwd": "desktop",
+      "command": "npx playwright test tests/e2e/server-manager.spec.cjs --grep 'focus console|expanded logs|status view'",
+      "result": "3 passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass"
+    }
+  ],
+  "scope": "CSS-only change. Existing Electron tests cover source separation, copy, compact/expanded layouts, resize and scroll restoration. User servers were not restarted."
+}
