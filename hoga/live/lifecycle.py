@@ -28,6 +28,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from hoga.live import last_ob_store
+from hoga.util.shutdown import finish_shutdown, shutdown_phase
 from hoga.util.timeenc import KST
 
 from . import kis_runtime
@@ -612,8 +613,12 @@ async def _stop_live_stream_locked() -> None:
 
 async def stop_live_stream() -> None:
     """완전 정지 — KisClient 싱글턴은 건드리지 않는다."""
-    async with _lifecycle_lock:
-        await _stop_live_stream_locked()
+    with shutdown_phase("live_lifecycle_lock"):
+        await _lifecycle_lock.acquire()
+    try:
+        await finish_shutdown(asyncio.create_task(_stop_live_stream_locked(), name="live-stop-drain"))
+    finally:
+        _lifecycle_lock.release()
 
 
 # ── ADR-0067: 보는종목 view 진입점 ─────────────────────────────────────────────

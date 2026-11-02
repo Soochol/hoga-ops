@@ -105,6 +105,77 @@ def fake_entry(root, epoch, sockets, parent_pid):
     asyncio.run(run_worker(root, epoch, sockets, parent_pid, manager_factory=FakeManager))
 
 
+class HeldShutdownWriter(FakeManager):
+    async def stop(self):
+        from hoga.util.atomic_write import atomic_write_json
+
+        await super().stop()
+        entered = asyncio.Event()
+        loop = asyncio.get_running_loop()
+
+        def write():
+            (self.root / 'shutdown-write-entered').touch()
+            loop.call_soon_threadsafe(entered.set)
+            deadline = time.monotonic() + 20
+            while not (self.root / 'shutdown-write-release').exists():
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('shutdown write was not released')
+                time.sleep(0.01)
+            atomic_write_json(self.root / 'shutdown-write.json', {'pid': os.getpid(), 'complete': True})
+
+        self.write_task = asyncio.create_task(asyncio.to_thread(write))
+        await entered.wait()
+
+
+def held_shutdown_write_entry(root, epoch, sockets, parent_pid):
+    asyncio.run(run_worker(root, epoch, sockets, parent_pid, manager_factory=HeldShutdownWriter))
+
+
+async def test_cancelled_stop_retains_child_lock_until_actual_write_and_exit(tmp_path, monkeypatch):
+    import fcntl
+    import json
+
+    from hoga.api import symbols
+    from hoga.live import session_gate
+
+    monkeypatch.setattr(symbols, 'nxt_enabled_by_code', lambda: {})
+    monkeypatch.setattr(session_gate, 'is_trading_day_now', lambda stamp: True)
+    owner = CaptureProcessSession(buffer=LiveBuffer(), data_dir=tmp_path, process_target=held_shutdown_write_entry)
+    first = replacement = None
+    try:
+        await owner.sync(('005930',), n_accounts=1)
+        await until(owner.fresh)
+        old_pid = owner.process.pid
+        first = asyncio.create_task(owner.stop())
+        await until(lambda: (tmp_path / 'shutdown-write-entered').exists())
+        for _ in range(2):
+            first.cancel()
+            await asyncio.sleep(0)
+            assert not first.done() and owner.lock.locked()
+        descriptor = os.open(tmp_path / '.live-capture.lock', os.O_RDWR)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(descriptor)
+        replacement = asyncio.create_task(owner.sync(('005930',), n_accounts=1))
+        await asyncio.sleep(0)
+        assert not replacement.done() and owner.process.pid == old_pid
+        assert not (tmp_path / 'shutdown-write.json').exists()
+        (tmp_path / 'shutdown-write-release').touch()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        assert json.loads((tmp_path / 'shutdown-write.json').read_text()) == {'pid': old_pid, 'complete': True}
+        await replacement
+        await until(owner.fresh)
+        assert owner.process.pid != old_pid and not Path(f'/proc/{old_pid}').exists()
+        assert owner.forced_terminations == 0
+    finally:
+        (tmp_path / 'shutdown-write-release').touch()
+        await asyncio.gather(*(task for task in (first, replacement) if task is not None), return_exceptions=True)
+        await owner.stop()
+
+
 class UsEventManager(FakeManager):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

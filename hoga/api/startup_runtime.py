@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from hoga.api import loop_lag
@@ -17,6 +17,7 @@ from hoga.live.promote_executor import (
     executor_kind_from_env,
     install_default as install_default_promote_executor,
 )
+from hoga.util.shutdown import finish_shutdown, shutdown_phase
 
 log = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ class AppStartupRuntime:
     sector_broadcast_task: TaskOrNone = None
     #: today-promoter 의 워커 프로세스 풀(ADR-0168). 태스크를 멈춘 뒤 내린다.
     today_promoter_executor: PromoteExecutor | None = None
+    _stop_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False, compare=False)
 
     def supervised_task_health(self) -> list[dict[str, object]]:
         """Honest alive/dead snapshot of each lifespan-owned background task.
@@ -231,38 +233,52 @@ class AppStartupRuntime:
         return rows
 
     async def stop(self) -> None:
-        """Stop runtime-owned background work in shutdown order."""
+        """Share completion and retain owned cleanup through caller cancellation."""
+        if self._stop_task is None:
+            self._stop_task = asyncio.create_task(self._stop(), name="runtime-stop-drain")
+        await finish_shutdown(self._stop_task)
+
+    async def _stop(self) -> None:
         if self.deps.close_symbol_capture_counts is not None:
-            await self.deps.close_symbol_capture_counts()
-        await self.deps.stop_today_promoter(self.today_promoter_task)
+            with shutdown_phase("runtime_symbol_counts"):
+                await self.deps.close_symbol_capture_counts()
+        with shutdown_phase("runtime_promoter_task"):
+            await self.deps.stop_today_promoter(self.today_promoter_task)
         # 태스크가 멎은 **뒤에** 풀을 내린다 — 순서가 반대면 마지막 종목의 승격이
         # BrokenProcessPool 로 끝나 종료 로그에 가짜 실패가 남는다.
         if self.today_promoter_executor is not None:
-            await self.today_promoter_executor.aclose()
+            with shutdown_phase("runtime_promoter_pool"):
+                await self.today_promoter_executor.aclose()
             install_default_promote_executor(None)
             self.today_promoter_executor = None
-        await self.deps.stop_today_promoter(self.kiwoom_watchdog_task)
-        await self.deps.stop_today_promoter(self.sector_broadcast_task)
-        await self.deps.stop_live_stream()
+        with shutdown_phase("runtime_watchdog"):
+            await self.deps.stop_today_promoter(self.kiwoom_watchdog_task)
+        with shutdown_phase("runtime_sector"):
+            await self.deps.stop_today_promoter(self.sector_broadcast_task)
+        with shutdown_phase("runtime_live_stream"):
+            await self.deps.stop_live_stream()
 
-        for task in self.scheduler_tasks:
-            task.cancel()
-        for task in self.scheduler_tasks:
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                log.exception("scheduler task crashed during shutdown")
-
+        with shutdown_phase("runtime_schedulers"):
+            for task in self.scheduler_tasks:
+                task.cancel()
+            for task in self.scheduler_tasks:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    log.exception("scheduler task crashed during shutdown")
         # 야간선물 WS — 스케줄러 태스크를 취소한 **뒤에** 닫는다. 먼저 닫으면 keeper 의
         # 다음 틱이 곧바로 다시 열어서 소켓이 종료를 넘어 살아남는다.
         from hoga.live.futures_runtime import aclose_runtime  # noqa: PLC0415 — 지연(순환)
 
-        await aclose_runtime()
+        with shutdown_phase("runtime_futures"):
+            await aclose_runtime()
 
-        await self.deps.aclose_kis_capacity_scheduler()
-        await self.deps.aclose_kis_client()
+        with shutdown_phase("runtime_rest_capacity"):
+            await self.deps.aclose_kis_capacity_scheduler()
+        with shutdown_phase("runtime_rest_clients"):
+            await self.deps.aclose_kis_client()
 
 
 async def start_app_runtime(
