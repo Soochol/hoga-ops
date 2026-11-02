@@ -1,8 +1,6 @@
 import { emptyResultText } from './emptyResultText';
 import { DismissExitedButton } from './DismissExitedButton';
-import { isRankCondition, hasRankEvidence } from './rankConditions';
-import { PriceOccurrenceButtons, usePriceOccurrenceDetails, type PriceOccurrenceDetailsProps } from './PriceOccurrenceDetails';
-import { MarketRankEvidence } from './MarketRankEvidence';
+import { isRankCondition } from './rankConditions';
 import { useScreenerJump } from "./useScreenerJump";
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
@@ -74,8 +72,8 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
   shaded,
   onActivate,
   onOpenMenu,
-  columnLayout, occurrenceKinds, onOccurrenceDetails,
-}: PriceOccurrenceDetailsProps & {
+  columnLayout,
+}: {
   columnLayout: React.CSSProperties;
   row: ScreenerRowLive;
   active: boolean;
@@ -96,8 +94,6 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
       columnLayout={columnLayout}
       name={row.name} code={row.code}
       nameTooltip=""
-      nameDetail={row.occurrences?.some(e => hasRankEvidence(e) || occurrenceKinds?.has(e.condition_id))
-        ? <><MarketRankEvidence row={row} /><PriceOccurrenceButtons row={row} occurrenceKinds={occurrenceKinds} onOccurrenceDetails={onOccurrenceDetails} /></> : undefined}
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
@@ -169,7 +165,6 @@ export function ScreenerDrawer() {
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
   const openLive = useScreenerJump(lastScan?.calculation);
   const occurrenceController = useOccurrenceExclusions(lastScan);
-  const periodDetails = usePriceOccurrenceDetails(lastScan?.rows ?? [], occurrenceController);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const dismissExited = useScreenerPanelStore((s) => s.dismissExited);
   const clearLastScan = useScreenerPanelStore((s) => s.clearLastScan);
@@ -511,7 +506,6 @@ export function ScreenerDrawer() {
                     <DraggableScreenerRow key={r.code}
                       columnLayout={columns.layout}
                       row={r}
-                      occurrenceKinds={periodDetails.conditionKinds} onOccurrenceDetails={periodDetails.onOpen}
                       active={r.code === activeCode}
                       flash={monitoringActive && !exitedCodes.has(r.code) && flashCodes.has(r.code)}
                       shaded={exitedCodes.has(r.code)}
@@ -538,9 +532,6 @@ export function ScreenerDrawer() {
         )}
       </RailDrawerBody>
 
-
-
-      {periodDetails.modal}
       {rowMenu && (
         <QuoteRowGroupMenu
           code={rowMenu.code}

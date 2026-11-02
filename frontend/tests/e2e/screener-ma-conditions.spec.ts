@@ -1,10 +1,11 @@
+import { installScreenerRunsMock } from './helpers/screenerRuns';
 import { addCondition, openConditionSettings, closeConditionSettings } from './helpers/screenerEditor';
 import { test, expect } from '@playwright/test';
-import type { ConditionLeaf, MaOperand, ScanRequest, ScreenerExclusion, ScreenerOccurrence } from '../../src/api/screener';
+import type { ConditionLeaf, MaOperand, ScanRequest, ScreenerResponse, ScreenerExclusion, ScreenerOccurrence } from '../../src/api/screener';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
 
-test('SMA comparison, cross, gap and slope retain inputs and expose historical evidence in page and drawer', async ({ page }, testInfo) => {
+test('SMA comparison, cross, gap and slope retain inputs and expose historical evidence only on the page', async ({ page }, testInfo) => {
   await installLiveMocks(page);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -27,8 +28,7 @@ test('SMA comparison, cross, gap and slope retain inputs and expose historical e
     }
     return route.fulfill({ json: { schema_version: 1, exclusions: excluded } });
   });
-  await page.route(apiExact('screener/scan'), route => {
-    const req: ScanRequest = route.request().postDataJSON();
+  const respond = (req: ScanRequest): ScreenerResponse => {
     scans.push(req);
     const occurrences: ScreenerOccurrence[] = req.conditions.flatMap(leaf => {
       if (leaf.type !== 'ma_compare' && leaf.type !== 'ma_compare_period' && leaf.type !== 'ma_cross' && leaf.type !== 'ma_cross_period'
@@ -56,10 +56,12 @@ test('SMA comparison, cross, gap and slope retain inputs and expose historical e
           right: { ...event.bar_ma_match!.right, bar_start_ms: event.bar_ma_match!.right.bar_start_ms + 300_000,
             window_start_ms: event.bar_ma_match!.right.window_start_ms + 300_000 } } }] : [event];
     }).filter(e => !excluded.some(x => x.condition_key === e.condition_key && x.bar_start_ms === e.bar_start_ms));
-    return route.fulfill({ json: { status: 'ok', warnings: [], bar_coverage: { total: 1, complete: 1, incomplete: [] },
+    return { status: 'ok', warnings: [], bar_coverage: { total: 1, complete: 1, incomplete: [] },
       rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 110, trade_value_won: 1e8,
-        change_pct: 0, occurrences }] } });
-  });
+        change_pct: 0, occurrences }] };
+  };
+  await page.route(apiExact('screener/scan'), route => route.fulfill({ json: respond(route.request().postDataJSON()) }));
+  await installScreenerRunsMock(page, respond);
   await page.goto('/screener');
   const names = ['이동평균 비교', '기간내 이동평균 비교', '이동평균 돌파·교차', '기간내 이동평균 돌파·교차',
     '이동평균 이격률', '기간내 이동평균 이격률', '이동평균 기울기', '기간내 이동평균 기울기'];
@@ -161,9 +163,9 @@ test('SMA comparison, cross, gap and slope retain inputs and expose historical e
   await page.setViewportSize({ width: 1280, height: 900 });
   await closeConditionSettings(page);
   await page.getByRole('button', { name: '스크리너 패널 토글', exact: true }).click();
-  await page.getByTestId('screener-panel').getByRole('button', { name: '삼성전자 이동평균 발생 8건', exact: true }).click();
-  await expect(dialog).toContainText('기울기 2%');
-  await page.keyboard.press('Escape');
+  const panel = page.getByTestId('screener-panel');
+  await expect(panel.getByTestId('screener-row-005930')).toBeVisible();
+  await expect(panel.getByRole('button', { name: /삼성전자 .*발생 \d+건/ })).toHaveCount(0);
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/screener$/);
   expect(errors).toEqual([]);

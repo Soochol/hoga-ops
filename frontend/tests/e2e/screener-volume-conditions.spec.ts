@@ -5,7 +5,7 @@ import { apiExact, apiPrefix } from './helpers/apiRoutes';
 import { installScreenerRunsMock } from './helpers/screenerRuns';
 import { installLiveMocks } from './helpers/liveMocks';
 
-test('volume range, comparison and prior average retain settings and expose per-bar evidence in page and drawer', async ({ page }, testInfo) => {
+test('volume range, comparison and prior average retain settings and expose per-bar evidence only on the page', async ({ page }, testInfo) => {
   await installLiveMocks(page);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -148,9 +148,9 @@ test('volume range, comparison and prior average retain settings and expose per-
   await page.setViewportSize({ width: 1280, height: 900 });
   await closeConditionSettings(page);
   await page.getByRole('button', { name: '스크리너 패널 토글', exact: true }).click();
-  await page.getByTestId('screener-panel').getByRole('button', { name: '삼성전자 거래량 발생 6건', exact: true }).click();
-  await expect(dialog).toContainText('평균의 250%');
-  await page.keyboard.press('Escape');
+  const panel = page.getByTestId('screener-panel');
+  await expect(panel.getByTestId('screener-row-005930')).toBeVisible();
+  await expect(panel.getByRole('button', { name: /삼성전자 .*발생 \d+건/ })).toHaveCount(0);
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/screener$/);
   expect(errors).toEqual([]);

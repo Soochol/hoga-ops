@@ -1,10 +1,11 @@
+import { installScreenerRunsMock } from './helpers/screenerRuns';
 import { addCondition, openConditionSettings, closeConditionSettings } from './helpers/screenerEditor';
 import { test, expect } from '@playwright/test';
-import type { ConditionLeaf, ScanRequest, ScreenerExclusion, ScreenerOccurrence } from '../../src/api/screener';
+import type { ConditionLeaf, ScanRequest, ScreenerResponse, ScreenerExclusion, ScreenerOccurrence } from '../../src/api/screener';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
 
-test('price comparisons preserve independent OHLC operands, dates and per-bar evidence in page and drawer', async ({ page }, testInfo) => {
+test('price comparisons preserve independent OHLC operands, dates and per-bar evidence only on the page', async ({ page }, testInfo) => {
   await installLiveMocks(page);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -27,8 +28,7 @@ test('price comparisons preserve independent OHLC operands, dates and per-bar ev
     }
     return route.fulfill({ json: { schema_version: 1, exclusions: excluded } });
   });
-  await page.route(apiExact('screener/scan'), route => {
-    const req: ScanRequest = route.request().postDataJSON();
+  const respond = (req: ScanRequest): ScreenerResponse => {
     scans.push(req);
     const occurrences: ScreenerOccurrence[] = req.conditions.flatMap(leaf => {
       if (leaf.type !== 'price_compare' && leaf.type !== 'price_compare_period') return [];
@@ -42,10 +42,12 @@ test('price comparisons preserve independent OHLC operands, dates and per-bar ev
             is_open: false, fetched_at_ms: 1 } };
       });
     }).filter(event => !excluded.some(e => e.condition_key === event.condition_key && e.bar_start_ms === event.bar_start_ms));
-    return route.fulfill({ json: { status: 'ok', warnings: [], bar_coverage: { total: 1, complete: 1, incomplete: [] },
+    return { status: 'ok', warnings: [], bar_coverage: { total: 1, complete: 1, incomplete: [] },
       rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 120,
-        trade_value_won: 1e8, change_pct: 0, occurrences }] } });
-  });
+        trade_value_won: 1e8, change_pct: 0, occurrences }] };
+  };
+  await page.route(apiExact('screener/scan'), route => route.fulfill({ json: respond(route.request().postDataJSON()) }));
+  await installScreenerRunsMock(page, respond);
   await page.goto('/screener');
   for (const name of ['주가 비교', '기간내 주가 비교']) {
     await addCondition(page, name);
@@ -140,9 +142,8 @@ test('price comparisons preserve independent OHLC operands, dates and per-bar ev
   await closeConditionSettings(page);
   await page.getByRole('button', { name: '스크리너 패널 토글', exact: true }).click();
   const panel = page.getByTestId('screener-panel');
-  await panel.getByRole('button', { name: '삼성전자 주가 비교 발생 2건', exact: true }).click();
-  await expect(dialog).toContainText('2봉 전 시가 120원 ≥ 3봉 전 저가 100원');
-  await page.keyboard.press('Escape');
+  await expect(panel.getByTestId('screener-row-005930')).toBeVisible();
+  await expect(panel.getByRole('button', { name: /삼성전자 .*발생 \d+건/ })).toHaveCount(0);
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/screener$/);
   expect(errors).toEqual([]);
