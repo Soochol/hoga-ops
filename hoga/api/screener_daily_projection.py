@@ -1,4 +1,3 @@
-"""Publisher-owned daily query facts bound to pinned immutable observations."""
 from __future__ import annotations
 
 import datetime as dt
@@ -52,6 +51,12 @@ class Observation:
     invalid_unadjusted: set[dt.date] | None
     invalid_adjusted: set[dt.date] | None
     candidate: Candidate
+
+
+@dataclass(frozen=True)
+class _PackedRows:
+    data: bytes
+    decoded_bytes: int
 
 
 @dataclass(frozen=True)
@@ -176,7 +181,6 @@ def _compile_legacy(data_dir, identity, *, stop=None):
         active.add(source_id)
         path = _source_path(data_dir, source_id)
         stamp = snapshots.signature(path)
-        # The disk target, including pre-existing targets, is the attested input.
         value = store.read_object(data_dir, source_id, stop=stop)
         files[path] = stamp
         store._assert_file(path, stamp)
@@ -263,10 +267,10 @@ def _decompress(packed, *, decoded_bytes=None, maximum=MAX_DECODED_BYTES, stop=N
         remaining = packed[start:start + CHUNK_BYTES]
         while remaining:
             checkpoint(stop)
-            budget = CHUNK_BYTES if maximum is None else min(CHUNK_BYTES, maximum - size + 1)
+            budget = min(CHUNK_BYTES, maximum - size + 1)
             part = decoder.decompress(remaining, budget)
             size += len(part)
-            if maximum is not None and size > maximum:
+            if size > maximum:
                 raise ValueError("Daily query decoded budget exceeded")
             parts.append(part)
             remaining = decoder.unconsumed_tail
@@ -322,7 +326,7 @@ def _compact(data_dir, manifest, code, *, rows, stop=None):
     if facts.candidate.identity != header.candidate_id or _summary(facts) != header.summary():
         raise ValueError("Daily query body binding mismatch")
     _attest(files, stop=stop)
-    return packed
+    return _PackedRows(packed, header.decoded_bytes)
 
 
 def _load(data_dir, manifest, code, *, rows, stop=None):
@@ -333,7 +337,11 @@ def _load(data_dir, manifest, code, *, rows, stop=None):
     except (OSError, ValueError, KeyError, TypeError, zlib.error) as exc:
         log.warning("daily_query.verified_fallback", extra={"code": code, "reason": str(exc), "rows": rows})
     facts, files = _compile_legacy(data_dir, manifest["observations"][code], stop=stop)
-    result = zlib.compress(_encode(facts)) if rows else _summary(facts)
+    if rows:
+        encoded = _encode(facts)
+        result = _PackedRows(zlib.compress(encoded), len(encoded))
+    else:
+        result = _summary(facts)
     _attest(files, stop=stop)
     return result
 
@@ -351,19 +359,30 @@ def read(data_dir: Path, manifest: dict, code: str, *, stop=None) -> Observation
     packed = snapshots.obtain(data_dir, manifest, "daily-query-rows-v1", code,
                               lambda: _load(data_dir, manifest, code, rows=True, stop=stop), stop=stop)
     checkpoint(stop)
-    # Oversized legacy facts retain their existing in-memory fallback semantics.
-    facts = _decode(_decompress(packed, maximum=None, stop=stop))
+    facts = _decode(_decompress(packed.data, decoded_bytes=packed.decoded_bytes,
+                               maximum=packed.decoded_bytes, stop=stop))
     checkpoint(stop)
     return facts
 
 
-def _write_query_file(path, encoded, *, limit):
+def _write_query_file(data_dir: Path, payload: _Header | bytes):
+    if isinstance(payload, _Header):
+        value = payload.model_dump()
+        identity = store.digest(value)
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False, allow_nan=False).encode()
+        path, limit = _source_path(data_dir, identity), MAX_HEADER_BYTES
+    else:
+        encoded = payload
+        identity = hashlib.sha256(encoded).hexdigest()
+        path, limit = _body_path(data_dir, identity), MAX_COMPRESSED_BYTES
+    if len(encoded) > limit:
+        raise ValueError("Daily query artifact exceeds write budget")
     try:
         installed, _ = store._read_file(path, limit=limit)
     except (FileNotFoundError, ValueError):
         installed = None
     if installed != encoded:
-        # Only derived query artifacts can be restored. Source observations are never rewritten.
         with _atomic_target(path) as temporary, temporary.open("wb") as handle:
             handle.write(encoded)
             handle.flush()
@@ -373,19 +392,15 @@ def _write_query_file(path, encoded, *, limit):
     installed, _ = store._read_file(path, limit=limit)
     if installed != encoded:
         raise ValueError("Installed daily query artifact checksum mismatch")
+    return identity
 
 
 def _write_body(data_dir, packed):
-    identity = hashlib.sha256(packed).hexdigest()
-    _write_query_file(_body_path(data_dir, identity), packed, limit=MAX_COMPRESSED_BYTES)
-    return identity
+    return _write_query_file(data_dir, packed)
 
 
 def _write_header(data_dir, value):
-    identity = store.digest(value)
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
-    _write_query_file(_source_path(data_dir, identity), encoded, limit=MAX_HEADER_BYTES)
-    return identity
+    return _write_query_file(data_dir, _Header.model_validate(value))
 
 
 def _prepare_code(data_dir, identity):
@@ -484,7 +499,7 @@ def prepare_existing_query_data(data_dir: Path, *, expected_snapshot: str, codes
         if updated == manifest:
             snapshot_id = current[0]
         else:
-            snapshot_id = store._commit_snapshot(data_dir, {**updated, "parent": current[0]})
+            snapshot_id = store._commit_snapshot_locked(data_dir, {**updated, "parent": current[0]})
         sizes, sources = {}, {}
         for code, identity in headers.items():
             header, _ = _read_header(data_dir, identity, selected[code])

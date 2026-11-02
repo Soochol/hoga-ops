@@ -190,3 +190,28 @@ def test_recursive_candidate_cycle_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(store, 'read_object', lambda *a, **kw: {'candidate_observation': identity})
     with pytest.raises(ValueError, match='Cyclic'):
         projection.read(tmp_path, {'observations': {'005930': identity}}, '005930')
+
+
+def test_verified_legacy_rows_decode_with_their_exact_length_bound(corpus, monkeypatch):
+    manifest = publish(corpus)
+    manifest = {key: value for key, value in manifest.items() if key != 'daily_query'}
+    calls = []
+    decompress = projection._decompress
+
+    def bounded(packed, **kwargs):
+        calls.append((kwargs['maximum'], kwargs['decoded_bytes']))
+        assert kwargs['maximum'] == kwargs['decoded_bytes'] > 0
+        return decompress(packed, **kwargs)
+
+    monkeypatch.setattr(projection, '_decompress', bounded)
+    assert projection.read(corpus, manifest, '005930') is not None
+    assert len(calls) == 1
+
+
+def test_derived_writer_cannot_accept_an_original_path(corpus):
+    manifest = publish(corpus)
+    original = projection._source_path(corpus, manifest['observations']['005930'])
+    expected = original.read_bytes()
+    with pytest.raises(TypeError):
+        projection._write_query_file(corpus, original)
+    assert original.read_bytes() == expected

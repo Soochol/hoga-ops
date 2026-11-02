@@ -340,11 +340,10 @@ def _publish_many(data_dir, section, incoming, *, anchor=None, expected_snapshot
             return old[0]
         previous_ids = old[1].get(section, {}) if old else {}
         changed = {code for code, _ in incoming if manifest[section].get(code) != previous_ids.get(code)}
-        return _commit_snapshot(data_dir, manifest, changed_codes=changed if section == "observations" else ())
+        return _commit_snapshot_locked(data_dir, manifest, changed_codes=changed if section == "observations" else ())
 
 
-def _commit_snapshot(data_dir, manifest, *, changed_codes=()):
-    """Caller owns .writer.lock; query artifacts precede the single pointer commit."""
+def _commit_snapshot_locked(data_dir, manifest, *, changed_codes=()):
     from hoga.api import screener_daily_projection as projection  # noqa: PLC0415
 
     manifest = projection._prepare_publication(data_dir, manifest, set(changed_codes))
@@ -381,7 +380,7 @@ def publish_correction_reviews(data_dir: Path, reviews: dict[str, dict], *, expe
         identities = {code: _write_object(base, review) for code, review in reviews.items()}
         updated = {**manifest, "parent": current[0],
                    "corrections": {**manifest.get("corrections", {}), **identities}}
-        return _commit_snapshot(data_dir, updated)
+        return _commit_snapshot_locked(data_dir, updated)
 
 
 def publish_pair(
