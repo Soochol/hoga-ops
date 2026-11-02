@@ -1,6 +1,5 @@
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
-import type { ApiError } from '../api/client';
 import {
   boardId,
   createBoard,
@@ -219,18 +218,21 @@ export class BoardSession {
       publish();
     } catch (error) {
       const rejected = this.pending;
-      // This validation response guarantees that the server did not apply the mutation.
+      // These validation responses guarantee that the server did not apply the mutation.
       // Network failures remain ambiguous and keep the original idempotent request.
-      if ((error as ApiError).code === 'whiteboard_embed_disabled') {
+      const failure = error && typeof error === 'object' && 'code' in error ? error : undefined;
+      const embedRejected = failure?.code === 'whiteboard_embed_disabled';
+      const sizeRejected = failure?.code === 'whiteboard_too_large' && 'status' in failure && failure.status === 413;
+      if (embedRejected || sizeRejected) {
         this.pending = undefined;
         if (rejected && this.generation > rejected.generation
-          && !this.elements.some(element => element.type === 'embeddable' || element.type === 'iframe')) {
+          && (sizeRejected || !this.elements.some(element => element.type === 'embeddable' || element.type === 'iframe'))) {
           this.update({ status: 'dirty', message: '' });
           return;
         }
       }
       this.update({
-        status: (error as ApiError).code === 'whiteboard_conflict' ? 'conflict' : 'error',
+        status: failure?.code === 'whiteboard_conflict' ? 'conflict' : 'error',
         message: error instanceof Error ? error.message : '보드를 저장하지 못했습니다',
       });
     }
