@@ -1,4 +1,3 @@
-"""One result's immutable minute aggregates, including coverage and readiness."""
 import asyncio
 import datetime as dt
 from collections import Counter
@@ -137,7 +136,7 @@ async def test_six_leaf_quality_matrix_matches_uncached_complete_payload_and_all
             assert read.damaged(snapshot, s.monitor.leaves, stamp) == candles.damaged(snapshot, s.monitor.leaves, stamp)
             selected[code] = replace(snapshot, cutoff_ms=stamp, version=('matrix', stamp))
         uncached = ContinuousAdapter(s.owner, s.monitor)
-        uncached._bars = candles  # The unchanged History implementation is the parity reference.
+        uncached._bars = candles
         s.owner.evaluations.clear()
         s.owner._event_count = 0
         expected = payload(await evaluate(s, uncached))

@@ -21,7 +21,7 @@ corpus = recovery_corpus
 def legacy_snapshot(corpus):
     ready = publish(corpus)
     legacy = {key: value for key, value in ready.items() if key != 'daily_query'}
-    legacy['observations']['000660'] = '0' * 64  # Unselected sources are deliberately unavailable.
+    legacy['observations']['000660'] = '0' * 64
     identity = store._write_object(store.root(corpus), legacy)
     atomic_write_json(store.root(corpus) / 'current.json', {'id': identity})
     return identity, legacy
