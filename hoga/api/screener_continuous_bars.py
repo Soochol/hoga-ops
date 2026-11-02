@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import replace
 from datetime import datetime
 from itertools import groupby
+from typing import TYPE_CHECKING
 
 from hoga.api.screener_bar_policy import CHANGE_TYPES, comparison_period, lookback
 from hoga.api.screener_bar_price import valid_prices
@@ -8,7 +11,46 @@ from hoga.api.screener_bar_volume import VolumeBar
 from hoga.live.volume_state import MINUTE
 from hoga.util.timeenc import KST
 
+if TYPE_CHECKING:
+    from hoga.api.screener_continuous import PreparedSnapshot
+
 TIMEFRAMES = {'1m', '3m', '5m', '10m'}
+
+
+class ReadBars:
+    """Aggregates owned by one adapter and its in-flight evaluations.
+
+    Entries retain their immutable snapshot to prevent identity reuse. The
+    finite read cutoffs and four supported timeframes bound entries per pinned
+    snapshot; mutable History never enters this memo.
+    """
+
+    def __init__(self):
+        self._aggregates: dict[tuple[int, str, int],
+            tuple[PreparedSnapshot, tuple[VolumeBar, ...], frozenset[int]]] = {}
+
+    def aggregate(self, snapshot: PreparedSnapshot, leaf, now):
+        key = id(snapshot), leaf.params.timeframe, now
+        entry = self._aggregates.get(key)
+        if entry is None:
+            data, lower = aggregate(snapshot, leaf, now)
+            entry = snapshot, tuple(data), frozenset(lower)
+            self._aggregates[key] = entry
+        return entry[1], entry[2]
+
+    def _window(self, snapshot, leaf, now):
+        data, lower = self.aggregate(snapshot, leaf, now)
+        return data[-(candle_count(leaf) + 1):], lower
+
+    def window(self, snapshot, leaf, now):
+        data, lower = self._window(snapshot, leaf, now)
+        return list(data), set(lower)
+
+    def prepared(self, snapshot, leaves, now):
+        return _prepared(snapshot, leaves, now, self._window)
+
+    def damaged(self, snapshot, leaves, now):
+        return _damaged(snapshot, leaves, now, self._window)
 
 
 def ordered_minute_bar(old, incoming):
@@ -114,10 +156,14 @@ def window(history, leaf, now):
 
 
 def prepared(history, leaves, now):
+    return _prepared(history, leaves, now, window)
+
+
+def _prepared(history, leaves, now, select_window):
     if not history.fetched_ms:
         return False
     for leaf in leaves:
-        data = window(history, leaf, now)[0]
+        data = select_window(history, leaf, now)[0]
         count = candle_count(leaf)
         if len(data) < count or (leaf.type in CHANGE_TYPES and not all(valid_prices(bar) for bar in data[-count:])):
             return False
@@ -125,9 +171,13 @@ def prepared(history, leaves, now):
 
 
 def damaged(history, leaves, now):
+    return _damaged(history, leaves, now, window)
+
+
+def _damaged(history, leaves, now, select_window):
     return bool(history.repair_until_ms) or any(
         not bar.valid or leaf.type in CHANGE_TYPES and not valid_prices(bar)
-        for leaf in leaves for bar in window(history, leaf, now)[0][-candle_count(leaf):])
+        for leaf in leaves for bar in select_window(history, leaf, now)[0][-candle_count(leaf):])
 
 
 def trim(history):
