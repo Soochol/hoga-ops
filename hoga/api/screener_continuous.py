@@ -1,8 +1,3 @@
-"""Server-owned scoped minute OHLCV monitors and shared memory history.
-
-Preparation/repair has its own bounded background queue. Reading a supported
-current-day result never initiates a vendor fetch; legacy predicates keep their path.
-"""
 from __future__ import annotations
 
 import asyncio

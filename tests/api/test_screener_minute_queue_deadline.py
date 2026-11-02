@@ -1,4 +1,3 @@
-"""Admission waits do not consume the vendor transport lifetime."""
 import asyncio
 import datetime as dt
 

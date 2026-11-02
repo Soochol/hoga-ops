@@ -1,4 +1,3 @@
-"""Derive scoped OHLCV candles from one shared one-minute history."""
 from dataclasses import replace
 from datetime import datetime
 from itertools import groupby

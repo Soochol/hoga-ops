@@ -1,4 +1,3 @@
-"""Saved afternoon leaves use the same bounded OHLCV history as volume."""
 import datetime as dt
 from dataclasses import replace
 
