@@ -98,6 +98,8 @@ class CaptureProcessSession:
         self._sync_started_at: float | None = None
         self._sync_acked_at: float | None = None
         self._sync_failed = False
+        self._ref_release_revision = 0
+        self._synced_ref_release_revision = 0
         self.account_refs: set[int] = set()
         self.us_refs: set[tuple[str, str, str]] = set()
         self._volume_codes: tuple[str, ...] = ()
@@ -338,9 +340,11 @@ class CaptureProcessSession:
                 "commit": self.commit}
 
     async def _sync_locked(self, kiwoom_targets, n_accounts) -> None:
+        ref_release_revision = self._ref_release_revision
         config = await self._configuration(kiwoom_targets, n_accounts)
         if (self.alive() and self.peer is not None and not self.peer.closed.is_set()
                 and self.ack_version == self.version and not self._sync_failed
+                and self._synced_ref_release_revision == self._ref_release_revision
                 and self._health()[0] in {"ready", "storage_error", "syncing"}
                 and config == {k: v for k, v in self.config.items() if k != "version"}):
             return
@@ -358,6 +362,7 @@ class CaptureProcessSession:
             if result["version"] != self.version:
                 raise ConnectionError("collector desired ACK mismatch")
             self.ack_version = result["version"]
+            self._synced_ref_release_revision = ref_release_revision
             self._sync_acked_at = time.monotonic()
             self.error = None
             log.info("collector.sync_acked pid=%s epoch=%s version=%d", self.process.pid, self.epoch, self.version)
@@ -394,6 +399,7 @@ class CaptureProcessSession:
             await self.sync(tuple(self.config.get("targets", [])), n_accounts=self.config["n_accounts"])
 
     def forget_us_ref(self, ref):
+        self._ref_release_revision += 1
         self.us_refs = {key for key in self.us_refs if key[2] != ref}
 
     async def release_us_view(self, ref):
@@ -456,6 +462,7 @@ class CaptureProcessSession:
                 await self.peer.call("view_unsubscribe", {"code": code, "venues": sorted(venues), "ref": ref})
 
     def forget_view_ref(self, ref: str) -> None:
+        self._ref_release_revision += 1
         self.views = {key: venues for key, venues in self.views.items() if key[1] != ref}
 
     def capture_streams(self) -> list:

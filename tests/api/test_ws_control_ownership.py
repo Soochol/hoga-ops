@@ -320,6 +320,8 @@ async def collector_rpc(monkeypatch, tmp_path):
             command = await child_peer.commands.get()
             if command['method'] == 'view_subscribe' and command['args']['ref'] != 'other-tab':
                 entered.set()
+            if command['method'] == 'sync' and any(ref[2] != 'other-tab' for ref in command['args']['us_refs']):
+                entered.set()
             result = await worker.command(command['method'], command['args'])
             if entered.is_set():
                 applied.set()
@@ -342,29 +344,102 @@ async def collector_rpc(monkeypatch, tmp_path):
             await peer.writer.wait_closed()
 
 
-async def test_watchdog_removes_late_child_subscription_after_ws_cancellation(collector_rpc):
+@pytest.mark.parametrize('market', ['domestic', 'us'])
+async def test_watchdog_removes_late_child_subscription_after_ws_cancellation(collector_rpc, market):
     owner, worker, entered, applied = collector_rpc
     buffer = owner.buffer
     try:
         await owner.on_view_subscribe('005930', {'KRX'}, ref='other-tab')
+        await owner.on_us_subscribe('NASDAQ', 'AAPL', ref='other-tab')
         await owner.sync((), n_accounts=0)
         baseline_version = owner.version
         await worker.manager._lock.acquire()
-        socket = Socket([dict(action='subscribe', code='005930', venues=['KRX'])])
+        message = (dict(action='subscribe', code='005930', venues=['KRX']) if market == 'domestic'
+                   else dict(action='subscribe_us_stock', exchange='NASDAQ', symbol='AAPL'))
+        socket = Socket([message])
         async with anyio.create_task_group() as group:
             group.start_soon(build_ws_router(EventBus(), lambda: buffer).routes[0].endpoint, socket)
             await entered.wait()
             group.cancel_scope.cancel()
         assert owner.views == {('005930', 'other-tab'): {'KRX'}}
+        assert owner.us_refs == {('NASDAQ', 'AAPL', 'other-tab')}
         worker.manager._lock.release()
         await applied.wait()
-        assert len(worker.views) == 2
+        assert len(worker.views if market == 'domestic' else worker.manager._us_refs) == 2
         await owner.watchdog_pass(0)
         assert worker.views == {('005930', 'other-tab'): {'KRX'}}
         assert worker.manager._display[('005930', 'KRX')].refs == {'other-tab'}
-        assert owner.version == baseline_version + 1
+        assert worker.manager._us_refs == {('NASDAQ', 'AAPL', 'other-tab')}
+        expected_version = baseline_version + (1 if market == 'domestic' else 2)
+        assert owner.version == expected_version
         await owner.watchdog_pass(0)
-        assert owner.version == baseline_version + 1
+        assert owner.version == expected_version
     finally:
         if worker.manager._lock.locked():
             worker.manager._lock.release()
+
+
+@pytest.mark.parametrize('market', ['domestic', 'us'])
+async def test_forget_reconciles_child_refs_even_when_parent_ref_is_already_absent(collector_rpc, market):
+    owner, worker, _, _ = collector_rpc
+    await owner.on_view_subscribe('005930', {'KRX'}, ref='other-tab')
+    await owner.on_us_subscribe('NASDAQ', 'AAPL', ref='other-tab')
+    await owner.sync((), n_accounts=0)
+    if market == 'domestic':
+        await worker.command('view_subscribe', {'code': '005930', 'venues': ['KRX'], 'ref': 'closed-tab'})
+        owner.forget_view_ref('closed-tab')
+    else:
+        worker.manager._us_refs.add(('NASDAQ', 'AAPL', 'closed-tab'))
+        owner.forget_us_ref('closed-tab')
+    await owner.watchdog_pass(0)
+    assert worker.views == {('005930', 'other-tab'): {'KRX'}}
+    assert worker.manager._display[('005930', 'KRX')].refs == {'other-tab'}
+    assert worker.manager._us_refs == {('NASDAQ', 'AAPL', 'other-tab')}
+
+
+@pytest.mark.parametrize('market', ['domestic', 'us'])
+@pytest.mark.parametrize('stage', ['configuration', 'ack'])
+async def test_release_during_sync_requires_one_followup_before_fast_path(collector_rpc, monkeypatch, market, stage):
+    owner, worker, _, _ = collector_rpc
+    await owner.on_view_subscribe('005930', {'KRX'}, ref='other-tab')
+    await owner.on_us_subscribe('NASDAQ', 'AAPL', ref='other-tab')
+    await owner.sync((), n_accounts=0)
+    baseline_version = owner.version
+    entered, release = asyncio.Event(), asyncio.Event()
+    if stage == 'configuration':
+        original = owner._configuration
+
+        async def configuration(*args):
+            entered.set()
+            await release.wait()
+            return await original(*args)
+
+        monkeypatch.setattr(owner, '_configuration', configuration)
+    else:
+        original = worker.synchronize
+
+        async def synchronize(args):
+            result = await original(args)
+            entered.set()
+            await release.wait()
+            return result
+
+        monkeypatch.setattr(worker, 'synchronize', synchronize)
+    forget = owner.forget_view_ref if market == 'domestic' else owner.forget_us_ref
+    forget('previously-closed-tab')
+    syncing = asyncio.create_task(owner.sync((), n_accounts=0))
+    try:
+        await entered.wait()
+        forget('closed-during-sync')
+        release.set()
+        await syncing
+        await owner.watchdog_pass(0)
+        assert owner.version == baseline_version + 2
+        await owner.watchdog_pass(0)
+        assert owner.version == baseline_version + 2
+        assert worker.views == {('005930', 'other-tab'): {'KRX'}}
+        assert worker.manager._us_refs == {('NASDAQ', 'AAPL', 'other-tab')}
+    finally:
+        release.set()
+        syncing.cancel()
+        await asyncio.gather(syncing, return_exceptions=True)
