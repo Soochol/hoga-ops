@@ -10,12 +10,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Literal
 
 from fastapi import APIRouter, WebSocket
 
 from hoga.api.events import EventBus
+from hoga.api.params import CODE_PATTERN
 from hoga.live.buffer import LiveBuffer
 from hoga.live.delivery import LiveDelivery, LiveOutbox
 from hoga.live.us_stock_realtime import valid_subject
@@ -25,10 +29,47 @@ logger = logging.getLogger(__name__)
 
 _PING_TIMEOUT_S = 30.0
 _MAX_CODE_SUBSCRIPTIONS = 512
+_MAX_US_SUBSCRIPTIONS = 200
+# Initial subscriptions plus a complete unsubscribe/resubscribe replacement burst.
+_MAX_PENDING_COMMANDS = 3 * (_MAX_CODE_SUBSCRIPTIONS + _MAX_US_SUBSCRIPTIONS)
+_CODE_RE = re.compile(CODE_PATTERN)
 _BATCH_PROTOCOL = 2
 # UN 은 **자체 venue** 다 — `_AL` 직결이라 {KRX,NXT} 합성이 아니다(ADR-0140 §5).
 # 옛 {KRX,NXT} 도 계속 받는다(둘 다 구독하는 뜻으로 그대로 유효).
 _VALID_VENUES = ("KRX", "NXT", "UN")
+
+
+@dataclass(frozen=True, slots=True)
+class _DomesticCommand:
+    action: Literal['subscribe', 'unsubscribe']
+    code: str
+    batch: bool
+    venues: frozenset[str] | None
+
+
+@dataclass(frozen=True, slots=True)
+class _UsCommand:
+    action: Literal['subscribe_us_stock', 'unsubscribe_us_stock']
+    exchange: str
+    symbol: str
+
+
+def _parse_command(raw: object) -> _DomesticCommand | _UsCommand | None:
+    if not isinstance(raw, dict):
+        return None
+    action = raw.get('action')
+    if action in ('subscribe', 'unsubscribe'):
+        code = raw.get('code')
+        if not isinstance(code, str) or not _CODE_RE.fullmatch(code):
+            return None
+        venues = _parse_venues(raw.get('venues'))
+        return _DomesticCommand(action, code, raw.get('protocol') == _BATCH_PROTOCOL,
+                                frozenset(venues) if venues else None)
+    if action in ('subscribe_us_stock', 'unsubscribe_us_stock'):
+        exchange, symbol = raw.get('exchange'), raw.get('symbol')
+        if valid_subject(exchange, symbol):
+            return _UsCommand(action, exchange, symbol)
+    return None
 
 
 def _parse_venues(raw: object) -> set[str] | None:
@@ -60,6 +101,8 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         from hoga.live import lifecycle  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
         out = LiveOutbox()
         overflow = asyncio.Event()
+        inbound_overflow = asyncio.Event()
+        commands: asyncio.Queue[_DomesticCommand | _UsCommand] = asyncio.Queue(maxsize=_MAX_PENDING_COMMANDS)
         observed_buffer = get_buffer()
         if observed_buffer is not None:
             observed_buffer.observe_outbox(out)
@@ -74,6 +117,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         pending_subs: dict[str, set[str] | None] = {}
         pending_changed = asyncio.Event()
         us_subs: set[tuple[str, str]] = set()
+        domestic_lifecycle_used = False
 
         def emit(frame: dict) -> None:
             try:
@@ -121,16 +165,14 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                 await websocket.send_json(frame)
                 out.send_latency.observe((time.monotonic() - started) * 1000)
 
-        async def us_action(msg, action):
-            exchange, symbol = msg.get("exchange"), msg.get("symbol")
-            if not valid_subject(exchange, symbol):
-                return
+        async def us_action(command):
+            action, exchange, symbol = command.action, command.exchange, command.symbol
             subject = (exchange, symbol)
             session = lifecycle._state.kiwoom_session
             if session is None:
                 return
             if action == "subscribe_us_stock" and subject not in us_subs:
-                if len(us_subs) >= 200:  # noqa: PLR2004 — vendor registration limit
+                if len(us_subs) >= _MAX_US_SUBSCRIPTIONS:
                     return
                 us_subs.add(subject)
                 try:
@@ -143,12 +185,26 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
 
         async def receiver() -> None:
             while True:
-                msg = await websocket.receive_json()
-                action = msg.get("action")
-                code = msg.get("code")
-                if action in {"subscribe_us_stock", "unsubscribe_us_stock"}:
-                    await us_action(msg, action)
-                elif action == "subscribe" and isinstance(code, str):
+                command = _parse_command(await websocket.receive_json())
+                if command is None:
+                    continue
+                try:
+                    commands.put_nowait(command)
+                except asyncio.QueueFull:
+                    logger.warning('WS input command queue full capacity=%d; disconnecting client',
+                                   _MAX_PENDING_COMMANDS)
+                    inbound_overflow.set()
+                    return
+
+        async def apply_commands() -> None:
+            nonlocal domestic_lifecycle_used
+            while True:
+                command = await commands.get()
+                if isinstance(command, _UsCommand):
+                    await us_action(command)
+                    continue
+                action, code = command.action, command.code
+                if action == "subscribe":
                     if code not in code_subs:
                         buf = get_buffer()
                         if buf is None:
@@ -156,12 +212,13 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                         if len(code_subs) >= _MAX_CODE_SUBSCRIPTIONS:  # bounded per-tab resource ownership
                             emit({"ch": "event", "data": {"type": "live_subscription_limit", "code": code}})
                             continue
-                        q = buf.subscribe(code, batch=msg.get("protocol") == _BATCH_PROTOCOL)
-                        venues = _parse_venues(msg.get("venues"))
+                        q = buf.subscribe(code, batch=command.batch)
+                        venues = set(command.venues) if command.venues else None
                         code_subs[code] = (q, asyncio.create_task(pump_live(code, q)), venues)
                         # ADR-0067/PR-C: forward to REST poller + 키움 표시셋 lifecycle.
                         # 만석(전 연결 슬롯 소진)이면 이 탭에 만석 이벤트(토스트).
                         try:
+                            domestic_lifecycle_used = True
                             accepted = await lifecycle.on_view_subscribe(code, venues, ref=view_ref)
                         except ViewSubscriptionLimitError:
                             emit({"ch": "event", "data": {"type": "live_subscription_limit", "code": code}})
@@ -172,7 +229,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                                 pending_subs[code] = venues
                                 pending_changed.set()
                     emit({"ch": "subscribed", "code": code})
-                elif action == "unsubscribe" and isinstance(code, str) and code in code_subs:
+                elif action == "unsubscribe" and code in code_subs:
                     q, task, venues = code_subs.pop(code)
                     task.cancel()
                     out.discard(code)
@@ -186,13 +243,18 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
 
         send_task = asyncio.create_task(sender())
         recv_task = asyncio.create_task(receiver())
+        command_task = asyncio.create_task(apply_commands())
         pending_task = asyncio.create_task(monitor_pending())
         overflow_task = asyncio.create_task(overflow.wait())
+        inbound_overflow_task = asyncio.create_task(inbound_overflow.wait())
         try:
             await asyncio.wait(
-                {send_task, recv_task, pending_task, overflow_task}, return_when=asyncio.FIRST_COMPLETED,
+                {send_task, recv_task, command_task, pending_task, overflow_task, inbound_overflow_task},
+                return_when=asyncio.FIRST_COMPLETED,
             )
-            if overflow.is_set():
+            if inbound_overflow.is_set():
+                await websocket.close(code=1013, reason="Too many pending subscription commands")
+            elif overflow.is_set():
                 await websocket.close(code=1013, reason="Live client is too slow")
         finally:
             # 이 블록은 **이 태스크가 취소된 상태로** 진입할 수 있다(ASGI 서버 종료,
@@ -200,7 +262,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
             # 받는다 — 취소는 스코프가 끝날 때까지 재전달되기 때문이다. 그러니
             # **동기 정리를 전부 await 앞에 둔다**. 순서를 되돌리면 취소 경로에서
             # bus/버퍼 구독이 통째로 샌다(이전 판의 실제 결함).
-            for t in (send_task, recv_task, bus_task, pending_task, overflow_task):
+            for t in (send_task, recv_task, command_task, bus_task, pending_task, overflow_task, inbound_overflow_task):
                 t.cancel()
             subs = list(code_subs.items())
             for _code, (_q, task, _v) in subs:
@@ -214,6 +276,8 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                     buf.unsubscribe(code, q)
             session = lifecycle._state.kiwoom_session
             us_release = None
+            if session is not None and domestic_lifecycle_used:
+                session.forget_view_ref(view_ref)
             if session is not None and us_subs:
                 # Clear ownership synchronously, even under ASGI cancellation.
                 session.forget_us_ref(view_ref)
@@ -226,7 +290,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
             # 호출자 밖으로 새어 나간다(차단 게이트 위 flake 의 원인이었다).
             with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.gather(
-                    send_task, recv_task, bus_task, pending_task, overflow_task,
+                    send_task, recv_task, command_task, bus_task, pending_task, overflow_task, inbound_overflow_task,
                     *(task for _code, (_q, task, _v) in subs),
                     *([us_release] if us_release else []),
                     return_exceptions=True,

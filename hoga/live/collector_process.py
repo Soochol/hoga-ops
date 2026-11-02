@@ -455,6 +455,9 @@ class CaptureProcessSession:
             if self.alive() and self.peer is not None and not self.peer.closed.is_set():
                 await self.peer.call("view_unsubscribe", {"code": code, "venues": sorted(venues), "ref": ref})
 
+    def forget_view_ref(self, ref: str) -> None:
+        self.views = {key: venues for key, venues in self.views.items() if key[1] != ref}
+
     def capture_streams(self) -> list:
         return [self] if self.fresh() else []
 

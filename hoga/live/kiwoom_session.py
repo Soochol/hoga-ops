@@ -593,6 +593,14 @@ class KiwoomSessionManager:
         await asyncio.sleep(0)  # request accepted; REG completion is asynchronous
         return not rejected
 
+    def forget_view_ref(self, ref: str) -> None:
+        now_ms = self._now_fn()
+        for entry in self._display.values():
+            if ref in entry.refs:
+                entry.refs.discard(ref)
+                if not entry.refs:
+                    entry.released_at = now_ms
+
     async def on_view_unsubscribe(self, code: str, venues: set[str], *, ref: str) -> None:
         """열람 종료 — (code, v)에서 참조 ref를 뺀다. 참조 0이면 즉시 해제하지 않고
         유예 클록만 찍는다(watchdog sweep이 유예 후 회수 — 탭 재열람 churn 흡수)."""

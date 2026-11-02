@@ -391,6 +391,39 @@ async def test_new_result_reader_waits_for_cancelled_flight_to_finish(fixture, m
         assert len(calls) == 2
 
 
+async def test_retiring_result_tasks_count_toward_admission(fixture, monkeypatch):
+    from hoga.api import screener_continuous, screener_runner
+    from hoga.api.models import ScreenerResponse
+
+    owner, _, _ = fixture
+    monitor = await start(owner)
+    entered, retired = asyncio.Event(), asyncio.Event()
+
+    async def scan(**kwargs):
+        if kwargs['volume_runtime'].monitor is monitor:
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await retired.wait()
+                raise
+        return ScreenerResponse(status='ok', rows=[])
+
+    monkeypatch.setattr(screener_runner, 'run_screener_scan', scan)
+    monkeypatch.setattr(screener_continuous, 'MAX_MONITORS', 1)
+    reader = asyncio.create_task(owner.result(monitor.id))
+    await entered.wait()
+    owner.stop(monitor.id)
+    replacement = await start(owner)
+    with pytest.raises(HTTPException, match='409'):
+        await owner.result(replacement.id)
+    retired.set()
+    outcome = await asyncio.gather(reader, return_exceptions=True)
+    assert isinstance(outcome[0], HTTPException)
+    assert outcome[0].status_code == 404
+    assert (await owner.result(replacement.id)).status == 'ok'
+
+
 async def test_full_regular_session_338_symbols_shared_conditions_and_targeted_repair(fixture, tmp_path):
     from hoga.live.volume_state import MINUTE, VolumeSource
     from hoga.util.retained_size import retained_size

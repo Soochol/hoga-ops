@@ -20,6 +20,7 @@ from hoga.api import (
 from hoga.api.models import ScanRequest, ScreenerResponse
 from hoga.api.screener_expression import active_conditions
 from hoga.api.screener_minute_scope import current as minute_scope
+from hoga.api.screener_timing import phase
 from hoga.collector.orchestrator import now_kst
 from hoga.util.timeenc import KST
 
@@ -27,7 +28,8 @@ from hoga.util.timeenc import KST
 async def run_screener_scan(*, data_dir: Path, req: ScanRequest,
                             now: dt.datetime | None = None, volume_runtime=None) -> ScreenerResponse:
     now = now or now_kst()
-    rank_eval = await screener_rankings.evaluate(data_dir, req, now, None)
+    with phase('ranks'):
+        rank_eval = await screener_rankings.evaluate(data_dir, req, now, None)
     screener_rankings.validate_stored_conditions(req, rank_eval)
     if req.calculation_policy == "separate_bases_v2":
         from hoga.api.screener_series_runner import run_scan  # noqa: PLC0415 — isolate optional v2 path

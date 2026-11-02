@@ -310,6 +310,7 @@ def test_full_house_recovery_is_targeted_to_each_tabs_requested_venues(monkeypat
 
     registered: list[str] = []
     monkeypatch.setattr(lc._state, "kiwoom_session", SimpleNamespace(
+        forget_view_ref=lambda ref: None,
         status=lambda: {"ready_registrations": registered},
     ))
     monkeypatch.setattr(lc, "on_view_subscribe", AsyncMock(return_value=False))

@@ -26,6 +26,7 @@ from hoga.api import (
     symbols,
 )
 from hoga.api.models import ScanRequest, ScreenerResponse
+from hoga.api.screener_timing import monitor_scan
 from hoga.live.volume_state import MINUTE, VolumeReplica
 from hoga.util.timeenc import KST
 
@@ -87,6 +88,13 @@ class History:
 
 
 @dataclass
+class ResultFlight:
+    task: asyncio.Task[ScreenerResponse]
+    waiters: int = 0
+    finished: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+@dataclass
 class Monitor:
     id: str
     client_id: str
@@ -95,6 +103,7 @@ class Monitor:
     leaves: list
     touched_ms: int
     fingerprint: tuple = ()
+    result_flight: ResultFlight | None = field(default=None, repr=False, compare=False)
 
 
 class ContinuousAdapter:
@@ -216,6 +225,7 @@ class ContinuousMonitors:
         self.evaluations = OrderedDict()
         self._event_count = 0
         self.evaluation_flights = {}
+        self.result_tasks: set[asyncio.Task[ScreenerResponse]] = set()
 
     def selected_day(self, now):
         # Calendar I/O is outside raw ingest and shared across all result/status
@@ -261,7 +271,7 @@ class ContinuousMonitors:
         self.admit(requirements)
         self.reserve(requirements)
         if old:
-            self.monitors.pop(old.id)
+            self.stop(old.id)
         now = self.now()
         monitor = Monitor(uuid.uuid4().hex, client_id, request, codes, leaves, now)
         self.monitors[monitor.id] = monitor
@@ -312,7 +322,66 @@ class ContinuousMonitors:
         return monitor
 
     def stop(self, monitor_id):
-        self.monitors.pop(monitor_id, None)
+        monitor = self.monitors.pop(monitor_id, None)
+        if monitor and monitor.result_flight:
+            task = monitor.result_flight.task
+            if not task.done() and not task.cancelling():
+                task.cancel()
+
+    def _require_current(self, monitor):
+        if self.closed or self.monitors.get(monitor.id) is not monitor:
+            raise HTTPException(404, '감시가 만료되었거나 종료되었습니다. 다시 시작해 주세요.')
+
+    async def _scan_result(self, monitor):
+        from hoga.api.screener_runner import run_screener_scan  # noqa: PLC0415 — request assembly
+
+        with monitor_scan(monitor.id):
+            return await run_screener_scan(data_dir=self.data_dir,
+                req=monitor.request.model_copy(update={'basis': 'intraday'}),
+                volume_runtime=ContinuousAdapter(self, monitor))
+
+    async def result(self, monitor_id):
+        monitor = self.get(monitor_id)
+        while True:
+            self._require_current(monitor)
+            flight = monitor.result_flight
+            if flight and not flight.task.done() and flight.task.cancelling():
+                # A successor cannot overlap the previous scan's async cleanup.
+                await flight.finished.wait()
+                continue
+            if flight is None or flight.task.done():
+                if len(self.result_tasks) >= MAX_MONITORS:
+                    raise HTTPException(409, '진행 중인 감시 결과 작업이 많습니다. 잠시 후 다시 조회해 주세요.')
+                task = asyncio.create_task(self._scan_result(monitor), name=f'screener-result-{monitor.id}')
+                flight = ResultFlight(task)
+                monitor.result_flight = flight
+                self.result_tasks.add(task)
+
+                def finished(task, flight=flight):
+                    self.result_tasks.discard(task)
+                    if monitor.result_flight and monitor.result_flight.task is task:
+                        monitor.result_flight = None
+                    if not task.cancelled():
+                        task.exception()
+                    flight.finished.set()
+
+                task.add_done_callback(finished)
+            break
+        flight.waiters += 1
+        try:
+            try:
+                response = await asyncio.shield(flight.task)
+            except asyncio.CancelledError:
+                if asyncio.current_task().cancelling():
+                    raise
+                self._require_current(monitor)
+                raise
+            self._require_current(monitor)
+            return response.model_copy(deep=True)
+        finally:
+            flight.waiters -= 1
+            if flight.waiters == 0 and not flight.task.done() and not flight.task.cancelling():
+                flight.task.cancel()
 
     def monitor_quality(self, monitor, code, history, now):
         version = self.version(code, history, now)
@@ -507,7 +576,7 @@ class ContinuousMonitors:
     def collect_active(self, now):
         for key, monitor in list(self.monitors.items()):
             if now - monitor.touched_ms > LEASE_MS:
-                self.monitors.pop(key)
+                self.stop(key)
         active = {code for m in self.monitors.values() for code in m.codes}
         for code in active:
             self.histories[code].touched_ms = now
@@ -618,14 +687,17 @@ class ContinuousMonitors:
 
     async def close(self):
         self.closed = True
+        for monitor_id in list(self.monitors):
+            self.stop(monitor_id)
         self.evaluations.clear()
         self._event_count = 0
         self._fingerprints.clear()
         self._quality.clear()
-        tasks = (list(self.pending.values()) + list(self.evaluation_flights.values())
+        tasks = (list(self.pending.values()) + list(self.evaluation_flights.values()) + list(self.result_tasks)
                  + ([self.loop_task] if self.loop_task else []))
         for task in tasks:
-            task.cancel()
+            if not task.cancelling():
+                task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         with contextlib.suppress(ConnectionError, TimeoutError):
             await self.set_targets(set())
@@ -646,11 +718,7 @@ def build_router(owner):
 
     @router.get('/{monitor_id}/result')
     async def result(monitor_id: str) -> ScreenerResponse:
-        from hoga.api.screener_runner import run_screener_scan  # noqa: PLC0415 — request assembly
-        monitor = owner.get(monitor_id)
-        return await run_screener_scan(data_dir=owner.data_dir,
-                                       req=monitor.request.model_copy(update={'basis': 'intraday'}),
-                                       volume_runtime=ContinuousAdapter(owner, monitor))
+        return await owner.result(monitor_id)
 
     @router.delete('/{monitor_id}', status_code=204)
     async def stop(monitor_id: str) -> None:
