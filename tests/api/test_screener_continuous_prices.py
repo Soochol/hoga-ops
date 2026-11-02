@@ -86,3 +86,98 @@ def test_missing_ohlc_never_changes_volume_completeness_into_price_completeness(
     grouped, _ = candles.window(history, leaf, data[-1].start_ms + 1000)
     assert not volume.records(leaf, grouped, fetched_at_ms=1)[1]
     assert all(bar.valid for bar in grouped)
+
+
+def assert_saved_result(result, request, codes, data, baseline_ms, now):
+    from hoga.api import screener_expression
+    from hoga.api.screener_series_runner import _matches
+
+    assert result.coverage.complete == 152
+    assert result.coverage.realtime.prepared == 152
+    assert result.coverage.realtime.receiving == 152
+    expected_passing = {'G'}
+    passing = {code: {'G'} for code in codes}
+    for leaf in request.conditions[:-1]:
+        expected_data = volume.aggregate_day_minutes(data, leaf.params.timeframe, now)
+        expected, complete = volume.records(leaf, expected_data, fetched_at_ms=baseline_ms)
+        assert complete
+        assert result.events[leaf.id] == [(code, event) for code in codes for event in expected]
+        if expected:
+            expected_passing.add(leaf.id)
+        for code, _event in result.events[leaf.id]:
+            passing[code].add(leaf.id)
+    tokens = screener_expression.parse_expression(request.expression, len(request.conditions))
+    expected_match = _matches(tokens, expected_passing, request.conditions)
+    assert all(_matches(tokens, passing[code], request.conditions) == expected_match for code in codes)
+
+
+def full_saved_request():
+    request = saved_request()
+    by_id = {leaf.id: leaf.model_dump() for leaf in request.conditions}
+    return ScanRequest.model_validate(dict(conditions=[by_id[name] for name in 'ABCDEF'] + [
+        dict(id='G', type='trade_value_rank', params=dict(top_n=300))],
+        expression='((A AND B) OR (C AND D) OR (E AND F)) AND G', basis='intraday',
+        calculation_policy='separate_bases_v2', universe=dict(scopes=['watchlist', 'heatmap'])))
+
+
+async def test_full_152_saved_expression_is_complete_and_warm_reads_fetch_nothing(tmp_path, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoga.api import screener_rankings
+    from hoga.api.screener_continuous import ContinuousMonitors
+    from hoga.live.buffer import LiveBuffer
+
+    request = full_saved_request()
+    assert all(ContinuousAdapter.supports(leaf) for leaf in request.conditions[:-1])
+    codes = [f'{i:06d}' for i in range(152)]
+    data = minute_fixture()
+    baseline_ms = data[-1].start_ms + 20_000
+    clock = SimpleNamespace(now=baseline_ms)
+    calls = []
+    buffer = LiveBuffer()
+    buffer.volume_source.configure(codes)
+    buffer.volume_source.health(dict.fromkeys(codes, 'account:1'), OPEN)
+
+    async def targets(_codes):
+        for frame in buffer.volume_source.frames(clock.now):
+            buffer.volume_replica.apply(frame, clock.now)
+
+    async def loader(_dir, code, timeframe, _needed, _lower, _asof):
+        calls.append((code, timeframe))
+        return volume.MinuteSnapshot(list(data), baseline_ms)
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail('result read initiated a vendor fetch')
+
+    owner = ContinuousMonitors(tmp_path, None, buffer, targets, loader=loader, now=lambda: clock.now)
+
+    async def resolve(_request):
+        return codes
+
+    owner.resolve = resolve
+    monkeypatch.setattr(volume, 'minute_snapshot', forbidden)
+    monkeypatch.setattr(volume.time, 'time', lambda: clock.now / 1000)
+    try:
+        status = await owner.start('saved', request)
+        owner.loop_task.cancel()
+        await asyncio.gather(owner.loop_task, return_exceptions=True)
+        owner.loop_task = None
+        monitor = owner.get(status.id)
+        await targets(codes)
+        for code in codes:
+            await owner.prepare(code, owner.histories[code])
+        rank = SimpleNamespace(events={'G': [(code, None) for code in codes]})
+        candidates = screener_rankings.candidate_codes(request, codes, rank)
+        assert candidates == codes
+        for _ in range(2):
+            await targets(codes)
+            result = await volume.evaluate(data_dir=tmp_path, conditions=request.conditions, codes=candidates,
+                basis='intraday', now=dt.datetime.fromtimestamp(clock.now / 1000, KST),
+                volume_runtime=ContinuousAdapter(owner, monitor))
+            assert_saved_result(result, request, codes, data, baseline_ms, clock.now)
+            assert len(calls) == 152
+            assert {timeframe for _code, timeframe in calls} == {'1m'}
+            clock.now += 16_000
+    finally:
+        await owner.close()
