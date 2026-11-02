@@ -609,7 +609,9 @@ class ContinuousMonitors:
         changed = bool(history.source_epoch and (history.source_epoch != self.replica.epoch
                                                   or history.generation != state['generation']))
         covered_until = max(history.source_seen_ms, history.fetched_ms)
-        if ((covered_until and covered_until < state['replay_since_ms'])
+        closing = candles.session_start(history.bars[-1].start_ms) + 390 * MINUTE if history.bars else now
+        settled_session = bool(history.bars) and history.fetched_ms >= closing + CANONICAL_SETTLE_MS
+        if not settled_session and ((covered_until and covered_until < state['replay_since_ms'])
                 or (changed and history.fetched_ms < state['since_ms'])):
             history.repair_until_ms = max(history.repair_until_ms, now)
         history.source_seen_ms = state['observed_ms']
