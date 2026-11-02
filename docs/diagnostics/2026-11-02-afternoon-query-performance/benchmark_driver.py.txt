@@ -1,0 +1,16 @@
+import hashlib,json,os,subprocess,time
+from pathlib import Path
+out=Path('/tmp/afternoon-daily-comparison.jsonl');out.write_text('')
+sides={'before':Path('/tmp/hoga-afternoon-query-baseline'),'after':Path('/tmp/hoga-afternoon-daily-perf')}
+for n in range(5):
+ for label,root in sides.items():
+  print(json.dumps({'start_repeat':n+1,'side':label}),flush=True)
+  env={**os.environ,'PYTHONPATH':str(root)}
+  proc=subprocess.run([str(root/'.venv/bin/python'),'/tmp/afternoon_daily_benchmark_case.py',str(root)],env=env,capture_output=True,text=True)
+  if proc.returncode:print(proc.stderr,flush=True);raise SystemExit(proc.returncode)
+  result=json.loads(proc.stdout);result.update(repeat=n+1,side=label,head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip())
+  with out.open('a') as f:f.write(json.dumps(result)+'\n')
+  print(json.dumps({'repeat':n+1,'side':label,'results':result['results']}),flush=True)
+  rows=[json.loads(s) for s in out.read_text().splitlines()];digests={r['results'][0]['digest'] for r in rows}
+  assert len(digests)==1,'before/after full result mismatch'
+print('PASS five alternating pairs; strict full152 daily results match',flush=True)

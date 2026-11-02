@@ -1,0 +1,159 @@
+import asyncio, datetime as dt, hashlib, json, os, socket, sys, tempfile, time
+from collections import Counter
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+import polars as pl
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from pytest import MonkeyPatch
+from hoga.api import screener_bar_volume as bars, screener_intraday as overlay, screener_runner, screener_series_store as store, trading_days
+from hoga.api.models import ScanRequest
+from hoga.api.screener_continuous import ContinuousMonitors, build_router
+from hoga.api.screener_store import _DAILY_PL_SCHEMA
+from hoga.live.buffer import LiveBuffer
+from hoga.live.volume_state import VolumeSource, MINUTE
+from hoga.live.kiwoom_rankings import RankingRow, RankingSnapshot
+from hoga.live.kiwoom_rankings_access import set_rankings_fetcher_getter
+from hoga.live.quote_models import Quote
+from hoga.util.timeenc import KST
+
+OPEN = int(dt.datetime(2026,10,21,9,tzinfo=KST).timestamp()*1000)
+CODES = [f'{i:06}' for i in range(152)]
+DATA = [bars.VolumeBar(OPEN+i*MINUTE,10+i,is_open=i==180,open=1000+i*10,high=1012+i*10,low=995+i*10,close=1009+i*10) for i in range(181)]
+CLOCK = SimpleNamespace(now=OPEN+180*MINUTE+20000)
+COUNTS = Counter()
+
+def no_network(*args, **kwargs):
+    raise AssertionError('network is forbidden in independent fixture probe')
+
+def fixture(root, mp):
+    sdir=root/'screener'; sdir.mkdir()
+    days=[dt.date(2026,10,19),dt.date(2026,10,20)]
+    frame=pl.DataFrame([dict(code=c,date=d,open=1000.,high=1050.,low=950.,close=1000.,volume=5000) for c in CODES for d in days],schema=_DAILY_PL_SCHEMA)
+    for name in ['daily_unadjusted.parquet','daily_adjusted.parquet']: frame.write_parquet(sdir/name)
+    pl.DataFrame(dict(code=CODES,name=CODES,market=['KOSPI']*152,is_etf=[False]*152,is_halted=[False]*152)).write_parquet(sdir/'stocks.parquet')
+    pl.DataFrame(dict(code=CODES,seg_start=[days[0]]*152,factor=[1.]*152)).write_parquet(sdir/'factors.parquet')
+    (sdir/'status.json').write_text(json.dumps(dict(schema_version=1,last_raw_date='20261020',last_built_ms=1,universe_size=152,derive_ms=0)))
+    (root/'watchlist.json').write_text(json.dumps(dict(schema_version=4,folders=[dict(id='f_00000000',name='fixture',items=[dict(kind='code',code=c) for c in CODES])],entries=[dict(code=c,name=c,registered_at_kst_date='20261020') for c in CODES])))
+    calendar=root/'calendar'; calendar.mkdir(); (calendar/'trading_days.txt').write_text('20261019\n20261020\n20261021\n')
+    mp.setattr(trading_days,'trading_days',lambda _: {'20261019','20261020','20261021'})
+    payload=[]
+    for c in CODES:
+        rows=[dict(code=c,date=d.isoformat(),open=1000.,high=1050.,low=950.,close=1000.,volume=5000,complete=True) for d in days]
+        payload.append(dict(code=c,unadjusted=rows,adjusted=rows,adjusted_as_of='2026-10-21',observed_at='2026-10-21T12:00:20+09:00',price_events=[]))
+    store.publish_pairs(root,payload,adjusted_as_of='2026-10-21')
+
+class RankFetcher:
+    async def get(self,*args,**kwargs):
+        COUNTS['ranking_provider_boundary']+=1
+        return RankingSnapshot('value','all','up',tuple(RankingRow(i+1,c,c,2809,1.,provider_rank=i+1,trade_value_won=100000000) for i,c in enumerate(CODES)),True,CLOCK.now)
+
+async def main():
+    mp=MonkeyPatch(); mp.setattr(socket.socket,'connect',no_network)
+    root=Path(tempfile.mkdtemp(prefix='hoga-independent-http-'))
+    fixture(root,mp)
+    mp.setattr(screener_runner,'now_kst',lambda:dt.datetime.fromtimestamp(CLOCK.now/1000,KST))
+    mp.setattr(bars.time,'time',lambda:CLOCK.now/1000)
+    mp.setattr(overlay.kiwoom_rest_runtime,'ensure_rest_client',lambda *_:object())
+    mp.setattr(overlay.kiwoom_rest_runtime,'ensure_scheduler',lambda *_:object())
+    async def capacity(scheduler,*,fetch_fn,client,**kwargs): return await fetch_fn(client)
+    mp.setattr(overlay.kiwoom_access,'run_with_capacity',capacity)
+    async def quotes(client,codes,**kwargs):
+        COUNTS['quote_vendor_chunks']+=1
+        return [Quote(code=c,price=2809,change_pct=180.9,open=1000,high=2812,low=995,volume=200000) for c in codes]
+    mp.setattr(overlay.kiwoom_multi_quote,'fetch_multi_price',quotes)
+    set_rankings_fetcher_getter(lambda:RankFetcher())
+    async def forbidden(*args,**kwargs):
+        COUNTS['result_minute_vendor_calls']+=1
+        print('OBSERVED_RESULT_MINUTE_VENDOR_CALL',args[1:3],flush=True)
+        raise AssertionError('result initiated minute vendor data fetch')
+    mp.setattr(bars,'minute_snapshot',forbidden)
+    source=VolumeSource('independent-fixture'); source.configure(CODES); source.health(dict.fromkeys(CODES,'fixture:1'),OPEN)
+    def trade(stamp,cum,price,qty): return dict(kind='trade',venue='KRX',t_ms=stamp,cum_volume=cum,trades=[dict(t_ms=stamp,qty=qty,price=price)])
+    for c in CODES:
+        source.ingest(c,trade(OPEN+179*MINUTE,10000,2790,1),OPEN+179*MINUTE)
+        cum=10000
+        for offset,price,qty in [(0,2800,1),(5000,2812,1),(10000,2795,1),(15000,2809,187)]:
+            stamp=OPEN+180*MINUTE+offset; cum+=qty; source.ingest(c,trade(stamp,cum,price,qty),stamp)
+    buffer=LiveBuffer(); buffer.volume_replica.reset('independent-fixture')
+    async def targets(codes):
+        if codes:
+            for frame in source.frames(CLOCK.now): buffer.volume_replica.apply(frame,CLOCK.now)
+    async def loader(_dir,code,timeframe,*args):
+        COUNTS['background_minute_seed']+=1
+        assert timeframe=='1m'
+        return bars.MinuteSnapshot(list(DATA),CLOCK.now)
+    owner=ContinuousMonitors(root,None,buffer,targets,loader=loader,now=lambda:CLOCK.now)
+    snapshots=Counter()
+    if hasattr(owner,'snapshot'):
+        original=owner.snapshot
+        def snapshot(code,now): snapshots[code]+=1; return original(code,now)
+        owner.snapshot=snapshot
+    app=FastAPI(); app.include_router(build_router(owner),prefix='/api/screener')
+    request=json.loads(Path('/tmp/afternoon-perf-before-request.json').read_text()); request.setdefault('limit',1000)
+    traces=[]
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app),base_url='http://fixture') as http:
+            start=await http.post('/api/screener/monitors',json=dict(client_id='independent',request=request)); assert start.status_code==200,start.text
+            status=start.json(); assert status['total']==152,status
+            mid=status['id']; path=f'/api/screener/monitors/{mid}'
+            for _ in range(1000):
+                beat=await http.post(path+'/heartbeat'); assert beat.status_code==200
+                if beat.json()['prepared']==152: break
+                await asyncio.sleep(.01)
+            assert beat.json()['prepared']==152,beat.text
+            assert COUNTS['background_minute_seed']==152,COUNTS
+            async def read(label):
+                snapshots.clear(); before=COUNTS.copy(); begun=time.monotonic()
+                response=await http.get(path+'/result'); elapsed=(time.monotonic()-begun)*1000
+                assert response.status_code==200,response.text
+                body=response.json(); (root/f'{label}.json').write_text(json.dumps(body))
+                assert body['status']=='ok' and len(body['rows'])==152,(body['warnings'],len(body['rows']))
+                assert {r['code'] for r in body['rows']}==set(CODES)
+                assert body['bar_coverage']['complete']==152,body['bar_coverage']
+                assert body['bar_coverage']['incomplete']==[],body['bar_coverage']
+                assert body['bar_coverage']['realtime']['prepared']==152,body['bar_coverage']
+                assert all(snapshots[c]==1 for c in CODES),snapshots
+                ids={x['id'] for x in request['conditions']}
+                assert all({o['condition_id'] for o in r['occurrences']}==ids for r in body['rows'])
+                assert COUNTS['result_minute_vendor_calls']==0 and COUNTS['background_minute_seed']==152,COUNTS
+                traces.append(dict(label=label,rows=len(body['rows']),coverage=body['bar_coverage'],elapsed_ms=elapsed,calls=dict(COUNTS-before),snapshots_per_code=dict(Counter(snapshots.values()))))
+                return body
+            baseline=await read('baseline')
+            threshold=json.loads(json.dumps(request)); threshold['conditions']=[dict(id='threshold',type='change_pct_period',params=dict(timeframe='3m',change_reference='previous_bar',op='gte',pct=5,lookback=1))]; threshold['expression']='A'
+            threshold_start=await http.post('/api/screener/monitors',json=dict(client_id='threshold',request=threshold)); assert threshold_start.status_code==200,threshold_start.text
+            threshold_path=f"/api/screener/monitors/{threshold_start.json()['id']}"
+            threshold_before=await http.get(threshold_path+'/result'); assert threshold_before.status_code==200 and threshold_before.json()['rows']==[],threshold_before.text
+            CLOCK.now+=16000; await targets(CODES)
+            warm=await read('warm_plus_16sec')
+            assert [[o for o in r['occurrences'] if o['condition_id'] != request['conditions'][6]['id']] for r in baseline['rows']]==[[o for o in r['occurrences'] if o['condition_id'] != request['conditions'][6]['id']] for r in warm['rows']]
+            CLOCK.now+=1000
+            source.ingest(CODES[0],trade(CLOCK.now,10195,3000,5),CLOCK.now); await targets(CODES)
+            changed=await read('ws_price_change')
+            threshold_after=await http.get(threshold_path+'/result'); assert threshold_after.status_code==200,threshold_after.text
+            assert [r['code'] for r in threshold_after.json()['rows']]==[CODES[0]],threshold_after.text
+            assert threshold_after.json()['bar_coverage']['complete']==152,threshold_after.text
+            assert (await http.delete(threshold_path)).status_code==204
+            old=next(r for r in baseline['rows'] if r['code']==CODES[0]); new=next(r for r in changed['rows'] if r['code']==CODES[0])
+            assert old['occurrences']!=new['occurrences']
+            price_ids={request['conditions'][i]['id'] for i in [1,3,5]}
+            changed_ids={identity for identity in {o['condition_id'] for o in new['occurrences']} if [o for o in new['occurrences'] if o['condition_id']==identity]!=[o for o in old['occurrences'] if o['condition_id']==identity]}
+            assert price_ids <= changed_ids,(changed_ids,price_ids)
+            current_changes=[o for o in new['occurrences'] if o['condition_id'] in price_ids and o['bar_start_ms']==OPEN+180*MINUTE]
+            assert len(current_changes)==3,current_changes
+            for event in current_changes:
+                value=event['bar_change_match']
+                assert value['close']==3000 and value['reference_close']==2799,value
+                assert abs(value['change_pct']-((3000/2799)-1)*100)<1e-10,value
+                assert value['fetched_at_ms']==CLOCK.now,value
+            print(json.dumps(dict(changed_ids=sorted(changed_ids),price_ids=sorted(price_ids))))
+            assert (await http.delete(path)).status_code==204
+            assert (await http.get(path+'/result')).status_code==404
+            assert (await http.post(path+'/heartbeat')).status_code==404
+    finally:
+        await owner.close(); mp.undo(); set_rankings_fetcher_getter(lambda:None)
+    result=dict(verdict='PRELIMINARY_PASS',threshold_crossing=dict(before_rows=0,after_codes=[CODES[0]],pct=5,reference_close=2799,close=3000),head=os.popen('git rev-parse HEAD').read().strip(),corpus=str(root),counts=dict(COUNTS),traces=traces,request_sha256=hashlib.sha256(json.dumps(request,sort_keys=True).encode()).hexdigest(),surface='FastAPI ASGI HTTP /api/screener/monitors real ContinuousMonitors and run_screener_scan; fixture vendor boundaries; no live benchmark')
+    Path('/tmp/afternoon-http-verifier-result.json').write_text(json.dumps(result,indent=2)); print(json.dumps(result))
+
+asyncio.run(main())

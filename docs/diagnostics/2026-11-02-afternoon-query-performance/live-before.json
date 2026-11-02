@@ -1,0 +1,388 @@
+[
+  {
+    "kind": "monitor_started",
+    "t": 6.129,
+    "id": "23be185035864b48a005873115104942",
+    "total": 350,
+    "prepared": 46,
+    "receiving": 23,
+    "preparing": 304,
+    "recovering": 23,
+    "unavailable": 0,
+    "insufficient": 0,
+    "last_verified_ms": 1793595623903,
+    "error": null
+  },
+  {
+    "kind": "health",
+    "t": 10.42,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 4290.5
+  },
+  {
+    "kind": "health",
+    "t": 20.453,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 32.6
+  },
+  {
+    "kind": "health",
+    "t": 30.49,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 36.9
+  },
+  {
+    "kind": "heartbeat",
+    "t": 31.177,
+    "status": 200
+  },
+  {
+    "kind": "health",
+    "t": 47.591,
+    "status": 503,
+    "state": "degraded",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": false,
+    "collector_reason": "syncing",
+    "restarts": 0,
+    "ms": 7099.3
+  },
+  {
+    "kind": "heartbeat",
+    "t": 60.453,
+    "status": 200
+  },
+  {
+    "kind": "health_error",
+    "t": 67.597,
+    "error": "ReadTimeout"
+  },
+  {
+    "kind": "result",
+    "t": 73.435,
+    "snapshot_id": "2aecd12fe03c67a7b5ab1794f0ebc4a10b9a246e443f72af94eed219949ac94e",
+    "index": 1,
+    "status": 200,
+    "seconds": 59.88,
+    "rows": 2,
+    "total": 151,
+    "complete": 17,
+    "incomplete": 664,
+    "prepared": 93,
+    "receiving": 76,
+    "preparing": 58,
+    "warnings": [
+      "separate_bases_partial"
+    ],
+    "detail": null
+  },
+  {
+    "kind": "health",
+    "t": 77.608,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 10.4
+  },
+  {
+    "kind": "heartbeat",
+    "t": 85.483,
+    "status": 200
+  },
+  {
+    "kind": "health",
+    "t": 87.685,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 75.7
+  },
+  {
+    "kind": "result",
+    "t": 91.562,
+    "snapshot_id": "2aecd12fe03c67a7b5ab1794f0ebc4a10b9a246e443f72af94eed219949ac94e",
+    "index": 2,
+    "status": 200,
+    "seconds": 18.127,
+    "rows": 1,
+    "total": 151,
+    "complete": 33,
+    "incomplete": 473,
+    "prepared": 149,
+    "receiving": 132,
+    "preparing": 1,
+    "warnings": [
+      "separate_bases_partial"
+    ],
+    "detail": null
+  },
+  {
+    "kind": "health",
+    "t": 98.937,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 1251.1
+  },
+  {
+    "kind": "health",
+    "t": 108.944,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 5.4
+  },
+  {
+    "kind": "heartbeat",
+    "t": 110.489,
+    "status": 200
+  },
+  {
+    "kind": "result",
+    "t": 111.776,
+    "snapshot_id": "2aecd12fe03c67a7b5ab1794f0ebc4a10b9a246e443f72af94eed219949ac94e",
+    "index": 3,
+    "status": 200,
+    "seconds": 20.214,
+    "rows": 3,
+    "total": 151,
+    "complete": 24,
+    "incomplete": 237,
+    "prepared": 151,
+    "receiving": 151,
+    "preparing": 0,
+    "warnings": [
+      "separate_bases_partial"
+    ],
+    "detail": null
+  },
+  {
+    "kind": "health",
+    "t": 118.974,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 29.6
+  },
+  {
+    "kind": "health",
+    "t": 128.982,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 8.0
+  },
+  {
+    "kind": "result",
+    "t": 132.307,
+    "snapshot_id": "2aecd12fe03c67a7b5ab1794f0ebc4a10b9a246e443f72af94eed219949ac94e",
+    "index": 4,
+    "status": 200,
+    "seconds": 20.53,
+    "rows": 3,
+    "total": 151,
+    "complete": 35,
+    "incomplete": 129,
+    "prepared": 151,
+    "receiving": 151,
+    "preparing": 0,
+    "warnings": [
+      "separate_bases_partial"
+    ],
+    "detail": null
+  },
+  {
+    "kind": "heartbeat",
+    "t": 137.409,
+    "status": 200
+  },
+  {
+    "kind": "health",
+    "t": 143.667,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 4682.2
+  },
+  {
+    "kind": "health_error",
+    "t": 163.674,
+    "error": "ReadTimeout"
+  },
+  {
+    "kind": "heartbeat",
+    "t": 168.885,
+    "status": 200
+  },
+  {
+    "kind": "health",
+    "t": 177.996,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 4320.5
+  },
+  {
+    "kind": "health_error",
+    "t": 198.001,
+    "error": "ReadTimeout"
+  },
+  {
+    "kind": "heartbeat",
+    "t": 202.591,
+    "status": 200
+  },
+  {
+    "kind": "health",
+    "t": 211.946,
+    "status": 503,
+    "state": "degraded",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": false,
+    "collector_reason": "state_stale",
+    "restarts": 0,
+    "ms": 3942.5
+  },
+  {
+    "kind": "health",
+    "t": 221.952,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 5.9
+  },
+  {
+    "kind": "heartbeat",
+    "t": 232.151,
+    "status": 200
+  },
+  {
+    "kind": "health",
+    "t": 238.654,
+    "status": 503,
+    "state": "degraded",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": false,
+    "collector_reason": "state_stale",
+    "restarts": 0,
+    "ms": 6699.8
+  },
+  {
+    "kind": "health",
+    "t": 256.753,
+    "status": 503,
+    "state": "degraded",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": false,
+    "collector_reason": "state_stale",
+    "restarts": 0,
+    "ms": 8098.0
+  },
+  {
+    "kind": "result",
+    "t": 256.757,
+    "snapshot_id": "2aecd12fe03c67a7b5ab1794f0ebc4a10b9a246e443f72af94eed219949ac94e",
+    "index": 5,
+    "status": 200,
+    "seconds": 124.449,
+    "rows": 0,
+    "total": 150,
+    "complete": 0,
+    "incomplete": 708,
+    "prepared": 150,
+    "receiving": 150,
+    "preparing": 0,
+    "warnings": [
+      "separate_bases_partial"
+    ],
+    "detail": null
+  },
+  {
+    "kind": "heartbeat",
+    "t": 257.165,
+    "status": 200
+  },
+  {
+    "kind": "health",
+    "t": 266.757,
+    "status": 200,
+    "state": "ok",
+    "commit": "e276f0586",
+    "collector_pid": 3986014,
+    "collector_ready": true,
+    "collector_reason": "ready",
+    "restarts": 0,
+    "ms": 3.0
+  },
+  {
+    "kind": "ws_observed",
+    "t": 266.759,
+    "total": 2647,
+    "subscribed": 1,
+    "pongs": 45,
+    "errors": []
+  },
+  {
+    "kind": "own_monitor_deleted",
+    "t": 266.762,
+    "status": 204
+  }
+]
