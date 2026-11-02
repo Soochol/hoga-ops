@@ -11,7 +11,7 @@ from hoga.api import screener_bar_volume as volume, screener_continuous_bars as 
 from hoga.api.models import ScanRequest
 from hoga.api.screener_continuous import ContinuousAdapter, ContinuousMonitors, History
 from hoga.live.buffer import LiveBuffer
-from hoga.live.volume_state import MINUTE, VolumeSource
+from hoga.live.volume_state import MINUTE, REPLAY_MS, VolumeSource
 from hoga.util.timeenc import KST
 
 OPEN = int(dt.datetime(2026, 10, 21, 9, tzinfo=KST).timestamp() * 1000)
@@ -425,3 +425,34 @@ async def test_disconnected_partial_minute_closes_and_schedules_api_repair(setup
     assert set(s.owner.pending) == {CODE}
     await asyncio.gather(*s.owner.pending.values())
     assert len(s.calls) == 2
+
+
+@pytest.mark.parametrize('transition', ['generation', 'replay_gap'])
+@pytest.mark.parametrize('settled', [False, True])
+async def test_source_transition_after_close_preserves_settled_rest_session(setup, transition, settled):
+    s = setup
+    closing = OPEN + 390 * MINUTE
+    s.clock.now = closing + (20_000 if settled else 14_000)
+    s.oracle.clear()
+    s.oracle.update({OPEN + i * MINUTE: 10 for i in range(391)})
+    for frame in s.source.frames(s.clock.now):
+        s.owner.replica.apply(frame, s.clock.now)
+    history = s.owner.histories[CODE]
+    s.owner.merge(CODE, history, s.clock.now)
+    await s.owner.prepare(CODE, history)
+    if transition == 'generation':
+        s.clock.now += 30_000
+        s.source.health({CODE: 'account:2'}, s.clock.now)
+    else:
+        s.clock.now += REPLAY_MS + MINUTE
+    for frame in s.source.frames(s.clock.now):
+        s.owner.replica.apply(frame, s.clock.now)
+    s.owner.merge(CODE, history, s.clock.now)
+    assert bool(history.repair_until_ms) is not settled
+    if settled:
+        adapter = ContinuousAdapter(s.owner, s.monitor)
+        for leaf in s.monitor.leaves:
+            data, _, _ = adapter.snapshot(leaf, CODE, s.clock.now)
+            assert volume.records(leaf, data, fetched_at_ms=history.fetched_ms)[1]
+        assert s.owner.status(s.monitor, s.clock.now).recovering == 0
+    assert len(s.calls) == 1

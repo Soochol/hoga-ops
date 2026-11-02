@@ -462,5 +462,5 @@
   "probe_errors": [],
   "own_monitor_delete": 204,
   "snapshot": "a29e4bcfde82fb27dcd37c89bce6ae7a42645ae92016f1b2eb59e50446e8afe5",
-  "notes": "One actual cold restart before change; afterKRXclose; candidates154 within scope350. Allprepared includesnine displayprice unavailable (not minute shortage). Preptime sampled every3s; no lowerbound complete0 or failedresults used."
+  "notes": "One actual cold restart before change; afterKRXclose; candidates154 within scope350. Allprepared but8Codesrecovering(48conditionfailures),1displaypriceunavailable. Preptime sampled every3s; no zero-work failures used as faster responses."
 }
