@@ -18,20 +18,20 @@ beforeEach(() => { vi.useFakeTimers(); click.mockClear(); });
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe('heatmap company tooltip', () => {
-  it('opens only on name hover after the delay, in a portal with capture information', () => {
+  it('opens only on name hover after 300ms, in a portal with capture information', () => {
     const { container } = render(rows());
     fireEvent.mouseEnter(within(screen.getByTestId('first')).getByText('100,000'));
     reveal();
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByText('LG전자', { exact: true }));
-    act(() => vi.advanceTimersByTime(STOCK_DESCRIPTION_DELAY_MS - 1));
+    act(() => vi.advanceTimersByTime(299));
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1));
     const tooltip = screen.getByRole('tooltip');
     expect(container).not.toContainElement(tooltip);
     expect(tooltip).toHaveTextContent('066570');
     expect(tooltip).toHaveTextContent('마지막 수집 10/22');
-    expect(within(tooltip).getByTestId('stock-description-lines').children).toHaveLength(2);
+    expect(within(tooltip).getByTestId('stock-description-lines').children).toHaveLength(getStockDescription('066570')!.lines.length);
     expect(screen.getByTestId('first')).toHaveAttribute('aria-describedby', tooltip.id);
     expect(screen.getByTestId('first').firstElementChild).not.toHaveAttribute('title');
   });

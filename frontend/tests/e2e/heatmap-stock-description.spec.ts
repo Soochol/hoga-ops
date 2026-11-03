@@ -59,7 +59,10 @@ for (const width of [1440, 600]) {
       const failures: string[] = [];
       for (const [code, item] of Object.entries(catalogue)) {
         probe.replaceChildren(...item.lines.map(text => { const div = document.createElement('div'); div.textContent = text; return div; }));
-        if (probe.getBoundingClientRect().height > lineHeight * 3 + 1) failures.push(`${code} ${item.name}`);
+        if (probe.getBoundingClientRect().height > lineHeight * 4 + 1) {
+          const wraps = Array.from(probe.children).map(child => Math.round(child.getBoundingClientRect().height / lineHeight));
+          failures.push(`${code} ${item.name}: ${wraps.join('+')}`);
+        }
       }
       probe.remove();
       return failures;

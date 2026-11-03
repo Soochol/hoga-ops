@@ -687,11 +687,11 @@ _Avoid_: "watchlist page" (removed); calling the **Watchlist Panel** an editor (
 _Avoid_: **Watchlist** 과 동일시(2026-06-11 분리 전엔 히트맵이 watchlist 의 한 뷰였으나 ADR-0068 로 독립 — "관심맵"·"한 Watchlist 의" 표현은 폐기); **Watchlist Panel** 과 혼동(패널은 우측 레일의 관심종목 한 폴더 read+navigate 스트립; 히트맵은 자체 리스트의 전 폴더 풀페이지 보드).
 
 히트맵 종목 설명(2026-10-22): 보드 종목명 호버·키보드 포커스에 코드별 기업 소개를
-표시한다. `stockDescriptions.json`은 직접 작성한 330개 고유 Code의 2줄 설명과 출처를
+표시한다. `stockDescriptions.json`은 직접 작성한 330개 고유 Code의 기본 3줄·필요 시 4줄 설명과 출처를
 보유한다. `StockDescriptionTooltipProvider`가 보드당 한 툴팁을 관리하고, 동일 Code의
 다중 그룹 등록·표시 별칭은 같은 설명을 공유한다. 기존 수집일 안내는 툴팁 하단에 남는다.
 미등록 Code는 임의 소개를 생성하지 않고 기존 수집 안내를 유지한다.
-2026-10-23: `/live` 캔들 차트 제목줄의 종목명도 같은 Code 설명과 500ms 지연을 공유한다.
+2026-10-23: `/live` 캔들 차트 제목줄의 종목명도 같은 Code 설명과 300ms 지연을 공유한다.
 워크스페이스당 한 provider를 두며, 종목 교체·드래그/누르기·창 닫기에 해제한다. 그 밖의
 모든 창 제목줄 툴팁은 제거했다(접근성 이름과 버튼 동작은 유지). 설명 미등록 Code·지수·
 미국 종목에는 소개 툴팁이 없다. 본문 캔들 툴팁은 별개다.
