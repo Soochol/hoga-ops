@@ -1,0 +1,43 @@
+{
+  "scope": "Isolated real lightweight-charts adapter measurements, not full React application integration",
+  "scenarios": {
+    "native-prepend": {
+      "lastIndexDelta": 52,
+      "latestXDelta": 0.0,
+      "latestOffscreen": false
+    },
+    "native-union": {
+      "lastIndexDelta": 52,
+      "latestXDelta": 0.0,
+      "latestOffscreen": false
+    },
+    "native-append": {
+      "lastIndexDelta": 1,
+      "latestXDelta": 0.0,
+      "latestOffscreen": false
+    },
+    "windowed-prepend": {
+      "lastIndexDelta": 52,
+      "latestXDelta": 155.01265822784796,
+      "latestOffscreen": true
+    },
+    "windowed-union": {
+      "lastIndexDelta": 52,
+      "latestXDelta": 155.01265822784796,
+      "latestOffscreen": true
+    },
+    "windowed-append": {
+      "lastIndexDelta": 1,
+      "latestXDelta": 2.981012658227769,
+      "latestOffscreen": false
+    }
+  },
+  "return_comparison": "windowed 8000-bar return completed; native control did not reach the expected target within 2500ms. Comparison remains inconclusive.",
+  "jump_wheel_review": {
+    "source": "useTimeframeJump.ts, useLiveChartData.ts, useWheelInteractions.ts, wheelInteractions.ts",
+    "contract": "past jump preserves asOfDate and data right bound; plain wheel preserves latest candle pixel anchor; backfill extends left only",
+    "unit_and_hook_tests": "3 files, 80 tests passed",
+    "full_user_sequence": "Input confirmed as horizontal chart drag; full sequence not yet reproduced. Distinguish normal pan from extra movement caused by data commits and changes to asOfDate."
+  },
+  "application_code_modified": false
+}

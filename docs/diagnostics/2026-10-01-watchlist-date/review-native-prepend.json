@@ -1,0 +1,27 @@
+{
+  "mode": "native",
+  "scenario": "prepend",
+  "before": {
+    "range": {
+      "from": -275,
+      "to": 40
+    },
+    "lastIndex": 25,
+    "lastX": 894.7943037974684,
+    "width": 942
+  },
+  "after": {
+    "range": {
+      "from": -223,
+      "to": 92
+    },
+    "lastIndex": 77,
+    "lastX": 894.7943037974684,
+    "width": 942,
+    "visible": {
+      "from": 1790640000,
+      "to": 1790644620
+    },
+    "lastTime": 1790644620
+  }
+}

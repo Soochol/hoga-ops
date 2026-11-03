@@ -1,0 +1,14 @@
+{"i": 0, "rss_mib": 33.46875, "gc": [1506, 0, 0]}
+{"i": 5000, "rss_mib": 472.71875, "gc": [31527, 0, 0]}
+{"i": 10000, "rss_mib": 202.1875, "gc": [11559, 0, 0]}
+{"i": 15000, "rss_mib": 610.33203125, "gc": [41575, 0, 0]}
+{"i": 20000, "rss_mib": 338.81640625, "gc": [21607, 0, 0]}
+{"i": 25000, "rss_mib": 67.30078125, "gc": [1639, 0, 0]}
+{"i": 30000, "rss_mib": 475.4453125, "gc": [31655, 0, 0]}
+{"i": 35000, "rss_mib": 203.9296875, "gc": [11687, 0, 0]}
+{"start_mib": 33.0703125, "before_gc_mib": 611.85546875, "after_gc_mib": 44.91015625, "collected": 41704}
+Traceback (most recent call last):
+  File "/tmp/hoga-memory-diagnosis/probe_client_long.py", line 20, in <module>
+    assert before-start<512,'Capture page fetching retained >512 MiB'
+           ^^^^^^^^^^^^^^^^
+AssertionError: Capture page fetching retained >512 MiB

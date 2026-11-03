@@ -1,0 +1,27 @@
+{
+  "mode": "windowed",
+  "scenario": "return",
+  "before": {
+    "range": {
+      "from": 1800,
+      "to": 1900
+    },
+    "lastIndex": 7999,
+    "lastX": 57820.07920792079,
+    "width": 942
+  },
+  "after": {
+    "range": {
+      "from": 7913,
+      "to": 8013
+    },
+    "lastIndex": 7999,
+    "lastX": 805.7623762376238,
+    "width": 942,
+    "visible": {
+      "from": 1791114780,
+      "to": 1791119940
+    },
+    "lastTime": 1791119940
+  }
+}

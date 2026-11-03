@@ -1,0 +1,12 @@
+{"iteration": 0, "rss_mib": 201.6, "gc": [22933, 0, 0]}
+{"iteration": 100, "rss_mib": 202.3, "gc": [22959, 0, 0]}
+{"iteration": 200, "rss_mib": 202.5, "gc": [22959, 0, 0]}
+{"iteration": 300, "rss_mib": 202.6, "gc": [22959, 0, 0]}
+{"iteration": 400, "rss_mib": 202.7, "gc": [22959, 0, 0]}
+{"iteration": 500, "rss_mib": 202.7, "gc": [22959, 0, 0]}
+{"iteration": 600, "rss_mib": 202.8, "gc": [22959, 0, 0]}
+{"iteration": 700, "rss_mib": 202.9, "gc": [22959, 0, 0]}
+{"iteration": 800, "rss_mib": 203.1, "gc": [22959, 0, 0]}
+{"iteration": 900, "rss_mib": 203.4, "gc": [22959, 0, 0]}
+{"iteration": 1000, "rss_mib": 203.4, "gc": [22959, 0, 0]}
+{"start_mib": 161.6875, "before_gc_mib": 203.4296875, "after_gc_mib": 203.4296875, "collected": 2083}

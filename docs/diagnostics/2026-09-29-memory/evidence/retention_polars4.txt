@@ -1,0 +1,20 @@
+broker_names.unknown_alias raw='C.L.S.A 증권'
+broker_names.unknown_alias raw='메릴린치'
+broker_names.unknown_alias raw='유비에스증권'
+broker_names.unknown_alias raw='유진투자증권'
+broker_names.unknown_alias raw='한  화'
+broker_names.unknown_alias raw='H S B C'
+broker_names.unknown_alias raw='골드만삭스'
+broker_names.unknown_alias raw='LS증권'
+broker_names.unknown_alias raw='BNP파리바'
+broker_names.unknown_alias raw='다이와'
+{"i": 0, "mode": "sidecar", "code": "005930", "seconds": 11.58, "rss_mib": 2355.9, "bytes": 13127784}
+{"i": 1, "mode": "sidecar", "code": "005930", "seconds": 0.12, "rss_mib": 2348.0, "bytes": 13127784}
+{"i": 2, "mode": "sidecar", "code": "005930", "seconds": 0.12, "rss_mib": 2348.0, "bytes": 13127784}
+cache_sizes {'ratio': {'hits': 0, 'disk_hits': 0, 'misses': 0, 'negatives': 0, 'stores': 0, 'evictions': 0, 'lookups': 0, 'hit_rate': None, 'size': 0}, 'fill': {'hits': 0, 'disk_hits': 0, 'misses': 0, 'negatives': 0, 'stores': 0, 'evictions': 0, 'lookups': 0, 'hit_rate': None, 'size': 0}, 'ask_peak': {'hits': 125, 'disk_hits': 0, 'misses': 50, 'negatives': 0, 'stores': 25, 'evictions': 0, 'lookups': 175, 'hit_rate': 0.7143, 'size': 25}, 'bid_peak': {'hits': 125, 'disk_hits': 0, 'misses': 25, 'negatives': 0, 'stores': 25, 'evictions': 0, 'lookups': 150, 'hit_rate': 0.8333, 'size': 25}, 'poc': {'hits': 50, 'disk_hits': 0, 'misses': 25, 'negatives': 0, 'stores': 25, 'evictions': 0, 'lookups': 75, 'hit_rate': 0.6667, 'size': 25}, 'depth': {'hits': 50, 'disk_hits': 0, 'misses': 25, 'negatives': 0, 'stores': 25, 'evictions': 0, 'lookups': 75, 'hit_rate': 0.6667, 'size': 25}, 'vdist': {'hits': 0, 'disk_hits': 0, 'misses': 0, 'negatives': 0, 'stores': 0, 'evictions': 0, 'lookups': 0, 'hit_rate': None, 'size': 0}, 'broker_late': {'hits': 50, 'disk_hits': 0, 'misses': 25, 'negatives': 0, 'stores': 25, 'evictions': 0, 'lookups': 75, 'hit_rate': 0.6667, 'size': 25}, 'continuous_before': {'hits': 50, 'disk_hits': 0, 'misses': 25, 'negatives': 0, 'stores': 25, 'evictions': 0, 'lookups': 75, 'hit_rate': 0.6667, 'size': 25}, 'peak_rep': {'hits': 0, 'disk_hits': 0, 'misses': 0, 'negatives': 0, 'stores': 25, 'evictions': 0, 'lookups': 0, 'hit_rate': None, 'size': 25}}
+arrow_bytes 0 snapshot_index 0
+duck_memory [('BASE_TABLE', 0, 0), ('HASH_TABLE', 0, 0), ('PARQUET_READER', 0, 0), ('CSV_READER', 0, 0), ('ORDER_BY', 0, 0), ('ART_INDEX', 0, 0), ('COLUMN_DATA', 0, 0), ('METADATA', 0, 0), ('OVERFLOW_STRINGS', 0, 0), ('IN_MEMORY_TABLE', 0, 0), ('ALLOCATOR', 0, 0), ('EXTENSION', 0, 0), ('TRANSACTION', 0, 0), ('EXTERNAL_FILE_CACHE', 32231424, 0), ('WINDOW', 0, 0), ('OBJECT_CACHE', 0, 0)]
+trim_mib 2024.4765625
+arrow_release_mib 2024.4765625
+cleared_cache_mib 1952.7734375
+{"start_mib": 16.88671875, "warm_mib": 2355.88671875, "before_gc_mib": 2348.02734375, "after_gc_mib": 2348.02734375, "collected": 256}
