@@ -205,3 +205,23 @@ lock은 전체 transaction 동안 유지해 토큰·제어 응답의 조각 사�
 RSS를 256KiB로 제한한다는 뜻이 아니며 이력을 자르거나 임의 point 상한으로 숨기지 않는다.
 실제 콜백·저장과 8MiB 초과 단일 키, backpressure/복구, 별도 송수신 프로세스 메모리의
 [검증과 측정 한계](../diagnostics/2026-10-23-collector-intra-key/validation.md)를 함께 따른다.
+
+## 2026년 11월 3일 개정 수집 자식의 장애 시점 증거
+
+`KiwoomWsClient`는 소켓별 최초 실패를 큐 정리 전에 내부 `FailureEvidence`에 고정한다.
+64KiB 이하의 분리된 JSON에는 pid·논리 계정 번호·연결 세대·소켓 순번, 최근 제어 시도와
+32개 제어 이벤트, reader·consumer 진행 상태, 기존 큐·flow·예산·지연 요약이 들어간다.
+제어 시각은 로컬 send 시작·반환, 애플리케이션 recv 반환·파싱, ACK 일치·Future 완료·
+sender 재개를 구분한다. wire 도착이나 공급사 처리 시각을 뜻하지 않는다.
+콜백 wall 시간에는 await 중 대기도 포함한다. recv 무수신 시간과 루프 지연은 별개다.
+
+수집 worker는 로그 없는 `LoopLagEvidence` task 하나를 소유한다. 필수 task의 종료 판단에
+넣지 않으며 동기화·재연결에서 추가 생성하지 않는다. 최근 지연 표본은 32개이고
+`pending_overdue_ms`는 실패 시점에 예정된 wake 기한의 초과분을 직접 계산한다.
+프로브가 아직 재개하지 않았어도 초과분을 남기며, 비활성 상태는 기한과 초과분이 null이다.
+루프 프로브·실패 context·GC callback은 worker 종료와 초기화 실패에서 해제한다.
+
+원인 체인은 최대 8개의 고정 타입 분류와 정수 errno, 표준 close frame 유무·코드·순서만
+남긴다. 예외 메시지·repr·close reason·계정 실번호·URL·payload는 증거에 넣지 않는다.
+추출·직렬화 실패는 작은 고정 진단으로 대체하며 원래 예외와 retirement 동작을 보존한다.
+공개 status·IPC·API 모델과 제어 deadline·pacing·ACK 대응 규칙은 유지한다.
