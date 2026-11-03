@@ -9,11 +9,13 @@ export type MajorIndexId = (typeof MAJOR_INDICES)[number]['id'];
 export interface MajorIndicesSettings {
   indices: MajorIndexId[];
   showStock: boolean;
+  showTooltip: boolean;
 }
 
 export const DEFAULT_MAJOR_INDICES_SETTINGS: MajorIndicesSettings = {
   indices: MAJOR_INDICES.map(index => index.id),
   showStock: true,
+  showTooltip: false,
 };
 
 /** Canonical order, known IDs and at least one index, including older presets. */
@@ -24,5 +26,6 @@ export function normalizeMajorIndicesSettings(raw: unknown): MajorIndicesSetting
   return {
     indices: indices.length ? indices : [...DEFAULT_MAJOR_INDICES_SETTINGS.indices],
     showStock: typeof value.showStock === 'boolean' ? value.showStock : true,
+    showTooltip: typeof value.showTooltip === 'boolean' ? value.showTooltip : false,
   };
 }

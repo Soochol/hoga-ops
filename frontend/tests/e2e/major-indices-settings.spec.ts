@@ -64,6 +64,7 @@ test('selection updates the legend, axis and tooltip and stops hidden index/stoc
   await frame.getByRole('button', { name: '주요 지수 설정' }).click();
   const settings = page.getByRole('dialog', { name: '주요 지수 설정' });
   await expect(settings.getByRole('checkbox')).toHaveCount(0);
+  await settings.getByRole('switch', { name: '툴팁 표시' }).check();
   const kosdaq = settings.getByRole('switch', { name: '코스닥', exact: true });
   await expect(kosdaq).toHaveCSS('width', '26px');
   await expect(kosdaq).toHaveCSS('height', '15px');
@@ -143,4 +144,66 @@ test('window selections stay independent through reload and preset restore, incl
   const legendBounds = (await legend.boundingBox())!, plot = (await other.getByTestId('major-indices-chart').boundingBox())!;
   expect(legendBounds.y + legendBounds.height).toBeLessThanOrEqual(plot.y + 1);
   await other.screenshot({ path: info.outputPath('major-indices-narrow-legend.png') });
+});
+
+
+test('tooltip defaults OFF for legacy settings and persists independent window choices without reviving pins', async ({ page, context }, info) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('hoga.window.settings.v1')) localStorage.setItem('hoga.window.settings.v1', JSON.stringify({
+      schema_version: 1, byWindow: { comparison: { majorIndices: { indices: ['KOSPI', 'KOSDAQ', 'KOSPI200'], showStock: true } } },
+    }));
+  });
+  const { frame } = await setup(page, context, true);
+  const other = page.locator('[data-win="other"]');
+  const svg = frame.getByRole('img');
+  const legend = frame.getByRole('list', { name: '표시 항목' });
+  const legendBefore = await legend.textContent();
+  await svg.hover({ position: { x: 5, y: 80 } });
+  await svg.click({ position: { x: 5, y: 80 } });
+  await expect(frame.getByRole('tooltip')).toHaveCount(0);
+  await expect(frame.locator('.major-indices-cursor')).toHaveCount(0);
+  await frame.getByRole('button', { name: '주요 지수 설정' }).click();
+  const settings = page.getByRole('dialog', { name: '주요 지수 설정' });
+  const toggle = settings.getByRole('switch', { name: '툴팁 표시' });
+  await expect(toggle).not.toBeChecked();
+  await settings.locator('label').filter({ hasText: /^툴팁 표시$/ }).click();
+  await expect(toggle).toBeChecked();
+  await settings.screenshot({ path: info.outputPath('major-indices-tooltip-setting.png') });
+  await page.keyboard.press('Escape');
+  await svg.click({ position: { x: 5, y: 80 } });
+  await page.mouse.move(0, 0);
+  await expect(frame.getByRole('tooltip')).toBeVisible();
+  await frame.getByRole('button', { name: '주요 지수 설정' }).click();
+  await toggle.uncheck();
+  await expect(frame.getByRole('tooltip')).toHaveCount(0);
+  await expect(frame.locator('.major-indices-cursor')).toHaveCount(0);
+  await toggle.check();
+  await page.keyboard.press('Escape');
+  await expect(frame.getByRole('tooltip')).toHaveCount(0);
+  await svg.hover({ position: { x: 5, y: 80 } });
+  await expect(frame.getByRole('tooltip')).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(frame.getByRole('tooltip')).toHaveCount(0);
+  await other.getByRole('img').hover({ position: { x: 5, y: 80 } });
+  await expect(other.getByRole('tooltip')).toHaveCount(0);
+  await page.reload();
+  await svg.hover({ position: { x: 5, y: 80 } });
+  await expect(frame.getByRole('tooltip')).toBeVisible();
+  await other.getByRole('img').hover({ position: { x: 5, y: 80 } });
+  await expect(other.getByRole('tooltip')).toHaveCount(0);
+  const preset = await page.evaluate(async () => {
+    const path = '/src/live/presets/layoutPresetSnapshot.ts';
+    return (await import(path)).capturePresetPayload();
+  });
+  await frame.getByRole('button', { name: '주요 지수 설정' }).click();
+  await toggle.uncheck();
+  await page.keyboard.press('Escape');
+  await page.evaluate(async payload => {
+    const path = '/src/live/presets/layoutPresetSnapshot.ts';
+    (await import(path)).applyPresetPayload(payload, null);
+  }, preset);
+  await expect(frame.getByRole('tooltip')).toHaveCount(0);
+  await svg.hover({ position: { x: 5, y: 80 } });
+  await expect(frame.getByRole('tooltip')).toBeVisible();
+  await expect(legend).toHaveText(legendBefore!);
 });

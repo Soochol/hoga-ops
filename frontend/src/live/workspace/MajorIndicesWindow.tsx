@@ -33,7 +33,9 @@ export function MajorIndicesWindow({ frameProps }: { frameProps: Omit<WindowFram
     <WindowHeaderAction><WindowSettingsPopover title="주요 지수 설정" scope="이 창에 적용"
       render={() => <MajorIndicesSettings settings={settings}
         onChange={patch => useWindowSettingsStore.getState().patch(windowId, 'majorIndices', patch)} />} /></WindowHeaderAction>
-    <MajorIndicesChart key={model.date} model={model} stock={stock} stockLabel={code ? frameProps.symbolLabel ?? code : null} />
+    {/* Reset hover and pin state when tooltip visibility changes, including restores. */}
+    <MajorIndicesChart key={`${model.date}:${settings.showTooltip}`} model={model} stock={stock}
+      showTooltip={settings.showTooltip} stockLabel={code ? frameProps.symbolLabel ?? code : null} />
   </WindowFrame>;
 }
 
@@ -44,8 +46,8 @@ function linePath<T extends { tMs: number }>(points: readonly T[], x: (t: number
   }).join(' ');
 }
 
-function MajorIndicesChart({ model, stock, stockLabel }: {
-  model: Overview; stock: ReturnType<typeof useMajorIndicesStock>; stockLabel: string | null;
+function MajorIndicesChart({ model, stock, stockLabel, showTooltip }: {
+  model: Overview; stock: ReturnType<typeof useMajorIndicesStock>; stockLabel: string | null; showTooltip: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const axisLabels = useRef<SVGGElement>(null);
@@ -124,9 +126,10 @@ function MajorIndicesChart({ model, stock, stockLabel }: {
     </div>
     <div ref={container} className="major-indices-chart" data-testid="major-indices-chart">
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${model.date} ${model.series.map(series => series.label).join('·')} 당일 등락률 비교 · 오른쪽 Y축 등락률 %${stockLabel ? ` · ${stockLabel} 종가` : ''}`}
-      onPointerMove={event => { if (!pinned) setHover(pointerFraction(event)); }}
+      onPointerMove={event => { if (showTooltip && !pinned) setHover(pointerFraction(event)); }}
       onPointerLeave={() => { if (!pinned) setHover(null); }}
       onClick={event => {
+        if (!showTooltip) return;
         if (pinned) { setPinnedTime(null); setHover(null); }
         else setPinnedTime(open + pointerFraction(event) * timeSpan);
       }}>
