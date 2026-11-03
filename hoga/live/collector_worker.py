@@ -194,14 +194,6 @@ class CollectorWorker:
         return self.peaks({key})
 
     async def synchronize(self, args: dict):
-        from hoga.api.gc_probe import stats_snapshot  # noqa: PLC0415
-
-        from .kiwoom_diagnostics import configure_failure_context  # noqa: PLC0415
-        configure_failure_context(lambda: {
-            "commit": self.config.get("commit"), "live_started_at_ms": self.config.get("live_started_at_ms"),
-            "collector_epoch": self.epoch, "collector_started_at_ms": self.started_at_ms,
-            "gc": stats_snapshot(),
-        })
         version = args["version"]
         if version < self.buffer.desired_version:
             raise ValueError("old collector desired version")
@@ -380,25 +372,36 @@ def _parent_watch(parent_pid: int, loop: asyncio.AbstractEventLoop, stop: asynci
 async def run_worker(root: str, epoch: str, sockets: tuple[socket.socket, ...], parent_pid: int,
                      *, manager_factory=None) -> None:
     from hoga.api import ownership  # noqa: PLC0415 — flock registry, no app
-    from hoga.api.gc_probe import install, pause_warn_ms_from_env, uninstall  # noqa: PLC0415
+    from hoga.api.gc_probe import install, pause_warn_ms_from_env, stats_snapshot, uninstall  # noqa: PLC0415
 
+    from .kiwoom_diagnostics import LoopLagEvidence, configure_failure_context  # noqa: PLC0415
     from .last_ob_runtime import start_flusher  # noqa: PLC0415
 
     root_path = Path(root)
-    channels = [await open_channel(sock) for sock in sockets]
-    peer = RpcPeer(*channels[0], epoch)
-    worker = CollectorWorker(root_path, epoch, peer, manager_factory=manager_factory)
-    threading.Thread(target=_parent_watch, args=(parent_pid, asyncio.get_running_loop(), worker.stopping),
-                     daemon=True, name="collector-parent-watch").start()
+    channels = []
+    worker = None
     tasks = []
-    flusher = None
+    flusher = probe_task = None
     acquired = False
-    from hoga.gc_tuning import GC_UPPER_GEN_THRESHOLDS, gc_gen0_threshold  # noqa: PLC0415
-    threshold = gc_gen0_threshold()
-    if threshold > 0:
-        gc.set_threshold(threshold, *GC_UPPER_GEN_THRESHOLDS)
-    install(warn_ms=pause_warn_ms_from_env())
+    recorder = LoopLagEvidence()
     try:
+        for sock in sockets:
+            channels.append(await open_channel(sock))
+        peer = RpcPeer(*channels[0], epoch)
+        worker = CollectorWorker(root_path, epoch, peer, manager_factory=manager_factory)
+        configure_failure_context(lambda: {
+            'commit': worker.config.get('commit'), 'live_started_at_ms': worker.config.get('live_started_at_ms'),
+            'collector_epoch': epoch, 'collector_started_at_ms': worker.started_at_ms,
+            'gc': stats_snapshot(), 'collector_loop': recorder.snapshot(),
+        })
+        threading.Thread(target=_parent_watch, args=(parent_pid, asyncio.get_running_loop(), worker.stopping),
+                         daemon=True, name="collector-parent-watch").start()
+        from hoga.gc_tuning import GC_UPPER_GEN_THRESHOLDS, gc_gen0_threshold  # noqa: PLC0415
+        threshold = gc_gen0_threshold()
+        if threshold > 0:
+            gc.set_threshold(threshold, *GC_UPPER_GEN_THRESHOLDS)
+        install(warn_ms=pause_warn_ms_from_env())
+        probe_task = asyncio.create_task(recorder.run(), name='collector-loop-evidence')
         # Child-only lock survives parent release/crash until old writer exits.
         acquired = ownership.acquire("capture", root_path)
         if not acquired:
@@ -420,24 +423,35 @@ async def run_worker(root: str, epoch: str, sockets: tuple[socket.socket, ...], 
             if task is not stop_task:
                 task.result()  # IPC/worker failure remains an explicit failed exit
     finally:
-        worker.ready = False
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        if flusher is not None:
-            flusher.cancel()
-            await asyncio.gather(flusher, return_exceptions=True)
-        if acquired:
+        try:
+            await _finish_worker(worker, tasks + ([probe_task] if probe_task is not None else []),
+                                 flusher, acquired, epoch)
+        finally:
             try:
-                await worker.shutdown()
-                # to_thread cancellation cannot stop an existing disk write.
+                for _, writer in channels:
+                    writer.close()
+                    with contextlib.suppress(OSError):
+                        await writer.wait_closed()
             finally:
-                await _release_capture(epoch)
-        for _, writer in channels:
-            writer.close()
-            with contextlib.suppress(OSError):
-                await writer.wait_closed()
-        uninstall()
+                configure_failure_context(None)
+                uninstall()
+
+
+async def _finish_worker(worker, tasks, flusher, acquired: bool, epoch: str) -> None:
+    if worker is not None:
+        worker.ready = False
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    if flusher is not None:
+        flusher.cancel()
+        await asyncio.gather(flusher, return_exceptions=True)
+    if acquired:
+        try:
+            await worker.shutdown()
+            # to_thread cancellation cannot stop an existing disk write.
+        finally:
+            await _release_capture(epoch)
 
 
 async def _release_capture(epoch: str) -> None:

@@ -28,7 +28,17 @@ import websockets
 from websockets.asyncio.client import ClientConnection
 
 from . import kiwoom_fields as K
-from .kiwoom_diagnostics import QueueFlowEvidence, failure_context
+from .kiwoom_diagnostics import ControlAttempt, ProgressEvidence, QueueFlowEvidence, failure_context
+from .kiwoom_failure_evidence import (
+    FailureEvidence,
+    annotate_failure,
+    close_projection,
+    exception_data,
+    exception_family,
+    exception_projection,
+    integer,
+    provider_exception,
+)
 from .kiwoom_frames import parse_real_message
 from .latency import LatencySamples
 from .loop_budget import LoopWorkBudget
@@ -244,6 +254,10 @@ class KiwoomWsClient:
         self._reported_failure: Exception | None = None
         self._control_events: deque[dict] = deque(maxlen=32)
         self._control_sequence = 0
+        self._socket_sequence = 0
+        self._failure_evidence: FailureEvidence | None = None
+        self._control_attempt: ControlAttempt | None = None
+        self._progress = ProgressEvidence()
 
     @staticmethod
     async def _default_connect(url: str) -> _WsLike:
@@ -253,9 +267,8 @@ class KiwoomWsClient:
         return _Socket(connection)
 
     def _control_event(self, stage: str, trnm: object, **values: int | float | None) -> None:
-        # Never retain arbitrary vendor strings, raw messages or LOGIN tokens.
         self._control_events.append({
-            "at_ms": int(time.time() * 1000), "stage": stage,
+            "at_ms": int(time.time() * 1000), "at_monotonic": self._monotonic(), "stage": stage,
             "trnm": trnm if trnm in ("LOGIN", "REG", "REMOVE") else "other",
             "generation": self.connection_generation, **values,
         })
@@ -264,33 +277,48 @@ class KiwoomWsClient:
         """Signal the session owner; don't close while holding the subscription lock."""
         if self._ws is not ws or self._retiring_failure is not None:
             return
+        self._capture_failure(exc)
         self._reset_after_stable_session()
         self._retiring_failure = exc
         self._ws = None
         self.connected = False
         self._registration_finished = False
-        self.last_error_type = type(exc).__name__
-        self.last_close_code = getattr(exc, "code", None)
-        from . import provider_errors  # noqa: PLC0415
-        provider_errors.finish(self, "session", getattr(self, "_error_generation", 0), "ws", exc)
+        self._record_provider_failure(exc)
         self._reported_failure = exc
         if self._retired is not None:
             self._retired.set()
-        _log.warning(
-            "live.kiwoom.retiring pid=%d account=%s generation=%d phase=%s evidence=%s",
-            os.getpid(), self.account_id, self.connection_generation,
-            getattr(exc, "_kiwoom_phase", "unknown"),
-            json.dumps({"session_started_at_ms": self._session_started_at_ms,
-                        "control_events": list(self._control_events),
-                        "runtime": failure_context()}, separators=(",", ":")),
-        )
+        self._log_failure('retiring')
+
+    def _record_provider_failure(self, exc: Exception) -> None:
+        from . import provider_errors  # noqa: PLC0415
+        with contextlib.suppress(Exception):
+            projection = close_projection(exc)
+            received = projection.get('rcvd', {})
+            code = integer(exception_data(exc).get('code'))
+            if projection['state'] == 'available':
+                code = received.get('code') if received.get('present') else 1006
+            self.last_close_code = code
+            self.last_error_type = {KiwoomDataBacklogError: 'KiwoomDataBacklogError',
+                                    KiwoomSlotCapReached: 'KiwoomSlotCapReached'}.get(
+                                        type(exc), exception_family(exc)[1],
+                                    )
+            provider_errors.finish(self, 'session', getattr(self, '_error_generation', 0), 'ws',
+                                   provider_exception(exc))
+
+    def _capture_failure(self, exc: Exception, *, rejected_bytes: int | None = None) -> None:
+        if self._failure_evidence is None:
+            self._failure_evidence = FailureEvidence.capture(
+                exc, lambda: {**self._diagnostic_evidence(), 'rejected_bytes_bound': integer(rejected_bytes)},
+            )
+
+    def _log_failure(self, event: str) -> None:
+        with contextlib.suppress(Exception):
+            _log.warning('live.kiwoom.%s evidence=%s', event,
+                         self._failure_evidence.encoded if self._failure_evidence else '{}')
 
     @staticmethod
     def _annotate_failure(exc: Exception, phase: str, elapsed_ms: float) -> None:
-        # An ACK waiter can receive the receiver's exception. Preserve its original stage.
-        if not hasattr(exc, "_kiwoom_phase"):
-            exc._kiwoom_phase = phase
-            exc._kiwoom_elapsed_ms = max(0.0, elapsed_ms)
+        annotate_failure(exc, phase, elapsed_ms)
 
     @contextlib.contextmanager
     def _control_span(self, phase: str) -> Iterator[None]:
@@ -385,10 +413,9 @@ class KiwoomWsClient:
                     provider_errors.clear(self)
                     self.connected = False
                     raise asyncio.CancelledError from e
-                self.last_close_code = getattr(e, "code", None)
-                self.last_error_type = type(e).__name__
+                self._capture_failure(e)
                 if e is not self._reported_failure:
-                    provider_errors.finish(self, "session", self._error_generation, "ws", e)
+                    self._record_provider_failure(e)
                 self.connected = False
                 self._ws = None
                 if self._is_kick(e):
@@ -407,13 +434,8 @@ class KiwoomWsClient:
                 else:
                     delay = _BACKOFF_S[min(self._attempt, len(_BACKOFF_S) - 1)]
                     self._attempt += 1
-                    _log.warning("live.kiwoom.reconnect attempt=%d delay=%ds err=%r",
-                                 self._attempt, delay, e)
-                _log.warning(
-                    "live.kiwoom.failure account=%s generation=%d phase=%s elapsed_ms=%s kind=%s",
-                    self.account_id, self.connection_generation, getattr(e, "_kiwoom_phase", "unknown"),
-                    getattr(e, "_kiwoom_elapsed_ms", None), type(e).__name__,
-                )
+                    _log.warning("live.kiwoom.reconnect attempt=%d delay=%ds", self._attempt, delay)
+                self._log_failure('failure')
                 await asyncio.sleep(delay * random.uniform(0.9, 1.1))
 
     async def _session_once(self) -> None:  # noqa: PLR0915 — socket ownership and retirement remain in one scope
@@ -422,10 +444,16 @@ class KiwoomWsClient:
         구독 완료 후 안정 기간을 통과해야 재연결/킥 카운터를 초기화한다."""
         self._retiring_failure = None
         self._reported_failure = None
+        self._failure_evidence = None
+        self._control_attempt = None
+        self._control_events.clear()
+        self._progress = ProgressEvidence()
+        self._session_started_at_ms = None
         with self._control_span("token"):
             token = await self._token_fn()
         with self._control_span("connect"):
             ws = await self._connect(self._url)
+        self._socket_sequence += 1
         retired = asyncio.Event()
         self._retired = retired
         recv_task = asyncio.create_task(self._recv_loop(ws))
@@ -469,6 +497,9 @@ class KiwoomWsClient:
             if self._retiring_failure is not None:
                 raise self._retiring_failure
             await recv_task
+        except Exception as exc:
+            self._capture_failure(exc)
+            raise
         finally:
             self._reset_after_stable_session()
             self.connected = False
@@ -502,6 +533,7 @@ class KiwoomWsClient:
         queue: asyncio.Queue[_DataMessage] = asyncio.Queue(maxsize=_DATA_QUEUE_MAX_MESSAGES)
         self._account_queue = asyncio.Queue(maxsize=128)
         self._data_queue = queue
+        self._progress = ProgressEvidence()
         self._reader_budget = None
         self._consumer_budget = None
         self._flow = QueueFlowEvidence(self._monotonic())
@@ -518,6 +550,9 @@ class KiwoomWsClient:
         except Exception as exc:
             if self._retiring_failure is not None:
                 raise self._retiring_failure from exc
+            self._annotate_failure(exc, 'receive' if reader in done else 'dispatch', 0.0)
+            self._capture_failure(exc)
+            self._log_failure('data_backlog' if isinstance(exc, KiwoomDataBacklogError) else 'failure')
             raise
         finally:
             reader.cancel()
@@ -534,78 +569,83 @@ class KiwoomWsClient:
             self._data_queue = None
             self._data_queued_at.clear()
             self._data_queue_bytes = 0
+            self._progress.reader_phase = 'inactive'
+            self._progress.reader_started_at = None
+            self._progress.consumer_phase = 'inactive'
+            self._progress.consumer_started_at = None
 
-    async def _read_frames(  # noqa: PLR0915 — the single socket reader owns control and bounded dispatch
+    async def _read_frames(  # noqa: PLR0912, PLR0915 — the single socket reader owns control and bounded dispatch
         self, ws: _WsLike, queue: asyncio.Queue[_DataMessage]
     ) -> None:
-        with LoopWorkBudget(self._tick_yield_interval_s, self._monotonic) as budget:
-            self._reader_budget = budget
-            while True:
-                started = self._monotonic()
-                try:
-                    # Keep the receive deadline in the reader's own cancellation scope.
-                    async with asyncio.timeout(_RECV_IDLE_TIMEOUT_S):
-                        raw = await ws.recv()
-                except Exception as exc:
-                    self._annotate_failure(exc, "receive", (self._monotonic() - started) * 1000)
-                    if isinstance(exc, TimeoutError):
-                        _log.warning("live.kiwoom.recv_idle_timeout idle=%.0fs last_recv=%s",
-                                     _RECV_IDLE_TIMEOUT_S, self.last_recv_ms)
-                    raise
-                now_ms = int(time.time() * 1000)
-                if self._retiring_failure is not None:
-                    self._discard_retired_frame(raw)
-                    raise self._retiring_failure
-                self.last_recv_ms = now_ms
-                self._reset_after_stable_session()
-                try:
-                    msg = json.loads(raw)
-                except (TypeError, ValueError):
-                    continue
-                if not isinstance(msg, dict):
-                    continue
-                if msg.get("trnm") == "REAL":
-                    msg = self._split_account_frame(msg)
-                    if msg is None:
-                        await self._maybe_yield(budget)
+        try:
+            with LoopWorkBudget(self._tick_yield_interval_s, self._monotonic) as budget:
+                self._reader_budget = budget
+                while True:
+                    started = self._monotonic()
+                    self._progress.reader_phase = 'waiting_recv'
+                    self._progress.reader_started_at = started
+                    try:
+                        # Keep the receive deadline in the reader's own cancellation scope.
+                        async with asyncio.timeout(_RECV_IDLE_TIMEOUT_S):
+                            raw = await ws.recv()
+                    except Exception as exc:
+                        self._annotate_failure(exc, "receive", (self._monotonic() - started) * 1000)
+                        if isinstance(exc, TimeoutError):
+                            _log.warning("live.kiwoom.recv_idle_timeout idle=%.0fs last_recv=%s",
+                                         _RECV_IDLE_TIMEOUT_S, self.last_recv_ms)
+                        raise
+                    recv_returned = self._monotonic()
+                    self._progress.last_recv_at = recv_returned
+                    self._progress.reader_phase = 'parsing'
+                    self._progress.reader_started_at = recv_returned
+                    now_ms = int(time.time() * 1000)
+                    if self._retiring_failure is not None:
+                        self._discard_retired_frame(raw)
+                        raise self._retiring_failure
+                    self.last_recv_ms = now_ms
+                    self._reset_after_stable_session()
+                    try:
+                        msg = json.loads(raw)
+                    except (TypeError, ValueError):
                         continue
-                    if self._flow is not None:
-                        data = msg.get("data")
-                        self._flow.receive(len(data) if isinstance(data, list) else 0, self._monotonic())
-                    # Four bytes per character is a conservative UTF-8 bound without an encode allocation.
-                    size = len(raw) if isinstance(raw, bytes) else len(raw) * 4
-                    if queue.full() or self._data_queue_bytes + size > _DATA_QUEUE_MAX_BYTES:
-                        self._data_queue_overflows += 1
-                        self._data_messages_discarded += 1
-                        exc = KiwoomDataBacklogError("kiwoom data queue capacity exceeded")
-                        self._annotate_failure(exc, "dispatch", 0.0)
-                        evidence = self._backlog_evidence(queue, size)
-                        exc._kiwoom_backlog_evidence = evidence
-                        oldest_ms = ((self._monotonic() - self._data_queued_at[0]) * 1000
-                                     if self._data_queued_at else 0.0)
-                        _log.warning(
-                            "live.kiwoom.data_backlog account=%s depth=%d bytes=%d "
-                            "oldest_age_ms=%.1f dispatch_count=%d max_messages=%d max_bytes=%d "
-                            "evidence=%s",
-                            self.account_id, queue.qsize(), self._data_queue_bytes,
-                            oldest_ms, self.dispatch_latency.count,
-                            _DATA_QUEUE_MAX_MESSAGES, _DATA_QUEUE_MAX_BYTES,
-                            json.dumps(evidence, separators=(",", ":")),
-                        )
-                        raise exc
-                    queued_at = self._monotonic()
-                    queue.put_nowait(_DataMessage(msg, now_ms, queued_at, size))
-                    self._data_queued_at.append(queued_at)
-                    self._data_queue_bytes += size
-                    # Buffered recv() calls may not suspend. Give a healthy consumer
-                    # a turn before a short burst exhausts capacity. This never waits
-                    # for it to finish, so blocked data work still cannot block ACKs.
-                    if (queue.qsize() * 2 >= queue.maxsize
-                            or self._data_queue_bytes * 2 >= _DATA_QUEUE_MAX_BYTES):
-                        await asyncio.sleep(0)
-                else:
-                    await self._dispatch_control(msg, raw)
-                await self._maybe_yield(budget)
+                    if not isinstance(msg, dict):
+                        continue
+                    if msg.get("trnm") == "REAL":
+                        msg = self._split_account_frame(msg)
+                        if msg is None:
+                            await self._maybe_yield(budget)
+                            continue
+                        if self._flow is not None:
+                            data = msg.get("data")
+                            self._flow.receive(len(data) if isinstance(data, list) else 0, self._monotonic())
+                        # Four bytes per character is a conservative UTF-8 bound without an encode allocation.
+                        size = len(raw) if isinstance(raw, bytes) else len(raw) * 4
+                        if queue.full() or self._data_queue_bytes + size > _DATA_QUEUE_MAX_BYTES:
+                            self._data_queue_overflows += 1
+                            self._data_messages_discarded += 1
+                            exc = KiwoomDataBacklogError("kiwoom data queue capacity exceeded")
+                            self._annotate_failure(exc, "dispatch", 0.0)
+                            self._capture_failure(exc, rejected_bytes=size)
+                            exc._kiwoom_backlog_evidence = self._failure_evidence.snapshot()
+                            raise exc
+                        queued_at = self._monotonic()
+                        queue.put_nowait(_DataMessage(msg, now_ms, queued_at, size))
+                        self._data_queued_at.append(queued_at)
+                        self._data_queue_bytes += size
+                        # Buffered recv() calls may not suspend. Give a healthy consumer
+                        # a turn before a short burst exhausts capacity. This never waits
+                        # for it to finish, so blocked data work still cannot block ACKs.
+                        if (queue.qsize() * 2 >= queue.maxsize
+                                or self._data_queue_bytes * 2 >= _DATA_QUEUE_MAX_BYTES):
+                            await asyncio.sleep(0)
+                    else:
+                        await self._dispatch_control(msg, raw, recv_returned=recv_returned)
+                    self._progress.reader_processing_ms = max(0.0, (self._monotonic() - recv_returned) * 1000)
+                    await self._maybe_yield(budget)
+        except Exception as exc:
+            self._annotate_failure(exc, "receive", 0.0)
+            self._capture_failure(exc)
+            raise
 
     def _discard_retired_frame(self, raw: str | bytes) -> None:
         # Received but not admitted to the queue; count only REAL frames.
@@ -622,6 +662,8 @@ class KiwoomWsClient:
                 self._data_queued_at.popleft()
                 self._data_queue_bytes -= item.size
                 started = self._monotonic()
+                self._progress.consumer_phase = 'dispatch'
+                self._progress.consumer_started_at = started
                 if self._flow is not None:
                     data = item.message.get("data")
                     self._flow.start_frame(len(data) if isinstance(data, list) else 0, started)
@@ -638,25 +680,35 @@ class KiwoomWsClient:
                 except Exception as exc:
                     self._data_messages_discarded += 1
                     self._annotate_failure(exc, "dispatch", (self._monotonic() - started) * 1000)
+                    self._capture_failure(exc)
                     raise
                 finally:
                     self.dispatch_latency.observe((self._monotonic() - started) * 1000)
+                self._progress.consumer_phase = 'inactive'
+                self._progress.consumer_started_at = None
                 await self._maybe_yield(budget)
 
-    def _backlog_evidence(self, queue: asyncio.Queue[_DataMessage], rejected_bytes: int) -> dict:
-        """Capture the failure before reconnect overwrites rolling timing samples."""
+    def _diagnostic_evidence(self) -> dict:
+        now = self._monotonic()
         return {
-            "pid": os.getpid(), "observed_at_ms": int(time.time() * 1000),
-            "session_started_at_ms": self._session_started_at_ms,
-            "account_id": self.account_id, "connection_generation": self.connection_generation,
-            "queue_depth": queue.qsize(), "queued_bytes_bound": self._data_queue_bytes,
-            "rejected_bytes_bound": rejected_bytes,
-            "flow": self._flow.snapshot(self._monotonic()) if self._flow is not None else None,
-            "queue_wait": self.data_queue_wait.snapshot(),
-            "dispatch_wall": self.dispatch_latency.snapshot(),
-            "reader_budget": self._reader_budget.snapshot() if self._reader_budget is not None else None,
-            "consumer_budget": self._consumer_budget.snapshot() if self._consumer_budget is not None else None,
-            "runtime": failure_context(),
+            'pid': os.getpid(), 'observed_at_ms': int(time.time() * 1000),
+            'session_started_at_ms': self._session_started_at_ms,
+            'account_id': integer(self.account_id), 'connection_generation': self.connection_generation,
+            'socket_sequence': self._socket_sequence,
+            'control_attempt': self._control_attempt.snapshot(now) if self._control_attempt else None,
+            'control_events': list(self._control_events), 'progress': self._progress.snapshot(now),
+            'queue_depth': self._data_queue.qsize() if self._data_queue is not None else 0,
+            'queued_bytes_bound': self._data_queue_bytes,
+            'oldest_age_ms': max(0.0, (now - self._data_queued_at[0]) * 1000) if self._data_queued_at else 0.0,
+            'overflows': self._data_queue_overflows, 'discarded_messages': self._data_messages_discarded,
+            'flow': self._flow.snapshot(now) if self._flow is not None else None,
+            'queue_wait': self.data_queue_wait.snapshot(), 'dispatch_wall': self.dispatch_latency.snapshot(),
+            'control_wall': {key: self.control_latency[key].snapshot()
+                             for key in ('token', 'connect', 'LOGIN', 'REG', 'REMOVE', 'close')
+                             if key in self.control_latency},
+            'reader_budget': self._reader_budget.snapshot() if self._reader_budget is not None else None,
+            'consumer_budget': self._consumer_budget.snapshot() if self._consumer_budget is not None else None,
+            'runtime': failure_context(),
         }
 
     async def _maybe_yield(self, budget: LoopWorkBudget | None = None) -> None:
@@ -718,12 +770,12 @@ class KiwoomWsClient:
                 if rc == _RC_RATE_LIMIT:
                     await asyncio.sleep(1.0 + attempt)
                     continue
-                _log.warning("live.kiwoom.vi_reg_rejected rc=%s msg=%s",
-                             rc, ack.get("return_msg"))
+                _log.warning("live.kiwoom.vi_reg_rejected rc=%s", integer(rc))
                 return
             _log.warning("live.kiwoom.vi_reg_rate_limited_persist")
         except Exception as e:  # noqa: BLE001 — 관측 실패로 세션을 죽이지 않는다
-            _log.warning("live.kiwoom.vi_reg_failed err=%r", e)
+            with contextlib.suppress(Exception):
+                _log.warning('live.kiwoom.vi_reg_failed failure=%s', json.dumps(exception_projection(e)))
 
     async def _register_accounts(self, ws: _WsLike) -> None:
         if not self.account_events:
@@ -814,15 +866,15 @@ class KiwoomWsClient:
                     if rc == _RC_RATE_LIMIT:
                         await asyncio.sleep(1.0 + attempt)
                         continue
-                    _log.warning("live.kiwoom.sector_reg_rejected rc=%s msg=%s n=%d",
-                                 rc, ack.get("return_msg"), len(chunk))
+                    _log.warning("live.kiwoom.sector_reg_rejected rc=%s n=%d", integer(rc), len(chunk))
                     return
                 if not ok:
                     _log.warning("live.kiwoom.sector_reg_rate_limited_persist n=%d", len(chunk))
                     return
                 await asyncio.sleep(_REG_PACING_S)
             except Exception as e:  # noqa: BLE001 — 관측 실패로 세션을 죽이지 않는다
-                _log.warning("live.kiwoom.sector_reg_failed err=%r", e)
+                with contextlib.suppress(Exception):
+                    _log.warning('live.kiwoom.sector_reg_failed failure=%s', json.dumps(exception_projection(e)))
                 return
         _log.info("live.kiwoom.sectors_registered n=%d", len(codes))
 
@@ -844,7 +896,7 @@ class KiwoomWsClient:
             if rc in _RC_SLOT_CAP:
                 raise KiwoomSlotCapReached(str(ack.get("return_msg")))
             self.sub_rejected += 1
-            _log.warning("live.kiwoom.reg_rejected rc=%s msg=%s", rc, ack.get("return_msg"))
+            _log.warning("live.kiwoom.reg_rejected rc=%s", integer(rc))
             return False
         _log.warning("live.kiwoom.reg_rate_limited_persist chunk=%d", len(chunk))
         return False
@@ -915,21 +967,29 @@ class KiwoomWsClient:
         self._control_sequence += 1
         sequence = self._control_sequence
         started = self._monotonic()
-        self._control_event("request", trnm, sequence=sequence, item_count=item_count)
+        attempt = ControlAttempt(sequence, trnm if trnm in ('LOGIN', 'REG', 'REMOVE') else 'other',
+                                 integer(item_count), started)
+        self._control_attempt = attempt
+        self._control_event("request", trnm, sequence=sequence, item_count=integer(item_count))
         fut: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
         self._ack_waiters[trnm] = fut
         try:
             with self._control_span(trnm):
                 # Include send backpressure in the same control deadline.
                 async with asyncio.timeout(_ACK_TIMEOUT_S):
+                    attempt.stages['send_begin'] = self._monotonic()
                     await ws.send(msg)
+                    attempt.stages['send_returned'] = self._monotonic()
                     self._control_event("sent", trnm, sequence=sequence)
-                    ack = await fut
+                    try:
+                        ack = await fut
+                    finally:
+                        attempt.stages['sender_resumed'] = self._monotonic()
                 code = ack.get("return_code")
                 self._control_event(
                     "completed", trnm, sequence=sequence,
                     elapsed_ms=(self._monotonic() - started) * 1000,
-                    return_code=code if type(code) is int else None,
+                    return_code=integer(code),
                 )
                 return ack
         except TimeoutError as exc:
@@ -978,9 +1038,17 @@ class KiwoomWsClient:
         else:
             await self._dispatch_control(msg, raw)
 
-    async def _dispatch_control(self, msg: dict, raw: str | bytes) -> None:
+    async def _dispatch_control(
+        self, msg: dict, raw: str | bytes, *, recv_returned: float | None = None,
+    ) -> None:
+        parsed = self._monotonic()
+        self._progress.reader_phase = 'control'
+        self._progress.reader_started_at = parsed
         trnm = msg.get("trnm")
+        if trnm in ('LOGIN', 'REG', 'REMOVE', 'PING'):
+            self._progress.last_control_at = parsed
         if trnm == "PING":
+            self._progress.reader_phase = 'ping_echo'
             await self._echo(raw)
             return
         # control (LOGIN/REG/REMOVE ACK) → 대기 중인 sender에게 전달.
@@ -989,9 +1057,17 @@ class KiwoomWsClient:
         matched = waiter is not None and not waiter.done()
         self._control_event("ack_matched" if matched else "ack_orphan", trnm,
                             sequence=self._control_sequence if matched else None,
-                            return_code=code if type(code) is int else None)
+                            return_code=integer(code), recv_returned=recv_returned, parsed=parsed)
+        if matched and self._control_attempt is not None and self._control_attempt.kind == trnm:
+            stages = self._control_attempt.stages
+            if recv_returned is not None:
+                stages['recv_returned'] = recv_returned
+            stages['parsed'] = parsed
+            stages['ack_matched'] = self._monotonic()
         if waiter is not None and not waiter.done():
             waiter.set_result(msg)
+            if self._control_attempt is not None and self._control_attempt.kind == trnm:
+                self._control_attempt.stages['future_resolved'] = self._monotonic()
 
     async def _dispatch_real(
         self, msg: dict, now_ms: int, *, budget: LoopWorkBudget | None = None,
@@ -1011,7 +1087,15 @@ class KiwoomWsClient:
             self.last_tick_ms = now_ms
             self.tick_received_ms[(tick.code, tick.venue, tick.kind.value)] = now_ms
             if self._on_tick is not None:
-                await self._on_tick(tick)
+                started = self._monotonic()
+                self._progress.consumer_phase = 'callback'
+                self._progress.consumer_started_at = started
+                try:
+                    await self._on_tick(tick)
+                finally:
+                    self._progress.callback_wall.observe((self._monotonic() - started) * 1000)
+                self._progress.consumer_phase = 'dispatch'
+                self._progress.consumer_started_at = self._flow.inflight_started_at if self._flow else None
             if self._flow is not None:
                 self._flow.tick()
             await self._maybe_yield(budget)
@@ -1029,8 +1113,9 @@ class KiwoomWsClient:
             if isinstance(row, dict) and row.get("type") == K.TYPE_VI:
                 try:
                     self._on_vi_row(row, now_ms)
-                except Exception:  # noqa: BLE001 — 관측 실패가 recv 루프를 못 죽이게
-                    _log.warning("live.kiwoom.vi_hook_failed", exc_info=True)
+                except Exception as exc:  # noqa: BLE001 — 관측 실패가 recv 루프를 못 죽이게
+                    with contextlib.suppress(Exception):
+                        _log.warning('live.kiwoom.vi_hook_failed failure=%s', json.dumps(exception_projection(exc)))
 
     def _capture_sector_rows(self, msg: dict, now_ms: int) -> None:
         """REAL 안의 0J/0U row 를 관측 훅에 raw 로 전달 — VI 와 같은 분리다.
@@ -1051,8 +1136,9 @@ class KiwoomWsClient:
             ):
                 try:
                     self._on_sector_row(row, now_ms)
-                except Exception:  # noqa: BLE001 — 관측 실패가 recv 루프를 못 죽이게
-                    _log.warning("live.kiwoom.sector_hook_failed", exc_info=True)
+                except Exception as exc:  # noqa: BLE001 — 관측 실패가 recv 루프를 못 죽이게
+                    with contextlib.suppress(Exception):
+                        _log.warning('live.kiwoom.sector_hook_failed failure=%s', json.dumps(exception_projection(exc)))
 
     async def _echo(self, raw: str | bytes) -> None:
         if self._ws is not None:
@@ -1061,9 +1147,15 @@ class KiwoomWsClient:
     @staticmethod
     def _is_kick(e: Exception) -> bool:
         """close(1000, 'Bye') = 동일 앱키 신규 세션에 의한 축출(실측)."""
-        code = getattr(e, "code", None)
-        reason = str(getattr(e, "reason", "") or "")
-        return code == 1000 and "bye" in reason.lower()  # noqa: PLR2004
+        data = exception_data(e)
+        projection = close_projection(e)
+        if projection['state'] == 'available':
+            frame = data.get('rcvd')
+            fields = object.__getattribute__(frame, '__dict__') if frame is not None else {}
+            code, reason = projection['rcvd']['code'], fields.get('reason')
+        else:
+            code, reason = integer(data.get('code')), data.get('reason')
+        return code == 1000 and type(reason) is str and "bye" in reason.lower()  # noqa: PLR2004
 
     async def _safe_close(self, ws: _WsLike) -> None:
         close = getattr(ws, "close", None)
