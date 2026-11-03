@@ -192,6 +192,9 @@ _Avoid_: 종목별 전체 기사/완결된 아카이브; 제공 코드만으로 
 적용하고 영문 대소문자·앞뒤 공백을 무시한다. 「종목 연결만」과 AND로 결합하며 표시
 건수는 검색 결과다. 검색 불일치와 조회 중·실패·원래 빈 결과를 구분한다. 검색어는
 창 내부 임시 상태로 날짜·새로고침·새 뉴스 수용 시 유지하고 전역 설정·프리셋에는 저장하지 않는다.
+같은 날 사용자 B안 승인: 뉴스에 한해 제목 14px·500·줄높이 21px, 출처·시각
+13px·400·줄높이 18.85px을 적용한다. 헤더·조회/검색/설정·상태 안내는 13px,
+하단 제공 안내 본문은 11.5px·버튼은 13px이며 다른 창과 전역 배율은 유지한다.
 
 **LiveInstrument**:
 The canonical subject model for the `/live` page: either a stock instrument (`{ kind: 'stock', code, label }`) or a representative index instrument (`{ kind: 'index', id, label }`). `activeInstrument` is the full subject; `activeCode` is only the stock-code projection used by older stock-only hooks. The stable subject key is `stock:005930` or `index:KOSPI`.

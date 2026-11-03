@@ -154,7 +154,7 @@ test('제목 검색은 종목 필터와 결합하고 새 뉴스 수용에도 검
   await expect(news.getByRole('article')).toHaveCount(4);
 });
 
-for (const theme of ['toss-light', 'toss-dark', 'obsidian-pro', 'ledger-studio']) {
+for (const theme of ['trading-desk', 'obsidian', 'toss-light', 'toss-dark', 'obsidian-pro', 'ledger-studio']) {
   test(`${theme}: 좁은 뉴스 창에서도 제목과 조회 제어가 잘리지 않는다`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 480, height: 720 });
     await page.addInitScript((theme) => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
@@ -172,18 +172,36 @@ for (const theme of ['toss-light', 'toss-dark', 'obsidian-pro', 'ledger-studio']
     await page.getByTestId('workspace-add-menu-button').click();
     await page.getByTestId('workspace-add-news').click();
     const news = page.getByTestId('stock-news-window');
-    await expect(news).toHaveCSS('color-scheme', ['toss-dark', 'obsidian-pro'].includes(theme) ? 'dark' : 'light');
+    await expect(news).toHaveCSS('color-scheme', ['trading-desk', 'obsidian', 'toss-dark', 'obsidian-pro'].includes(theme) ? 'dark' : 'light');
     await expect(news.getByText(/삼성전자 테스트 기사:/)).toBeVisible();
     await expect(news.getByLabel('뉴스 날짜')).toBeVisible();
     const search = news.getByRole('searchbox', { name: '뉴스 제목 검색' });
     await expect(search).toBeVisible();
+    await expect(search).toHaveCSS('font-size', '13px');
+    await expect(news.getByLabel('뉴스 날짜')).toHaveCSS('font-size', '13px');
+    const headline = news.locator('article > p').first();
+    await expect(headline).toHaveCSS('font-size', '14px');
+    await expect(headline).toHaveCSS('line-height', '21px');
+    await expect(headline).toHaveCSS('font-weight', '500');
+    const metadata = news.locator('article > div').first();
+    await expect(metadata).toHaveCSS('font-size', '13px');
+    await expect(metadata).toHaveCSS('line-height', '18.85px');
+    await expect(metadata).toHaveCSS('font-weight', '400');
+    await expect(news.locator('div.border-t > span')).toHaveCSS('font-size', '11.5px');
+    await expect(news.getByRole('button', { name: '뉴스 제공 안내', exact: true })).toHaveCSS('font-size', '13px');
+    const frame = page.locator('[data-win]').filter({ has: news });
+    await expect(frame.locator('.live-data-title-kind')).toHaveCSS('font-size', '13px');
+    await expect(frame.locator('.live-symbol-name')).toHaveCSS('font-size', '13px');
+    await expect(frame.locator('.live-symbol-name')).toHaveCSS('font-weight', theme === 'trading-desk' ? '400' : '600');
     await search.fill('없는 제목');
     await expect(news.getByText('검색어와 일치하는 제목이 없습니다.')).toBeVisible();
+    await expect(news.getByText('검색어와 일치하는 제목이 없습니다.')).toHaveCSS('font-size', '13px');
     await news.getByRole('button', { name: '뉴스 제목 검색 지우기' }).click();
     await expect(news.getByText(/삼성전자 테스트 기사:/)).toBeVisible();
     const settings = news.getByRole('button', { name: '뉴스 설정', exact: true });
     await settings.click();
     const dialog = page.getByRole('dialog', { name: '뉴스 설정', exact: true });
+    await expect(dialog).toHaveCSS('font-size', '13px');
     await expect(dialog.getByRole('button', { name: '새로고침', exact: true })).toBeVisible();
     await dialog.getByRole('checkbox', { name: /종목 연결만/ }).check();
     await page.keyboard.press('Escape');
@@ -191,10 +209,11 @@ for (const theme of ['toss-light', 'toss-dark', 'obsidian-pro', 'ledger-studio']
     await expect(settings).toBeFocused();
     await news.getByRole('button', { name: '뉴스 제공 안내', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '뉴스 제공 안내', exact: true })).toContainText('전체 기사 아님 · 원문 링크 미제공');
+    await expect(page.getByRole('dialog', { name: '뉴스 제공 안내', exact: true })).toHaveCSS('font-size', '13px');
+    await expect(page.getByRole('dialog', { name: '뉴스 제공 안내', exact: true }).locator('p').first()).toHaveCSS('font-size', '11.5px');
     await page.keyboard.press('Escape');
     expect(await news.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await news.screenshot({ path: testInfo.outputPath(`news-${theme}.png`) });
-    const frame = page.locator('[data-win]').filter({ has: news });
     for (const width of [280, 180]) {
       const box = (await frame.boundingBox())!;
       const handle = (await frame.locator('[data-handle="e"]').boundingBox())!;
@@ -207,6 +226,8 @@ for (const theme of ['toss-light', 'toss-dark', 'obsidian-pro', 'ledger-studio']
       await expect(news.getByRole('button', { name: '뉴스 제목 검색 지우기' })).toBeVisible();
       expect((await search.boundingBox())!.width).toBeGreaterThanOrEqual(48);
       expect(await news.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await expect(headline).toHaveCSS('font-size', '14px');
+      await expect(metadata).toHaveCSS('font-size', '13px');
       await news.screenshot({ path: testInfo.outputPath(`news-${theme}-${width}.png`) });
       await news.getByRole('button', { name: '뉴스 제목 검색 지우기' }).click();
     }

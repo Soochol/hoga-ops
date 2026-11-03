@@ -1,3 +1,15 @@
+.live-window.live-window-news {
+  --live-text-data: var(--text-base);
+  --live-text-meta: var(--text-base);
+}
+.live-window-news .live-data-title,
+.live-window-news .live-window-titlebar .live-data-title .live-symbol-name {
+  font-size: var(--text-base);
+}
+.stock-news-window .ui-field,
+.ui-popover.stock-news-popover { font-size: var(--text-base); }
+.stock-news-popover .data-settings-content p { font-size: var(--text-sm); }
+
 .stock-news-search {
   display: flex;
   flex: 1 1 12rem;
