@@ -1,0 +1,27 @@
+import {test,expect} from '@playwright/test';
+import {writeFileSync,mkdirSync} from 'node:fs';
+const evidence='/home/dev/code/hoga-ops/docs/diagnostics/2026-10-01-watchlist-date';
+for (const mode of ['native','windowed']) test(`today seed followed by historical prepend: ${mode}`, async ({page})=>{
+  await page.route('http://127.0.0.1:21983/',r=>r.fulfill({contentType:'text/html',body:'<div id="chart" style="width:1000px;height:500px"></div>'}));
+  await page.goto('/');
+  const result=await page.evaluate(async mode=>{
+    const lwc=await import('/node_modules/lightweight-charts/dist/lightweight-charts.development.mjs');
+    const adapter=await import('/src/chart/windowedChart.ts');
+    const native=lwc.createChart(document.getElementById('chart'),{width:1000,height:500,timeScale:{rightOffset:14,minBarSpacing:.5}});
+    const c=mode==='native'?native:adapter.createWindowedChart(native);
+    const s=c.addSeries(lwc.CandlestickSeries,{lastValueVisible:false,priceLineVisible:false});
+    const rows=Array.from({length:3},(_,d)=>Array.from({length:26},(_,i)=>({time:Date.UTC(2026,8,29+d,i<0?0:0)/1000+i*900,open:100+d,high:102+d,low:99+d,close:101+d}))).flat();
+    const today=rows.slice(-26);
+    const settle=async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);};
+    s.setData(today);adapter.flushWindowedChart(c);await settle();
+    c.timeScale().setVisibleLogicalRange({from:26-300,to:26+14});await settle();
+    const read=()=>({range:c.timeScale().getVisibleLogicalRange(),visible:c.timeScale().getVisibleRange(),lastIndex:c.timeScale().timeToIndex(today.at(-1).time),latestX:c.timeScale().timeToCoordinate(today.at(-1).time),width:c.timeScale().width(),count:s.data().length});
+    const before=read();s.setData(rows);adapter.flushWindowedChart(c);await settle();const after=read();
+    return {mode,before,after,latestDate:new Date(today.at(-1).time*1000).toISOString(),visibleRightDate:new Date(Number(after.visible.to)*1000).toISOString()};
+  },mode);
+  mkdirSync(evidence,{recursive:true});writeFileSync(`${evidence}/${mode}.json`,JSON.stringify(result,null,2));
+  console.log(JSON.stringify(result));
+  await page.screenshot({path:`${evidence}/${mode}.png`});
+  if(mode==='native')expect(result.after.latestX).toBeLessThan(result.after.width);
+  else expect(result.after.visible.to).toBeLessThan(result.latestDate&&Date.parse(result.latestDate)/1000);
+});

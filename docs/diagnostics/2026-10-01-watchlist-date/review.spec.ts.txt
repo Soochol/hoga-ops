@@ -1,0 +1,45 @@
+import {test,expect} from '@playwright/test';
+import {writeFileSync} from 'node:fs';
+for(const mode of ['native','windowed'])for(const scenario of ['prepend','union','append','return'])test(`${mode} ${scenario}`,async({page})=>{
+ await page.route('http://127.0.0.1:21983/',r=>r.fulfill({contentType:'text/html',body:'<div id="chart" style="width:1000px;height:500px"></div>'}));
+ await page.goto('/');
+ const before=await page.evaluate(async({mode,scenario})=>{
+  const lwc=await import('/node_modules/lightweight-charts/dist/lightweight-charts.development.mjs');
+  const adapter=await import('/src/chart/windowedChart.ts');
+  const native=lwc.createChart(document.getElementById('chart'),{width:1000,height:500,timeScale:{rightOffset:14,minBarSpacing:.5}});
+  const c=mode==='native'?native:adapter.createWindowedChart(native);
+  const s=c.addSeries(lwc.CandlestickSeries,{lastValueVisible:false,priceLineVisible:false});
+  const row=(i:number)=>({time:1790640000+i*60,open:100,high:102,low:99,close:101});
+  const count=scenario==='return'?8000:78;
+  const all=Array.from({length:count},(_,i)=>row(i));
+  const rows=scenario==='prepend'?all.slice(52):all;
+  s.setData(rows);adapter.flushWindowedChart(c);
+  const settle=async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);};
+  await settle();
+  const ts=c.timeScale();ts.setVisibleLogicalRange(scenario==='return'?{from:1800,to:1900}:{from:rows.length-301,to:rows.length+14});await settle();
+  (window as any).review={c,s,ts,adapter,all,row};
+  const last=rows.at(-1)!;
+  return {range:ts.getVisibleLogicalRange(),lastIndex:ts.timeToIndex(last.time),lastX:ts.timeToCoordinate(last.time),width:ts.width()};
+ },{mode,scenario});
+ await page.evaluate(async scenario=>{
+  const {c,s,ts,adapter,all,row}=(window as any).review;
+  if(scenario==='prepend')s.setData(all);
+  if(scenario==='union'){
+   const lwc=await import('/node_modules/lightweight-charts/dist/lightweight-charts.development.mjs');
+   c.addSeries(lwc.LineSeries,{priceLineVisible:false,lastValueVisible:false}).setData(all.slice(0,52).map((r:any)=>({time:r.time+30,value:1})));
+  }
+  if(scenario==='append')s.update(row(all.length));
+  adapter.flushWindowedChart(c);
+  if(scenario==='return')ts.scrollToRealTime();
+ },scenario);
+ await expect.poll(async()=>page.evaluate(()=>{const {ts}=(window as any).review;return ts.getVisibleLogicalRange()!==null;})).toBe(true);
+ if(scenario==='return')await expect.poll(async()=>page.evaluate(()=>{const {ts}=(window as any).review;return Math.abs(ts.getVisibleLogicalRange().to-8013);}),{timeout:2500}).toBeLessThan(.01);
+ const after=await page.evaluate(async()=>{
+  await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
+  const {s,ts}=(window as any).review;const last=s.data().at(-1);
+  return {range:ts.getVisibleLogicalRange(),lastIndex:ts.timeToIndex(last.time),lastX:ts.timeToCoordinate(last.time),width:ts.width(),visible:ts.getVisibleRange(),lastTime:last.time};
+ });
+ const result={mode,scenario,before,after};
+ writeFileSync(`/home/dev/code/hoga-ops/docs/diagnostics/2026-10-01-watchlist-date/review-${mode}-${scenario}.json`,JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+ expect(after.lastIndex).toBeGreaterThan(0);
+});

@@ -1,0 +1,24 @@
+{
+  "observed": {
+    "codes": [
+      "000660",
+      "005930"
+    ],
+    "timeframe": "15m",
+    "rightmost_date": "20260929",
+    "expected": "20261001"
+  },
+  "cause": "WindowedChart.flush keeps the previous logical range after historical bars are prepended; render overwrites native timestamp anchoring with stale indices.",
+  "trigger": "todayFirst seed followed by historical candle prepend on a fresh Code selection",
+  "secondary_guards": [
+    "LiveChartRoot minute initial viewport only applies once",
+    "useViewportBackfill skips initial prepend when historicalFromDate is null"
+  ],
+  "comparison": {
+    "native": "latest candle x=894.65 within plot width 942; right date 20261001",
+    "windowed": "latest candle x=1050.15 outside plot width 942; right date 20260930"
+  },
+  "validation": "2 isolated real-browser tests passed, confirming expected native behavior and windowed regression",
+  "application_code_modified": false,
+  "suggested_fix": "Preserve the visible timestamp anchor and span across initial history insertion; when at the live edge preserve latest candle position and right padding. Keep user-adjusted history views stable."
+}

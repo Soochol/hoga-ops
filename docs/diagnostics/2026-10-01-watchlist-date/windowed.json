@@ -1,0 +1,33 @@
+{
+  "mode": "windowed",
+  "before": {
+    "range": {
+      "from": -274,
+      "to": 40
+    },
+    "visible": {
+      "from": 1790812800,
+      "to": 1790835300
+    },
+    "lastIndex": 25,
+    "latestX": 894.6476190476191,
+    "width": 942,
+    "count": 26
+  },
+  "after": {
+    "range": {
+      "from": -274,
+      "to": 40
+    },
+    "visible": {
+      "from": 1790640000,
+      "to": 1790739000
+    },
+    "lastIndex": 77,
+    "latestX": 1050.152380952381,
+    "width": 942,
+    "count": 78
+  },
+  "latestDate": "2026-10-01T06:15:00.000Z",
+  "visibleRightDate": "2026-09-30T03:30:00.000Z"
+}

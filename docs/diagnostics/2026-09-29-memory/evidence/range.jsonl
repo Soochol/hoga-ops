@@ -1,0 +1,28 @@
+{"i": 0, "mode": "candles", "code": "005930", "seconds": 0.52, "rss_mib": 215.4, "bytes": 1042656}
+{"i": 1, "mode": "candles", "code": "000660", "seconds": 0.07, "rss_mib": 220.3, "bytes": 1068411}
+{"i": 2, "mode": "candles", "code": "069500", "seconds": 0.05, "rss_mib": 222.0, "bytes": 1026939}
+{"i": 3, "mode": "hoga", "code": "005930", "seconds": 1.51, "rss_mib": 284.0, "bytes": 2284936}
+{"i": 4, "mode": "hoga", "code": "000660", "seconds": 1.49, "rss_mib": 312.5, "bytes": 2188115}
+{"i": 5, "mode": "hoga", "code": "069500", "seconds": 1.27, "rss_mib": 344.7, "bytes": 2187498}
+broker_names.unknown_alias raw='C.L.S.A 증권'
+broker_names.unknown_alias raw='메릴린치'
+broker_names.unknown_alias raw='유비에스증권'
+broker_names.unknown_alias raw='유진투자증권'
+broker_names.unknown_alias raw='한  화'
+broker_names.unknown_alias raw='H S B C'
+broker_names.unknown_alias raw='골드만삭스'
+broker_names.unknown_alias raw='LS증권'
+broker_names.unknown_alias raw='BNP파리바'
+broker_names.unknown_alias raw='다이와'
+{"i": 6, "mode": "sidecar", "code": "005930", "seconds": 10.64, "rss_mib": 2986.7, "bytes": 13127784}
+broker_names.unknown_alias raw='DB증권'
+broker_names.unknown_alias raw='아이엠증권'
+broker_names.unknown_alias raw='현대차증권'
+broker_names.unknown_alias raw='교  보'
+{"i": 7, "mode": "sidecar", "code": "000660", "seconds": 11.21, "rss_mib": 3848.0, "bytes": 10768471}
+{"start_mib": 16.78515625, "warm_mib": null, "before_gc_mib": 3848.0234375, "after_gc_mib": 3678.77734375, "collected": 2277}
+Traceback (most recent call last):
+  File "/tmp/hoga-memory-diagnosis/probe_range.py", line 33, in <module>
+    assert before-(warm or start)<512,'Repeated warmed chart requests retained >512 MiB'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Repeated warmed chart requests retained >512 MiB
