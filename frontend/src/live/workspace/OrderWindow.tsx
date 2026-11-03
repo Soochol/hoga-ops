@@ -606,6 +606,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const updateDragTarget = useCallback(() => {
     const d = drag.current;
     if (!d?.active) return;
+    d.price = null; d.cancel = false;
     if (d.list) {
       const bounds = d.list.getBoundingClientRect();
       if (d.cursorX >= bounds.left && d.cursorX <= bounds.right && d.cursorY >= bounds.top && d.cursorY <= bounds.bottom) {
@@ -617,20 +618,20 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     const rect = ladder.current?.getBoundingClientRect();
     const viewport = ladder.current?.closest('.order-scroll')?.getBoundingClientRect();
     const windowBounds = ladder.current?.closest('.order-window')?.getBoundingClientRect();
-    if (!rect || !viewport || !windowBounds) return;
+    if (!rect || !viewport || !windowBounds) {
+      setDragTarget(null); setDragCancel(false);
+      return;
+    }
     // The outer window also clips the ladder when its fixed columns are horizontally scrolled.
     const left = Math.max(rect.left, viewport.left, windowBounds.left), right = Math.min(rect.right, viewport.right, windowBounds.right);
     const top = Math.max(rect.top, viewport.top, windowBounds.top), bottom = Math.min(rect.bottom, viewport.bottom, windowBounds.bottom);
     d.cancel = d.cursorX < left || d.cursorX > right || d.cursorY < top || d.cursorY > bottom;
     const hit = document.elementFromPoint(d.cursorX, d.cursorY);
-    const row = hit?.closest<HTMLElement>('[data-order-price]')
-      ?? (hit?.closest('.order-summary-layer') && ladder.current?.contains(hit)
-        ? [...ladder.current.querySelectorAll<HTMLElement>('[data-order-price]')].find(row => {
-          const bounds = row.getBoundingClientRect();
-          return d.cursorY >= bounds.top && d.cursorY < bounds.bottom;
-        }) : null);
-    const lane = hit?.closest<HTMLElement>('[data-order-side]');
-    d.price = !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.orders[0].side) ? Number(row.dataset.orderPrice) : null;
+    const lane = hit?.closest<HTMLElement>('button.order-lane[data-order-side]');
+    const row = lane?.closest<HTMLElement>('.order-row[data-order-price]');
+    const price = Number(row?.dataset.orderPrice);
+    if (!d.cancel && lane && row && ladder.current?.contains(lane) && ladder.current.contains(row)
+      && lane.dataset.orderSide === d.orders[0].side && Number.isSafeInteger(price) && price > 0) d.price = price;
     setDragTarget(d.price); setDragCancel(d.cancel);
   }, []);
   useLayoutEffect(updateDragTarget, [book, explorer.prices[0], updateDragTarget]);
@@ -856,7 +857,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || dragInProgress}
             onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '주'}</button>)}
         </div>
-        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="0" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); }} /><span className="order-meta">주</span></label>
+        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="0" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''}
+          onFocus={e => e.currentTarget.select()} onClick={e => e.currentTarget.select()}
+          onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); }} /><span className="order-meta">주</span></label>
         <div className="order-quantity-presets">
           {presets.map((value, index) => <button type="button" key={index} aria-pressed={amountPresets ? undefined : quantity === value}
             disabled={amountPresets && !canConvertAmount}
