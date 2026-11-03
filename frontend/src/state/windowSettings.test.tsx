@@ -20,10 +20,10 @@ describe('typed window settings lifecycle', () => {
   it('persists independent major index choices and restores them with layout presets', () => {
     const a = useWorkspaceStore.getState().addWindow('market-indices');
     const b = useWorkspaceStore.getState().addWindow('market-indices');
-    const choices = { indices: ['KOSDAQ'] as const, showStock: false };
+    const choices = { indices: ['KOSDAQ'] as const, showStock: false, showTooltip: true };
     useWindowSettingsStore.getState().patch(a, 'majorIndices', { ...choices, indices: [...choices.indices] });
     const payload = capturePresetPayload();
-    expect(useWindowSettingsStore.getState().byWindow[b].majorIndices).toEqual({ indices: ['KOSPI', 'KOSDAQ', 'KOSPI200'], showStock: true });
+    expect(useWindowSettingsStore.getState().byWindow[b].majorIndices).toEqual({ indices: ['KOSPI', 'KOSDAQ', 'KOSPI200'], showStock: true, showTooltip: false });
     const persisted = normalizeWindowSettingsSnapshot(JSON.parse(localStorage.getItem(WINDOW_SETTINGS_KEY)!));
     expect(persisted.byWindow[a].majorIndices).toEqual(choices);
     useWindowSettingsStore.getState().patch(a, 'majorIndices', { indices: ['KOSPI'], showStock: true });
@@ -40,7 +40,7 @@ describe('typed window settings lifecycle', () => {
     } };
     localStorage.setItem(WINDOW_SETTINGS_KEY, JSON.stringify(saved));
     window.dispatchEvent(new StorageEvent('storage', { key: WINDOW_SETTINGS_KEY }));
-    expect(useWindowSettingsStore.getState().byWindow.indices.majorIndices).toEqual(saved.byWindow.indices.majorIndices);
+    expect(useWindowSettingsStore.getState().byWindow.indices.majorIndices).toEqual({ ...saved.byWindow.indices.majorIndices, showTooltip: false });
     expect(useWindowSettingsStore.getState().byWindow.a.chart).toBeDefined();
     stop();
   });

@@ -1,9 +1,10 @@
 import { tooltipQueries } from '../../../tests/tooltipQueries';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MajorIndicesWindow } from './MajorIndicesWindow';
 import { useMajorIndices } from './useMajorIndices';
 import { useMajorIndicesStock } from './useMajorIndicesStock';
+import { normalizeMajorIndicesSettings } from '../../state/majorIndicesSettings';
 import { MAJOR_INDICES } from './majorIndicesModel';
 import { regularSessionOpenMs as open } from '../liveDateTime';
 import { useWorkspaceStore, activationTarget, activeGroupOf, focusedWindowSymbol, snapshotWorkspace } from '../../state/workspace';
@@ -14,12 +15,40 @@ vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 const frameProps = { id: 'indices', kind: 'market-indices' as const, group: 1 as const, rect: { x: 0, y: 0, w: 660, h: 215 }, zIndex: 1, focused: true,
   symbolLabel: '삼성전자', symbolCode: '005930', paletteOpen: false, onHandleDown: vi.fn(), onFocus: vi.fn(), onClose: vi.fn(), onTogglePalette: vi.fn(), onPickGroup: vi.fn(), onTogglePin: vi.fn() };
 beforeEach(() => {
-  useWindowSettingsStore.setState({ byWindow: {} });
+  useWindowSettingsStore.setState({ byWindow: { indices: { majorIndices: normalizeMajorIndicesSettings({ showTooltip: true }) } } });
   vi.mocked(useMajorIndicesStock).mockReturnValue({ points: [], loading: false, failed: false });
   vi.mocked(useMajorIndices).mockReturnValue({ date: '20261015', now: open('20261015') + 60_000, status: '장중', label: '장중', loading: false,
     series: MAJOR_INDICES.map((s, i) => ({ ...s, points: [{ tMs: open('20261015'), percent: i }, { tMs: open('20261015') + 60_000, percent: i + .1 }], value: 100 + i, percent: i, observedMs: open('20261015') + 60_000, closed: false, delayed: false })) });
 });
 describe('major indices window', () => {
+  it('defaults to no hover or click tooltip while preserving the legend', () => {
+    useWindowSettingsStore.setState({ byWindow: {} });
+    const { container } = render(<MajorIndicesWindow frameProps={frameProps} />);
+    fireEvent.pointerMove(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    fireEvent.click(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(container.querySelector('.major-indices-cursor')).toBeNull();
+    expect(screen.getByRole('list', { name: '표시 항목' })).toHaveTextContent('코스피(0.00%)');
+    fireEvent.click(screen.getByRole('button', { name: '주요 지수 설정' }));
+    expect(screen.getByRole('switch', { name: '툴팁 표시' })).toHaveAttribute('aria-checked', 'false');
+  });
+  it.each(['hover', 'pin'])('clears %s state on OFF and waits for fresh input after re-enabling', mode => {
+    const { container } = render(<MajorIndicesWindow frameProps={frameProps} />);
+    fireEvent.pointerMove(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    if (mode === 'pin') fireEvent.click(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    act(() => useWindowSettingsStore.getState().patch('indices', 'majorIndices', { showTooltip: false }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(container.querySelector('.major-indices-cursor')).toBeNull();
+    fireEvent.click(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    act(() => useWindowSettingsStore.getState().patch('indices', 'majorIndices', { showTooltip: true }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.pointerMove(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    fireEvent.pointerLeave(screen.getByRole('img'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   it('renders one pane, three index lines, a group number and no stock axis or footer', () => {
     const { container } = render(<MajorIndicesWindow frameProps={frameProps} />);
     expect(screen.getByTestId('major-indices-chart').querySelectorAll('svg')).toHaveLength(1);

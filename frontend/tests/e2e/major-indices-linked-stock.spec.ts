@@ -46,6 +46,9 @@ test('major indices: group stock uses a hidden independent scale and shared time
   await page.goto('/live');
   const frame = page.locator('[data-win="comparison"]');
   const svg = frame.getByRole('img');
+  await frame.getByRole('button', { name: '주요 지수 설정' }).click();
+  await page.getByRole('dialog', { name: '주요 지수 설정' }).getByRole('switch', { name: '툴팁 표시' }).check();
+  await page.keyboard.press('Escape');
   const stock = frame.locator('[data-stock-series]');
   const indexAxis = frame.getByTestId('major-indices-axis-labels');
   await expect(stock).toHaveAttribute('aria-label', '삼성전자 종가');

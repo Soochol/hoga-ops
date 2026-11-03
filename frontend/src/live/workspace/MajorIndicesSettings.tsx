@@ -22,6 +22,12 @@ export function MajorIndicesSettings({ settings, onChange }: {
       })}
       <p className="window-settings-hint">지수는 1개 이상 선택합니다.</p>
     </WindowSettingsGroup>
+    <WindowSettingsGroup title="그래프">
+      <SettingsRow controlId={`${id}-tooltip`} label="툴팁 표시">
+        <ToggleSwitch id={`${id}-tooltip`} label="툴팁 표시" checked={settings.showTooltip}
+          onClick={() => onChange({ showTooltip: !settings.showTooltip })} />
+      </SettingsRow>
+    </WindowSettingsGroup>
     <WindowSettingsGroup title="종목">
       <SettingsRow controlId={`${id}-stock`} label="그룹 종목 표시">
         <ToggleSwitch id={`${id}-stock`} label="그룹 종목 표시" checked={settings.showStock}
