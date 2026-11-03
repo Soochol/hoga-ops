@@ -36,6 +36,21 @@ describe('major indices window', () => {
     expect(container.querySelector('[data-handle="move"]')!.textContent).not.toMatch(/코스피|코스닥|K200|장중|%|⠿/);
     expect(container.querySelector('footer')).toBeNull();
   });
+  it('keeps latest model percentages in the legend through hover, missing data and updates', () => {
+    const current = vi.mocked(useMajorIndices)();
+    vi.mocked(useMajorIndices).mockReturnValue({ ...current, series: current.series.map((series, i) => ({
+      ...series, percent: [1.23, -0.45, null][i],
+    })) });
+    const { rerender } = render(<MajorIndicesWindow frameProps={frameProps} />);
+    const legend = screen.getByRole('list', { name: '표시 항목' });
+    expect(legend).toHaveTextContent('코스피(+1.23%)코스닥(-0.45%)K200(—)삼성전자');
+    fireEvent.pointerMove(screen.getByRole('img'), { clientX: 5, clientY: 40 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('코스피0.00%');
+    expect(legend).toHaveTextContent('코스피(+1.23%)');
+    vi.mocked(useMajorIndices).mockReturnValue(current);
+    rerender(<MajorIndicesWindow frameProps={frameProps} />);
+    expect(legend).toHaveTextContent('코스피(0.00%)코스닥(+1.00%)K200(+2.00%)삼성전자');
+  });
   it('applies selection to the legend, tooltip and axis, and preserves at least one index', () => {
     const current = vi.mocked(useMajorIndices)();
     vi.mocked(useMajorIndices).mockImplementation((indices = ['KOSPI', 'KOSDAQ', 'KOSPI200']) => ({ ...current,
@@ -45,12 +60,12 @@ describe('major indices window', () => {
     const axisBefore = screen.getByTestId('major-indices-axis-labels').textContent;
     fireEvent.click(screen.getByRole('button', { name: '주요 지수 설정' }));
     const settings = screen.getByRole('dialog', { name: '주요 지수 설정' });
-    fireEvent.click(within(settings).getByRole('checkbox', { name: 'K200' }));
-    fireEvent.click(within(settings).getByRole('checkbox', { name: '코스닥' }));
-    expect(within(settings).getByRole('checkbox', { name: '코스피' })).toBeDisabled();
+    fireEvent.click(within(settings).getByRole('switch', { name: 'K200' }));
+    fireEvent.click(within(settings).getByRole('switch', { name: '코스닥' }));
+    expect(within(settings).getByRole('switch', { name: '코스피' })).toBeDisabled();
     expect(container.querySelectorAll('[data-index-series]')).toHaveLength(1);
     const legend = screen.getByRole('list', { name: '표시 항목' });
-    expect(legend).toHaveTextContent('코스피삼성전자');
+    expect(legend).toHaveTextContent('코스피(0.00%)삼성전자');
     expect(legend).not.toHaveTextContent(/코스닥|K200/);
     expect(screen.getByTestId('major-indices-axis-labels').textContent).not.toBe(axisBefore);
     fireEvent.keyDown(settings, { key: 'Escape' });

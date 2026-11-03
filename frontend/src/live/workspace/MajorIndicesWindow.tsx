@@ -118,7 +118,7 @@ function MajorIndicesChart({ model, stock, stockLabel }: {
   return <div className="major-indices-view">
     <div className="major-indices-legend text-xs text-fg-dim" role="list" aria-label="표시 항목">
       {model.series.map(series => <span key={series.id} role="listitem">
-        <i aria-hidden style={{ background: series.color }} />{series.label}
+        <i aria-hidden style={{ background: series.color }} />{series.label}({formatPercent(series.percent)})
       </span>)}
       {stockLabel && <span role="listitem"><i aria-hidden style={{ background: 'var(--accent)' }} />{stockLabel}</span>}
     </div>

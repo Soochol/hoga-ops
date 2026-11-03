@@ -12,11 +12,12 @@ export function MajorIndicesSettings({ settings, onChange }: {
     <WindowSettingsGroup title="표시 지수">
       {MAJOR_INDICES.map(index => {
         const checked = settings.indices.includes(index.id);
+        const disabled = checked && settings.indices.length === 1;
         const controlId = `${id}-${index.id}`;
-        return <SettingsRow key={index.id} controlId={controlId} label={index.label} disabled={checked && settings.indices.length === 1}>
-          <input id={controlId} type="checkbox" className="window-settings-checkbox" checked={checked} disabled={checked && settings.indices.length === 1}
-            onChange={event => onChange({ indices: event.target.checked
-              ? [...settings.indices, index.id] : settings.indices.filter(id => id !== index.id) })} />
+        return <SettingsRow key={index.id} controlId={controlId} label={index.label} disabled={disabled}>
+          <ToggleSwitch id={controlId} label={index.label} checked={checked} disabled={disabled}
+            onClick={() => onChange({ indices: checked
+              ? settings.indices.filter(id => id !== index.id) : [...settings.indices, index.id] })} />
         </SettingsRow>;
       })}
       <p className="window-settings-hint">지수는 1개 이상 선택합니다.</p>
