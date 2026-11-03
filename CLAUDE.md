@@ -20,11 +20,6 @@
 
 ## 브라우저·차트 검증
 
-- 페이지 탐색, 클릭, DOM·네트워크·콘솔 조사, 스크린샷은 `/browse` 스킬을 사용한다.
-  지속 세션을 유지하기 위한 규칙이며, Playwright MCP 대신 이 경로를 쓴다.
-  저장소의 Playwright E2E 테스트 실행은 별개다.
-- 스킬과 명령 설명: `~/.claude/skills/gstack/browse/SKILL.md`.
-  실행 파일: `~/.claude/skills/gstack/browse/dist/browse`.
 - 차트 배율·봉 위치·몸통 두께·초기 화면 문제를 조사할 때는
   [chart-viewport-qa.md](docs/agents/chart-viewport-qa.md)를 읽는다.
 - 창 간 크로스헤어·기간·줌 동기화 또는 겹친 창의 입력을 검증할 때는
