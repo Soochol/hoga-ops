@@ -10,8 +10,9 @@ describe('reviewed heatmap company descriptions', () => {
     for (const [code, description] of Object.entries(descriptions)) {
       expect(code).toMatch(/^[0-9A-Z]{6}$/);
       expect(description.name.trim()).not.toBe('');
-      expect(description.lines.length).toBeGreaterThanOrEqual(2);
-      expect(description.lines.length).toBeLessThanOrEqual(3);
+      expect(description.lines.length).toBeGreaterThanOrEqual(3);
+      expect(description.lines.length).toBeLessThanOrEqual(4);
+      expect(new Set(description.lines).size).toBe(description.lines.length);
       for (const line of description.lines) {
         expect(line.trim()).toBe(line);
         expect(line.length).toBeGreaterThan(8);

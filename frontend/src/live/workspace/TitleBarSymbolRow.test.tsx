@@ -79,7 +79,7 @@ describe('TitleBarSymbolRow', () => {
     expect(text).not.toContain('(005930)');
   });
 
-  it('종목명에만 0.5초 뒤 공통 설명을 열고 다른 헤더 영역·누르기에서는 닫는다', () => {
+  it('종목명에만 0.3초 뒤 공통 설명을 열고 다른 헤더 영역·누르기에서는 닫는다', () => {
     vi.useFakeTimers();
     try {
       const { container } = renderRow({}, { quote: { price: 72000, change_pct: 1.2, change_won: 850 },
@@ -87,23 +87,23 @@ describe('TitleBarSymbolRow', () => {
       const name = screen.getByText('삼성전자');
       expect(container.querySelectorAll('[title]')).toHaveLength(0);
       fireEvent.mouseEnter(name);
-      act(() => vi.advanceTimersByTime(499));
+      act(() => vi.advanceTimersByTime(299));
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
       act(() => vi.advanceTimersByTime(1));
       expect(screen.getByTestId('stock-description-lines').textContent).toBe(getStockDescription('005930')!.lines.join(''));
       expect(name).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
       fireEvent.mouseLeave(name);
       fireEvent.mouseEnter(screen.getByTestId('titlebar-current-price'));
-      act(() => vi.advanceTimersByTime(500));
+      act(() => vi.advanceTimersByTime(300));
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
       fireEvent.mouseEnter(name);
       act(() => vi.advanceTimersByTime(250));
       fireEvent.pointerDown(name);
-      act(() => vi.advanceTimersByTime(500));
+      act(() => vi.advanceTimersByTime(300));
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
       fireEvent.mouseLeave(name);
       fireEvent.mouseEnter(name);
-      act(() => vi.advanceTimersByTime(500));
+      act(() => vi.advanceTimersByTime(300));
       expect(screen.getByRole('tooltip')).toBeInTheDocument();
       fireEvent.pointerDown(name);
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
