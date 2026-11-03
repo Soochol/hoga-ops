@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { getStockDescription } from './stockDescriptions';
 import '../ui/TextTooltip.css';
 
-export const STOCK_DESCRIPTION_DELAY_MS = 500;
+export const STOCK_DESCRIPTION_DELAY_MS = 300;
 const LEAVE_DELAY_MS = 120;
 const EDGE_PX = 8;
 
