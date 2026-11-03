@@ -1,6 +1,7 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { DataControlPopover, ResponsiveDataControls } from '../../ui/ResponsiveDataControls';
 import { useStockNews, type StockNewsItem, type StockNewsResponse } from '../../api/stockNews';
+import './NewsWindow.css';
 
 const timeFormat = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
@@ -16,6 +17,8 @@ export function NewsWindow({ code, name, linkedOnly: savedLinkedOnly, onLinkedOn
   code: string; name: string; linkedOnly?: boolean; onLinkedOnlyChange?: (value: boolean) => void;
 }) {
   const [date, setDate] = useState('');
+  const [search, setSearch] = useState('');
+  const searchId = useId();
   const [localLinkedOnly, setLocalLinkedOnly] = useState(true);
   const linkedOnly = savedLinkedOnly ?? localLinkedOnly;
   const changeLinkedOnly = (value: boolean) => {
@@ -24,29 +27,38 @@ export function NewsWindow({ code, name, linkedOnly: savedLinkedOnly, onLinkedOn
   };
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-card text-fg" data-testid="stock-news-window"
+    <div className="stock-news-window flex h-full min-h-0 flex-col bg-bg-card text-fg" data-testid="stock-news-window"
       style={{ colorScheme: 'var(--color-scheme)' }}>
       <NewsList key={`${code}:${date}`} code={code} name={name} date={date.replaceAll('-', '') || null}
-        linkedOnly={linkedOnly} onLinkedOnlyChange={changeLinkedOnly}
+        linkedOnly={linkedOnly} onLinkedOnlyChange={changeLinkedOnly} search={search}
         dateControls={<>
         <button type="button" aria-pressed={!date} onClick={() => setDate('')}
           className={`rounded px-2 py-1 text-sm ${!date ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-subtle'}`}>
           최신
         </button>
-        <label className="flex min-w-0 items-center gap-1 text-sm text-fg-dim">
+        <label className="stock-news-date flex min-w-0 items-center gap-1 text-sm text-fg-dim">
           날짜
           <input type="date" aria-label="뉴스 날짜" value={date || today} max={today}
             onChange={(event) => setDate(event.target.value)}
             className="ui-field" />
         </label>
+        <div className="stock-news-search">
+          <label htmlFor={searchId} className="shrink-0 text-sm text-fg-dim">검색</label>
+          <input id={searchId} type="search" aria-label="뉴스 제목 검색" value={search}
+            placeholder="조회된 제목 검색" className="ui-field"
+            onChange={(event) => setSearch(event.target.value)} />
+          {search !== '' && <button type="button" className="ui-choice" aria-label="뉴스 제목 검색 지우기"
+            onClick={() => setSearch('')}>지우기</button>}
+        </div>
         </>} />
     </div>
   );
 }
 
-function NewsList({ code, name, date, dateControls, linkedOnly, onLinkedOnlyChange }: {
+function NewsList({ code, name, date, dateControls, linkedOnly, onLinkedOnlyChange, search }: {
   code: string; name: string; date: string | null; dateControls: ReactNode;
   linkedOnly: boolean; onLinkedOnlyChange: (value: boolean) => void;
+  search: string;
 }) {
   const query = useStockNews(code, date);
   const [snapshot, setSnapshot] = useState<StockNewsResponse | null>(null);
@@ -58,7 +70,9 @@ function NewsList({ code, name, date, dateControls, linkedOnly, onLinkedOnlyChan
   const fresh = query.data?.status === 'ok' ? query.data : null;
   const existing = new Set(items.map((item) => item.id));
   const pending = fresh?.items.filter((item) => !existing.has(item.id)).length ?? 0;
-  const shown = linkedOnly ? items.filter((item) => relation(item, code, name) !== '조회 결과') : items;
+  const linkedItems = linkedOnly ? items.filter((item) => relation(item, code, name) !== '조회 결과') : items;
+  const searchTerm = search.trim().toLowerCase();
+  const shown = searchTerm ? linkedItems.filter((item) => item.title.toLowerCase().includes(searchTerm)) : linkedItems;
   const failed = query.isError || query.data?.status === 'error';
   const unconfigured = query.data?.status === 'unconfigured';
 
@@ -95,7 +109,8 @@ function NewsList({ code, name, date, dateControls, linkedOnly, onLinkedOnlyChan
         </p>}
         {query.isPending && <p role="status" className="px-3 py-6 text-center text-sm text-fg-dim">뉴스를 불러오는 중입니다.</p>}
         {!unconfigured && !query.isPending && !failed && shown.length === 0 && <p className="px-3 py-6 text-center text-sm text-fg-dim">
-          {linkedOnly && items.length > 0 ? '종목 연결 정보가 일치하는 기사가 없습니다.'
+          {searchTerm && linkedItems.length > 0 ? '검색어와 일치하는 제목이 없습니다.'
+            : linkedOnly && items.length > 0 ? '종목 연결 정보가 일치하는 기사가 없습니다.'
             : date ? '선택일 기사 없음 · 한국투자 조회 범위 기준' : '한국투자 조회 결과에 뉴스가 없습니다.'}
         </p>}
         {shown.map((item) => (
@@ -106,10 +121,6 @@ function NewsList({ code, name, date, dateControls, linkedOnly, onLinkedOnlyChan
               <time dateTime={item.published_at_ms === null ? undefined : new Date(item.published_at_ms).toISOString()}>
                 {item.published_at_ms === null ? '시각 미상' : timeFormat.format(item.published_at_ms)}
               </time>
-              <span className={relation(item, code, name) === '조회 결과' ? 'text-fg-dim' : 'text-accent'}
-                data-tooltip="한국투자 응답의 종목코드·제목 기준입니다. 기사 내용의 관련성과는 다를 수 있습니다.">
-                {relation(item, code, name)}
-              </span>
             </div>
           </article>
         ))}
