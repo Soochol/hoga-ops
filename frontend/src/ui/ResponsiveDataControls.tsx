@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../util/useAnchoredPopover';
 import './dataControls.css';
 
-export function DataControlPopover({ label, children }: { label: string; children: ReactNode }) {
+export function DataControlPopover({ label, children, popoverClassName = '' }: { label: string; children: ReactNode; popoverClassName?: string }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -19,7 +19,7 @@ export function DataControlPopover({ label, children }: { label: string; childre
       {label}<span aria-hidden> ▾</span>
     </button>
     {open && createPortal(<div ref={ref} id={id} role="dialog" aria-label={label}
-      className="ui-popover data-settings-popover" style={style}>
+      className={`ui-popover data-settings-popover ${popoverClassName}`} style={style}>
       <div className="flex items-center justify-between gap-2 border-b border-border pb-1">
         <span className="font-medium">{label}</span>
         <button type="button" className="ui-icon-button" aria-label={`${label} 닫기`} onClick={close}><AppIcon name="close" /></button>
@@ -30,16 +30,17 @@ export function DataControlPopover({ label, children }: { label: string; childre
 }
 
 /** Keep the primary controls visible; move secondary controls outside narrow windows. */
-export function ResponsiveDataControls({ children, secondary, trailing, status, label = '표시 설정', secondaryPlacement = 'inline' }: {
+export function ResponsiveDataControls({ children, secondary, trailing, status, label = '표시 설정', secondaryPlacement = 'inline', popoverClassName }: {
   children: ReactNode; secondary: ReactNode; trailing?: ReactNode; status?: ReactNode; label?: string;
   secondaryPlacement?: 'inline' | 'below';
+  popoverClassName?: string;
 }) {
   return <>
     <div className={`responsive-data-controls live-data-controls${trailing ? ' responsive-data-controls-with-trailing' : ''}`}>
       <div className="responsive-data-primary">{children}</div>
       {secondaryPlacement === 'inline' && <>
         <div className="responsive-data-secondary">{secondary}</div>
-        <div className="responsive-data-more"><DataControlPopover label={label}>{secondary}</DataControlPopover></div>
+        <div className="responsive-data-more"><DataControlPopover label={label} popoverClassName={popoverClassName}>{secondary}</DataControlPopover></div>
       </>}
       {trailing}
     </div>
