@@ -1,6 +1,6 @@
 import type { Profile } from './profiles';
 
-const ROUTES = new Set(['/', '/live', '/heatmap', '/inventory', '/screener', '/capture', '/sentiment', '/market', '/settings', '/study']);
+const ROUTES = new Set(['/', '/live', '/heatmap', '/inventory', '/screener', '/capture', '/sentiment', '/market', '/whiteboard', '/etfs', '/breadth', '/settings', '/study']);
 export function appNavigation(raw: string, profile: Profile): boolean {
   try {
     const url = new URL(raw);

@@ -651,6 +651,61 @@ test('매수·매도 체결음은 미리듣기·실제 체결 증가에서 재�
   expect(await sounds()).toEqual([]);
 });
 
+test('청취 전 키움 미체결 주문의 이후 확정 체결은 REST 갱신에서 한 번 알린다', async ({ page }) => {
+  await page.addInitScript(() => {
+    const observed = window as unknown as { __fillSounds: number[] };
+    observed.__fillSounds = [];
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when?: number) {
+      observed.__fillSounds.push(this.buffer!.duration);
+      start.call(this, when);
+    };
+  });
+  const { ws, commands } = await setup(page);
+  const account = 'acc_' + 'a'.repeat(32);
+  const pending = { order_ref: 'ord_existing', account_ref: account, broker_order_id: '0000001',
+    trading_date: '20261102', code: '005930', side: 'BUY', route: 'KRX', order_type: 'LIMIT',
+    status: 'PENDING', broker_status: '접수', price: '67200', quantity: '100', remaining_quantity: '100',
+    filled_quantity: null, ordered_at: new Date(Date.now() - 60_000).toISOString(), average_filled_price: null, editable: true };
+  let filled = false;
+  let reads = 0;
+  await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: true, accounts: [
+    { account_ref: account, broker: 'kiwoom', environment: 'real', label: '키움 검증 계좌', routes: ['KRX'],
+      supported_routes: ['KRX'], order_enabled: true, blocked_reason: null },
+  ] } }));
+  await page.route('**/api/trading/v2/state?*', route => {
+    reads++;
+    return route.fulfill({ json: { account_ref: account, code: '005930',
+      orders: filled ? [] : [pending],
+      recent_orders: filled ? [{ ...pending, status: 'FILLED', remaining_quantity: '0', filled_quantity: '100', editable: false }] : [],
+      unresolved_commands: [], events_connected: true, revision: filled ? 2 : 1, fetched_at_ms: Date.now(),
+      buying_power: '20000000', buyable_quantity: '100', sellable_quantity: '100', holding_quantity: '100',
+      average_purchase_price: '66000', capacity_status: 'available',
+    } });
+  });
+  await page.reload();
+  const content = page.getByTestId('order-window');
+  await content.getByRole('combobox', { name: '주문 계좌' }).selectOption(account);
+  await expect(content.getByText('키움 검증 계좌', { exact: true })).toBeVisible();
+  await ws.waitForSubscribe('005930');
+  await orderSettingsButton(content).click();
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  await setSettingSwitch(dialog.getByRole('switch', { name: '매수 체결 소리', exact: true }), true);
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+  const sounds = () => page.evaluate(() => (window as unknown as { __fillSounds: number[] }).__fillSounds);
+  expect(await sounds()).toEqual([]);
+  const priorReads = reads;
+  filled = true;
+  ws.pushEvent({ type: 'trading_changed_v2', account_ref: account, revision: 2 });
+  await expect.poll(() => reads).toBeGreaterThan(priorReads);
+  await expect.poll(sounds).toHaveLength(1);
+  const filledReads = reads;
+  ws.pushEvent({ type: 'trading_changed_v2', account_ref: account, revision: 3 });
+  await expect.poll(() => reads).toBeGreaterThan(filledReads);
+  expect(await sounds()).toHaveLength(1);
+  expect(commands).toHaveLength(0);
+});
+
 test('미리듣기는 설정을 열 때 출력 경로를 준비하고 마지막 소리 설정을 끄면 해제한다', async ({ page }) => {
   await page.addInitScript(() => {
     const observed = globalThis.window as unknown as {

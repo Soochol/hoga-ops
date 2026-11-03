@@ -37,6 +37,47 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     const page = await contentPromise;
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await expect(page.getByRole('button', { name: '관심종목 패널 토글', exact: true })).toBeVisible();
+    const runtime = await app.evaluate(({ app, BrowserWindow }) => ({
+      appPath: app.getAppPath(), userData: app.getPath('userData'), electron: process.versions.electron,
+      argv: process.argv, modules: Object.keys(process.getBuiltinModule('module').createRequire(`${app.getAppPath()}/package.json`).cache),
+      preferences: BrowserWindow.getAllWindows().map(win => win.webContents.getLastWebPreferences()),
+    }));
+    expect(runtime.appPath).toBe(desktop);
+    expect(runtime.userData).toBe(join(temp, 'desktop'));
+    expect(runtime.modules).toContain(join(desktop, 'dist/main.js'));
+    console.log('desktop runtime', JSON.stringify({ ...runtime, modules: runtime.modules.filter(path => path.startsWith(join(desktop, 'dist'))) }));
+    const debuggerSession = await page.context().newCDPSession(page);
+    const preloadScripts = [];
+    debuggerSession.on('Debugger.scriptParsed', script => {
+      if (script.url.includes('/preload/content.cjs')) preloadScripts.push(script);
+    });
+    await debuggerSession.send('Debugger.enable');
+    await expect.poll(() => preloadScripts.length).toBe(1);
+    const preloadSource = await debuggerSession.send('Debugger.getScriptSource', { scriptId: preloadScripts[0].scriptId });
+    expect(preloadScripts[0].url).toContain(join(desktop, 'dist/preload/content.cjs'));
+    expect(preloadSource.scriptSource).toContain(await readFile(join(desktop, 'dist/preload/content.cjs'), 'utf8'));
+    console.log('desktop preload', preloadScripts[0].url);
+    await debuggerSession.detach();
+    const assetUrl = await page.locator('script[type="module"][src]').first().getAttribute('src');
+    const servedAsset = await page.request.get(origin + assetUrl);
+    expect(await servedAsset.text()).toBe(await readFile(join(repo, 'frontend/dist', assetUrl), 'utf8'));
+    for (const [path, label] of [['/whiteboard', '복기 노트 작성'], ['/etfs', 'ETF 탐색'], ['/breadth', '공탐지수']]) {
+      await page.getByRole('link', { name: label, exact: true }).click();
+      await expect(page).toHaveURL(origin + path);
+      await page.getByRole('navigation', { name: '우측 레일' }).getByRole('button', { name: '설정', exact: true }).click();
+      await page.getByTestId('settings-nav-desktop').click();
+      const routeSettings = page.getByRole('region', { name: '데스크톱', exact: true });
+      await expect(routeSettings.getByText('로컬 통합 검증', { exact: true })).toBeVisible();
+      await routeSettings.getByRole('button', { name: '화면 배율 확대', exact: true }).click();
+      await expect(routeSettings.getByLabel('현재 화면 배율')).toHaveText('110%');
+      await routeSettings.getByRole('button', { name: '100% 복원', exact: true }).click();
+      await expect(routeSettings.getByLabel('현재 화면 배율')).toHaveText('100%');
+      await routeSettings.screenshot({ path: join(desktop, 'test-results', `route-${path.slice(1)}.png`) });
+      console.log('desktop route IPC passed', origin + path);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog', { name: '설정', exact: true })).toBeHidden();
+    }
+    await page.getByRole('link', { name: '라이브', exact: true }).click();
     await page.screenshot({ path: join(desktop, 'test-results/real-app.png') });
     await expect(page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('button', { name: '설정', exact: true })).toHaveCount(0);
     const rail = page.getByRole('navigation', { name: '우측 레일' });
@@ -78,7 +119,6 @@ test('production React and FastAPI in Electron: settings export/import and nativ
     await expect(child.getByRole('button', { name: '관심종목 패널 토글', exact: true })).toBeVisible({ timeout: 15000 });
     await installLiveMocks(page);
     await page.reload();
-    await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
     await page.getByTestId('watchlist-row-098460').click();
     await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
     await page.screenshot({ path: join(desktop, 'test-results/real-chart.png') });

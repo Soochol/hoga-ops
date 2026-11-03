@@ -3,20 +3,25 @@ import { normalizeBrokerOrder, type OrderStateResponse, type TossOrder, type Tra
 import { subscribeEvents } from '../../api/ws';
 import { notifyOrderFill } from './orderReceiptSound';
 
-const fillStates = new Set(['PENDING', 'PARTIAL_FILLED', 'FILLED', 'PENDING_CANCEL', 'PENDING_REPLACE', 'CANCELED', 'REPLACED', 'EXPIRED']);
+const activeFillStates = new Set(['PENDING', 'PARTIAL_FILLED', 'PENDING_CANCEL', 'PENDING_REPLACE']);
+const fillStates = new Set([...activeFillStates, 'FILLED', 'CANCELED', 'REPLACED', 'EXPIRED']);
 
 /** Establish a quiet baseline; only a higher cumulative fill is a new execution. */
 export function createOrderFillTracker(startedAt: number, announce: (order: TossOrder, filled: number) => void) {
-  const quantities = new Map<string, number>();
+  const observations = new Map<string, number | null>();
   let initialized = false;
   function observe(order: TossOrder, live: boolean, quiet = false) {
-    if (!fillStates.has(order.status) || order.execution.filledQuantity == null) return;
+    if (!fillStates.has(order.status)) return;
+    const key = order.orderId;
+    if (order.execution.filledQuantity == null) {
+      if (activeFillStates.has(order.status) && !observations.has(key)) observations.set(key, null);
+      return;
+    }
     const filled = Number(order.execution.filledQuantity), quantity = Number(order.quantity);
     if (!Number.isSafeInteger(filled) || !Number.isSafeInteger(quantity) || filled < 0 || filled > quantity) return;
-    const key = order.orderId;
-    const prior = quantities.get(key);
-    if (prior !== undefined && filled <= prior) return;
-    quantities.set(key, filled);
+    const prior = observations.get(key);
+    if (prior != null && filled <= prior) return;
+    observations.set(key, filled);
     // REST may introduce older history. A previously unseen order needs a live event
     // or a timestamp proving it was created/filled after listening began.
     const fresh = live || Date.parse(order.orderedAt) >= startedAt || Date.parse(order.execution.filledAt ?? '') >= startedAt;

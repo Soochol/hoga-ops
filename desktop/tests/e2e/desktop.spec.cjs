@@ -53,6 +53,37 @@ test('isolated server, sandbox, child state, request guard, recovery and restart
     expect(await app.evaluate(({ app }) => app.commandLine.hasSwitch('no-sandbox'))).toBe(false);
     expect(await content.evaluate(() => ({ strictConfig: window.hogaDesktop.strictConfig, apiOrigin: window.hogaDesktop.apiOrigin }))).toEqual({ strictConfig: true, apiOrigin: server.origin });
     expect(await content.evaluate(() => window.hogaDesktop.controls.getState())).toEqual({ serverName: '검증 서버', origin: server.origin, apiOrigin: server.origin, zoomFactor: 1 });
+    const rejectedAtUnsupportedPath = await content.evaluate(async () => {
+      history.pushState({}, '', '/api/trading');
+      try { await window.hogaDesktop.controls.getState(); return false; }
+      catch { return true; }
+      finally { history.replaceState({}, '', '/live'); }
+    });
+    expect(rejectedAtUnsupportedPath).toBe(true);
+    await content.evaluate(() => {
+      const frame = document.createElement('iframe'); frame.id = 'untrusted-frame'; frame.src = '/live';
+      document.body.append(frame);
+    });
+    const frame = content.frameLocator('#untrusted-frame');
+    await expect(frame.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    expect(await frame.locator('body').evaluate(async () => {
+      if (!window.hogaDesktop?.controls) return true;
+      try { await window.hogaDesktop.controls.getState(); return false; } catch { return true; }
+    })).toBe(true);
+    await content.locator('#untrusted-frame').evaluate(node => node.remove());
+    const unregisteredWindow = app.waitForEvent('window');
+    await app.evaluate(({ BrowserWindow }, options) => {
+      const win = new BrowserWindow({ show: false, webPreferences: {
+        preload: options.preload, nodeIntegration: false, contextIsolation: true, sandbox: true,
+      } });
+      void win.loadURL(options.url);
+    }, { url: server.origin + '/live', preload: join(root, 'dist/preload/content.cjs') });
+    const unregistered = await unregisteredWindow;
+    await expect(unregistered.getByRole('heading', { name: 'Fixture workspace' })).toBeVisible();
+    expect(await unregistered.evaluate(async () => {
+      try { await window.hogaDesktop.controls.getState(); return false; } catch { return true; }
+    })).toBe(true);
+    await unregistered.close();
     expect(await content.evaluate(async () => { try { await window.hogaDesktop.controls.zoom('invalid'); return false; } catch { return true; } })).toBe(true);
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => !w.webContents.getURL().startsWith('app:')).every(w => w.webContents.getLastWebPreferences().sandbox))).toBe(true);
     const childPromise = app.waitForEvent('window');

@@ -8,6 +8,7 @@ import sqlite3
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,9 @@ class BrokerTradingService:
         self._batches: dict[str, asyncio.Task] = {}
         self._locks = defaultdict(asyncio.Lock)
         self._order_locks = defaultdict(asyncio.Lock)
-        self._event_releases: dict[str, Any] = {}
+        self._event_subscriptions: dict[str, asyncio.Task[Callable[[], Awaitable[None]] | None]] = {}
+        self._events_closed = False
+        self._close_task: asyncio.Task[None] | None = None
         self.on_event = on_event or (lambda event: None)
         self.execution_history = ExecutionHistory(data_dir)
         self.toss_execution_history = TossExecutionHistory(data_dir)
@@ -116,20 +119,39 @@ class BrokerTradingService:
         return adapter
 
     async def ensure_events(self, adapter: KiwoomTradingAdapter) -> None:
-        if adapter.account_ref in self._event_releases:
+        if self._events_closed:
             return
+        task = self._event_subscriptions.get(adapter.account_ref)
+        if task is None:
+            task = asyncio.create_task(self._subscribe_events(adapter))
+            self._event_subscriptions[adapter.account_ref] = task
+            task.add_done_callback(self._observe_event_subscription)
+        await asyncio.shield(task)
+
+    async def _subscribe_events(self, adapter: KiwoomTradingAdapter) -> Callable[[], Awaitable[None]] | None:
         from hoga.live.account_events import subscribe_account  # noqa: PLC0415
 
+        release = None
         try:
-            self._event_releases[adapter.account_ref] = await subscribe_account(
+            release = await subscribe_account(
                 self.data_dir,
                 adapter.gateway.environment,
                 adapter.gateway.account_index,
                 adapter.account_event,
                 lambda connected: self._connection_changed(adapter, connected),
             )
+            return release
         except (ConnectionError, OSError, TimeoutError):
             adapter.events_connected = False  # REST fallback; retry subscription on the next read.
+            return None
+        finally:
+            if release is None:
+                self._event_subscriptions.pop(adapter.account_ref, None)
+
+    @staticmethod
+    def _observe_event_subscription(task: asyncio.Task) -> None:
+        if not task.cancelled():
+            task.exception()
 
     @staticmethod
     def _connection_changed(adapter, connected: bool) -> None:
@@ -478,7 +500,18 @@ class BrokerTradingService:
         return {"command_id": command_id, "state": row[1], "result": row[2]}
 
     async def close(self) -> None:
+        self._events_closed = True
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self._close())
+        await asyncio.shield(self._close_task)
+
+    async def _close(self) -> None:
         await asyncio.gather(*self._tasks.values(), *self._batches.values(), return_exceptions=True)
-        await asyncio.gather(*(release() for release in self._event_releases.values()), return_exceptions=True)
+        subscriptions = await asyncio.gather(*self._event_subscriptions.values(), return_exceptions=True)
+        self._event_subscriptions.clear()
+        await asyncio.gather(
+            *(release() for release in subscriptions if release is not None and not isinstance(release, BaseException)),
+            return_exceptions=True,
+        )
         for adapter in self._kiwoom or []:
             await adapter.gateway.close()

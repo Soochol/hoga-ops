@@ -98,6 +98,26 @@ async def test_create_and_save_idempotence_and_revision_conflict(client):
     assert reused.status_code == 409
 
 
+@pytest.mark.parametrize("include_review", [False, True])
+async def test_size_rejection_preserves_document_and_allows_corrected_write(client, monkeypatch, include_review):
+    doc = await create(client)
+    monkeypatch.setattr(wb, "MAX_DOCUMENT_BYTES", 1024)
+    scene = {"elements": [{"id": "memo", "type": "text", "text": "x" * (400 if include_review else 1100)}],
+             "appState": {}, "files": {}}
+    request = write(doc, name="too large", scene=scene)
+    if include_review:
+        request["review"] = {"date": "2026-11-02", "summary": "x" * 800}
+    rejected = await client.put(f"/api/whiteboards/{doc['id']}", json=request)
+    assert rejected.status_code == 413
+    assert rejected.json()["detail"]["code"] == "whiteboard_too_large"
+    assert (await client.get(f"/api/whiteboards/{doc['id']}")).json() == doc
+    corrected = write(doc, name="corrected", scene={"elements": [], "appState": {}, "files": {}})
+    saved = await client.put(f"/api/whiteboards/{doc['id']}", json=corrected)
+    assert saved.status_code == 200
+    assert saved.json()["revision"] == doc["revision"] + 1
+    assert (await client.get(f"/api/whiteboards/{doc['id']}")).json()["name"] == "corrected"
+
+
 async def test_concurrent_writers_never_overwrite(client):
     doc = await create(client)
     results = await asyncio.gather(

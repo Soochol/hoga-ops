@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
+import logging
 from collections import defaultdict
+
+log = logging.getLogger(__name__)
 
 _listeners: dict[tuple[str, int], set] = defaultdict(set)
 _states: dict[tuple[str, int], bool] = {}
@@ -29,32 +33,31 @@ async def subscribe_account(data_dir, environment: str, account: int, callback, 
 
     if kiwoom_runtime.ensure_token_provider_for_account(account, data_dir, environment=environment) is None:
         raise ConnectionError("account event credentials unavailable")
+    if environment == "real":
+        session = storage_runtime._ensure_kiwoom_session(
+            lifecycle._state,
+            data_dir=data_dir,
+            buffer=lifecycle.get_buffer(),
+            date_fn=lifecycle._today_kst,
+            now_ms_fn=lifecycle._now_ms,
+        )
+    else:
+        session = _mock_sessions.get(str(data_dir))
+        if session is None:
+            session = KiwoomSessionManager(
+                buffer=lifecycle.get_buffer(), data_dir=data_dir, date_fn=lifecycle._today_kst, environment="mock"
+            )
+            _mock_sessions[str(data_dir)] = session
     key = (environment, account)
     listener = (callback, state_callback)
     _listeners[key].add(listener)
-    try:
-        if environment == "real":
-            session = storage_runtime._ensure_kiwoom_session(
-                lifecycle._state,
-                data_dir=data_dir,
-                buffer=lifecycle.get_buffer(),
-                date_fn=lifecycle._today_kst,
-                now_ms_fn=lifecycle._now_ms,
-            )
-        else:
-            session = _mock_sessions.get(str(data_dir))
-            if session is None:
-                session = KiwoomSessionManager(
-                    buffer=lifecycle.get_buffer(), data_dir=data_dir, date_fn=lifecycle._today_kst, environment="mock"
-                )
-                _mock_sessions[str(data_dir)] = session
-        await session.retain_account(account)
-        state_callback(_states.get(key, False))
-    except BaseException:
-        _listeners[key].discard(listener)
-        raise
+    released = False
 
     async def release():
+        nonlocal released
+        if released:
+            return
+        released = True
         _listeners[key].discard(listener)
         if not _listeners[key]:
             _listeners.pop(key, None)
@@ -62,4 +65,12 @@ async def subscribe_account(data_dir, environment: str, account: int, callback, 
             await session.release_account(account)
         state_callback(False)
 
+    try:
+        await session.retain_account(account)
+        state_callback(_states.get(key, False))
+    except BaseException:
+        outcome, = await asyncio.gather(release(), return_exceptions=True)
+        if isinstance(outcome, BaseException):
+            log.warning("Account event rollback failed (%s)", type(outcome).__name__)
+        raise
     return release
