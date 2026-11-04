@@ -71,6 +71,7 @@ const UNRESOLVED_NOTICE: OrderNotice = {
 const mode = 'live' as const;
 const MAX_CONCURRENT_GROUP_CANCELS = 10;
 const MAX_CONCURRENT_TOSS_MODIFICATIONS = 2;
+const MAX_CONCURRENT_KIWOOM_REAL_MODIFICATIONS = 2;
 type Action = {
   type: 'create' | 'modify' | 'cancel' | 'bulk' | 'group';
   base: TradingCommand;
@@ -490,7 +491,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           }
         };
         const toss = activeAccount?.broker === 'toss' || (activeAccount?.broker == null && typeof account === 'number');
-        const concurrency = cancellingOrders ? MAX_CONCURRENT_GROUP_CANCELS : toss ? MAX_CONCURRENT_TOSS_MODIFICATIONS : 1;
+        const kiwoomReal = activeAccount?.broker === 'kiwoom' && activeAccount.environment === 'real';
+        const concurrency = cancellingOrders ? MAX_CONCURRENT_GROUP_CANCELS : toss ? MAX_CONCURRENT_TOSS_MODIFICATIONS
+          : kiwoomReal ? MAX_CONCURRENT_KIWOOM_REAL_MODIFICATIONS : 1;
         await Promise.all(Array.from({ length: Math.min(batch.length, concurrency) }, submitOrders));
         if (messages.length) {
           if (cancellingOrders) accepted = false;

@@ -94,16 +94,19 @@ class KiwoomAccountGateway:
         write = api_id in WRITES
         if write and (not write_authorized or before_send is None):
             raise TradingError(409, "kiwoom-orders-disabled", "주문 전송은 계좌가 확인된 명령 경로에서만 가능합니다.")
+        self.check_deadline(deadline)
         try:
             token = await asyncio.to_thread(self.provider.get_token)
         except Exception as exc:
             raise TradingError(503, "kiwoom-auth-unavailable", "키움증권 인증 연결을 확인하세요.") from exc
+        self.check_deadline(deadline)
         try:
             await self.budget.acquire(api_id, write=write, deadline=deadline)
         except TimeoutError as exc:
             raise TradingError(
                 409, "order-queue-expired", "주문 전송 대기가 만료되었습니다. 새 주문 조건을 확인하세요."
             ) from exc
+        self.check_deadline(deadline)
         if before_send:
             before_send()  # Persist SENDING only after auth/admission, before the HTTP side effect.
         try:
@@ -160,6 +163,13 @@ class KiwoomAccountGateway:
         return result, None
 
     @staticmethod
+    def check_deadline(deadline: float | None) -> None:
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TradingError(
+                409, "order-queue-expired", "주문 전송 대기가 만료되었습니다. 새 주문 조건을 확인하세요."
+            )
+
+    @staticmethod
     def failure(write: bool) -> TradingError:
         return TradingError(
             503,
@@ -169,10 +179,13 @@ class KiwoomAccountGateway:
             else "키움증권 조회를 완료하지 못했습니다.",
         )
 
-    async def rows(self, api_id: str, body: dict, key: str) -> list[dict]:
+    async def rows(self, api_id: str, body: dict, key: str, *, deadline: float | None = None) -> list[dict]:
         result, cursor, seen = [], "", set()
         for _ in range(100):
-            page, next_key = await self.call(api_id, body, cursor=cursor)
+            self.check_deadline(deadline)
+            page, next_key = await self.call(
+                api_id, body, cursor=cursor, **({"deadline": deadline} if deadline is not None else {})
+            )
             rows = page.get(key)
             if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
                 raise self.failure(False)
@@ -210,10 +223,14 @@ class KiwoomTradingAdapter:
     def credential(self) -> str:
         return f"kiwoom:{self.gateway.environment}:{self.gateway.account_index}"
 
-    async def account(self, *, fresh: bool = False) -> BrokerAccount:
+    async def account(self, *, fresh: bool = False, deadline: float | None = None) -> BrokerAccount:
+        self.gateway.check_deadline(deadline)
         async with self._verify_lock:
+            self.gateway.check_deadline(deadline)
             if fresh or not self.account_ref or time.monotonic() - self._verified_at > ACCOUNT_CACHE_SECONDS:
-                result, _ = await self.gateway.call("ka00001", {})
+                result, _ = await self.gateway.call(
+                    "ka00001", {}, **({"deadline": deadline} if deadline is not None else {})
+                )
                 number = result.get("acctNo")
                 if not isinstance(number, str) or not re.fullmatch(r"\d{10}", number):
                     raise self.gateway.failure(False)
@@ -342,10 +359,13 @@ class KiwoomTradingAdapter:
             and not any(tag in kind for tag in ("신용", "융자", "대주")),
         )
 
-    async def order_state(self, code: str = "", *, fresh: bool = False, date: str | None = None) -> BrokerOrderState:
-        await self.account()
+    async def order_state(
+        self, code: str = "", *, fresh: bool = False, date: str | None = None, deadline: float | None = None
+    ) -> BrokerOrderState:
+        await self.account(**({"deadline": deadline} if deadline is not None else {}))
         date = date or datetime.now(KST).strftime("%Y%m%d")
         async with self._snapshot_lock:
+            self.gateway.check_deadline(deadline)
             cached = self._snapshots.get(date)
             if not fresh and cached and time.monotonic() - cached[0] < SNAPSHOT_CACHE_SECONDS:
                 result = cached[1]
@@ -353,7 +373,8 @@ class KiwoomTradingAdapter:
                 revision = self.revision
                 opens, history = await asyncio.gather(
                     self.gateway.rows(
-                        "ka10075", {"all_stk_tp": "0", "trde_tp": "0", "stk_cd": "", "stex_tp": "0"}, "oso"
+                        "ka10075", {"all_stk_tp": "0", "trde_tp": "0", "stk_cd": "", "stex_tp": "0"}, "oso",
+                        **({"deadline": deadline} if deadline is not None else {})
                     ),
                     self.gateway.rows(
                         "kt00007",
@@ -367,8 +388,14 @@ class KiwoomTradingAdapter:
                             "dmst_stex_tp": "%",
                         },
                         "acnt_ord_cntr_prps_dtl",
+                        **({"deadline": deadline} if deadline is not None else {})
                     ),
+                    return_exceptions=True,
                 )
+                for outcome in (opens, history):
+                    if isinstance(outcome, BaseException):
+                        raise outcome
+                self.gateway.check_deadline(deadline)
                 open_orders = [self.parse_order(r, date) for r in opens]
                 open_ids = {o.order_ref for o in open_orders}
                 recent = [self.parse_order(r, date, history=True) for r in history]

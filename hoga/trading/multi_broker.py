@@ -27,6 +27,7 @@ from hoga.trading.contracts import (
 )
 from hoga.trading.execution_range import ExecutionHistoryRange
 from hoga.trading.kiwoom import KiwoomAccountGateway, KiwoomTradingAdapter
+from hoga.trading.kiwoom_admission import MAX_CONCURRENT_KIWOOM_MODIFICATIONS, KiwoomCodeGate
 from hoga.trading.models import TradingCommand
 from hoga.trading.preopen import PreopenClose
 from hoga.trading.service import TradingService
@@ -46,7 +47,8 @@ class BrokerTradingService:
         self._by_ref: dict[str, Any] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._batches: dict[str, asyncio.Task] = {}
-        self._locks = defaultdict(asyncio.Lock)
+        self._kiwoom_gates = defaultdict(KiwoomCodeGate)
+        self._modify_slots = defaultdict(lambda: asyncio.Semaphore(MAX_CONCURRENT_KIWOOM_MODIFICATIONS))
         self._order_locks = defaultdict(asyncio.Lock)
         self._event_subscriptions: dict[str, asyncio.Task[Callable[[], Awaitable[None]] | None]] = {}
         self._events_closed = False
@@ -211,6 +213,11 @@ class BrokerTradingService:
         adapter = await self.resolve(command.account_ref)
         if adapter is self.toss:
             return await adapter.execute(command, action, order_ref)
+        if self._events_closed:
+            raise TradingError(503, "trading-closing", "주문 연결을 종료 중입니다.")
+        return await self._dispatch_kiwoom(adapter, command, action, order_ref)
+
+    async def _dispatch_kiwoom(self, adapter, command, action, order_ref):
         payload = {
             **command.model_dump(),
             "schema_version": 2,
@@ -230,7 +237,7 @@ class BrokerTradingService:
         )
 
     async def _execute(self, adapter, command, action, order_ref):  # noqa: PLR0912, PLR0915
-        # One serialized preflight/send/journal boundary; no implicit write retries.
+        # Keep admission and original ownership through every durable outcome; no write retries.
         sent = False
         deadline = time.monotonic() + 10
         target = None
@@ -238,6 +245,7 @@ class BrokerTradingService:
 
         def mark_sending():
             nonlocal sent
+            adapter.gateway.check_deadline(deadline)
             if target is not None:
                 adapter.validate_current(target)
             if preopen_quote is not None:
@@ -245,183 +253,225 @@ class BrokerTradingService:
             self.journal.finish(command.command_id, "sending", {})
             sent = True
 
-        try:
-            # All writes on one symbol serialize, including fresh status checks.
-            async with self._locks[(command.account_ref, command.code)]:  # noqa: SIM117
-                async with self._order_locks[(command.account_ref, order_ref or command.command_id)]:
-                    account = await adapter.account(fresh=True)
-                    if account.account_ref != command.account_ref:
-                        raise TradingError(409, "account-binding-changed", "주문 계좌가 변경되었습니다.")
-                    unresolved = {cid for cid in self.unresolved(command.account_ref, command.code)}
-                    if unresolved and (
-                        action == "create"
-                        or any(
-                            cid in unresolved and payload.get("order_id") == order_ref
-                            for cid, payload, _, _ in self.journal.scoped(command.account_ref, command.code)
-                        )
-                    ):
-                        raise TradingError(
-                            409, "unresolved-order-exists", "이 계좌·종목의 불명확한 요청을 먼저 확인하세요."
-                        )
-                    route = (
-                        command.route
-                        if action == "create"
-                        else self.registry.resolve_order(order_ref, command.account_ref)[2]
+        async with contextlib.AsyncExitStack() as stack:
+            try:
+                parallel = action == "modify" and adapter.gateway.environment == "real"
+                lease = await stack.enter_async_context(self._kiwoom_gates[(command.account_ref, command.code)].enter(
+                    order_ref, parallel=parallel, deadline=deadline
+                ))
+                # Slot holders never wait for a Code gate; create/cancel keep their cross-Code policy.
+                async with asyncio.timeout_at(deadline):
+                    if parallel:
+                        await stack.enter_async_context(self._modify_slots[command.account_ref])
+                    await stack.enter_async_context(
+                        self._order_locks[(command.account_ref, order_ref or command.command_id)]
                     )
-                    if route not in account.routes:
-                        raise TradingError(
-                            409,
-                            "kiwoom-orders-disabled",
-                            account.blocked_reason or "이 계좌에서 지원하지 않는 주문 거래소입니다.",
-                        )
-                    if action == "create":
-                        if not isinstance(command, CreateBrokerOrder):
-                            raise TradingError(422, "invalid-command", "신규 주문 조건을 확인하세요.")
-                        if command.order_type == "PREOPEN_CLOSE":
-                            if route != "KRX":
-                                raise TradingError(422, "unsupported-route", "장전 종가 주문은 KRX 경로만 지원합니다.")
-                            preopen_quote = await self.preopen.quote(
-                                adapter, command.account_ref, command.code, fresh=True
-                            )
-                            if not preopen_quote.can_order:
-                                raise TradingError(409, "preopen-unavailable", preopen_quote.reason)
-                            if command.price != preopen_quote.price:
-                                raise TradingError(
-                                    409, "preopen-price-changed",
-                                    "장전 종가 적용 가격이 변경되었습니다. 다시 확인하세요."
-                                )
-                        TradingService._check_amount(command.price, command.quantity, command.confirm_high_value)
-                        # Cash policy is checked at the actual limit price; broker remains final authority.
-                        capacity = await adapter.balances(command.code, command.price)
-                        allowed = capacity.buyable_quantity if command.side == "BUY" else capacity.sellable_quantity
-                        if allowed is None or command.quantity > int(allowed):
-                            raise TradingError(409, "order-capacity-unavailable", "현금 주문 가능 수량을 확인하세요.")
-                        api_id = "kt10000" if command.side == "BUY" else "kt10001"
-                        body = {
-                            "dmst_stex_tp": route,
-                            "stk_cd": command.code,
-                            "ord_qty": str(command.quantity),
-                            "ord_uv": str(command.price),
-                            "trde_tp": "0",
-                        }
-                        if preopen_quote is not None:
-                            body["trde_tp"] = "61"
-                            body.pop("ord_uv")  # Fixed-price order; the exchange determines the price.
-                        from datetime import datetime  # noqa: PLC0415
-
-                        from hoga.util.timeenc import KST  # noqa: PLC0415
-
-                        date = datetime.now(KST).strftime("%Y%m%d")
-                    else:
-                        native, date, route = self.registry.resolve_order(order_ref, command.account_ref)
-                        from datetime import datetime  # noqa: PLC0415
-
-                        from hoga.util.timeenc import KST  # noqa: PLC0415
-
-                        if date != datetime.now(KST).strftime("%Y%m%d"):
-                            raise TradingError(409, "order-date-mismatch", "이전 영업일의 주문은 변경할 수 없습니다.")
-                        snapshot = await adapter.order_state(command.code, fresh=True, date=date)
-                        order = next((o for o in snapshot.orders if o.order_ref == order_ref), None)
-                        if order is None or not order.editable or order.code != command.code:
-                            raise TradingError(
-                                409, "order-not-editable", "주문 잔량과 정정·취소 상태를 다시 확인하세요."
-                            )
-                        target = order
-                        adapter.validate_current(order)
-                        for _, payload, state, prior in self.journal.scoped(command.account_ref, command.code):
-                            if (
-                                payload.get("order_id") == order_ref
-                                and state in {"accepted", "sending", "unknown"}
-                                and payload.get("command_id") != command.command_id
-                            ):
-                                operation_ref = (prior or {}).get("operation_ref")
-                                terminal = next(
-                                    (o for o in snapshot.recent_orders if o.order_ref == operation_ref), None
-                                )
-                                if terminal is None or terminal.status not in {
-                                    "CANCELED",
-                                    "REPLACED",
-                                    "CANCEL_REJECTED",
-                                    "REPLACE_REJECTED",
-                                }:
-                                    raise TradingError(
-                                        409, "order-processing", "이 주문의 정정·취소 결과를 동기화 중입니다."
-                                    )
-                        body = {"dmst_stex_tp": route, "stk_cd": command.code, "orig_ord_no": native}
-                        if action == "modify" and isinstance(command, ModifyBrokerOrder):
-                            if order.order_type != "LIMIT":
-                                raise TradingError(422, "unsupported-order-type", "지정가 주문만 정정할 수 있습니다.")
-                            qty = int(order.remaining_quantity) if command.quantity is None else command.quantity
-                            if qty != int(order.remaining_quantity):
-                                raise TradingError(409, "order-quantity-changed", "현재 잔량 전체를 정정하세요.")
-                            TradingService._check_amount(command.price, qty, command.confirm_high_value)
-                            body.update(mdfy_qty=str(qty), mdfy_uv=str(command.price))
-                            api_id = "kt10002"
-                        elif action == "cancel":
-                            body["cncl_qty"] = str(order.remaining_quantity)
-                            api_id = "kt10003"
-                        else:
-                            raise TradingError(422, "invalid-command", "주문 동작을 확인하세요.")
-                    response, _ = await adapter.gateway.call(
-                        api_id, body, before_send=mark_sending, deadline=deadline, write_authorized=True
+                account = await adapter.account(fresh=True, deadline=deadline)
+                if account.account_ref != command.account_ref:
+                    raise TradingError(409, "account-binding-changed", "주문 계좌가 변경되었습니다.")
+                unresolved = {cid for cid in self.unresolved(command.account_ref, command.code)}
+                if unresolved and (
+                    action == "create"
+                    or (adapter.gateway.environment == "real" and not lease.follower and any(
+                        cid in unresolved and payload.get("action") in {"create", "modify"}
+                        for cid, payload, _, _ in self.journal.scoped(command.account_ref, command.code)
+                    ))
+                    or any(
+                        cid in unresolved and payload.get("order_id") == order_ref
+                        for cid, payload, _, _ in self.journal.scoped(command.account_ref, command.code)
                     )
-                    related = {native, target.original_order_id, target.root_order_id} if target is not None else set()
-                    if action != "create" and response.get("base_orig_ord_no") not in related - {None, ""}:
-                        raise TradingError(
-                            503, "order-outcome-unknown", "원주문 응답이 일치하지 않습니다. 주문 내역을 확인하세요."
-                        )
-                    native_ref = self.registry.order_ref(command.account_ref, response["ord_no"], date, route)
-                    if action == "create":
-                        self.registry.remember_terms(native_ref, command.order_type, str(command.price))
-                    elif target is not None:
-                        self.registry.remember_terms(native_ref, target.order_type, target.price)
-                    self.registry.remember_lineage(
-                        native_ref,
-                        order_ref or None,
-                        (target.root_order_id if target is not None else None)
-                        or response.get("base_orig_ord_no", response["ord_no"]),
-                        action,
+                ):
+                    raise TradingError(
+                        409, "unresolved-order-exists", "이 계좌·종목의 불명확한 요청을 먼저 확인하세요."
                     )
-                    result = BrokerCommandResult(
-                        command_id=command.command_id,
-                        order_ref=native_ref if action == "create" else order_ref,
-                        operation_ref=None if action == "create" else native_ref,
-                    )
-                    self.journal.finish(command.command_id, "accepted", result.model_dump())
-                    return result
-        except TradingError as exc:
-            if sent and not exc.code.startswith("kiwoom-rejected-") and exc.code != "order-outcome-unknown":
-                exc = TradingError(
-                    503, "order-outcome-unknown", "접수 후 처리 결과를 확인할 수 없습니다. 주문 내역을 확인하세요."
+                route = (
+                    command.route
+                    if action == "create"
+                    else self.registry.resolve_order(order_ref, command.account_ref)[2]
                 )
-            self.journal.finish(
-                command.command_id,
-                "unknown" if exc.code == "order-outcome-unknown" else "rejected",
-                {"status": exc.status, "code": exc.code, "message": exc.message},
-            )
-            raise exc
-        except Exception as exc:
-            error = TradingError(
-                503,
-                "order-outcome-unknown" if sent else "order-preflight-failed",
-                "주문 처리 기록과 계좌 내역을 확인하세요.",
-            )
-            # SENDING remains durable if the disk itself is unavailable.
-            with contextlib.suppress(OSError, sqlite3.Error):
+                if route not in account.routes:
+                    raise TradingError(
+                        409,
+                        "kiwoom-orders-disabled",
+                        account.blocked_reason or "이 계좌에서 지원하지 않는 주문 거래소입니다.",
+                    )
+                if action == "create":
+                    if not isinstance(command, CreateBrokerOrder):
+                        raise TradingError(422, "invalid-command", "신규 주문 조건을 확인하세요.")
+                    if command.order_type == "PREOPEN_CLOSE":
+                        if route != "KRX":
+                            raise TradingError(422, "unsupported-route", "장전 종가 주문은 KRX 경로만 지원합니다.")
+                        preopen_quote = await self.preopen.quote(
+                            adapter, command.account_ref, command.code, fresh=True
+                        )
+                        if not preopen_quote.can_order:
+                            raise TradingError(409, "preopen-unavailable", preopen_quote.reason)
+                        if command.price != preopen_quote.price:
+                            raise TradingError(
+                                409, "preopen-price-changed",
+                                "장전 종가 적용 가격이 변경되었습니다. 다시 확인하세요."
+                            )
+                    TradingService._check_amount(command.price, command.quantity, command.confirm_high_value)
+                    # Cash policy is checked at the actual limit price; broker remains final authority.
+                    capacity = await adapter.balances(command.code, command.price)
+                    allowed = capacity.buyable_quantity if command.side == "BUY" else capacity.sellable_quantity
+                    if allowed is None or command.quantity > int(allowed):
+                        raise TradingError(409, "order-capacity-unavailable", "현금 주문 가능 수량을 확인하세요.")
+                    api_id = "kt10000" if command.side == "BUY" else "kt10001"
+                    body = {
+                        "dmst_stex_tp": route,
+                        "stk_cd": command.code,
+                        "ord_qty": str(command.quantity),
+                        "ord_uv": str(command.price),
+                        "trde_tp": "0",
+                    }
+                    if preopen_quote is not None:
+                        body["trde_tp"] = "61"
+                        body.pop("ord_uv")  # Fixed-price order; the exchange determines the price.
+                    from datetime import datetime  # noqa: PLC0415
+
+                    from hoga.util.timeenc import KST  # noqa: PLC0415
+
+                    date = datetime.now(KST).strftime("%Y%m%d")
+                else:
+                    native, date, route = self.registry.resolve_order(order_ref, command.account_ref)
+                    from datetime import datetime  # noqa: PLC0415
+
+                    from hoga.util.timeenc import KST  # noqa: PLC0415
+
+                    if date != datetime.now(KST).strftime("%Y%m%d"):
+                        raise TradingError(409, "order-date-mismatch", "이전 영업일의 주문은 변경할 수 없습니다.")
+                    snapshot = await adapter.order_state(command.code, fresh=True, date=date, deadline=deadline)
+                    order = next((o for o in snapshot.orders if o.order_ref == order_ref), None)
+                    if order is None or not order.editable or order.code != command.code:
+                        raise TradingError(
+                            409, "order-not-editable", "주문 잔량과 정정·취소 상태를 다시 확인하세요."
+                        )
+                    target = order
+                    adapter.validate_current(order)
+                    for _, payload, state, prior in self.journal.scoped(command.account_ref, command.code):
+                        if (
+                            payload.get("order_id") == order_ref
+                            and state in {"accepted", "sending", "unknown"}
+                            and payload.get("command_id") != command.command_id
+                        ):
+                            operation_ref = (prior or {}).get("operation_ref")
+                            operation_open = any(o.order_ref == operation_ref for o in snapshot.orders)
+                            terminals = [
+                                o for o in snapshot.recent_orders
+                                if o.order_ref == operation_ref
+                            ]
+                            expected = {"modify": "REPLACE_REJECTED", "cancel": "CANCEL_REJECTED"}.get(
+                                payload.get("action")
+                            )
+                            related = {native, order.original_order_id, order.root_order_id} - {None, ""}
+                            if operation_open or not terminals or any(
+                                terminal.status != expected or terminal.route != route
+                                or terminal.trading_date != date or terminal.original_order_id not in related
+                                for terminal in terminals
+                            ):
+                                raise TradingError(
+                                    409, "order-processing", "이 주문의 정정·취소 결과를 동기화 중입니다."
+                                )
+                    body = {"dmst_stex_tp": route, "stk_cd": command.code, "orig_ord_no": native}
+                    if action == "modify" and isinstance(command, ModifyBrokerOrder):
+                        if order.order_type != "LIMIT":
+                            raise TradingError(422, "unsupported-order-type", "지정가 주문만 정정할 수 있습니다.")
+                        qty = int(order.remaining_quantity) if command.quantity is None else command.quantity
+                        if qty != int(order.remaining_quantity):
+                            raise TradingError(409, "order-quantity-changed", "현재 잔량 전체를 정정하세요.")
+                        TradingService._check_amount(command.price, qty, command.confirm_high_value)
+                        body.update(mdfy_qty=str(qty), mdfy_uv=str(command.price))
+                        api_id = "kt10002"
+                    elif action == "cancel":
+                        body["cncl_qty"] = str(order.remaining_quantity)
+                        api_id = "kt10003"
+                    else:
+                        raise TradingError(422, "invalid-command", "주문 동작을 확인하세요.")
+                if action == "modify":
+                    lease.observe(snapshot)
+                response, _ = await adapter.gateway.call(
+                    api_id, body, before_send=mark_sending, deadline=deadline, write_authorized=True
+                )
+                related = {native, target.original_order_id, target.root_order_id} if target is not None else set()
+                if action != "create" and response.get("base_orig_ord_no") not in related - {None, ""}:
+                    raise TradingError(
+                        503, "order-outcome-unknown", "원주문 응답이 일치하지 않습니다. 주문 내역을 확인하세요."
+                    )
+                native_ref = self.registry.order_ref(command.account_ref, response["ord_no"], date, route)
+                if action == "create":
+                    self.registry.remember_terms(native_ref, command.order_type, str(command.price))
+                elif target is not None:
+                    self.registry.remember_terms(native_ref, target.order_type, target.price)
+                self.registry.remember_lineage(
+                    native_ref,
+                    order_ref or None,
+                    (target.root_order_id if target is not None else None)
+                    or response.get("base_orig_ord_no", response["ord_no"]),
+                    action,
+                )
+                result = BrokerCommandResult(
+                    command_id=command.command_id,
+                    order_ref=native_ref if action == "create" else order_ref,
+                    operation_ref=None if action == "create" else native_ref,
+                )
+                self.journal.finish(command.command_id, "accepted", result.model_dump())
+                return result
+            except TimeoutError as exc:
+                error = TradingError(
+                    409, "order-queue-expired", "주문 전송 대기가 만료되었습니다. 새 주문 조건을 확인하세요."
+                )
                 self.journal.finish(
-                    command.command_id,
-                    "unknown" if sent else "rejected",
+                    command.command_id, "rejected",
                     {"status": error.status, "code": error.code, "message": error.message},
                 )
-            raise error from exc
-        finally:
-            adapter.changed()
-            self._tasks.pop(command.command_id, None)
+                raise error from exc
+            except asyncio.CancelledError:
+                error = TradingError(
+                    503, "order-outcome-unknown" if sent else "order-preflight-failed",
+                    "주문 처리 기록과 계좌 내역을 확인하세요.",
+                )
+                with contextlib.suppress(OSError, sqlite3.Error):
+                    self.journal.finish(
+                        command.command_id, "unknown" if sent else "rejected",
+                        {"status": error.status, "code": error.code, "message": error.message},
+                    )
+                raise
+            except TradingError as exc:
+                if sent and not exc.code.startswith("kiwoom-rejected-") and exc.code != "order-outcome-unknown":
+                    exc = TradingError(
+                        503, "order-outcome-unknown", "접수 후 처리 결과를 확인할 수 없습니다. 주문 내역을 확인하세요."
+                    )
+                self.journal.finish(
+                    command.command_id,
+                    "unknown" if exc.code == "order-outcome-unknown" else "rejected",
+                    {"status": exc.status, "code": exc.code, "message": exc.message},
+                )
+                raise exc
+            except Exception as exc:
+                error = TradingError(
+                    503,
+                    "order-outcome-unknown" if sent else "order-preflight-failed",
+                    "주문 처리 기록과 계좌 내역을 확인하세요.",
+                )
+                # SENDING remains durable if the disk itself is unavailable.
+                with contextlib.suppress(OSError, sqlite3.Error):
+                    self.journal.finish(
+                        command.command_id,
+                        "unknown" if sent else "rejected",
+                        {"status": error.status, "code": error.code, "message": error.message},
+                    )
+                raise error from exc
+            finally:
+                adapter.changed()
+                self._tasks.pop(command.command_id, None)
 
     async def cancel_all(self, command: CancelBrokerOrders) -> dict:
         adapter = await self.resolve(command.account_ref)
         if adapter is self.toss:
             return await adapter.cancel_all(command)
+        if self._events_closed:
+            raise TradingError(503, "trading-closing", "주문 연결을 종료 중입니다.")
         payload = {**command.model_dump(), "schema_version": 2, "action": "bulk", "order_id": ""}
         state, result = self.journal.begin(command.command_id, payload, prepared=True)
         if state == "accepted":
@@ -450,7 +500,7 @@ class BrokerTradingService:
                     command_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{command.command_id}:{ref}")),
                 )
                 try:
-                    response = await self.execute(child, "cancel", ref)
+                    response = await self._dispatch_kiwoom(adapter, child, "cancel", ref)
                     results.append({"order_id": ref, "accepted": True, "operation_id": response.operation_ref})
                 except TradingError as exc:
                     results.append({"order_id": ref, "accepted": False, "code": exc.code, "message": exc.message})
