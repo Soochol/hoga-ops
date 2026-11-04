@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { EMPTY_COST_RATES, validCostRates } from '../../state/orderCostRates';
-import { sellCostScope, SELL_COST_HELP, type SellCostContext } from './orderValuationCosts';
+import { sellCostScope, resolveSellCostRates, type SellCostContext } from './orderValuationCosts';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, validOrderSettings,
   type OrderPresets, type OrderWindowSettings } from '../../state/orderWindowSettings';
 import { playOrderReceiptSound, playOrderSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
@@ -10,11 +10,11 @@ import { AppIcon } from '../../ui/AppIcon';
 import { WindowSettingsEditor, WindowSettingsGroup } from './WindowSettingsEditor';
 import './OrderSettingsForm.css';
 
-function OrderSettingsToggleRow({ label, icon, actions, checked, onChange, disabled = false }: {
-  label: string; icon?: ReactNode; actions?: ReactNode; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean;
+function OrderSettingsToggleRow({ label, icon, actions, checked, onChange, disabled = false, hideLabel = false }: {
+  label: string; hideLabel?: boolean; icon?: ReactNode; actions?: ReactNode; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean;
 }) {
   const controlId = useId();
-  return <SettingsRow controlId={controlId} label={<span className="inline-flex items-center gap-1">{icon}{label}</span>} disabled={disabled} className={actions ? 'order-settings-action-row' : ''}>
+  return <SettingsRow controlId={controlId} label={<span className={hideLabel ? 'sr-only' : 'inline-flex items-center gap-1'}>{icon}{label}</span>} disabled={disabled} className={actions ? 'order-settings-action-row' : ''}>
     <div className="order-settings-toggle-controls">{actions}
       <ToggleSwitch id={controlId} label={label} checked={checked} disabled={disabled} onClick={() => onChange(!checked)} />
     </div>
@@ -34,8 +34,8 @@ function PresetInputs({ label, suffix, max, values, onChange, disabled }: {
 }
 
 /** Incomplete presets stay local; cost edits persist as unknown until both rates are valid. */
-export function OrderSettingsForm({ draft, onChange, busy, costContext, accountLabel }: {
-  costContext: SellCostContext; accountLabel: string;
+export function OrderSettingsForm({ draft, onChange, busy, costContext }: {
+  costContext: SellCostContext;
   draft: OrderWindowSettings; onChange: (settings: OrderWindowSettings) => void;
   busy: boolean;
 }) {
@@ -48,7 +48,7 @@ export function OrderSettingsForm({ draft, onChange, busy, costContext, accountL
   }, []);
   const valid = validOrderSettings(draft);
   const scope = sellCostScope(costContext);
-  const rates = scope ? draft.sellCostProfiles[scope] ?? EMPTY_COST_RATES : EMPTY_COST_RATES;
+  const rates = resolveSellCostRates(draft.sellCostProfiles, costContext) ?? EMPTY_COST_RATES;
   const costRateId = useId();
   function changeRate(key: 'commissionPercent' | 'taxPercent', value: string) {
     if (!scope) return;
@@ -79,25 +79,17 @@ export function OrderSettingsForm({ draft, onChange, busy, costContext, accountL
         <OrderSettingsToggleRow label="호가 등락률 표시"
           checked={draft.showPriceChangePercent} disabled={busy} onChange={showPriceChangePercent => onChange({ ...draft, showPriceChangePercent })} />
       </WindowSettingsGroup>
-      <WindowSettingsGroup title="평가 비용">
-        <OrderSettingsToggleRow label="수수료·세금 반영" checked={draft.reflectSellCosts} disabled={busy}
+      <WindowSettingsGroup title={<span className="sr-only">평가 비용</span>}>
+        <OrderSettingsToggleRow label="수수료·세금 반영" hideLabel checked={draft.reflectSellCosts} disabled={busy}
           onChange={reflectSellCosts => onChange({ ...draft, reflectSellCosts })} />
-        {draft.reflectSellCosts && <>
-          <p className="window-settings-hint">사용자 입력 추정치 · 이 창의 보유종목 평가와 손익에만 적용</p>
-          <p className="window-settings-hint">{accountLabel} · {costContext.symbol?.market ?? '상장시장 미확인'} · {costContext.venue} 시세 / {costContext.route} 주문 · {costContext.date} (KST)</p>
-          {scope ? <>
-            {(['commissionPercent', 'taxPercent'] as const).map(key => {
-              const label = key === 'commissionPercent' ? '매도 수수료율 (%)' : '매도 거래세 합계율 (%)';
-              return <SettingsRow key={key} label={label} controlId={`${costRateId}-${key}`} disabled={busy} className="order-settings-rate-row">
-                <input id={`${costRateId}-${key}`} className="ui-field font-data" type="text" inputMode="decimal" maxLength={16}
-                  value={rates[key]} disabled={busy} placeholder="미확인" onChange={event => changeRate(key, event.target.value)} />
-              </SettingsRow>;
-            })}
-            <p className="window-settings-hint">증권사에서 확인한 오늘의 일반주식 적용률을 입력하세요. 거래세는 농특세를 포함합니다. 빈칸은 미확인, 0은 면제 확인입니다. 각 0~100%, 소수 6자리, 합계 100% 이하.</p>
-            {!validCostRates(rates) && <p role="status" className="window-settings-validation">비용 확인 필요 · 두 적용률을 확인할 때까지 예상 평가를 표시하지 않습니다.</p>}
-          </> : <p role="status" className="window-settings-validation">ETF·ETN은 보유기간 과세를 확인할 수 없어 지원하지 않습니다. 계좌·상품·상장시장 미확인도 예상 평가를 표시하지 않습니다.</p>}
-          <p className="window-settings-hint">{SELL_COST_HELP} 다음 KST 날짜에는 다시 확인합니다.</p>
-        </>}
+        {draft.reflectSellCosts && (['commissionPercent', 'taxPercent'] as const).map(key => {
+          const label = key === 'commissionPercent' ? '수수료 (%)' : '세금 (%)';
+          return <SettingsRow key={key} label={label} controlId={`${costRateId}-${key}`} disabled={busy || !scope} className="order-settings-rate-row">
+            <input id={`${costRateId}-${key}`} className="ui-field font-data" type="text" inputMode="decimal" maxLength={16}
+              value={rates[key]} disabled={busy || !scope} aria-invalid={!validCostRates(rates) || undefined}
+              onChange={event => changeRate(key, event.target.value)} />
+          </SettingsRow>;
+        })}
       </WindowSettingsGroup>
       <WindowSettingsGroup title="주문 알림">
         <OrderSettingsToggleRow label="주문·정정 접수 소리" checked={draft.orderReceiptSound} disabled={busy}

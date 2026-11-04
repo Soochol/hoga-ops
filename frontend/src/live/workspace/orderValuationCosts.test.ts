@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeCostProfiles, parseCostPercent, validCostRates } from '../../state/orderCostRates';
 import { normalizeOrderSettings } from '../../state/orderWindowSettings';
-import { estimateHoldingSale, sellCostScope, type SellCostContext } from './orderValuationCosts';
+import { defaultSellCostRates, resolveSellCostRates, SELL_COST_DEFAULT_BASIS, estimateHoldingSale, sellCostScope, type SellCostContext } from './orderValuationCosts';
 import { holdingProfitPercent, holdingProfitWon } from './orderRules';
 
 const context: SellCostContext = { account: 'acc_test', broker: 'kiwoom', environment: 'real',
@@ -26,7 +26,7 @@ describe('사용자 입력 추정 매도 평가', () => {
   it('면제 확인 0과 미설정·잘못된 비율을 구분하며 보유중 손익0도 제공한다', () => {
     expect(estimateHoldingSale({ ...input, quantity: 1, price: 100, averagePrice: '99',
       profiles: { [scope]: { commissionPercent: '1', taxPercent: '0' } } })).toMatchObject({ kind: 'available', net: 99, profitWon: 0, profitPercent: 0 });
-    for (const profiles of [{}, { [scope]: { ...rates, taxPercent: '' } }, { [scope]: { ...rates, taxPercent: '-1' } },
+    for (const profiles of [{ [scope]: { ...rates, taxPercent: '' } }, { [scope]: { ...rates, taxPercent: '-1' } },
       { [scope]: { commissionPercent: '60', taxPercent: '41' } }]) {
       expect(estimateHoldingSale({ ...input, profiles })).toEqual({ kind: 'unavailable' });
     }
@@ -49,7 +49,11 @@ describe('사용자 입력 추정 매도 평가', () => {
     const changes: Partial<SellCostContext>[] = [{ account: 'acc_other' }, { account: 1 }, { broker: 'toss' },
       { environment: 'mock' }, { environment: undefined }, { symbol: { market: 'KOSDAQ', security_type: 'stock' } },
       { venue: 'NXT' }, { venue: 'KRX' }, { route: 'NXT' }, { route: 'KRX' }, { date: '20261105' }];
-    for (const change of changes) expect(estimateHoldingSale({ ...input, context: { ...context, ...change } })).toEqual({ kind: 'unavailable' });
+    for (const change of changes) {
+      const changed = { ...context, ...change };
+      expect(resolveSellCostRates(input.profiles, changed)).toEqual(defaultSellCostRates(changed));
+      expect(estimateHoldingSale({ ...input, context: changed })).toMatchObject({ kind: 'available', commission: changed.route === 'NXT' ? 14 : 15 });
+    }
     expect(sellCostScope({ ...context, account: 1 })).not.toBe(sellCostScope({ ...context, account: '1' }));
   });
   it('ETF·ETN·상품미확인을 거래세 면제만으로 주식 비용과 섞지 않는다', () => {
@@ -64,6 +68,28 @@ describe('사용자 입력 추정 매도 평가', () => {
 });
 
 describe('비용 설정 경계', () => {
+  it('공식 표본 중앙값과 법정 상장시장 세율로 지원 범위의 누락값을 채우고 수동0·빈칸을 우선한다', () => {
+    expect(SELL_COST_DEFAULT_BASIS.tax.KOSPI).toEqual({ transactionPercent: '0.05', ruralPercent: '0.15', totalPercent: '0.2' });
+    expect(SELL_COST_DEFAULT_BASIS.tax.KOSDAQ).toEqual({ transactionPercent: '0.2', ruralPercent: '0', totalPercent: '0.2' });
+    expect(resolveSellCostRates({}, context)).toEqual({ commissionPercent: '0.015', taxPercent: '0.2' });
+    expect(estimateHoldingSale({ ...input, profiles: {} })).toMatchObject({ kind: 'available', commission: 15, tax: 200, net: 99785, profitWon: 9784, profitPercent: 10.87 });
+    for (const venue of ['KRX', 'NXT', 'UN']) {
+      expect(defaultSellCostRates({ ...context, venue, route: 'KRX' })?.commissionPercent).toBe('0.015');
+      expect(defaultSellCostRates({ ...context, venue, route: 'NXT' })?.commissionPercent).toBe('0.014');
+      expect(defaultSellCostRates({ ...context, venue, route: 'SOR' })?.commissionPercent).toBe('0.015');
+    }
+    const partial = normalizeCostProfiles({ [scope]: { commissionPercent: '0' } });
+    expect(resolveSellCostRates(partial, context)).toEqual({ commissionPercent: '0', taxPercent: '0.2' });
+    expect(resolveSellCostRates({ [scope]: { taxPercent: '0' } }, context)).toEqual({ commissionPercent: '0.015', taxPercent: '0' });
+    expect(resolveSellCostRates({ [scope]: { taxPercent: '' } }, context)).toEqual({ commissionPercent: '0.015', taxPercent: '' });
+    expect(resolveSellCostRates({}, { ...context, date: '20261105' })).toEqual({ commissionPercent: '0.015', taxPercent: '0.2' });
+    for (const date of ['20251231', '20270101', 'bad', '20261301']) {
+      expect(defaultSellCostRates({ ...context, date })).toBeNull();
+      expect(estimateHoldingSale({ ...input, profiles: {}, context: { ...context, date } })).toEqual({ kind: 'unavailable' });
+    }
+    expect(defaultSellCostRates({ ...context, route: 'unknown' })).toBeNull();
+  });
+
   it('비율은 0~100%, 소수 6자리의 명시적 decimal만 허용한다', () => {
     expect(parseCostPercent('0')).toBe(0n);
     expect(parseCostPercent('0.000001')).toBe(1n);

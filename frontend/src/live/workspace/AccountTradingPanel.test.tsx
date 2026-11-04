@@ -128,7 +128,7 @@ it('비용 ON은 순매도 예상금액과 같은 기준의 손익/%를 표시�
   expect(within(row).getAllByRole('cell')[4]).toHaveTextContent('+101,453원+2.56%');
   expect(within(row).getAllByRole('cell')[2]).toHaveTextContent('180,000');
   first.unmount();
-  const unknown = show('holdings', normalizeOrderSettings({ reflectSellCosts: true }));
+  const unknown = show('holdings', normalizeOrderSettings({ reflectSellCosts: true, sellCostProfiles: { [scope]: { taxPercent: '' } } }));
   row = screen.getByRole('row', { name: /SK하이닉스/ });
   expect(within(row).getAllByRole('cell')[3]).toHaveTextContent('—');
   expect(within(row).getAllByRole('cell')[4]).toHaveTextContent('——');

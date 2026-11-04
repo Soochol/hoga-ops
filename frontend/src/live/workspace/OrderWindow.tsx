@@ -57,7 +57,7 @@ import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
 import { OrderStatusBar, type OrderReceipt } from './OrderStatusBar';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import { useOrderFillSound } from './useOrderFillSound';
-import { estimateHoldingSale, SELL_COST_HELP, SELL_COST_UNAVAILABLE, type SellCostContext } from './orderValuationCosts';
+import { estimateHoldingSale, type SellCostContext } from './orderValuationCosts';
 import './OrderWindow.css';
 import { BookTradeList } from './BookTradeList';
 
@@ -398,9 +398,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const purchaseText = purchaseAmount == null ? '' : `매수금액 ${fmt(purchaseAmount)}원`;
   const quantityTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
   const averageTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
-  const profitTip = useTextTooltip(preferences.reflectSellCosts
-    ? sale?.kind === 'available' ? `예상 매도손익 ${profitAmountText}원 · ${profitPercentText} · 순매도 예상금액 ${fmt(sale.net)}원 · 수수료 ${fmt(sale.commission)}원 · 거래세 ${fmt(sale.tax)}원. ${SELL_COST_HELP}` : SELL_COST_UNAVAILABLE
-    : canToggleProfit ? profitAsPercent ? `${profitAmountText}원` : profitPercentText : '', 500, 'order-tooltip');
+  const profitTip = useTextTooltip(!preferences.reflectSellCosts && canToggleProfit ? profitAsPercent ? `${profitAmountText}원` : profitPercentText : '', 500, 'order-tooltip');
   const { hide: hideQuantityTip } = quantityTip;
   const { hide: hideAverageTip } = averageTip;
   const { hide: hideProfitTip } = profitTip;
@@ -794,10 +792,12 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         {!activeAccount && <option value={account} disabled>선택 계좌 연결 확인</option>}
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{accountDisplayLabel(a.label)}</option>)}
       </select> : <TextTooltip text={accountDisplayLabel(activeAccount?.label)}><span className="order-account-label text-fg-dim">{accountDisplayLabel(activeAccount?.label)}</span></TextTooltip>}
+      <div className="order-account-actions">
       {(['orders', 'holdings'] as const).map(tab => <button key={tab} type="button" aria-haspopup="dialog" aria-expanded={accountTab === tab}
         disabled={!account || dragInProgress || busy} onClick={() => { closeAction(); setSettingsDraft(null); setAccountTab(accountTab === tab ? null : tab); }}>
         {tab === 'orders' ? '미체결 주문' : '보유종목'}
       </button>)}
+      </div>
       </div>
       {onOpenExecutions && <button type="button" disabled={!account || !activeAccount || dragInProgress || busy}
         onClick={() => onOpenExecutions(account)}>내 체결</button>}
@@ -889,9 +889,6 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       <OrderSurfaceHeading closeLabel="종목 정보 닫기" onClose={closeInfo}>종목 정보</OrderSurfaceHeading>
       <div className="order-info-body">{renderSummary(264)}</div>
     </div>, document.body)}
-    {preferences.reflectSellCosts && <p className="order-cost-basis text-fg-dim text-xs" role="status" data-tooltip={sale?.kind === 'available' ? SELL_COST_HELP : SELL_COST_UNAVAILABLE}>
-      {hasHolding && sale?.kind !== 'available' ? '수수료·세금 반영 · 비용 확인 필요 (주문 설정)' : '수수료·세금 반영 · 사용자 입력 추정 매도손익'}
-    </p>}
     {quantityTip.tooltip}
     {averageTip.tooltip}
     {profitTip.tooltip}
@@ -908,7 +905,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           closeAction(); setAccountTab(null); setInfoOpen(false);
           setSettingsDraft(normalizeOrderSettings(preferences));
         }}
-        render={() => settingsDraft && <OrderSettingsForm costContext={costContext} accountLabel={activeAccount?.label ?? '계좌 연결 대기'} draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
+        render={() => settingsDraft && <OrderSettingsForm costContext={costContext} draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
     <div className="book-status-host">
       {(explorer.enabled || hasBookPrices(snapshot) || restBook) && <div className="book-status-overlay">

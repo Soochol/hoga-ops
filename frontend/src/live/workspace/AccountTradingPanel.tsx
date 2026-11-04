@@ -15,7 +15,7 @@ import { useAccountOrderColumns } from './useAccountOrderColumns';
 import { useHoldingColumnMemory, useHoldingColumns } from './useHoldingColumns';
 import { editableOrder, holdingProfitPercent, holdingProfitWon, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
 import type { OrderWindowSettings } from '../../state/orderWindowSettings';
-import { estimateHoldingSale, SELL_COST_HELP, type SellCostContext } from './orderValuationCosts';
+import { estimateHoldingSale, type SellCostContext } from './orderValuationCosts';
 import './AccountTradingPanel.css';
 
 export type AccountListTab = 'orders' | 'holdings';
@@ -58,7 +58,6 @@ function HoldingsTable({ holdings, onSelect, columnMemory, costSettings, costCon
     percent: rows.flatMap(({ profitPercent }) => profitPercent == null ? ['—'] : [`+${Math.abs(profitPercent).toFixed(2)}%`, `-${Math.abs(profitPercent).toFixed(2)}%`]),
   });
   return <>
-    {reflectCosts && <p className="account-trading-message" data-tooltip={SELL_COST_HELP}>사용자 입력 추정치 · 매도 수수료·거래세만 차감 · 비용 미확인 종목은 —</p>}
     <span ref={setProbe} aria-hidden="true" className="account-holdings-sizer">
       {(['quantity', 'average', 'value', 'profit', 'percent'] as const).map(column => <span key={column}>
         {column !== 'percent' && <span data-holding-measure={column} className="account-holding-heading-probe"

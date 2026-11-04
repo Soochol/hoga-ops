@@ -1,6 +1,6 @@
 /** User estimates, never a broker tariff. Empty/invalid inputs remain unknown. */
 export interface OrderCostRates { commissionPercent: string; taxPercent: string }
-export type OrderCostProfiles = Record<string, OrderCostRates>;
+export type OrderCostProfiles = Record<string, Partial<OrderCostRates>>;
 export const EMPTY_COST_RATES: OrderCostRates = { commissionPercent: '', taxPercent: '' };
 
 /** Percent in millionths: 0 is an explicit exemption, null is not a rate. */
@@ -21,11 +21,11 @@ export function normalizeCostProfiles(raw: unknown): OrderCostProfiles {
   const profiles: OrderCostProfiles = {};
   for (const [key, value] of Object.entries(raw).slice(-64)) {
     if (key.length > 512 || !key.startsWith('["sell-estimate-v1",') || !value || typeof value !== 'object'
-      || !('commissionPercent' in value) || !('taxPercent' in value)) continue;
+      || (!('commissionPercent' in value) && !('taxPercent' in value))) continue;
     // Preserve incomplete/invalid edits as unknown rather than reviving an older valid tariff.
     profiles[key] = {
-      commissionPercent: typeof value.commissionPercent === 'string' ? value.commissionPercent.slice(0, 16) : '',
-      taxPercent: typeof value.taxPercent === 'string' ? value.taxPercent.slice(0, 16) : '',
+      ...('commissionPercent' in value ? { commissionPercent: typeof value.commissionPercent === 'string' ? value.commissionPercent.slice(0, 16) : '' } : {}),
+      ...('taxPercent' in value ? { taxPercent: typeof value.taxPercent === 'string' ? value.taxPercent.slice(0, 16) : '' } : {}),
     };
   }
   return profiles;

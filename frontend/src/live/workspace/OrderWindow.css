@@ -14,7 +14,7 @@
 .order-window > .order-account-controls,.order-window > .order-overview-controls,.order-window > .order-quantity-controls { min-width:0; }
 .order-account-controls { padding:1px 0.625rem; border-bottom:0; gap:2px 0.5rem; flex-wrap:nowrap; }
 .order-account-group { display:flex; align-items:center; gap:0.25rem; flex:1; flex-wrap:nowrap; min-width:0; overflow-x:auto; scrollbar-width:none; }
-.order-account-group > button { flex-shrink:0; }
+.order-account-actions { display:flex; align-items:center; gap:0.25rem; margin-left:auto; flex-shrink:0; }
 .order-settings-group { display:flex; align-items:center; gap:0.25rem; margin-left:auto; flex-shrink:0; }
 .order-route-summary { display:inline-flex; align-items:center; gap:0.25rem; white-space:nowrap; font-size:var(--live-text-meta,var(--text-xs)); }
 .order-window .order-account-controls .order-route-summary select { font:inherit; padding:0; background:transparent; border:0; }
@@ -195,5 +195,3 @@
 
 .order-trades-slot { position:relative; align-self:stretch; min-width:0; }
 .order-trades-scroll { position:absolute; top:0; left:0; width:100%; z-index:1; }
-
-.order-cost-basis { margin:0; padding:var(--space-xs) var(--space-sm); }
