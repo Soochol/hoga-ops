@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import {
-  DndContext, PointerSensor, useSensor, useSensors, closestCenter,
+  DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors, closestCenter, pointerWithin,
   type CollisionDetection, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
-import { arrayMove } from '@dnd-kit/sortable';
+import { arrayMove, SortableContext } from '@dnd-kit/sortable';
+import { HeatmapSortableGroup, groupKeyboardCoordinates } from './HeatmapSortableGroup';
 import type { LiveQuote } from '../api/liveQuotes';
 import { HeatmapFolder, type RowMenuOpener } from './HeatmapFolder';
 import { makePctOf, sortEntries, type HeatmapGroup, type SortMode } from './heat';
@@ -12,6 +13,8 @@ import { computeCaptureLag } from './captureLag';
 import { StockDescriptionTooltipProvider } from './StockDescriptionTooltip';
 
 export interface HeatmapBoardProps {
+  onReorderFolder?: (activeId: string, overId: string) => void;
+  groupDragDisabledReason?: string;
   groups: HeatmapGroup[];
   quoteByCode: Map<string, LiveQuote>;
   /** **정렬 키 전용** 시세(SORT_THROTTLE_MS 스로틀). 행 정렬과 드래그 커밋 순서 계산이
@@ -50,13 +53,14 @@ export interface HeatmapBoardProps {
   onAutoAddOpened?: () => void;
 }
 
-/** 행(entry) 드래그는 형제 행과 그룹 드롭존만 본다. 드로어의 typeAwareCollision 과 같은
- *  계약이되, 보드엔 폴더(그룹 순서) 드래그가 없어 entry 계열만 남는다. */
-const entryCollision: CollisionDetection = (args) => {
+/** Folder and entry collisions never cross, including nested row sortables. */
+const boardCollision: CollisionDetection = (args) => {
+  const folder = args.active.data.current?.type === 'folder';
   const same = args.droppableContainers.filter((c) => {
     const t = c.data.current?.type;
-    return t === 'entry' || t === 'entry-target';
+    return folder ? t === 'folder' : t === 'entry' || t === 'entry-target';
   });
+  if (folder && args.pointerCoordinates) return pointerWithin({ ...args, droppableContainers: same });
   return closestCenter({ ...args, droppableContainers: same });
 };
 
@@ -81,32 +85,43 @@ const entryCollision: CollisionDetection = (args) => {
  *  그래서 드래그가 구조적으로 "그룹 내"에 갇혀 있었다. 그룹 간 이동/복제를 드래그로 하려면
  *  컨텍스트가 하나여야 한다. multicol 이 블록을 칼럼에 흩뿌려도 폴더 블록은 break-inside-avoid
  *  라 한 칼럼 안에 온전히 있고, dnd-kit 은 좌표로 충돌을 재므로 칼럼을 넘는 드래그도 동작한다. */
-export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query, matchesOnly, onCollectLagging, captureMarkers, autoAddFolderId, onAutoAddOpened }: HeatmapBoardProps) {
+export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, onPick, onReorder, onMove, onCopy, onRowMenu, onRenameFolder, onDeleteFolder, onRowDragState, flowByFolder, query, matchesOnly, onCollectLagging, captureMarkers, autoAddFolderId, onAutoAddOpened, onReorderFolder, groupDragDisabledReason }: HeatmapBoardProps) {
   const sortQuotes = sortQuoteByCode ?? quoteByCode;
   // distance:5 — 클릭(차트 이동)과 드래그(재정렬/이동)를 가르는 임계. drawer 와 동일 계약.
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: groupKeyboardCoordinates }),
+  );
   // 보드 전체 코드로 한 번 계산 — 기준일(마커 최댓값)이 그룹별로 갈리면 안 된다.
   const { lagging } = useMemo(
     () => computeCaptureLag(captureMarkers, groups.flatMap((g) => g.entries.map((e) => e.code))),
     [captureMarkers, groups],
   );
   const [dragging, setDragging] = useState(false);
+  const [draggedFolder, setDraggedFolder] = useState<string | null>(null);
   const { copyIntent, isCopy, seed } = useCopyDragIntent(dragging);
   // 그룹 간 드래그는 onMove 가 있을 때만. 그룹 내 재정렬은 manual 정렬일 때만(검색 중엔
   // 페이지가 onReorder 를 안 넘긴다 — 부분집합 순서가 서버 순서를 손상시키므로).
   const sortEnabled = sortMode === 'manual' && !!onReorder;
   const dragEnabled = !!onMove || sortEnabled;
 
-  const finish = () => { setDragging(false); onRowDragState?.(false); };
+  const finish = () => { setDragging(false); setDraggedFolder(null); onRowDragState?.(false); };
   const onDragStart = (ev: DragStartEvent) => {
     seed(ev.activatorEvent);
     setDragging(true);
+    if (ev.active.data.current?.type === 'folder') setDraggedFolder(String(ev.active.data.current.name));
     onRowDragState?.(true);
   };
   const onDragEnd = (ev: DragEndEvent) => {
     finish();
     const over = ev.over?.data.current;
     if (!over) return;
+    if (ev.active.data.current?.type === 'folder') {
+      if (!groupDragDisabledReason && over.type === 'folder' && ev.active.id !== ev.over?.id) {
+        onReorderFolder?.(String(ev.active.id), String(ev.over?.id));
+      }
+      return;
+    }
     const from = String(ev.active.data.current?.folderId ?? '');
     const code = String(ev.active.data.current?.code ?? '');
     if (from === '' || code === '') return;
@@ -134,10 +149,12 @@ export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, o
 
   const board = (
     <div style={{ columnWidth: '16.5rem', columnGap: '0.5rem' }}>
-      {groups.map((g) => (
+      {groups.map((g) => {
+        const renderFolder = (groupDragHandle?: React.ReactNode) => (
         <HeatmapFolder
           key={g.folder.id}
           folder={g.folder}
+          groupDragHandle={groupDragHandle}
           entries={g.entries}
           quoteByCode={quoteByCode}
           sortQuoteByCode={sortQuotes}
@@ -157,8 +174,13 @@ export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, o
           laggingCodes={lagging}
           autoOpenAdd={autoAddFolderId === g.folder.id}
           onAutoOpenAdd={onAutoAddOpened}
-        />
-      ))}
+        />);
+        return onReorderFolder
+          ? <HeatmapSortableGroup key={g.folder.id} folder={g.folder} disabledReason={groupDragDisabledReason}>
+              {renderFolder}
+            </HeatmapSortableGroup>
+          : renderFolder();
+      })}
     </div>
   );
 
@@ -169,10 +191,18 @@ export function HeatmapBoard({ groups, quoteByCode, sortQuoteByCode, sortMode, o
     // 바깥이 세로 스크롤, 안쪽이 콘텐츠 높이 기준 신문형 균형 패킹.
     <StockDescriptionTooltipProvider disabled={dragging}>
       <div data-testid="heatmap-board" className="flex-1 overflow-y-auto p-2">
-        {dragEnabled ? (
-          <DndContext sensors={sensors} collisionDetection={entryCollision}
+        {dragEnabled || onReorderFolder ? (
+          <DndContext sensors={sensors} collisionDetection={boardCollision}
             onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={finish}>
-            {board}
+            <SortableContext items={groups.map(g => g.folder.id)} strategy={() => null}>
+              {board}
+            </SortableContext>
+            <DragOverlay dropAnimation={null}>
+              {draggedFolder && <div data-testid="heatmap-group-drag-ghost"
+                className="truncate rounded border border-border-strong bg-bg px-2 py-1 text-xs font-semibold text-fg shadow-overlay">
+                {draggedFolder}
+              </div>}
+            </DragOverlay>
           </DndContext>
         ) : board}
       </div>

@@ -22,6 +22,7 @@ export type RowMenuOpener = (
 ) => void;
 
 export interface HeatmapFolderProps {
+  groupDragHandle?: React.ReactNode;
   folder: HeatmapFolderModel;
   entries: HeatmapEntry[];
   quoteByCode: Map<string, LiveQuote>;
@@ -79,7 +80,7 @@ export interface HeatmapFolderProps {
  *
  *  간격: 그룹 간 mb-xs(4.5px, 밀도 우선). 그룹 내부는 헤더-첫행·행간 모두 0으로 붙여
  *  관심종목 패널 리스트와 같은 촘촘한 연속 리스트를 이룬다(구분은 border-b). */
-export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, matchesOnly, onCollectLagging, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd }: HeatmapFolderProps) {
+export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, sortMode, onPick, onRowMenu, flowSeries, query, matchesOnly, onCollectLagging, dragEnabled, sortEnabled, copyIntent, onRenameFolder, onDeleteFolder, captureMarkers, laggingCodes, autoOpenAdd, onAutoOpenAdd, groupDragHandle }: HeatmapFolderProps) {
   const pctOf = makePctOf(quoteByCode);
   // 정렬 키만 스로틀된 시세에서 읽는다 — 헤더 틴트(avg)와 행 표시값은 라이브 pctOf 유지.
   const sorted = sortEntries(entries, sortMode, makePctOf(sortQuoteByCode ?? quoteByCode));
@@ -192,6 +193,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
         } : undefined}>
         {/* 폴더(섹터)명 = 보드의 1차 앵커. 글자 크기 text-xs(가독성, origin/main).
             그룹 당일 흐름 미니 그래프는 이름 옆(기준선 면적형, GroupFlowSparkline). */}
+        {groupDragHandle}
         <span className="flex items-center gap-2 min-w-0 flex-1">
           {renaming && onRenameFolder ? (
             <GroupNameInput
@@ -351,7 +353,7 @@ function ActiveFolderDropZone({ folderId, copy, cls, children }: {
 function useIsDropTarget(folderId: string): boolean {
   const { active, over } = useDndContext();
   if (!active || !over) return false;
-  return over.data.current?.folderId === folderId
+  return active.data.current?.type === 'entry' && over.data.current?.folderId === folderId
     && active.data.current?.folderId !== folderId;
 }
 

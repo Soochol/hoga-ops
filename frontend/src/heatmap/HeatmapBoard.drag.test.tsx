@@ -79,6 +79,38 @@ beforeEach(() => {
 });
 
 describe('HeatmapBoard 그룹 간 드래그', () => {
+  it('folder drops reorder groups without moving or reordering any stock', () => {
+    const onReorderFolder = vi.fn(), onMove = vi.fn(), onReorder = vi.fn();
+    renderBoard({ onReorderFolder, onMove, onReorder });
+    h.onDragEnd!({
+      active: { id: 'f1', data: { current: { type: 'folder', folderId: 'f1' } } },
+      over: { id: 'f2', data: { current: { type: 'folder', folderId: 'f2' } } },
+    });
+    expect(onReorderFolder).toHaveBeenCalledWith('f1', 'f2');
+    expect(onMove).not.toHaveBeenCalled();
+    expect(onReorder).not.toHaveBeenCalled();
+  });
+
+  it('folder drops on stock targets and same position are no-ops', () => {
+    const onReorderFolder = vi.fn();
+    renderBoard({ onReorderFolder });
+    for (const over of [null,
+      { id: 'f1', data: { current: { type: 'folder' } } },
+      { id: 'f2:373220', data: { current: { type: 'entry', folderId: 'f2' } } },
+    ]) h.onDragEnd!({ active: { id: 'f1', data: { current: { type: 'folder' } } }, over });
+    expect(onReorderFolder).not.toHaveBeenCalled();
+  });
+
+  it('automatic group sorting disables only folder reorder, independent of stock sort', () => {
+    const onReorderFolder = vi.fn();
+    renderBoard({ onReorderFolder, sortMode: 'desc', groupDragDisabledReason: '그룹 자동 정렬 중' });
+    h.onDragEnd!({
+      active: { id: 'f1', data: { current: { type: 'folder' } } },
+      over: { id: 'f2', data: { current: { type: 'folder' } } },
+    });
+    expect(onReorderFolder).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '반도체 그룹 순서 이동' })).toHaveAttribute('aria-disabled', 'true');
+  });
   it('다른 그룹에 드롭 → onMove(code, from, to)', () => {
     const onMove = vi.fn();
     renderBoard({ onMove });
@@ -115,7 +147,7 @@ describe('HeatmapBoard 그룹 간 드래그', () => {
     const onReorder = vi.fn();
     const onMove = vi.fn();
     renderBoard({ onReorder, onMove });
-    h.onDragStart!({ active: { id: 'f1:005930' }, activatorEvent: { ctrlKey: false } });
+    h.onDragStart!({ active: { id: 'f1:005930', data: { current: { type: 'entry' } } }, activatorEvent: { ctrlKey: false } });
     h.onDragEnd!({
       active: { id: 'f1:005930', data: { current: { type: 'entry', code: '005930', name: '삼성전자', folderId: 'f1' } } },
       over: { id: 'f1:000660', data: { current: { type: 'entry', code: '000660', folderId: 'f1' } } },

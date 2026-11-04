@@ -1,4 +1,8 @@
 import { AppIcon } from '../ui/AppIcon';
+import { useQueryClient } from '@tanstack/react-query';
+import type { HeatmapResponse } from '../api/heatmap';
+import { HEATMAP_KEY } from '../heatmap/heatmapKeys';
+import { resolveFolderDrag } from '../watchlist/dragHandlers';
 import { HeatmapPanelDropTarget } from '../heatmap/HeatmapPanelDropTarget';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -9,7 +13,7 @@ import { HeatmapFlowComparison } from '../heatmap/HeatmapFlowComparison';
 import {
   useHeatmap, useCreateHeatmapFolder, useReorderHeatmapEntries,
   useRemoveFromHeatmap, useMoveHeatmapEntries, useCopyHeatmapEntry,
-  useRenameHeatmapFolder, useDeleteHeatmapFolder,
+  useRenameHeatmapFolder, useDeleteHeatmapFolder, useReorderHeatmapFolders,
 } from '../heatmap/useHeatmap';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useJumpToLive } from '../live/useJumpToLive';
@@ -143,6 +147,22 @@ export function Heatmap() {
     [groups],
   );
   const createFolderM = useCreateHeatmapFolder();
+  const queryClient = useQueryClient();
+  const reorderFoldersM = useReorderHeatmapFolders();
+  const [groupOrderError, setGroupOrderError] = useState<string | null>(null);
+  const onReorderFolder = (activeId: string, overId: string) => {
+    if (groupSort !== 'manual' || reorderFoldersM.isPending) return;
+    // Use the latest full document, never the filtered / drag-frozen board.
+    const latest = queryClient.getQueryData<HeatmapResponse>(HEATMAP_KEY);
+    if (!latest) return;
+    const ids = latest.folders.slice().sort((a, b) => a.order - b.order).map(folder => folder.id);
+    const result = resolveFolderDrag(ids, activeId, overId);
+    if (result.kind === 'none') return;
+    setGroupOrderError(null);
+    reorderFoldersM.mutate(result.orderedIds, {
+      onError: () => setGroupOrderError('그룹 순서를 저장하지 못했습니다. 최신 목록에서 다시 시도하세요.'),
+    });
+  };
   const reorderEntriesM = useReorderHeatmapEntries();
   const removeM = useRemoveFromHeatmap();
   const moveM = useMoveHeatmapEntries();
@@ -252,6 +272,7 @@ export function Heatmap() {
           </>}
         </div>
         {isSearching && visibleGroups.length === 0 && <p role="status" className="px-3 py-2 text-sm text-fg-dim">검색 결과가 없습니다. 검색어를 바꾸거나 지워 주세요.</p>}
+        {groupOrderError && <p role="status" className="px-3 py-1 text-xs text-error">{groupOrderError}</p>}
         {showClosedSparseNotice && (
           <div data-testid="heatmap-closed-notice" className="flex-none bg-bg px-3 pb-1 text-xs text-fg-dim">
             장마감 — 시세 없는 종목의 값(—)은 다음 장 시작 후 채워집니다
@@ -290,6 +311,10 @@ export function Heatmap() {
         <div ref={boardRef} className="flex flex-1 min-h-0 flex-col">
         <HeatmapPanelDropTarget data={data}>
           <HeatmapBoard groups={visibleGroups} quoteByCode={quoteByCode}
+            onReorderFolder={onReorderFolder}
+            groupDragDisabledReason={groupSort !== 'manual'
+              ? '그룹 자동 정렬 중 · 그룹 정렬을 수동 정렬로 바꾸면 이동할 수 있습니다'
+              : reorderFoldersM.isPending ? '그룹 순서 저장 중' : undefined}
             sortQuoteByCode={boardSortQuotes}
             sortMode={sortMode} onPick={onPick}
             onReorder={isSearching ? undefined : onReorder} onRowMenu={onRowMenu}

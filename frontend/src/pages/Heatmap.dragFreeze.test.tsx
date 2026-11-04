@@ -97,7 +97,7 @@ it('G1: 행 드래그 active 동안 groupSort 변경에도 그룹 순서 동결,
 
   expect(h.onDragStart).toBeTruthy();
   // 실제 DragStartEvent 는 activatorEvent(Ctrl 여부 판정용)를 항상 싣는다 — 그 모양대로 준다.
-  act(() => { h.onDragStart!({ active: { id: 'f1:005930' }, activatorEvent: { ctrlKey: false } }); });
+  act(() => { h.onDragStart!({ active: { id: 'f1:005930', data: { current: { type: 'entry' } } }, activatorEvent: { ctrlKey: false } }); });
 
   // 드래그 중 desc로 변경 — 평소면 [f2(+5), f1(+1)]가 되어야 하나 동결돼야 함
   act(() => { useHeatmapPrefsStore.getState().setGroupSort('desc'); });
