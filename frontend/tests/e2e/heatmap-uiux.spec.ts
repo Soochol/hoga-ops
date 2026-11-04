@@ -31,11 +31,13 @@ for (const fontSize of [16, 20]) for (const width of [1440, 800, 600]) {
     const header = main.getByRole('group', { name: '반도체-메모리와 긴 그룹 이름 그룹', exact: true });
     await expect(header).toContainText('+4.5%');
     await expect(header.locator('svg polyline')).toBeVisible();
-    // The name, fixed-size sparkline and actions must share a row and fit
+    // The grip, name, fixed-size sparkline and actions must share a row and fit
     // inside the header even when the long name needs ellipsis.
     const layout = await header.evaluate(node => {
       const bounds = node.getBoundingClientRect();
-      const parts = [node.querySelector('[data-testid^="heatmap-folder-name-"]')!, node.querySelector('svg')!, node.lastElementChild!]
+      const parts = [node.querySelector('button[aria-label$="그룹 순서 이동"]')!,
+        node.querySelector('[data-testid^="heatmap-folder-name-"]')!,
+        node.querySelector('svg polyline')!.closest('svg')!, node.lastElementChild!]
         .map(part => {
           const rect = part.getBoundingClientRect();
           return { left: rect.left, right: rect.right, centerY: (rect.top + rect.bottom) / 2 };
@@ -47,8 +49,9 @@ for (const fontSize of [16, 20]) for (const width of [1440, 800, 600]) {
       expect(part.left).toBeGreaterThanOrEqual(layout.left);
       expect(part.right).toBeLessThanOrEqual(layout.right);
     }
-    expect(layout.parts[0].right).toBeLessThanOrEqual(layout.parts[1].left);
-    expect(layout.parts[1].right).toBeLessThanOrEqual(layout.parts[2].left);
+    for (let index = 1; index < layout.parts.length; index++) {
+      expect(layout.parts[index - 1].right).toBeLessThanOrEqual(layout.parts[index].left);
+    }
     await page.getByTestId('heatmap-search').fill('삼성');
     await main.getByRole('button', { name: '일치 종목만' }).click();
     await expect(main.getByTestId('heatmap-row-000660')).toHaveCount(0);

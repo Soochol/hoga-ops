@@ -203,6 +203,49 @@ def _app(tmp_path: Path) -> FastAPI:
     return app
 
 
+def test_folder_order_wire_persists_all_groups_without_changing_members(tmp_path: Path):
+    from hoga.api.heatmap import load_document, save_document
+    from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+
+    ids = ["f_0000000a", "f_0000000b", "f_0000000c"]
+    doc = HeatmapDocument(
+        folders=[WatchlistFolder(id=fid, name=fid, order=i) for i, fid in enumerate(ids)],
+        entries=[HeatmapEntry(code="005930", name="삼성전자", folder_id=ids[0], order=0)],
+    )
+    save_document(tmp_path, doc)
+    client = TestClient(_app(tmp_path))
+    ordered = [ids[2], ids[0], ids[1]]
+    response = client.put("/api/heatmap/folders/order", json={"ordered_ids": ordered})
+    assert response.status_code == 204
+    assert response.content == b""
+    wire = client.get("/api/heatmap").json()
+    assert [folder["id"] for folder in sorted(wire["folders"], key=lambda f: f["order"])] == ordered
+    saved = load_document(tmp_path)
+    assert [folder.id for folder in saved.folders] == ordered
+    assert saved.entries == doc.entries
+
+
+@pytest.mark.parametrize("bad_ids", [
+    ["f_0000000a"],
+    ["f_0000000a", "f_0000000a"],
+    ["f_0000000a", "f_0000000c"],
+])
+def test_stale_missing_duplicate_folder_order_rejects_without_disk_changes(tmp_path: Path, bad_ids):
+    from hoga.api.heatmap import load_document, save_document
+    from hoga.api.models import HeatmapDocument, HeatmapEntry, WatchlistFolder
+
+    doc = HeatmapDocument(
+        folders=[WatchlistFolder(id=f"f_0000000{letter}", name=letter, order=i)
+                 for i, letter in enumerate(["a", "b"])],
+        entries=[HeatmapEntry(code="005930", name="삼성전자", folder_id="f_0000000a", order=0)],
+    )
+    save_document(tmp_path, doc)
+    response = TestClient(_app(tmp_path)).put("/api/heatmap/folders/order", json={"ordered_ids": bad_ids})
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "folder_set_mismatch"
+    assert load_document(tmp_path) == doc
+
+
 def _fake_hit(code: str = "003490", name: str = "대한항공"):
     from hoga.api.models import SymbolHit
     return SymbolHit(

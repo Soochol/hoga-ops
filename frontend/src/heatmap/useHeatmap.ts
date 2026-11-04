@@ -158,6 +158,7 @@ function applyFolderReorder(data: HeatmapResponse, orderedIds: string[]): Heatma
 function useOptimisticHeatmapMutation<V>(
   mutationFn: (v: V) => Promise<void>,
   apply: (d: HeatmapResponse, v: V) => HeatmapResponse,
+  rollback?: (current: HeatmapResponse, previous: HeatmapResponse) => HeatmapResponse,
 ) {
   const qc = useQueryClient();
   return useMutation<void, Error, V, { prev?: HeatmapResponse }>({
@@ -168,7 +169,11 @@ function useOptimisticHeatmapMutation<V>(
       if (prev) qc.setQueryData(HEATMAP_KEY, apply(prev, v));
       return { prev };
     },
-    onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(HEATMAP_KEY, ctx.prev); },
+    onError: (_e, _v, ctx) => {
+      const previous = ctx?.prev;
+      if (previous) qc.setQueryData<HeatmapResponse>(HEATMAP_KEY, current =>
+        current && rollback ? rollback(current, previous) : previous);
+    },
     onSettled: () => invalidateHeatmapDependents(qc),
   });
 }
@@ -190,7 +195,17 @@ export function useCopyHeatmapEntry() {
 }
 export function useReorderHeatmapFolders() {
   return useOptimisticHeatmapMutation<string[]>(
-    (orderedIds) => reorderHeatmapFolders(orderedIds), applyFolderReorder);
+    (orderedIds) => reorderHeatmapFolders(orderedIds), applyFolderReorder,
+    // A concurrent member edit / group rename, add or delete is not ours to undo.
+    (current, previous) => {
+      const existing = new Set(current.folders.map(folder => folder.id));
+      const previousIds = previous.folders.slice().sort((a, b) => a.order - b.order)
+        .map(folder => folder.id).filter(id => existing.has(id));
+      const restored = new Set(previousIds);
+      const addedIds = current.folders.slice().sort((a, b) => a.order - b.order)
+        .map(folder => folder.id).filter(id => !restored.has(id));
+      return applyFolderReorder(current, [...previousIds, ...addedIds]);
+    });
 }
 export function useRemoveHeatmapEntries() {
   const qc = useQueryClient();

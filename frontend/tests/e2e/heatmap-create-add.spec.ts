@@ -48,7 +48,7 @@ for (const query of ['엘리스', '0158s0']) {
     });
 
     await page.goto('/heatmap');
-    await page.getByRole('button', { name: '＋ 새 그룹', exact: true }).click();
+    await page.getByRole('button', { name: '새 그룹', exact: true }).click();
     const groupDialog = page.getByRole('dialog', { name: '새 그룹 만들기' });
     await groupDialog.getByPlaceholder('그룹 이름 입력').fill(folder.name);
     await groupDialog.getByPlaceholder('그룹 이름 입력').press('Enter');
