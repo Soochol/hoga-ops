@@ -5175,8 +5175,11 @@ for (const scenario of [{ broker: 'toss', events: true, environment: 'real' }, {
     const { window, toss, kiwoom, ws } = await multiBrokerSetup(page);
     const account = scenario.broker === 'toss' ? toss : kiwoom;
     if (scenario.broker === 'kiwoom') await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: {
-      configured: true, accounts: [{ account_ref: kiwoom, broker: 'kiwoom', environment: scenario.environment,
-        label: '격리 키움 계좌', routes: ['KRX'], order_enabled: true }],
+      configured: true, accounts: [
+        { account_ref: toss, broker: 'toss', environment: 'real', label: '격리 토스 계좌', routes: ['SOR'], order_enabled: true },
+        { account_ref: kiwoom, broker: 'kiwoom', environment: scenario.environment,
+          label: '격리 키움 계좌', routes: ['KRX'], order_enabled: true },
+      ],
     } }));
     let orders = Array.from({ length: 10 }, (_, i) => ({ order_ref: `batch-${i}`, account_ref: account, code: '005930',
       side: 'BUY', order_type: 'LIMIT', status: 'PENDING', price: '67200', quantity: '1', remaining_quantity: '1',
