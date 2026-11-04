@@ -21,8 +21,33 @@ export function sellCostScope(context: SellCostContext): string | null {
     symbol.market, symbol.security_type, venue, route, date]);
 }
 
-export const SELL_COST_HELP = '현재가 × 전체 보유수량에서 입력한 예상 매도 수수료·거래세를 각각 원 미만 절사해 차감합니다. 원본 평단가 기준이며 매입비용을 추가 차감하지 않습니다. 실제 정산·최소수수료·슬리피지·양도/배당소득세는 포함하지 않습니다.';
-export const SELL_COST_UNAVAILABLE = '비용 확인 필요 · 주문 설정에서 오늘의 계좌·상장시장·시세시장·주문경로별 추정 매도율을 입력하세요. ETF·ETN과 상품 미확인은 지원하지 않습니다.';
+/** Median standard online fees; statutory tax by listing market, reviewed 2026-11-04.
+ * See docs/plans/2026-11-04-order-valuation-costs.md for samples and applicability. */
+export const SELL_COST_DEFAULT_BASIS = {
+  reviewedAt: '20261104', validFrom: '20260101', validThrough: '20261231',
+  commission: { KRX: '0.015', NXT: '0.014', SOR: '0.015' },
+  tax: {
+    KOSPI: { transactionPercent: '0.05', ruralPercent: '0.15', totalPercent: '0.2' },
+    KOSDAQ: { transactionPercent: '0.2', ruralPercent: '0', totalPercent: '0.2' },
+  },
+} as const;
+
+export function defaultSellCostRates(context: SellCostContext): OrderCostRates | null {
+  const { date, route, symbol } = context, basis = SELL_COST_DEFAULT_BASIS;
+  if (!sellCostScope(context) || !symbol || !/^\d{8}$/.test(date)
+    || date < basis.validFrom || date > basis.validThrough) return null;
+  if (route !== 'KRX' && route !== 'NXT' && route !== 'SOR') return null;
+  return { commissionPercent: basis.commission[route], taxPercent: basis.tax[symbol.market].totalPercent };
+}
+
+/** Missing fields inherit defaults; an explicit zero, blank or invalid edit never does. */
+export function resolveSellCostRates(profiles: OrderCostProfiles, context: SellCostContext): OrderCostRates | null {
+  const scope = sellCostScope(context);
+  if (!scope) return null;
+  const defaults = defaultSellCostRates(context), manual = profiles[scope];
+  return { commissionPercent: manual?.commissionPercent ?? defaults?.commissionPercent ?? '',
+    taxPercent: manual?.taxPercent ?? defaults?.taxPercent ?? '' };
+}
 
 /** One hypothetical sale of all holdings. This does not predict execution or mutate balances. */
 export function estimateHoldingSale({ quantity, price, averagePrice, profiles, context }: {
@@ -30,8 +55,7 @@ export function estimateHoldingSale({ quantity, price, averagePrice, profiles, c
   profiles: OrderCostProfiles; context: SellCostContext;
 }): { kind: 'available'; gross: number; net: number; commission: number; tax: number; profitWon: number | null; profitPercent: number | null }
   | { kind: 'unavailable' } {
-  const scope = sellCostScope(context);
-  const rates: OrderCostRates | undefined = scope ? profiles[scope] : undefined;
+  const rates = resolveSellCostRates(profiles, context);
   if (!rates || !validCostRates(rates) || quantity == null || !Number.isSafeInteger(quantity) || quantity <= 0
     || price == null || !Number.isSafeInteger(price) || price <= 0) return { kind: 'unavailable' };
   const gross = BigInt(price) * BigInt(quantity);

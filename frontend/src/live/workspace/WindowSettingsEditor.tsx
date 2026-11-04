@@ -15,7 +15,7 @@ export function WindowSettingsEditor({ children, footer, className = '', ...prop
 }
 
 export function WindowSettingsGroup({ title, children, className = '' }: {
-  title: string; children: ReactNode; className?: string;
+  title: ReactNode; children: ReactNode; className?: string;
 }) {
   const id = useId();
   return <section className={`window-settings-group ${className}`.trim()} aria-labelledby={id}>
