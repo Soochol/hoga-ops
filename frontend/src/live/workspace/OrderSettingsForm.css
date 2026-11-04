@@ -21,3 +21,6 @@
 @media(pointer:coarse) {
   .order-settings-editor .settings-row,.order-settings-toggle-controls .ui-choice,.order-settings-toggle-controls .ui-icon-button { min-height:44px; }
 }
+
+.order-settings-editor .order-settings-rate-row > .settings-row-control { width:6rem; max-width:100%; }
+.order-settings-rate-row input { width:100%; min-width:0; text-align:right; }

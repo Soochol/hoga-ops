@@ -57,6 +57,7 @@ import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
 import { OrderStatusBar, type OrderReceipt } from './OrderStatusBar';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import { useOrderFillSound } from './useOrderFillSound';
+import { estimateHoldingSale, SELL_COST_HELP, SELL_COST_UNAVAILABLE, type SellCostContext } from './orderValuationCosts';
 import './OrderWindow.css';
 import { BookTradeList } from './BookTradeList';
 
@@ -383,8 +384,12 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     && sellableQuantity != null && Number.isSafeInteger(sellableQuantity)
     && sellableQuantity >= 0 && sellableQuantity <= holdingQuantity;
   const buyingPower = state.data?.buying_power != null && state.data.buying_power.trim() !== '' && !state.balancesError ? Number(state.data.buying_power) : null;
-  const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
-  const profitPercent = holdingProfitPercent(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
+  const costContext: SellCostContext = { account: activeAccount ? account : 0, broker: activeAccount?.broker, environment: activeAccount?.environment,
+    symbol: masterSymbol, venue, route: orderRoute, date: todayKst };
+  const sale = preferences.reflectSellCosts ? estimateHoldingSale({ quantity: holdingQuantity, price: quote?.price ?? null,
+    averagePrice: state.data?.average_purchase_price, profiles: preferences.sellCostProfiles, context: costContext }) : null;
+  const holdingProfit = preferences.reflectSellCosts ? sale?.kind === 'available' ? sale.profitWon : null : holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
+  const profitPercent = preferences.reflectSellCosts ? sale?.kind === 'available' ? sale.profitPercent : null : holdingProfitPercent(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const canToggleProfit = holdingQuantity != null && holdingQuantity > 0 && holdingProfit != null && profitPercent != null;
   const profitAmountText = !hasHolding || holdingProfit == null ? '' : fmt(holdingProfit);
   const profitPercentText = !hasHolding || holdingProfit == null || profitPercent == null ? '' : `${profitPercent.toFixed(2)}%`;
@@ -393,7 +398,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const purchaseText = purchaseAmount == null ? '' : `매수금액 ${fmt(purchaseAmount)}원`;
   const quantityTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
   const averageTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
-  const profitTip = useTextTooltip(canToggleProfit ? profitAsPercent ? `${profitAmountText}원` : profitPercentText : '', 500, 'order-tooltip');
+  const profitTip = useTextTooltip(preferences.reflectSellCosts
+    ? sale?.kind === 'available' ? `예상 매도손익 ${profitAmountText}원 · ${profitPercentText} · 순매도 예상금액 ${fmt(sale.net)}원 · 수수료 ${fmt(sale.commission)}원 · 거래세 ${fmt(sale.tax)}원. ${SELL_COST_HELP}` : SELL_COST_UNAVAILABLE
+    : canToggleProfit ? profitAsPercent ? `${profitAmountText}원` : profitPercentText : '', 500, 'order-tooltip');
   const { hide: hideQuantityTip } = quantityTip;
   const { hide: hideAverageTip } = averageTip;
   const { hide: hideProfitTip } = profitTip;
@@ -812,7 +819,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       </div>
     </div>
     <AccountTradingPanel key={account} account={account} orderEnabled={!!activeAccount && activeAccount.order_enabled !== false} accountLabel={activeAccount?.label ?? '계좌 연결 대기'}
-      tab={accountTab} anchorRef={accountAnchor} onClose={closeAccountPanel} onSelectSymbol={onSelectSymbol} />
+      costSettings={preferences} costContext={costContext} tab={accountTab} anchorRef={accountAnchor} onClose={closeAccountPanel} onSelectSymbol={onSelectSymbol} />
     <div className="order-controls order-overview-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
         <button type="button" className="order-field order-holding-quantity" aria-label="매입수량" aria-describedby={quantityTip.id}
@@ -833,8 +840,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
           <span className="order-field-value">{averagePriceDisplay}</span>
         </span>
-        <span className="order-field" aria-label="보유 종목 평가 수익">
-          <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}
+        <span className="order-field" aria-label={preferences.reflectSellCosts ? '보유 종목 예상 매도 손익' : '보유 종목 평가 수익'}>
+          <button type="button" className="order-profit-toggle" aria-label={preferences.reflectSellCosts ? '예상 매도손익 표시 전환' : '평가손익 표시 전환'} aria-pressed={profitAsPercent}
             aria-describedby={profitTip.id} disabled={!canToggleProfit}
             onMouseEnter={e => profitTip.show(e.currentTarget)} onMouseLeave={profitTip.hide}
             onFocus={e => profitTip.showOnFocus(e.currentTarget)} onBlur={profitTip.hide}
@@ -882,6 +889,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       <OrderSurfaceHeading closeLabel="종목 정보 닫기" onClose={closeInfo}>종목 정보</OrderSurfaceHeading>
       <div className="order-info-body">{renderSummary(264)}</div>
     </div>, document.body)}
+    {preferences.reflectSellCosts && <p className="order-cost-basis text-fg-dim text-xs" role="status" data-tooltip={sale?.kind === 'available' ? SELL_COST_HELP : SELL_COST_UNAVAILABLE}>
+      {hasHolding && sale?.kind !== 'available' ? '수수료·세금 반영 · 비용 확인 필요 (주문 설정)' : '수수료·세금 반영 · 사용자 입력 추정 매도손익'}
+    </p>}
     {quantityTip.tooltip}
     {averageTip.tooltip}
     {profitTip.tooltip}
@@ -898,7 +908,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           closeAction(); setAccountTab(null); setInfoOpen(false);
           setSettingsDraft(normalizeOrderSettings(preferences));
         }}
-        render={() => settingsDraft && <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
+        render={() => settingsDraft && <OrderSettingsForm costContext={costContext} accountLabel={activeAccount?.label ?? '계좌 연결 대기'} draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
     <div className="book-status-host">
       {(explorer.enabled || hasBookPrices(snapshot) || restBook) && <div className="book-status-overlay">

@@ -9,7 +9,7 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { preopen?: boolean; time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed'; sameTimeVolumePct?: number } = {}) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { securityType?: 'stock' | 'etf' | 'etn'; preopen?: boolean; time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed'; sameTimeVolumePct?: number } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   const subject = market.lastBook ? { code: '456160', name: '지투지바이오' } : { code: '005930', name: '삼성전자' };
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
@@ -19,7 +19,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   await page.route('**/api/trading/v2/accounts', route => route.fulfill({ status: 404, json: { detail: 'legacy fixture' } }));
   const ws = await installLiveWs(page);
   await page.route(/^https?:\/\/[^/]+\/api\/symbols\/all$/, route => route.fulfill({ json: {
-    symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', nxt_enabled: market.preopen ? false : market.nxtEnabled }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI' }, { code: '456160', name: '지투지바이오', market: 'KOSDAQ', nxt_enabled: true }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
+    symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI', security_type: market.securityType ?? 'stock', nxt_enabled: market.preopen ? false : market.nxtEnabled }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI', security_type: 'stock' }, { code: '456160', name: '지투지바이오', market: 'KOSDAQ', security_type: 'stock', nxt_enabled: true }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/quotes\?/, route => route.fulfill({ json: {
     phase: market.lastBook ? 'closed' : 'open', quotes: [{ code: new URL(route.request().url()).searchParams.get('codes')?.split(',')[0] ?? '005930', price: 67200 + priceOffset, baseline_price: 66000 + priceOffset, change_pct: 1200 / (66000 + priceOffset) * 100, change_won: 1200,
@@ -61,8 +61,9 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
     const part = new URL(route.request().url()).searchParams.get('part') ?? 'all';
     stateRequests.push(part);
     const code = new URL(route.request().url()).searchParams.get('code') ?? '005930';
-    const orderState = { account_seq: 1, code, orders: orders.filter(order => order.symbol === code), recent_orders: [], fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [] };
-    const balances = { account_seq: 1, code: subject.code, buying_power: '20000000', sellable_quantity: market.sellableQuantity ?? '100', holding_quantity: market.holdingQuantity ?? '100', average_purchase_price: market.averagePrice ?? '66000', fetched_at_ms: Date.now() };
+    const account = Number(new URL(route.request().url()).searchParams.get('account_seq'));
+    const orderState = { account_seq: account, code, orders: orders.filter(order => order.symbol === code), recent_orders: [], fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [] };
+    const balances = { account_seq: account, code, buying_power: '20000000', sellable_quantity: market.sellableQuantity ?? '100', holding_quantity: market.holdingQuantity ?? '100', average_purchase_price: market.averagePrice ?? '66000', fetched_at_ms: Date.now() };
     return route.fulfill({ json: part === 'orders' ? orderState : part === 'balances' ? balances : { ...balances, ...orderState } });
   });
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/account-orders\?/, route => route.fulfill({ json: {
@@ -4984,3 +4985,123 @@ for (const venue of ['KRX', 'NXT', 'UN'] as const) {
     expect(writes).toHaveLength(0);
   });
 }
+
+
+test('수수료·세금 반영은 즉시 평가·손익·수익률에 반영하고 창 저장·재로드·OFF 복원을 유지한다', async ({ page }, info) => {
+  const { window, commands } = await setup(page);
+  const profit = window.getByRole('button', { name: '평가손익 표시 전환' });
+  await expect(profit).toHaveText('120,000');
+  const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+  const quantityBefore = await quantity.inputValue();
+  const amountBefore = await window.getByLabel('예상 주문 금액').textContent();
+  await orderSettingsButton(window).click();
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  const toggle = dialog.getByRole('switch', { name: '수수료·세금 반영' });
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await toggle.click();
+  const netProfit = window.getByRole('button', { name: '예상 매도손익 표시 전환' });
+  await expect(netProfit).toBeEmpty();
+  await expect(netProfit).toBeDisabled();
+  await dialog.getByRole('textbox', { name: '매도 수수료율 (%)' }).fill('0.01');
+  await dialog.getByRole('textbox', { name: '매도 거래세 합계율 (%)' }).fill('0.2');
+  await expect(netProfit).toHaveText('105,888');
+  await dialog.screenshot({ path: info.outputPath('sell-cost-settings.png') });
+  await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
+  await expect(quantity).toHaveValue(quantityBefore);
+  expect(await window.getByLabel('예상 주문 금액').textContent()).toBe(amountBefore);
+  await expect(window.getByLabel('매입평단가', { exact: true })).toHaveText('66,000');
+  await netProfit.dblclick();
+  await expect(netProfit).toHaveText('1.60%');
+  await page.route('**/api/trading/holdings?*', route => route.fulfill({ json: {
+    account_seq: 1, holdings: [{ code: '005930', name: '삼성전자', quantity: '100', average_purchase_price: '66000' }], fetched_at_ms: Date.now(),
+  } }));
+  await window.getByRole('button', { name: '보유종목', exact: true }).click();
+  const holdings = page.getByRole('dialog', { name: '계좌 목록' });
+  await expect(holdings.getByRole('columnheader', { name: '순매도 예상금액' })).toBeVisible();
+  const row = holdings.getByRole('row').filter({ hasText: '삼성전자' });
+  await expect(row.getByRole('cell').nth(3)).toHaveText('6,705,888');
+  await expect(row.getByRole('cell').nth(4)).toContainText('+105,888원');
+  await expect(row.getByRole('cell').nth(4)).toContainText('+1.60%');
+  await holdings.screenshot({ path: info.outputPath('sell-cost-holdings.png') });
+  await page.reload();
+  await expect(netProfit).toHaveText('105,888');
+  await orderSettingsButton(window).click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(dialog.getByRole('textbox', { name: '매도 거래세 합계율 (%)' })).toHaveValue('0.2');
+  await dialog.getByRole('textbox', { name: '매도 거래세 합계율 (%)' }).fill('');
+  await expect(netProfit).toBeEmpty();
+  await page.reload();
+  await expect(netProfit).toBeDisabled();
+  await expect(netProfit).toBeEmpty();
+  await orderSettingsButton(window).click();
+  await expect(dialog.getByRole('textbox', { name: '매도 거래세 합계율 (%)' })).toHaveValue('');
+  await toggle.click();
+  await expect(profit).toHaveText('120,000');
+  await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
+  await page.reload();
+  await expect(profit).toHaveText('120,000');
+  expect(commands).toHaveLength(0);
+});
+
+test('수수료·세금 반영은 계좌·종목·상품 전환과 미보유·조회실패에서 이전 평가를 섞지 않는다', async ({ page }, info) => {
+  const { window, commands, ws } = await setup(page, false, true, false, 0, 2);
+  await orderSettingsButton(window).click();
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  await dialog.getByRole('switch', { name: '수수료·세금 반영' }).click();
+  for (const name of ['매도 수수료율 (%)', '매도 거래세 합계율 (%)']) await dialog.getByRole('textbox', { name }).fill('0');
+  await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
+  const profit = window.getByRole('button', { name: '예상 매도손익 표시 전환' });
+  await expect(profit).toHaveText('120,000');
+  const account = window.getByRole('combobox', { name: '주문 계좌' });
+  let releaseBalance: (() => void) | undefined;
+  const gate = new Promise<void>(resolve => { releaseBalance = resolve; });
+  await page.route('**/api/trading/state?*', async route => {
+    const url = new URL(route.request().url());
+    const account_seq = Number(url.searchParams.get('account_seq')), code = url.searchParams.get('code');
+    if (account_seq === 2 && url.searchParams.get('part') === 'balances') await gate;
+    await route.fulfill({ json: { account_seq, code, orders: [], recent_orders: [], unresolved_commands: [], events_connected: true,
+      buying_power: '0', sellable_quantity: account_seq === 1 ? '80' : '0', holding_quantity: account_seq === 1 ? '100' : '0', average_purchase_price: account_seq === 1 ? '66000' : null, fetched_at_ms: Date.now() } });
+  });
+  try {
+    await account.selectOption('2');
+    await expect(profit).toBeEmpty();
+    await expect(profit).toBeDisabled();
+    await account.selectOption('1');
+    releaseBalance?.();
+    await expect(profit).toHaveText('120,000');
+    await account.selectOption('2');
+    await expect(window.getByLabel('매입수량', { exact: true })).toBeEmpty();
+    await expect(profit).toBeEmpty();
+  } finally { releaseBalance?.(); }
+  // A failed refresh must hide a previously known balance, even when exempt rates are known.
+  await account.selectOption('1');
+  await expect(profit).toHaveText('120,000');
+  await page.route('**/api/trading/state?*', route => route.fulfill({ status: 503, json: { detail: '격리 잔고 조회 실패' } }));
+  ws.pushEvent({ type: 'trading_changed', mode: 'live', account_seq: 1 });
+  await expect(profit).toBeEmpty();
+  await expect(profit).toBeDisabled();
+  // Product identity changes invalidate the estimate without editing the raw average price.
+  await page.route('**/api/trading/state?*', route => route.fulfill({ json: {
+    account_seq: Number(new URL(route.request().url()).searchParams.get('account_seq')), code: new URL(route.request().url()).searchParams.get('code'),
+    orders: [], recent_orders: [], unresolved_commands: [], events_connected: true, buying_power: '0',
+    sellable_quantity: '80', holding_quantity: '100', average_purchase_price: '66000', fetched_at_ms: Date.now(),
+  } }));
+  await page.route('**/api/symbols/all', route => route.fulfill({ json: { symbols: [
+    { code: '005930', name: '삼성전자', market: 'KOSPI', security_type: 'etf' },
+    { code: '456160', name: '지투지바이오', market: 'KOSDAQ', security_type: 'stock' },
+  ], status: 'fresh', fetched_at_ms: Date.now(), reason: null } }));
+  await page.reload();
+  await expect(profit).toBeEmpty();
+  await orderSettingsButton(window).click();
+  await expect(window.getByLabel('매입평단가', { exact: true })).toHaveText('66,000');
+  await expect(dialog.getByText(/ETF·ETN은 보유기간 과세/)).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: '매도 거래세 합계율 (%)' })).toHaveCount(0);
+  await dialog.screenshot({ path: info.outputPath('sell-cost-unsupported.png') });
+  await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
+  await page.getByRole('button', { name: '종목 검색 열기' }).click();
+  const search = page.getByRole('dialog', { name: '종목 검색', exact: true });
+  await search.getByRole('combobox', { name: '종목 검색' }).fill('지투지바이오');
+  await search.getByRole('option').filter({ hasText: '지투지바이오' }).first().click();
+  await expect(profit).toBeEmpty();
+  expect(commands).toHaveLength(0);
+});

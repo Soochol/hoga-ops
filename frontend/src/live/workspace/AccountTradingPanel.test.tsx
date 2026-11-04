@@ -3,9 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { AccountTradingPanel } from './AccountTradingPanel';
 import type { TossOrder } from '../../api/trading';
+import { normalizeOrderSettings, type OrderWindowSettings } from '../../state/orderWindowSettings';
+import { sellCostScope, type SellCostContext } from './orderValuationCosts';
 import { useLiveVenueStore } from '../../state/liveVenue';
 
-const mock = vi.hoisted(() => ({ command: vi.fn(), paused: false,
+const mock = vi.hoisted(() => ({ holdingsError: false, command: vi.fn(), paused: false,
   quotes: new Map<string, { price: number }>(), quoteSubscription: vi.fn() }));
 vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: (codes: string[], venue: string) => {
   mock.quoteSubscription(codes, venue);
@@ -20,19 +22,20 @@ const orders: TossOrder[] = [
 vi.mock('../../api/trading', () => ({
   tradingCommand: (...args: unknown[]) => mock.command(...args),
   useTradingAccountList: () => ({ orders: { data: { orders, recent_orders: [] }, isPending: false, isError: false, isFetching: false },
-    holdings: { data: { holdings: [{ code: '000660', name: 'SK하이닉스', quantity: '22', average_purchase_price: '180000' }] }, isPending: false, isError: false, isFetching: false }, paused: mock.paused }),
+    holdings: { data: { holdings: [{ code: '000660', name: 'SK하이닉스', quantity: '22', average_purchase_price: '180000' }] }, isPending: false, isError: mock.holdingsError, isFetching: false }, paused: mock.paused }),
 }));
-vi.mock('../../capture/useSymbols', () => ({ useSymbols: () => ({ data: { symbols: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' }] } }) }));
+vi.mock('../../capture/useSymbols', () => ({ useSymbols: () => ({ data: { symbols: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI', security_type: 'stock' }] } }) }));
 beforeEach(() => {
-  mock.paused = false; mock.command.mockReset().mockResolvedValue({ order_id: 'cancel-op', status: 'accepted' });
+  mock.paused = false; mock.holdingsError = false; mock.command.mockReset().mockResolvedValue({ order_id: 'cancel-op', status: 'accepted' });
   mock.quotes = new Map([['000660', { price: 185000 }]]); mock.quoteSubscription.mockClear();
   useLiveVenueStore.setState({ venue: 'KRX' });
 });
-function show(tab: 'orders' | 'holdings' = 'orders') {
+const costContext: SellCostContext = { account: 1, symbol: { market: 'KOSPI', security_type: 'stock' }, venue: 'KRX', route: 'SOR', date: '20261104' };
+function show(tab: 'orders' | 'holdings' = 'orders', costSettings?: OrderWindowSettings) {
   const onClose = vi.fn(), onSelectSymbol = vi.fn();
   const client = new QueryClient();
   const anchorRef = { current: document.createElement('div') };
-  const view = render(<QueryClientProvider client={client}><AccountTradingPanel account={1} accountLabel="계좌 1" tab={tab}
+  const view = render(<QueryClientProvider client={client}><AccountTradingPanel account={1} accountLabel="계좌 1" tab={tab} costSettings={costSettings} costContext={costContext}
     anchorRef={anchorRef} onClose={onClose} onSelectSymbol={onSelectSymbol} /></QueryClientProvider>);
   return { ...view, onClose, onSelectSymbol };
 }
@@ -111,4 +114,27 @@ it('shows one compact heading and keeps the list accessible without duplicate na
   expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
   expect(screen.queryByText('취소 요청은 즉시 전송됩니다.')).not.toBeInTheDocument();
   expect(mock.command).not.toHaveBeenCalled();
+});
+
+it('비용 ON은 순매도 예상금액과 같은 기준의 손익/%를 표시하고 비용 불명·조회 실패는 gross로 대체하지 않는다', () => {
+  const scope = sellCostScope(costContext)!;
+  const settings = normalizeOrderSettings({ reflectSellCosts: true, sellCostProfiles: {
+    [scope]: { commissionPercent: '0.01', taxPercent: '0.2' },
+  } });
+  const first = show('holdings', settings);
+  expect(screen.getByRole('columnheader', { name: '순매도 예상금액' })).toBeVisible();
+  let row = screen.getByRole('row', { name: /SK하이닉스/ });
+  expect(within(row).getAllByRole('cell')[3]).toHaveTextContent('4,061,453');
+  expect(within(row).getAllByRole('cell')[4]).toHaveTextContent('+101,453원+2.56%');
+  expect(within(row).getAllByRole('cell')[2]).toHaveTextContent('180,000');
+  first.unmount();
+  const unknown = show('holdings', normalizeOrderSettings({ reflectSellCosts: true }));
+  row = screen.getByRole('row', { name: /SK하이닉스/ });
+  expect(within(row).getAllByRole('cell')[3]).toHaveTextContent('—');
+  expect(within(row).getAllByRole('cell')[4]).toHaveTextContent('——');
+  unknown.unmount();
+  mock.holdingsError = true;
+  show('holdings', settings);
+  row = screen.getByRole('row', { name: /SK하이닉스/ });
+  expect(within(row).getAllByRole('cell')[3]).toHaveTextContent('—');
 });

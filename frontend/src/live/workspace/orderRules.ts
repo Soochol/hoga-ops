@@ -62,19 +62,21 @@ export function holdingPurchaseAmountWon(quantity: number | null, averagePrice: 
 }
 
 /** Whole-won ceiling of unrealized P/L, retaining the API's exact decimal cost. */
-export function holdingProfitWon(quantity: number | null, price: number | null, averagePrice: string | null | undefined): number | null {
+export function holdingProfitWon(quantity: number | null, price: number | null, averagePrice: string | null | undefined, sellCostsWon = 0): number | null {
+  if (!Number.isSafeInteger(sellCostsWon) || sellCostsWon < 0) return null;
   if (quantity === 0) return 0;
   if (price == null || !Number.isSafeInteger(price) || price <= 0) return null;
   const cost = exactHoldingCost(quantity, averagePrice);
-  return cost ? ceilWon(BigInt(price) * cost.scale * cost.quantity - cost.amount, cost.scale) : null;
+  return cost ? ceilWon((BigInt(price) * cost.quantity - BigInt(sellCostsWon)) * cost.scale - cost.amount, cost.scale) : null;
 }
 
 /** P/L as a percentage of the exact purchase cost, rounded to two decimals. */
-export function holdingProfitPercent(quantity: number | null, price: number | null, averagePrice: string | null | undefined): number | null {
+export function holdingProfitPercent(quantity: number | null, price: number | null, averagePrice: string | null | undefined, sellCostsWon = 0): number | null {
+  if (!Number.isSafeInteger(sellCostsWon) || sellCostsWon < 0) return null;
   if (price == null || !Number.isSafeInteger(price) || price <= 0) return null;
   const cost = exactHoldingCost(quantity, averagePrice);
   if (!cost || cost.amount <= 0n) return null;
-  const profit = BigInt(price) * cost.scale * cost.quantity - cost.amount;
+  const profit = (BigInt(price) * cost.quantity - BigInt(sellCostsWon)) * cost.scale - cost.amount;
   const magnitude = profit < 0n ? -profit : profit;
   const hundredths = (magnitude * 10_000n * 2n + cost.amount) / (cost.amount * 2n);
   const rounded = Number(profit < 0n ? -hundredths : hundredths);
