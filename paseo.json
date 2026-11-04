@@ -1,0 +1,24 @@
+{
+  "worktree": {
+    "setup": "set -eu\n\nif [ ! -e .env ]; then\n  touch .env\nfi\n\nuv sync --frozen --extra dev\nnpm --prefix frontend ci\nnpm --prefix desktop ci"
+  },
+  "scripts": {
+    "check-frontend": {
+      "command": "cd frontend && npm run typecheck && npx vitest run && npx vite build"
+    },
+    "check-backend": {
+      "command": "uv run --frozen --extra dev ruff check . && uv run --frozen --extra dev pytest -q -m 'not wallclock'"
+    }
+  },
+  "metadataGeneration": {
+    "branchName": {
+      "instructions": "변경 목적에 따라 feat/, fix/, refactor/, docs/, chore/ 접두사를 사용하세요. 뒤에는 작업 내용을 짧은 영어 kebab-case로 작성하세요. 예: fix/orderbook-quantity-display"
+    },
+    "commitMessage": {
+      "instructions": "Conventional Commits 형식을 사용하세요: type(scope): description. 제목은 짧은 영어 명령형으로 작성하고, 변경의 핵심을 구체적으로 설명하세요. scope는 필요한 경우에만 포함하세요."
+    },
+    "pullRequest": {
+      "instructions": "본문은 한국어로 작성하세요. 첫 문단에 해결하는 문제와 변경 후 동작을 요약하세요. 주요 변경과 검증 결과를 포함하고, 검증은 실제 실행한 명령과 결과만 기록하세요. 미검증 항목이나 남은 제약이 있으면 명시하세요. 관련 GitHub 이슈가 있으면 연결하세요."
+    }
+  }
+}
