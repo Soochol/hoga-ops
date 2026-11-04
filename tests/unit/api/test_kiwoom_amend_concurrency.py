@@ -83,6 +83,7 @@ class WriteBarrier:
         self.pending = self.peak = 0
         self.draining = False
         self.lost = set()
+        self.failures = {}
         self.calls = []
         original = broker.handle
 
@@ -102,6 +103,8 @@ class WriteBarrier:
                     await gate.wait()
                 if key in self.lost:
                     raise httpx.ReadTimeout("synthetic lost ACK", request=request)
+                if key in self.failures:
+                    raise self.failures[key]
                 return response
             finally:
                 self.pending -= 1
@@ -549,6 +552,75 @@ async def test_partial_pair_unknown_keeps_independent_member_and_blocks_next_coh
         results = await asyncio.gather(*tasks)
         assert results[1].operation_ref and results[2] == "unresolved-order-exists"
         assert [service.journal.lookup(f"partial-{i}")[1] for i in range(3)] == ["unknown", "accepted", "rejected"]
+        assert len(barrier.calls) == 2
+    finally:
+        barrier.drain()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.parametrize("failure", [
+    "lost-ack", "accepted-storage", "all-completion-storage", "unknown-storage", "owned-cancel",
+    "unexpected", "timeout",
+])
+async def test_uncertain_completion_freezes_late_admission_before_release(setup, monkeypatch, failure):
+    broker, _, adapter, service, _ = setup
+    monkeypatch.setattr(kiwoom_admission, "MAX_CONCURRENT_KIWOOM_MODIFICATIONS", 4)
+    monkeypatch.setattr(multi_broker, "MAX_CONCURRENT_KIWOOM_MODIFICATIONS", 4)
+    orders = await targets(broker, adapter, count=3)
+    barrier = WriteBarrier(broker, adapter)
+    if failure in {"lost-ack", "unknown-storage"}:
+        barrier.lost.add("0000001")
+    if failure in {"unexpected", "timeout"}:
+        barrier.failures["0000001"] = TimeoutError("synthetic post-send timeout") if failure == "timeout" else (
+            RuntimeError("synthetic post-send failure")
+        )
+    finish, lookup = service.journal.finish, service.journal.lookup
+    unavailable = {
+        "accepted-storage": {"accepted"}, "all-completion-storage": {"accepted", "unknown"},
+        "unknown-storage": {"unknown"},
+    }.get(failure, set())
+
+    def fail_completion(cid, state, result):
+        if cid == "uncertain-0" and state in unavailable:
+            raise OSError("synthetic journal completion unavailable")
+        return finish(cid, state, result)
+
+    monkeypatch.setattr(service.journal, "finish", fail_completion)
+    tasks = [
+        asyncio.create_task(outcome(service.execute(modification(adapter, f"uncertain-{i}"), "modify", o.order_ref)))
+        for i, o in enumerate(orders[:2])
+    ]
+    try:
+        await until(lambda: barrier.pending == 2)
+        if failure == "owned-cancel":
+            service._tasks["uncertain-0"].cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await tasks[0]
+        else:
+            barrier.release("0000001")
+            if failure == "unknown-storage":
+                with pytest.raises(OSError, match="completion unavailable"):
+                    await tasks[0]
+            else:
+                assert await tasks[0] == "order-outcome-unknown"
+        expected_state = "sending" if failure in {"all-completion-storage", "unknown-storage"} else "unknown"
+        assert lookup("uncertain-0")[1] == expected_state
+        tasks.append(asyncio.create_task(outcome(service.execute(
+            modification(adapter, "uncertain-late"), "modify", orders[2].order_ref
+        ))))
+        await settle()
+        assert len(barrier.calls) == 2 and not tasks[1].done() and not tasks[2].done()
+        gate = next(iter(service._kiwoom_gates.values()))
+        assert gate.admission is kiwoom_admission.EpochAdmission.FROZEN_UNCERTAIN
+        barrier.drain()
+        assert (await tasks[1]).status == "accepted"
+        assert await tasks[2] == "unresolved-order-exists"
+        assert len(barrier.calls) == 2
+        assert not gate.active and not gate.queue and gate.granted == 0
+        assert gate.admission is kiwoom_admission.EpochAdmission.OPEN
+        assert await outcome(service.execute(
+            modification(adapter, "uncertain-after-drain"), "modify", orders[2].order_ref
+        )) == "unresolved-order-exists"
         assert len(barrier.calls) == 2
     finally:
         barrier.drain()

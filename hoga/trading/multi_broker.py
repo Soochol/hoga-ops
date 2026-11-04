@@ -27,7 +27,7 @@ from hoga.trading.contracts import (
 )
 from hoga.trading.execution_range import ExecutionHistoryRange
 from hoga.trading.kiwoom import KiwoomAccountGateway, KiwoomTradingAdapter
-from hoga.trading.kiwoom_admission import MAX_CONCURRENT_KIWOOM_MODIFICATIONS, KiwoomCodeGate
+from hoga.trading.kiwoom_admission import MAX_CONCURRENT_KIWOOM_MODIFICATIONS, DispatchOutcome, KiwoomCodeGate
 from hoga.trading.models import TradingCommand
 from hoga.trading.preopen import PreopenClose
 from hoga.trading.service import TradingService
@@ -238,20 +238,21 @@ class BrokerTradingService:
 
     async def _execute(self, adapter, command, action, order_ref):  # noqa: PLR0912, PLR0915
         # Keep admission and original ownership through every durable outcome; no write retries.
-        sent = False
+        outcome = DispatchOutcome.UNSENT
+        lease = None
         deadline = time.monotonic() + 10
         target = None
         preopen_quote = None
 
         def mark_sending():
-            nonlocal sent
+            nonlocal outcome
             adapter.gateway.check_deadline(deadline)
             if target is not None:
                 adapter.validate_current(target)
             if preopen_quote is not None:
                 self.preopen.check_clock(preopen_quote)
             self.journal.finish(command.command_id, "sending", {})
-            sent = True
+            outcome = DispatchOutcome.UNCERTAIN
 
         async with contextlib.AsyncExitStack() as stack:
             try:
@@ -416,29 +417,36 @@ class BrokerTradingService:
                     operation_ref=None if action == "create" else native_ref,
                 )
                 self.journal.finish(command.command_id, "accepted", result.model_dump())
+                outcome = DispatchOutcome.ACCEPTED
                 return result
             except TimeoutError as exc:
                 error = TradingError(
-                    409, "order-queue-expired", "주문 전송 대기가 만료되었습니다. 새 주문 조건을 확인하세요."
+                    503 if outcome is DispatchOutcome.UNCERTAIN else 409,
+                    "order-outcome-unknown" if outcome is DispatchOutcome.UNCERTAIN else "order-queue-expired",
+                    "주문 처리 기록과 계좌 내역을 확인하세요." if outcome is DispatchOutcome.UNCERTAIN
+                    else "주문 전송 대기가 만료되었습니다. 새 주문 조건을 확인하세요.",
                 )
                 self.journal.finish(
-                    command.command_id, "rejected",
+                    command.command_id, "unknown" if outcome is DispatchOutcome.UNCERTAIN else "rejected",
                     {"status": error.status, "code": error.code, "message": error.message},
                 )
                 raise error from exc
             except asyncio.CancelledError:
                 error = TradingError(
-                    503, "order-outcome-unknown" if sent else "order-preflight-failed",
+                    503, "order-outcome-unknown" if outcome is DispatchOutcome.UNCERTAIN else "order-preflight-failed",
                     "주문 처리 기록과 계좌 내역을 확인하세요.",
                 )
                 with contextlib.suppress(OSError, sqlite3.Error):
                     self.journal.finish(
-                        command.command_id, "unknown" if sent else "rejected",
+                        command.command_id, "unknown" if outcome is DispatchOutcome.UNCERTAIN else "rejected",
                         {"status": error.status, "code": error.code, "message": error.message},
                     )
                 raise
             except TradingError as exc:
-                if sent and not exc.code.startswith("kiwoom-rejected-") and exc.code != "order-outcome-unknown":
+                if (
+                    outcome is DispatchOutcome.UNCERTAIN
+                    and not exc.code.startswith("kiwoom-rejected-") and exc.code != "order-outcome-unknown"
+                ):
                     exc = TradingError(
                         503, "order-outcome-unknown", "접수 후 처리 결과를 확인할 수 없습니다. 주문 내역을 확인하세요."
                     )
@@ -447,22 +455,26 @@ class BrokerTradingService:
                     "unknown" if exc.code == "order-outcome-unknown" else "rejected",
                     {"status": exc.status, "code": exc.code, "message": exc.message},
                 )
+                if exc.code != "order-outcome-unknown":
+                    outcome = DispatchOutcome.REJECTED
                 raise exc
             except Exception as exc:
                 error = TradingError(
                     503,
-                    "order-outcome-unknown" if sent else "order-preflight-failed",
+                    "order-outcome-unknown" if outcome is DispatchOutcome.UNCERTAIN else "order-preflight-failed",
                     "주문 처리 기록과 계좌 내역을 확인하세요.",
                 )
                 # SENDING remains durable if the disk itself is unavailable.
                 with contextlib.suppress(OSError, sqlite3.Error):
                     self.journal.finish(
                         command.command_id,
-                        "unknown" if sent else "rejected",
+                        "unknown" if outcome is DispatchOutcome.UNCERTAIN else "rejected",
                         {"status": error.status, "code": error.code, "message": error.message},
                     )
                 raise error from exc
             finally:
+                if lease is not None:
+                    lease.complete(outcome)
                 adapter.changed()
                 self._tasks.pop(command.command_id, None)
 

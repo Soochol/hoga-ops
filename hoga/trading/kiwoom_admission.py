@@ -7,11 +7,25 @@ import time
 from collections import Counter, deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from enum import Enum, auto
 
 from hoga.trading.contracts import BrokerOrder, BrokerOrderState
 from hoga.trading.toss import TradingError
 
 MAX_CONCURRENT_KIWOOM_MODIFICATIONS = 2
+
+
+class DispatchOutcome(Enum):
+    UNSENT = auto()
+    UNCERTAIN = auto()
+    ACCEPTED = auto()
+    REJECTED = auto()
+
+
+class EpochAdmission(Enum):
+    OPEN = auto()
+    SEALED = auto()
+    FROZEN_UNCERTAIN = auto()
 
 
 @dataclass(frozen=True)
@@ -45,6 +59,11 @@ class AmendmentLease:
     follower: bool = False
     proof: _Identity | None = None
 
+    def complete(self, outcome: DispatchOutcome) -> None:
+        if outcome is DispatchOutcome.UNCERTAIN:
+            self.gate.admission = EpochAdmission.FROZEN_UNCERTAIN
+            self.gate.notify()
+
     def observe(self, snapshot: BrokerOrderState) -> None:
         if not self.parallel:
             return
@@ -64,7 +83,7 @@ class AmendmentLease:
 
 
 class KiwoomCodeGate:
-    """FIFO exclusive writes or a sealed pair of proven, preexisting independent modifiers.
+    """FIFO exclusive writes or a finite cohort of proven independent modifiers.
 
     All mutations are synchronous between awaits on the service's single event loop.
     A ticket at the head that cannot join waits for drain; later tickets never pass it.
@@ -75,6 +94,7 @@ class KiwoomCodeGate:
         self.active: set[AmendmentLease] = set()
         self.fence: dict[str, _Identity] | None = None
         self.granted = 0
+        self.admission = EpochAdmission.OPEN
         self.changed = asyncio.Event()
 
     def notify(self) -> None:
@@ -82,7 +102,7 @@ class KiwoomCodeGate:
         self.changed = asyncio.Event()
 
     def _can_join(self, lease: AmendmentLease) -> bool:
-        if not lease.parallel or self.granted >= MAX_CONCURRENT_KIWOOM_MODIFICATIONS or self.fence is None:
+        if not lease.parallel or self.admission is not EpochAdmission.OPEN or self.fence is None:
             return False
         proof = self.fence.get(lease.order_ref)
         return proof is not None and all(
@@ -108,6 +128,8 @@ class KiwoomCodeGate:
                         self.granted = 0
                         self.fence = None
                     self.granted += 1
+                    if self.granted == MAX_CONCURRENT_KIWOOM_MODIFICATIONS:
+                        self.admission = EpochAdmission.SEALED
                     self.active.add(lease)
                     granted = True
                     self.notify()
@@ -122,6 +144,7 @@ class KiwoomCodeGate:
                 if not self.active:
                     self.fence = None
                     self.granted = 0
+                    self.admission = EpochAdmission.OPEN
             else:
                 self.queue.remove(lease)
             self.notify()
