@@ -70,8 +70,8 @@ const UNRESOLVED_NOTICE: OrderNotice = {
 };
 const mode = 'live' as const;
 const MAX_CONCURRENT_GROUP_CANCELS = 10;
-const MAX_CONCURRENT_TOSS_MODIFICATIONS = 2;
-const MAX_CONCURRENT_KIWOOM_REAL_MODIFICATIONS = 2;
+const MAX_CONCURRENT_TOSS_MODIFICATIONS = 4;
+const MAX_CONCURRENT_KIWOOM_REAL_MODIFICATIONS = 4;
 type Action = {
   type: 'create' | 'modify' | 'cancel' | 'bulk' | 'group';
   base: TradingCommand;

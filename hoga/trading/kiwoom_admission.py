@@ -12,7 +12,7 @@ from enum import Enum, auto
 from hoga.trading.contracts import BrokerOrder, BrokerOrderState
 from hoga.trading.toss import TradingError
 
-MAX_CONCURRENT_KIWOOM_MODIFICATIONS = 2
+MAX_CONCURRENT_KIWOOM_MODIFICATIONS = 4
 
 
 class DispatchOutcome(Enum):

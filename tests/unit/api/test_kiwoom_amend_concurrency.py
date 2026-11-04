@@ -149,7 +149,7 @@ async def targets(broker, adapter, count=10, different_codes=False):
 
 
 @pytest.mark.parametrize("different_codes", [False, True])
-async def test_independent_real_orders_share_owner_two_and_keep_every_fresh_read(setup, different_codes):
+async def test_independent_real_orders_share_owner_four_and_keep_every_fresh_read(setup, different_codes):
     broker, _, adapter, service, _ = setup
     orders = await targets(broker, adapter, different_codes=different_codes)
     barrier = WriteBarrier(broker, adapter)
@@ -165,12 +165,12 @@ async def test_independent_real_orders_share_owner_two_and_keep_every_fresh_read
         for i, order in enumerate(orders)
     ]
     try:
-        await until(lambda: barrier.pending == 2)
+        await until(lambda: barrier.pending == 4)
         await settle()
-        assert len(barrier.calls) == 2
+        assert len(barrier.calls) == 4
         barrier.drain()
         receipts = await asyncio.gather(*tasks)
-        assert barrier.peak == 2
+        assert barrier.peak == 4
         assert len({r.operation_ref for r in receipts}) == 10
         assert not {r.operation_ref for r in receipts} & {o.order_ref for o in orders}
         counts = Counter(r.headers["api-id"] for r in broker.requests)
@@ -182,22 +182,27 @@ async def test_independent_real_orders_share_owner_two_and_keep_every_fresh_read
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def test_pair_never_refills_while_first_ack_is_held(setup):
+async def test_four_grant_cohort_never_refills_while_first_ack_is_held(setup):
     broker, _, adapter, service, _ = setup
-    orders = await targets(broker, adapter, count=3)
+    orders = await targets(broker, adapter, count=6)
     barrier = WriteBarrier(broker, adapter)
     tasks = [
-        asyncio.create_task(service.execute(modification(adapter, f"pair-{i}"), "modify", o.order_ref))
+        asyncio.create_task(service.execute(modification(adapter, f"cohort-{i}"), "modify", o.order_ref))
         for i, o in enumerate(orders)
     ]
     try:
-        await until(lambda: barrier.pending == 2)
-        barrier.release("0000002")
-        await tasks[1]
+        await until(lambda: barrier.pending == 4)
+        for i in range(1, 4):
+            barrier.release(f"{i + 1:07}")
+            await tasks[i]
         await settle()
-        assert len(barrier.calls) == 2 and not tasks[0].done() and not tasks[2].done()
+        gate = next(iter(service._kiwoom_gates.values()))
+        assert len(barrier.calls) == gate.granted == 4
+        assert not tasks[0].done() and all(not task.done() for task in tasks[4:])
         barrier.drain()
-        await asyncio.gather(*tasks)
+        assert len(await asyncio.gather(*tasks)) == 6
+        assert len(barrier.calls) == 6 and barrier.peak == 4
+        assert not gate.active and not gate.queue and gate.granted == 0
     finally:
         barrier.drain()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -260,15 +265,15 @@ async def test_code_writer_exclusion_both_directions_and_fifo(setup, writer, wri
 @pytest.mark.parametrize("writer", ["create", "cancel"])
 async def test_other_code_create_cancel_do_not_acquire_modify_slots(setup, writer):
     broker, _, adapter, service, _ = setup
-    orders = await targets(broker, adapter, count=3)
-    broker.opens[2]["stk_cd"] = "005931"
+    orders = await targets(broker, adapter, count=5)
+    broker.opens[4]["stk_cd"] = "005931"
     barrier = WriteBarrier(broker, adapter)
     tasks = [
         asyncio.create_task(service.execute(modification(adapter, f"occupied-{i}"), "modify", o.order_ref))
-        for i, o in enumerate(orders[:2])
+        for i, o in enumerate(orders[:4])
     ]
     try:
-        await until(lambda: barrier.pending == 2)
+        await until(lambda: barrier.pending == 4)
         command = (
             CreateBrokerOrder(
                 account_ref=adapter.account_ref,
@@ -283,9 +288,9 @@ async def test_other_code_create_cancel_do_not_acquire_modify_slots(setup, write
             else BrokerCommand(account_ref=adapter.account_ref, code="005931", command_id="other")
         )
         tasks.append(
-            asyncio.create_task(service.execute(command, writer, "" if writer == "create" else orders[2].order_ref))
+            asyncio.create_task(service.execute(command, writer, "" if writer == "create" else orders[4].order_ref))
         )
-        await until(lambda: barrier.pending == 3)
+        await until(lambda: barrier.pending == 5)
         barrier.drain()
         await asyncio.gather(*tasks)
     finally:
@@ -380,7 +385,7 @@ async def test_owned_cancellation_records_outcome_and_releases_resources(setup, 
         assert not service._tasks
         assert all(not g.active and not g.queue for g in service._kiwoom_gates.values())
         assert not any(lock.locked() for lock in service._order_locks.values())
-        assert service._modify_slots[adapter.account_ref]._value == 2
+        assert service._modify_slots[adapter.account_ref]._value == 4
     finally:
         if not after_send:
             adapter._snapshot_lock.release()
@@ -414,7 +419,9 @@ async def test_owner_identity_and_mock_cross_code_policy(tmp_path, case):
         accounts = await service.accounts()
         assert len(accounts.accounts) == (1 if case == "aliases" else count)
         for i in range(1 if case == "aliases" else count):
-            orders = await targets(brokers[i], adapters[i], count=3, different_codes=case == "mock-codes")
+            orders = await targets(
+                brokers[i], adapters[i], count=3 if mock else 5, different_codes=case == "mock-codes"
+            )
             barriers.append(WriteBarrier(brokers[i], adapters[i]))
             tasks.extend(
                 asyncio.create_task(
@@ -426,7 +433,7 @@ async def test_owner_identity_and_mock_cross_code_policy(tmp_path, case):
                 )
                 for j, order in enumerate(orders)
             )
-        expected = {"owners": 4, "aliases": 2, "mock-same": 1, "mock-codes": 3}[case]
+        expected = {"owners": 8, "aliases": 4, "mock-same": 1, "mock-codes": 3}[case]
         await until(lambda: sum(barrier.pending for barrier in barriers) == expected)
         await settle()
         assert sum(len(barrier.calls) for barrier in barriers) == expected
@@ -450,7 +457,7 @@ async def test_owner_identity_and_mock_cross_code_policy(tmp_path, case):
 
 async def test_queued_expiry_starts_no_additional_reads_or_sending(setup, monkeypatch):
     broker, _, adapter, service, _ = setup
-    orders = await targets(broker, adapter, count=3)
+    orders = await targets(broker, adapter, count=5)
     now = time.monotonic()
     clock = SimpleNamespace(monotonic=lambda: now, time=time.time)
     monkeypatch.setattr(multi_broker, "time", clock)
@@ -462,14 +469,14 @@ async def test_queued_expiry_starts_no_additional_reads_or_sending(setup, monkey
         for i, o in enumerate(orders)
     ]
     try:
-        await until(lambda: barrier.pending == 2)
+        await until(lambda: barrier.pending == 4)
         before = len(broker.requests)
         now += 11
         barrier.drain()
         results = await asyncio.gather(*tasks)
-        assert results[2] == "order-queue-expired" and len(broker.requests) == before
-        assert service.journal.lookup("expire-2")[1] == "rejected"
-        assert len(broker.writes) == 2
+        assert results[4] == "order-queue-expired" and len(broker.requests) == before
+        assert service.journal.lookup("expire-4")[1] == "rejected"
+        assert len(broker.writes) == 4
     finally:
         barrier.drain()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -524,7 +531,7 @@ async def test_close_drains_owned_command_after_http_waiter_cancellation(setup):
         await closing
         assert service.journal.lookup("http-cancel")[1] == "accepted"
         assert not service._tasks and adapter.gateway.http.is_closed
-        assert service._modify_slots[adapter.account_ref]._value == 2
+        assert service._modify_slots[adapter.account_ref]._value == 4
         assert all(not g.active and not g.queue for g in service._kiwoom_gates.values())
     finally:
         barrier.drain()
@@ -533,9 +540,9 @@ async def test_close_drains_owned_command_after_http_waiter_cancellation(setup):
         await asyncio.gather(waiter, return_exceptions=True)
 
 
-async def test_partial_pair_unknown_keeps_independent_member_and_blocks_next_cohort(setup):
+async def test_partial_cohort_unknown_keeps_admitted_siblings_and_blocks_fifth(setup):
     broker, _, adapter, service, _ = setup
-    orders = await targets(broker, adapter, count=3)
+    orders = await targets(broker, adapter, count=5)
     barrier = WriteBarrier(broker, adapter)
     barrier.lost.add("0000001")
     tasks = [
@@ -543,16 +550,18 @@ async def test_partial_pair_unknown_keeps_independent_member_and_blocks_next_coh
         for i, o in enumerate(orders)
     ]
     try:
-        await until(lambda: barrier.pending == 2)
+        await until(lambda: barrier.pending == 4)
         barrier.release("0000001")
         assert await tasks[0] == "order-outcome-unknown"
         await settle()
-        assert len(barrier.calls) == 2 and not tasks[1].done() and not tasks[2].done()
+        assert len(barrier.calls) == 4 and all(not task.done() for task in tasks[1:])
         barrier.drain()
         results = await asyncio.gather(*tasks)
-        assert results[1].operation_ref and results[2] == "unresolved-order-exists"
-        assert [service.journal.lookup(f"partial-{i}")[1] for i in range(3)] == ["unknown", "accepted", "rejected"]
-        assert len(barrier.calls) == 2
+        assert all(result.operation_ref for result in results[1:4]) and results[4] == "unresolved-order-exists"
+        assert [service.journal.lookup(f"partial-{i}")[1] for i in range(5)] == [
+            "unknown", "accepted", "accepted", "accepted", "rejected",
+        ]
+        assert len(barrier.calls) == 4
     finally:
         barrier.drain()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -562,11 +571,10 @@ async def test_partial_pair_unknown_keeps_independent_member_and_blocks_next_coh
     "lost-ack", "accepted-storage", "all-completion-storage", "unknown-storage", "owned-cancel",
     "unexpected", "timeout",
 ])
-async def test_uncertain_completion_freezes_late_admission_before_release(setup, monkeypatch, failure):
+@pytest.mark.parametrize("preadmitted", [2, 4])
+async def test_uncertain_completion_freezes_late_admission_before_release(setup, monkeypatch, failure, preadmitted):
     broker, _, adapter, service, _ = setup
-    monkeypatch.setattr(kiwoom_admission, "MAX_CONCURRENT_KIWOOM_MODIFICATIONS", 4)
-    monkeypatch.setattr(multi_broker, "MAX_CONCURRENT_KIWOOM_MODIFICATIONS", 4)
-    orders = await targets(broker, adapter, count=3)
+    orders = await targets(broker, adapter, count=preadmitted + 2)
     barrier = WriteBarrier(broker, adapter)
     if failure in {"lost-ack", "unknown-storage"}:
         barrier.lost.add("0000001")
@@ -586,12 +594,16 @@ async def test_uncertain_completion_freezes_late_admission_before_release(setup,
         return finish(cid, state, result)
 
     monkeypatch.setattr(service.journal, "finish", fail_completion)
+    if failure == "all-completion-storage":
+        def unavailable_lookup(_cid):
+            raise OSError("synthetic journal lookup unavailable")
+        monkeypatch.setattr(service.journal, "lookup", unavailable_lookup)
     tasks = [
         asyncio.create_task(outcome(service.execute(modification(adapter, f"uncertain-{i}"), "modify", o.order_ref)))
-        for i, o in enumerate(orders[:2])
+        for i, o in enumerate(orders[:preadmitted])
     ]
     try:
-        await until(lambda: barrier.pending == 2)
+        await until(lambda: barrier.pending == preadmitted)
         if failure == "owned-cancel":
             service._tasks["uncertain-0"].cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -605,23 +617,121 @@ async def test_uncertain_completion_freezes_late_admission_before_release(setup,
                 assert await tasks[0] == "order-outcome-unknown"
         expected_state = "sending" if failure in {"all-completion-storage", "unknown-storage"} else "unknown"
         assert lookup("uncertain-0")[1] == expected_state
-        tasks.append(asyncio.create_task(outcome(service.execute(
-            modification(adapter, "uncertain-late"), "modify", orders[2].order_ref
-        ))))
+        tasks.extend(asyncio.create_task(outcome(service.execute(
+            modification(adapter, f"uncertain-late-{i}"), "modify", order.order_ref
+        ))) for i, order in enumerate(orders[preadmitted:]))
         await settle()
-        assert len(barrier.calls) == 2 and not tasks[1].done() and not tasks[2].done()
+        assert len(barrier.calls) == preadmitted and all(not task.done() for task in tasks[1:])
         gate = next(iter(service._kiwoom_gates.values()))
         assert gate.admission is kiwoom_admission.EpochAdmission.FROZEN_UNCERTAIN
         barrier.drain()
-        assert (await tasks[1]).status == "accepted"
-        assert await tasks[2] == "unresolved-order-exists"
-        assert len(barrier.calls) == 2
+        assert all(result.status == "accepted" for result in await asyncio.gather(*tasks[1:preadmitted]))
+        assert await asyncio.gather(*tasks[preadmitted:]) == ["unresolved-order-exists"] * 2
+        assert len(barrier.calls) == preadmitted
         assert not gate.active and not gate.queue and gate.granted == 0
         assert gate.admission is kiwoom_admission.EpochAdmission.OPEN
         assert await outcome(service.execute(
-            modification(adapter, "uncertain-after-drain"), "modify", orders[2].order_ref
+            modification(adapter, "uncertain-after-drain"), "modify", orders[preadmitted].order_ref
         )) == "unresolved-order-exists"
-        assert len(barrier.calls) == 2
+        assert len(barrier.calls) == preadmitted
+    finally:
+        barrier.drain()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.parametrize("failure", ["owned-cancel", "unexpected", "timeout"])
+async def test_unsent_follower_failure_allows_another_independent_admission(setup, monkeypatch, failure):
+    broker, _, adapter, service, _ = setup
+    orders = await targets(broker, adapter, count=3)
+    barrier = WriteBarrier(broker, adapter)
+    acquire = adapter.gateway.budget.acquire
+    waiting, release = asyncio.Event(), asyncio.Event()
+    writes = 0
+
+    async def fail_before_send(api_id, **kwargs):
+        nonlocal writes
+        await acquire(api_id, **kwargs)
+        if api_id == "kt10002":
+            writes += 1
+            if writes == 2:
+                waiting.set()
+                await release.wait()
+                if failure == "timeout":
+                    raise TimeoutError("synthetic pre-send timeout")
+                raise RuntimeError("synthetic pre-send failure")
+
+    monkeypatch.setattr(adapter.gateway.budget, "acquire", fail_before_send)
+    tasks = [
+        asyncio.create_task(outcome(service.execute(modification(adapter, f"unsent-{i}"), "modify", order.order_ref)))
+        for i, order in enumerate(orders[:2])
+    ]
+    try:
+        await waiting.wait()
+        assert len(barrier.calls) == 1
+        if failure == "owned-cancel":
+            service._tasks["unsent-1"].cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await tasks[1]
+        else:
+            release.set()
+            assert await tasks[1] == ("order-queue-expired" if failure == "timeout" else "order-preflight-failed")
+        assert service.journal.lookup("unsent-1")[1] == "rejected"
+        tasks.append(asyncio.create_task(service.execute(
+            modification(adapter, "unsent-late"), "modify", orders[2].order_ref
+        )))
+        await until(lambda: barrier.pending == 2)
+        assert [native for _, native in barrier.calls] == ["0000001", "0000003"]
+        assert not tasks[0].done()
+        barrier.drain()
+        assert all(result.status == "accepted" for result in await asyncio.gather(tasks[0], tasks[2]))
+    finally:
+        release.set()
+        barrier.drain()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def test_four_slot_window_keeps_every_page_of_each_fresh_snapshot(setup):
+    broker, _, adapter, service, _ = setup
+    orders = await targets(broker, adapter)
+    original = broker.handle
+    remaining_pages = {}
+    pages = Counter()
+
+    async def paginated(request):
+        response = await original(request)
+        api = request.headers["api-id"]
+        if api not in {"ka10075", "kt00007"}:
+            return response
+        field = "oso" if api == "ka10075" else "acnt_ord_cntr_prps_dtl"
+        pages[(api, request.headers["next-key"])] += 1
+        if request.headers["next-key"]:
+            return httpx.Response(200, json={"return_code": 0, field: remaining_pages.pop(api)})
+        rows = response.json()[field]
+        split = len(rows) // 2
+        remaining_pages[api] = rows[split:]
+        return httpx.Response(
+            200, json={"return_code": 0, field: rows[:split]},
+            headers={"cont-yn": "Y", "next-key": "fixture-second-page"},
+        )
+
+    broker.handle = paginated
+    barrier = WriteBarrier(broker, adapter)
+    broker.requests.clear()
+    tasks = [asyncio.create_task(service.execute(
+        modification(adapter, f"all-pages-{i}"), "modify", order.order_ref
+    )) for i, order in enumerate(orders)]
+    try:
+        await until(lambda: barrier.pending == 4)
+        assert len(barrier.calls) == 4
+        barrier.drain()
+        assert len(await asyncio.gather(*tasks)) == 10
+        assert Counter(request.headers["api-id"] for request in broker.requests) == {
+            "ka00001": 10, "ka10075": 20, "kt00007": 20, "kt10002": 10,
+        }
+        assert pages == {
+            (api, cursor): 10 for api in ("ka10075", "kt00007") for cursor in ("", "fixture-second-page")
+        }
+        assert not remaining_pages
     finally:
         barrier.drain()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -640,7 +750,7 @@ async def test_active_duplicate_and_accepted_replay_use_one_slot_and_one_write(s
         barrier.drain()
         results = await asyncio.gather(*tasks)
         assert results[0] == results[1] == await service.execute(command, "modify", order.order_ref)
-        assert len(barrier.calls) == 1 and service._modify_slots[adapter.account_ref]._value == 2
+        assert len(barrier.calls) == 1 and service._modify_slots[adapter.account_ref]._value == 4
     finally:
         barrier.drain()
         await asyncio.gather(*tasks, return_exceptions=True)

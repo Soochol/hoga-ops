@@ -5217,7 +5217,7 @@ for (const scenario of [{ broker: 'toss', events: true, environment: 'real' }, {
     await expect(source).toHaveText('10');
     await ws.waitForSubscribe('005930');
     reads.length = 0;
-    const bound = scenario.broker === 'toss' || scenario.environment === 'real' ? 2 : 1;
+    const bound = scenario.broker === 'toss' || scenario.environment === 'real' ? 4 : 1;
     try {
       await drag(page, source, destination);
       await expect.poll(() => started.length).toBe(bound);
@@ -5226,7 +5226,7 @@ for (const scenario of [{ broker: 'toss', events: true, environment: 'real' }, {
       await expect(destination).toBeEmpty();
       await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
       // Complete later requests while the first ACK stays withheld. Each freed slot refills.
-      const sequence = bound === 2 ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 0] : started.concat([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      const sequence = bound === 4 ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 0] : started.concat([1, 2, 3, 4, 5, 6, 7, 8, 9]);
       for (const [count, index] of sequence.entries()) {
         await expect.poll(() => releases.has(index)).toBe(true);
         releases.get(index)!();
@@ -5263,7 +5263,7 @@ for (const change of ['close', 'symbol'] as const) {
     try {
       await drag(page, window.getByRole('button', { name: /매수 67,200원 주문 추가/ }),
         window.getByRole('button', { name: /매수 67,300원 주문 추가/ }));
-      await expect.poll(() => started.length).toBe(2);
+      await expect.poll(() => started.length).toBe(4);
       if (change === 'close') await page.getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
       else {
         await page.getByRole('button', { name: '종목 검색 열기' }).click();
