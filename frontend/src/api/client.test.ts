@@ -22,6 +22,14 @@ describe('buildApiError (via apiCall)', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
   beforeEach(() => { vi.clearAllMocks(); __resetConfigForTests(); });
 
+  it.each(['감시를 찾을 수 없습니다.', 'Not Found'])('preserves the current string detail %s', async detail => {
+    const body = { detail };
+    mockFetch(404, body);
+    await expect(apiCall('/api/screener/monitors/current/result')).rejects.toMatchObject({
+      message: detail, status: 404, data: body,
+    });
+  });
+
   it('reports historical cache provenance in opt-in logs without logging numeric rows', async () => {
     vi.stubEnv('VITE_HOGA_PERF_DEBUG', '1');
     const body = { cached_batches: ['20261001__20261016'], fresh_batches: ['20261019__20261019'],
