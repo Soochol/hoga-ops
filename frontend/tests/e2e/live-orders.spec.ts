@@ -5004,8 +5004,8 @@ test('수수료·세금 반영은 즉시 평가·손익·수익률에 반영하�
   await expect(netProfit).toHaveText('105,552');
   await expect(dialog.getByRole('textbox', { name: '수수료 (%)' })).toHaveValue('0.015');
   await expect(dialog.getByRole('textbox', { name: '세금 (%)' })).toHaveValue('0.2');
-  const costGroup = dialog.getByRole('region', { name: '평가 비용', exact: true });
-  await expect(costGroup.locator('h3 > span')).toHaveClass('sr-only');
+  const costGroup = dialog.getByRole('region', { name: '수수료·세금', exact: true });
+  await expect(costGroup.getByRole('heading', { name: '수수료·세금', exact: true })).toBeVisible();
   await expect(costGroup.locator('label > span')).toHaveClass('sr-only');
   await expect(costGroup.locator('p, [data-tooltip], [title]')).toHaveCount(0);
   await expect(window.locator('.order-cost-basis')).toHaveCount(0);
