@@ -182,7 +182,7 @@ async function drag(page: Page, from: Locator, to: Locator) {
 async function multiBrokerSetup(page: Page, blocked = false) {
   await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'not mocked' } }));
   await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
-  const { window } = await setup(page);
+  const { window, ws } = await setup(page);
   const toss = `acc_${'a'.repeat(32)}`, kiwoom = `acc_${'b'.repeat(32)}`;
   const commands: { path: string; body: Record<string, unknown> }[] = [];
   await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: true, accounts: [
@@ -205,7 +205,7 @@ async function multiBrokerSetup(page: Page, blocked = false) {
   // Fixture moves from legacy numeric accounts to v2 opaque refs; select explicitly.
   await window.getByRole('combobox', { name: '주문 계좌' }).selectOption(toss);
   await expect(window.getByRole('combobox', { name: '주문 계좌' })).toHaveValue(toss);
-  return { window, toss, kiwoom, commands };
+  return { window, toss, kiwoom, commands, ws };
 }
 
 function trackTradingWrites(page: Page) {
@@ -5166,3 +5166,108 @@ test('미체결 주문·보유종목은 우측 내 체결 왼쪽에 나란히 �
   await expect(page.getByTestId('execution-history-window')).toBeVisible();
   expect(commands).toHaveLength(0);
 });
+
+
+for (const scenario of [{ broker: 'toss', events: true }, { broker: 'toss', events: false }, { broker: 'kiwoom', events: false }] as const) {
+  test(`묶음 가격정정의 독립 요청 한도와 확인된 사다리 반영: ${scenario.broker}/${scenario.events}`, async ({ page }) => {
+    const { window, toss, kiwoom, ws } = await multiBrokerSetup(page);
+    const account = scenario.broker === 'toss' ? toss : kiwoom;
+    let orders = Array.from({ length: 10 }, (_, i) => ({ order_ref: `batch-${i}`, account_ref: account, code: '005930',
+      side: 'BUY', order_type: 'LIMIT', status: 'PENDING', price: '67200', quantity: '1', remaining_quantity: '1',
+      filled_quantity: '0', ordered_at: new Date().toISOString(), average_filled_price: null, editable: true }));
+    let revision = 0;
+    const reads: string[] = [], started: number[] = [], accepted: number[] = [];
+    const commands = new Map<number, string>();
+    const releases = new Map<number, () => void>();
+    let active = 0, peak = 0, draining = false;
+    await page.route('**/api/trading/v2/state?*', route => {
+      reads.push(new URL(route.request().url()).searchParams.get('part') ?? 'all');
+      return route.fulfill({ json: { account_ref: account, code: '005930', orders, recent_orders: [], revision,
+        unresolved_commands: [], events_connected: scenario.events, fetched_at_ms: Date.now(),
+        buying_power: '20000000', sellable_quantity: '100', holding_quantity: '100', average_purchase_price: '66000' } });
+    });
+    await page.route(/\/api\/trading\/v2\/orders\/batch-\d+\/modify$/, async route => {
+      const index = Number(new URL(route.request().url()).pathname.split('/').at(-2)!.split('-')[1]);
+      const body = route.request().postDataJSON() as { command_id: string; price: number; quantity: null; account_ref: string };
+      expect(body).toMatchObject({ price: 67300, quantity: null, account_ref: account });
+      commands.set(index, body.command_id);
+      started.push(index); peak = Math.max(peak, ++active);
+      try {
+        if (!draining) await new Promise<void>(resolve => releases.set(index, resolve));
+        orders = orders.map(order => order.order_ref === `batch-${index}`
+          ? { ...order, order_ref: `replacement-${index}`, price: '67300' } : order);
+        await route.fulfill({ json: { command_id: body.command_id, order_ref: `batch-${index}`,
+          operation_ref: `replacement-${index}`, status: 'accepted' } });
+        accepted.push(index);
+      } finally { active--; }
+    });
+    await page.reload();
+    await window.getByRole('combobox', { name: '주문 계좌' }).selectOption(account);
+    const source = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    const destination = window.getByRole('button', { name: /매수 67,300원 주문 추가/ });
+    await expect(source).toHaveText('10');
+    await ws.waitForSubscribe('005930');
+    reads.length = 0;
+    const bound = scenario.broker === 'toss' ? 2 : 1;
+    try {
+      await drag(page, source, destination);
+      await expect.poll(() => started.length).toBe(bound);
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      expect(started).toHaveLength(bound); expect(active).toBe(bound);
+      await expect(destination).toBeEmpty();
+      await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+      // Complete later requests while the first ACK stays withheld. Each freed slot refills.
+      const sequence = scenario.broker === 'toss' ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 0] : started.concat([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      for (const [count, index] of sequence.entries()) {
+        await expect.poll(() => releases.has(index)).toBe(true);
+        releases.get(index)!();
+        await expect.poll(() => accepted.length).toBe(count + 1);
+        if (count < 9) {
+          await expect.poll(() => started.length).toBe(Math.min(10, bound + count + 1));
+          expect(reads).toEqual([]);
+        }
+        if (scenario.events) {
+          ws.pushEvent({ type: 'trading_order_v2', account_ref: account, revision: ++revision,
+            order: orders.find(order => order.order_ref === `replacement-${index}`)! });
+          await expect(destination).toHaveText(String(count + 1));
+        } else if (count < 9) await expect(destination).toBeEmpty();
+      }
+      await expect(destination).toHaveText('10'); await expect(source).toBeEmpty();
+      await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+      expect(peak).toBe(bound); expect(started).toHaveLength(10);
+      expect(commands.size).toBe(10); expect(new Set(commands.values()).size).toBe(10);
+    } finally { draining = true; for (const release of releases.values()) release(); }
+  });
+}
+
+for (const change of ['close', 'symbol'] as const) {
+  test(`토스 묶음 정정은 ${change} 뒤에도 원래 계좌·종목·명령으로 완료한다`, async ({ page }) => {
+    const { window, commands } = await setup(page, Array.from({ length: 10 }, (_, i) => mkOrder(`lifetime-${i}`)));
+    const started: { account_seq: number; code: string; command_id: string }[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route(/\/api\/trading\/orders\/lifetime-\d+\/modify$/, async route => {
+      started.push(route.request().postDataJSON());
+      await gate;
+      await route.fallback();
+    });
+    try {
+      await drag(page, window.getByRole('button', { name: /매수 67,200원 주문 추가/ }),
+        window.getByRole('button', { name: /매수 67,300원 주문 추가/ }));
+      await expect.poll(() => started.length).toBe(2);
+      if (change === 'close') await page.getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
+      else {
+        await page.getByRole('button', { name: '종목 검색 열기' }).click();
+        const dialog = page.getByRole('dialog', { name: '종목 검색' });
+        await dialog.getByRole('combobox', { name: '종목 검색' }).fill('SK하이닉스');
+        await dialog.getByRole('option').first().click();
+        await expect(page.getByRole('button', { name: 'SK하이닉스 호가 주문 창 닫기', exact: true })).toBeVisible();
+      }
+      release();
+      await expect.poll(() => commands.length).toBe(10);
+      expect(started).toHaveLength(10);
+      expect(new Set(started.map(command => command.command_id)).size).toBe(10);
+      expect(started.every(command => command.account_seq === 1 && command.code === '005930')).toBe(true);
+    } finally { release(); }
+  });
+}

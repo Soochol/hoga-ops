@@ -815,3 +815,328 @@ async def test_invalid_holding_quantity_is_reported_instead_of_silently_hidden(s
     response = await api.get("/api/trading/holdings?account_seq=1")
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "invalid-toss-response"
+
+
+@pytest.fixture
+async def independent_modification_transport(setup, context):
+    broker, service, _ = setup
+    original = broker.handle
+    started = asyncio.Queue()
+    release_all = asyncio.Event()
+    releases = {f"independent-{i}": asyncio.Event() for i in range(10)}
+    details = []
+    pending = peak = 0
+
+    def code(index):
+        return f"{5930 + index:06}" if context == "other-symbol" else "005930"
+
+    async def handle(request):
+        nonlocal pending, peak
+        if "/api/v1/orders/independent-" not in request.url.path:
+            return await original(request)
+        native = request.url.path.split("/")[4]
+        index = int(native.rsplit("-", 1)[1])
+        if request.method == "GET":
+            details.append(native)
+            return httpx.Response(200, json={"result": order(native, code=code(index))})
+        pending += 1
+        peak = max(peak, pending)
+        await started.put(native)
+        local_release = asyncio.create_task(releases[native].wait())
+        all_release = asyncio.create_task(release_all.wait())
+        try:
+            await asyncio.wait([local_release, all_release], return_when=asyncio.FIRST_COMPLETED)
+            return httpx.Response(200, json={"result": {"orderId": f"replacement-{index}"}})
+        finally:
+            pending -= 1
+            local_release.cancel()
+            all_release.cancel()
+            await asyncio.gather(local_release, all_release, return_exceptions=True)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    yield started, release_all, releases, details, lambda: (pending, peak)
+    release_all.set()
+
+
+@pytest.mark.parametrize("context", ["same-symbol", "other-symbol", "other-account"])
+async def test_independent_modifications_overlap_with_two_shared_slots(
+    setup, context, independent_modification_transport,
+):
+    broker, service, api = setup
+    await service.authorize(1)
+    service._accounts.extend(
+        {"accountSeq": i, "accountNo": "fixture", "accountType": "BROKERAGE"} for i in range(2, 11)
+    )
+    started, release_all, releases, details, active = independent_modification_transport
+    def code(index):
+        return f"{5930 + index:06}" if context == "other-symbol" else "005930"
+
+    bodies = [{"account_seq": i + 1 if context == "other-account" else 1, "code": code(i),
+               "command_id": f"independent-{i}", "price": 67000, "quantity": None} for i in range(10)]
+    async def submit(index):
+        return await api.post(f"/api/trading/orders/independent-{index}/modify", json=bodies[index],
+                              headers={"X-Hoga-Order": "1"})
+    tasks = [asyncio.create_task(submit(i)) for i in range(10)]
+    duplicate = None
+    try:
+        first = await asyncio.wait_for(started.get(), 2)
+        second = await asyncio.wait_for(started.get(), 2)
+        assert first != second
+        assert active() == (2, 2)
+        # Abandoning the HTTP waiter cannot release the owned order's slot or replay it.
+        index = int(first.rsplit("-", 1)[1])
+        tasks[index].cancel()
+        await asyncio.gather(tasks[index], return_exceptions=True)
+        duplicate = asyncio.create_task(submit(index))
+        releases[second].set()
+        third = await asyncio.wait_for(started.get(), 2)
+        assert third not in {first, second}
+        assert active() == (2, 2)
+        assert not releases[first].is_set()
+    finally:
+        release_all.set()
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        if duplicate is not None:
+            results.append(await duplicate)
+    assert all(isinstance(result, asyncio.CancelledError) or result.status_code == 200 for result in results)
+    assert sorted(details) == sorted(releases)
+    assert active()[1] == 2
+    # Accepted replay also skips both validation and write.
+    replay = await submit(0)
+    assert replay.status_code == 200
+    assert len(details) == 10
+
+
+@pytest.mark.parametrize("outcome", ["accepted", "rejected", "unknown", "unexpected"])
+async def test_creation_waits_for_modifications_and_observes_unknown_outcome(setup, monkeypatch, outcome):
+    broker, service, _ = setup
+    original = broker.handle
+    entered, release, create_registered = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    requests = []
+    begin = service.journal.begin
+
+    def register(cid, payload):
+        result = begin(cid, payload)
+        if cid == "after-modify":
+            create_registered.set()
+        return result
+
+    monkeypatch.setattr(service.journal, "begin", register)
+
+    async def handle(request):
+        requests.append((request.method, request.url.path))
+        if request.method == "POST" and request.url.path.endswith("/old/modify"):
+            entered.set()
+            await release.wait()
+            if outcome == "unknown":
+                raise httpx.ReadTimeout("synthetic lost ACK", request=request)
+            if outcome == "rejected":
+                return httpx.Response(422, json={"error": {"code": "modify-rejected", "message": "synthetic"}})
+            if outcome == "unexpected":
+                raise RuntimeError("synthetic transport failure")
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    modification = asyncio.create_task(service.execute(
+        ModifyTradingOrder(account_seq=1, code="005930", command_id="before-create", price=67000), "modify", "old"))
+    creation = later = None
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        creation = asyncio.create_task(service.execute(CreateTradingOrder(
+            account_seq=1, code="005930", command_id="after-modify", side="BUY", quantity=1, price=67000), "create"))
+        await asyncio.wait_for(create_registered.wait(), 2)
+        later = asyncio.create_task(service.execute(
+            ModifyTradingOrder(account_seq=1, code="005930", command_id="later-modify", price=67000),
+            "modify", "later"))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert ("POST", "/api/v1/orders") not in requests
+        assert ("GET", "/api/v1/orders/later") not in requests
+    finally:
+        release.set()
+        results = await asyncio.gather(
+            *[task for task in [modification, creation, later] if task], return_exceptions=True
+        )
+    if outcome in {"unknown", "unexpected"}:
+        if outcome == "unknown":
+            assert isinstance(results[0], TradingError)
+            assert results[0].code == "order-outcome-unknown"
+        else:
+            assert isinstance(results[0], RuntimeError)
+        assert isinstance(results[1], TradingError)
+        assert results[1].code == "unresolved-order-exists"
+        assert ("POST", "/api/v1/orders") not in requests
+    else:
+        assert results[1].command_id == "after-modify"
+        assert requests.index(("POST", "/api/v1/orders")) < requests.index(("GET", "/api/v1/orders/later"))
+    assert results[2].command_id == "later-modify"
+
+
+@pytest.mark.parametrize("replacement_status", ["PENDING", "PENDING_REPLACE"])
+@pytest.mark.parametrize("successor_action", ["modify", "cancel"])
+@pytest.mark.parametrize("parent_outcome", ["accepted", "unknown"])
+async def test_delayed_parent_ack_requires_fresh_ready_successor_and_locks_old_original(
+    setup, replacement_status, successor_action, parent_outcome,
+):
+    broker, service, _ = setup
+    original = broker.handle
+    entered, release = asyncio.Event(), asyncio.Event()
+    writes = []
+
+    async def handle(request):
+        path = request.url.path
+        if request.method == "POST" and path.endswith("/old/modify"):
+            writes.append("old")
+            entered.set()
+            await release.wait()
+            if parent_outcome == "unknown":
+                raise httpx.ReadTimeout("synthetic lost parent ACK", request=request)
+            return httpx.Response(200, json={"result": {"orderId": "replacement"}})
+        if request.method == "GET" and path.endswith("/replacement"):
+            return httpx.Response(200, json={"result": order("replacement", status=replacement_status)})
+        if request.method == "POST" and path.endswith(f"/replacement/{successor_action}"):
+            writes.append("replacement")
+            return httpx.Response(200, json={"result": {"orderId": "successor"}})
+        if request.method == "POST" and path.endswith("/old/cancel"):
+            writes.append("duplicate-old")
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    parent = asyncio.create_task(service.execute(
+        ModifyTradingOrder(account_seq=1, code="005930", command_id="parent", price=67000), "modify", "old"))
+    stale = successor = None
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        stale = asyncio.create_task(service.execute(
+            TradingCommand(account_seq=1, code="005930", command_id="stale-old"), "cancel", "old"))
+        successor = asyncio.create_task(service.execute(
+            ModifyTradingOrder(account_seq=1, code="005930", command_id="next-native", price=66900),
+            successor_action, "replacement"))
+        # Readiness comes from the successor's fresh GET, never the parent's pending HTTP ACK.
+        result = (await asyncio.wait_for(asyncio.gather(successor, return_exceptions=True), 2))[0]
+        if replacement_status == "PENDING":
+            assert result.order_id == "successor"
+        else:
+            assert isinstance(result, TradingError)
+            assert result.code == "order-not-editable"
+        assert not stale.done()
+        assert "duplicate-old" not in writes
+    finally:
+        release.set()
+        results = await asyncio.gather(*[task for task in [parent, stale, successor] if task], return_exceptions=True)
+    if parent_outcome == "accepted":
+        assert results[0].order_id == "replacement"
+    else:
+        assert isinstance(results[0], TradingError)
+        assert results[0].code == "order-outcome-unknown"
+    assert isinstance(results[1], TradingError)
+    assert results[1].code == ("order-processing" if parent_outcome == "accepted" else "unresolved-order-exists")
+    assert "duplicate-old" not in writes
+
+
+@pytest.mark.parametrize("other_action", ["modify", "cancel"])
+async def test_pending_modification_reserves_same_native_order_through_accepted_journal(setup, other_action):
+    broker, service, _ = setup
+    original = broker.handle
+    entered, release = asyncio.Event(), asyncio.Event()
+    writes = []
+
+    async def handle(request):
+        if request.method == "POST" and request.url.path.startswith("/api/v1/orders"):
+            writes.append(request.url.path)
+            entered.set()
+            await release.wait()
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    command = ModifyTradingOrder(account_seq=1, code="005930", command_id="native-first", price=67000)
+    first = asyncio.create_task(service.execute(command, "modify", "old"))
+    second = None
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        second = asyncio.create_task(service.execute(command.model_copy(update={"command_id": "native-second"}),
+                                                     other_action, "old"))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert len(writes) == 1
+        assert not second.done()
+    finally:
+        release.set()
+        results = await asyncio.gather(*[task for task in [first, second] if task], return_exceptions=True)
+    assert results[0].order_id == "successor"
+    assert isinstance(results[1], TradingError)
+    assert results[1].code == "order-processing"
+    assert len(writes) == 1
+
+
+async def test_canceling_owned_create_waiter_does_not_cancel_its_modification_cohort(setup):
+    broker, service, _ = setup
+    original = broker.handle
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def handle(request):
+        if request.method == "POST" and request.url.path.endswith("/old/modify"):
+            entered.set()
+            await release.wait()
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    command = ModifyTradingOrder(account_seq=1, code="005930", command_id="cohort-member", price=67000)
+    member = asyncio.create_task(service.execute(command, "modify", "old"))
+    creator = None
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        creator = asyncio.create_task(service.execute(CreateTradingOrder(
+            account_seq=1, code="005930", command_id="canceled-creator", side="BUY", quantity=1, price=67000
+        ), "create"))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        # Fault injection on the owned task, beyond ordinary shielded HTTP cancellation.
+        service._commands["canceled-creator"].cancel()
+        await asyncio.gather(creator, return_exceptions=True)
+        assert not service._commands["cohort-member"].done()
+        independent = await asyncio.wait_for(service.execute(
+            command.model_copy(update={"command_id": "after-canceled-create"}), "modify", "other"), 2)
+        assert independent.order_id == "successor"
+    finally:
+        release.set()
+        await asyncio.gather(*[task for task in [member, creator] if task], return_exceptions=True)
+    assert (await member).order_id == "successor"
+
+
+async def test_active_creation_blocks_modification_validation_until_it_finishes(setup):
+    broker, service, _ = setup
+    original = broker.handle
+    entered, release = asyncio.Event(), asyncio.Event()
+    details = []
+
+    async def handle(request):
+        if request.url.path == "/api/v1/orders" and request.method == "POST":
+            entered.set()
+            await release.wait()
+        if request.url.path == "/api/v1/orders/old" and request.method == "GET":
+            details.append("old")
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    creation = asyncio.create_task(service.execute(CreateTradingOrder(
+        account_seq=1, code="005930", command_id="exclusive-create", side="BUY", quantity=1, price=67000), "create"))
+    modification = None
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        modification = asyncio.create_task(service.execute(
+            ModifyTradingOrder(account_seq=1, code="005930", command_id="behind-create", price=67000), "modify", "old"))
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert details == []
+    finally:
+        release.set()
+        results = await asyncio.gather(*[task for task in [creation, modification] if task], return_exceptions=True)
+    assert [result.command_id for result in results] == ["exclusive-create", "behind-create"]
+    assert details == ["old"]

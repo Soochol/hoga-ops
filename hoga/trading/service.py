@@ -46,6 +46,7 @@ STATE_CACHE_SECONDS = 3
 HOLDINGS_CACHE_SECONDS = 10
 DOMESTIC_CODE_LENGTH = 6
 MAX_CONCURRENT_CANCELS = 10
+MAX_CONCURRENT_MODIFICATIONS = 2
 
 
 def remaining(order: TossOrder) -> int:
@@ -163,6 +164,8 @@ class TradingService:
         self._locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._order_locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._cancel_slots = asyncio.Semaphore(MAX_CONCURRENT_CANCELS)
+        self._modify_slots = asyncio.Semaphore(MAX_CONCURRENT_MODIFICATIONS)
+        self._modifications: dict[tuple[int, str], set[asyncio.Task[TradingCommandResponse]]] = {}
         self._state_locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._balance_locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._snapshots: dict[tuple[int, str], tuple[float, TradingOrderStateResponse]] = {}
@@ -540,14 +543,23 @@ class TradingService:
     async def _execute(
         self, command: TradingCommand, action: str, order_id: str, *, cancel_order: TossOrder | None = None,
     ) -> TradingCommandResponse:
+        key = (command.account_seq, command.code)
         try:
             async with contextlib.AsyncExitStack() as stack:
-                # New orders retain symbol serialization. Cancels of different orders
-                # can overlap, but modify/cancel of the SAME order share one lock.
-                if action != "cancel":
-                    await stack.enter_async_context(self._locks[(command.account_seq, command.code)])
                 if action != "create":
                     await stack.enter_async_context(self._order_locks[(command.account_seq, order_id)])
+                if action == "modify":
+                    await stack.enter_async_context(self._modify_slots)
+                    async with self._locks[key]:
+                        self._modifications.setdefault(key, set()).add(self._commands[command.command_id])
+                elif action == "create":
+                    await stack.enter_async_context(self._locks[key])
+                    # Finish prior modifications, including durable UNKNOWN publication,
+                    # before create's uncertainty check. Later registrations wait here.
+                    await asyncio.gather(
+                        *(asyncio.shield(task) for task in self._modifications.get(key, ())),
+                        return_exceptions=True,
+                    )
                 response = await self._submit(command, action, order_id, cancel_order=cancel_order)
                 self.journal.finish(command.command_id, "accepted", response.model_dump())
                 return response
@@ -560,7 +572,12 @@ class TradingService:
             raise
         finally:
             self.changed()
-            self._commands.pop(command.command_id, None)
+            task = self._commands.pop(command.command_id, None)
+            modifications = self._modifications.get(key)
+            if modifications is not None:
+                modifications.discard(task)
+                if not modifications:
+                    del self._modifications[key]
 
     async def _submit(
         self, command: TradingCommand, action: str, order_id: str, *, cancel_order: TossOrder | None = None,
