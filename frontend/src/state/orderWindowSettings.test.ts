@@ -38,7 +38,7 @@ describe('주문 금액 변환과 설정 복구', () => {
   it('손상된 저장 필드만 복구하고 수량·금액 프리셋 사본을 만든다', () => {
     const raw = { unit: 'amount', quantityPresets: [25, 1.5, -1], amountPresets: [2, 6, 12] };
     const restored = normalizeOrderSettings(raw);
-    expect(restored).toEqual({ unit: 'amount', quantityPresets: [25, 50, 100], amountPresets: [2, 6, 12], showAveragePrice: true, showPriceSeparators: false, showPriceChangePercent: true, orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false });
+    expect(restored).toEqual({ unit: 'amount', quantityPresets: [25, 50, 100], amountPresets: [2, 6, 12], showAveragePrice: true, showPriceSeparators: false, showPriceChangePercent: true, orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false, reflectSellCosts: false, sellCostProfiles: {} });
     restored.amountPresets[0] = 99;
     expect(raw.amountPresets[0]).toBe(2);
     expect(normalizeOrderSettings({ unit: 'invalid', amountPresets: null }).unit).toBe('quantity');

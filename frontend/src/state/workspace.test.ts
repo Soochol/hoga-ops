@@ -101,7 +101,7 @@ describe('useWorkspaceStore 액션', () => {
   it('주문 설정은 창별로 영속하고 프리셋 스냅샷과 배열을 공유하지 않는다', () => {
     const first = useWorkspaceStore.getState().addWindow('order');
     const second = useWorkspaceStore.getState().addWindow('order');
-    const settings = { unit: 'amount' as const, quantityPresets: [25, 75, 250] as [number, number, number], amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: false, showPriceSeparators: true, showPriceChangePercent: false, orderReceiptSound: true, buyFillSound: true, sellFillSound: false, rememberQuantity: true };
+    const settings = { unit: 'amount' as const, quantityPresets: [25, 75, 250] as [number, number, number], amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: false, showPriceSeparators: true, showPriceChangePercent: false, orderReceiptSound: true, buyFillSound: true, sellFillSound: false, rememberQuantity: true, reflectSellCosts: false, sellCostProfiles: {} };
     useWorkspaceStore.getState().setOrderWindowSettings(first, settings);
     expect(useWorkspaceStore.getState().windows.find(w => w.id === second)?.order).toBeUndefined();
     const persisted = JSON.parse(sessionStorage.getItem(WORKSPACE_STORAGE_KEY)!);
@@ -109,7 +109,27 @@ describe('useWorkspaceStore 액션', () => {
     const snapshot = snapshotWorkspace();
     snapshot.windows.find(w => w.id === first)!.order!.amountPresets[0] = 99;
     settings.quantityPresets[0] = 999;
-    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order).toEqual({ unit: 'amount', quantityPresets: [25, 75, 250], amountPresets: [2, 6, 12], showAveragePrice: false, showPriceSeparators: true, showPriceChangePercent: false, orderReceiptSound: true, buyFillSound: true, sellFillSound: false, rememberQuantity: true });
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order).toEqual({ unit: 'amount', quantityPresets: [25, 75, 250], amountPresets: [2, 6, 12], showAveragePrice: false, showPriceSeparators: true, showPriceChangePercent: false, orderReceiptSound: true, buyFillSound: true, sellFillSound: false, rememberQuantity: true, reflectSellCosts: false, sellCostProfiles: {} });
+  });
+
+  it('비용 반영과 추정율은 창별·마지막설정·프리셋 사본으로 저장하고 프리셋 복원은 마지막값을 덮어쓰지 않는다', () => {
+    const scope = '["sell-estimate-v1","number",1]';
+    const first = useWorkspaceStore.getState().addWindow('order');
+    const settings = normalizeOrderSettings({ reflectSellCosts: true, sellCostProfiles: {
+      [scope]: { commissionPercent: '0.01', taxPercent: '0.2' },
+    } });
+    useWorkspaceStore.getState().setOrderWindowSettings(first, settings);
+    const snapshot = snapshotWorkspace();
+    const second = useWorkspaceStore.getState().addWindow('order');
+    useWorkspaceStore.getState().setOrderWindowSettings(second, { ...settings, reflectSellCosts: false });
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order?.reflectSellCosts).toBe(true);
+    useWorkspaceStore.getState().applyWorkspaceSnapshot(snapshot);
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order).toEqual(settings);
+    expect(readLastOrderSettings()?.reflectSellCosts).toBe(false);
+    snapshot.windows.find(w => w.id === first)!.order!.sellCostProfiles[scope].taxPercent = '9';
+    settings.sellCostProfiles[scope].commissionPercent = '8';
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order?.sellCostProfiles[scope])
+      .toEqual({ commissionPercent: '0.01', taxPercent: '0.2' });
   });
 
   it('마지막 주문 설정은 모든 창을 닫고 새 탭에서 추가해도 복원한다', async () => {
@@ -117,7 +137,7 @@ describe('useWorkspaceStore 액션', () => {
     const settings = normalizeOrderSettings({ unit: 'amount', quantityPresets: [25, 75, 250],
       amountPresets: [2, 6, 12], showAveragePrice: false, showPriceSeparators: true,
       showPriceChangePercent: false, orderReceiptSound: true, buyFillSound: true,
-      sellFillSound: true, rememberQuantity: true });
+      sellFillSound: true, rememberQuantity: true, reflectSellCosts: false, sellCostProfiles: {} });
     useWorkspaceStore.getState().setOrderWindowSettings(first, settings);
     useWorkspaceStore.getState().closeWindow(first);
     sessionStorage.clear();

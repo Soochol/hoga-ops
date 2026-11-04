@@ -1,3 +1,4 @@
+import { normalizeCostProfiles, type OrderCostProfiles } from './orderCostRates';
 import { persistJson, readJsonObject } from './persist';
 
 export type OrderInputUnit = 'quantity' | 'amount';
@@ -14,6 +15,8 @@ export interface OrderWindowSettings {
   buyFillSound: boolean;
   sellFillSound: boolean;
   rememberQuantity: boolean;
+  reflectSellCosts: boolean;
+  sellCostProfiles: OrderCostProfiles;
 }
 
 export const MILLION_WON = 1_000_000;
@@ -23,6 +26,7 @@ export const DEFAULT_ORDER_SETTINGS: OrderWindowSettings = {
   unit: 'quantity', quantityPresets: [10, 50, 100], amountPresets: [1, 5, 10], showAveragePrice: true,
   showPriceSeparators: false, showPriceChangePercent: true,
   orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false,
+  reflectSellCosts: false, sellCostProfiles: {},
 };
 
 const LAST_ORDER_SETTINGS_KEY = 'hoga.order.settings.last.v1';
@@ -51,6 +55,8 @@ export function validOrderSettings(value: OrderWindowSettings): boolean {
     && typeof value.buyFillSound === 'boolean'
     && typeof value.sellFillSound === 'boolean'
     && typeof value.rememberQuantity === 'boolean'
+    && typeof value.reflectSellCosts === 'boolean'
+    && !!value.sellCostProfiles && typeof value.sellCostProfiles === 'object' && !Array.isArray(value.sellCostProfiles)
     && value.quantityPresets.length === 3 && value.amountPresets.length === 3
     && value.quantityPresets.every(n => validOrderInput(n, 'quantity'))
     && value.amountPresets.every(n => validOrderInput(n, 'amount'));
@@ -73,6 +79,8 @@ export function normalizeOrderSettings(raw: unknown): OrderWindowSettings {
     orderReceiptSound: typeof value.orderReceiptSound === 'boolean' ? value.orderReceiptSound : DEFAULT_ORDER_SETTINGS.orderReceiptSound,
     buyFillSound: typeof value.buyFillSound === 'boolean' ? value.buyFillSound : DEFAULT_ORDER_SETTINGS.buyFillSound,
     sellFillSound: typeof value.sellFillSound === 'boolean' ? value.sellFillSound : DEFAULT_ORDER_SETTINGS.sellFillSound,
+    reflectSellCosts: typeof value.reflectSellCosts === 'boolean' ? value.reflectSellCosts : false,
+    sellCostProfiles: normalizeCostProfiles(value.sellCostProfiles),
     rememberQuantity: typeof value.rememberQuantity === 'boolean' ? value.rememberQuantity : DEFAULT_ORDER_SETTINGS.rememberQuantity,
   };
 }

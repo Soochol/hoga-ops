@@ -195,3 +195,5 @@
 
 .order-trades-slot { position:relative; align-self:stretch; min-width:0; }
 .order-trades-scroll { position:absolute; top:0; left:0; width:100%; z-index:1; }
+
+.order-cost-basis { margin:0; padding:var(--space-xs) var(--space-sm); }
