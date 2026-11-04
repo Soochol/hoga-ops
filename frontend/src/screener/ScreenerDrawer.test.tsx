@@ -10,6 +10,7 @@ import { useEntryDragStore } from '../state/entryDrag';
 import { useLiveVenueStore } from '../state/liveVenue';
 import * as savesApi from '../api/savedScreeners';
 import * as screenerApi from '../api/screener';
+import * as runsApi from '../api/screenerRuns';
 import * as client from '../api/client';
 import * as watchlistApi from '../api/watchlist';
 import * as heatmapApi from '../api/heatmap';
@@ -162,7 +163,79 @@ describe('ScreenerDrawer', () => {
     vi.spyOn(screenerApi, 'listScreenerExclusions').mockResolvedValue({ schema_version: 1, exclusions: [] });
     vi.spyOn(screenerApi, 'getScreenerStatus').mockResolvedValue({ status: 'ok', last_raw_date: '20260530', days_behind: 0 });
     vi.spyOn(client, 'apiCall').mockResolvedValue({ phase: 'open', quotes: [] });
+    vi.spyOn(client, 'apiAction').mockResolvedValue(undefined);
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({ folders: [], entries: [], memos: [], next_run_at_ms: 0 });
+  });
+
+  it('keeps pending partial and final publication on the latest selected metadata without restarting', async () => {
+    const saved = { ...SAVE, universe: { scopes: ['watchlist' as const] },
+      calculation_policy: 'separate_bases_v2' as const, conditions: [
+        { id: 'daily', type: 'new_high_today' as const, params: { period: 3 } },
+        { id: 'minute', type: 'new_high_vol' as const, params: { timeframe: '1m' as const, period: 10, lookback: 3 } },
+      ] };
+    const result: screenerApi.ScreenerResponse = { status: 'ok', rows: ROWS, warnings: [] };
+    let send!: (run: runsApi.ScreenerRun) => void;
+    let finishPreparation!: (result: screenerApi.ScreenerResponse) => void;
+    let finishRead!: (result: screenerApi.ScreenerResponse) => void;
+    const prepare = vi.spyOn(runsApi, 'runPreparedScan').mockImplementation((_body, _signal, progress) => {
+      send = progress;
+      return new Promise(resolve => { finishPreparation = resolve; });
+    });
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [saved] });
+    vi.spyOn(client, 'apiCall').mockImplementation(async path => path === '/api/screener/monitors'
+      ? { id: 'stable' } : { phase: 'open', quotes: [] });
+    const read = vi.spyOn(screenerApi, 'readContinuousResult').mockImplementation(() => new Promise(resolve => { finishRead = resolve; }));
+    const queryClient = qc();
+    const { unmount } = render(<ScreenerDrawer />, { wrapper: wrap(queryClient, '/screener') });
+    await waitFor(() => expect(screen.getByTestId('screener-monitor-toggle')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));
+    await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+    const renamed = { ...saved, name: '새 이름', updated_at_ms: 2 };
+    act(() => queryClient.setQueryData(['screener-saves'], { saves: [renamed] }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '저장한 조건검색 선택' })).toHaveTextContent('새 이름'));
+    act(() => send({ id: 'partial', request: prepare.mock.calls[0][0], status: 'partial', result,
+      total: 2, evaluated: 1, preparing: 1, waiting: 0, failed: 0, errors: {}, revision: 1, result_revision: 1,
+      next_retry_at_ms: null, started_at_ms: 1, updated_at_ms: 2 }));
+    expect(useScreenerPanelStore.getState().lastScan).toMatchObject({ savedName: '새 이름', savedUpdatedAtMs: 2 });
+    await act(async () => { finishPreparation(result); });
+    await waitFor(() => expect(read).toHaveBeenCalledWith('stable'));
+    act(() => queryClient.setQueryData(['screener-saves'], { saves: [{ ...renamed, name: '최신 이름', updated_at_ms: 3 }] }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '저장한 조건검색 선택' })).toHaveTextContent('최신 이름'));
+    await act(async () => { finishRead(result); });
+    await waitFor(() => expect(useScreenerPanelStore.getState().lastScan).toMatchObject({ savedName: '최신 이름', savedUpdatedAtMs: 3 }));
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(client.apiAction).not.toHaveBeenCalledWith('/api/screener/monitors/stable', { method: 'DELETE' });
+    expect(screen.queryByText('조회 실패')).not.toBeInTheDocument();
+    unmount();
+    queryClient.clear();
+  });
+
+  it.each(['definition', 'venue'])('immediately reanchors on a same-ID %s change and releases a removed selection', async change => {
+    const saved = { ...SAVE, universe: { scopes: ['watchlist' as const] }, conditions: [
+      { id: 'minute', type: 'new_high_vol' as const, params: { timeframe: '1m' as const, period: 10, lookback: 3 } },
+      { id: 'rank', type: 'trade_value_rank' as const, params: { top_n: 20 } },
+    ] };
+    vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [saved] });
+    let created = 0;
+    vi.spyOn(client, 'apiCall').mockImplementation(async path => path === '/api/screener/monitors'
+      ? { id: `request-${++created}` } : { phase: 'open', quotes: [] });
+    const read = vi.spyOn(screenerApi, 'readContinuousResult').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
+    const queryClient = qc();
+    const { unmount } = render(<ScreenerDrawer />, { wrapper: wrap(queryClient, '/screener') });
+    await waitFor(() => expect(screen.getByTestId('screener-monitor-toggle')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('screener-monitor-toggle'));
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    if (change === 'definition') act(() => queryClient.setQueryData(['screener-saves'], { saves: [{ ...saved, expression: 'NOT A' }] }));
+    else act(() => useLiveVenueStore.setState({ venue: 'NXT' }));
+    await waitFor(() => expect(read).toHaveBeenCalledWith('request-2'));
+    const posts = vi.mocked(client.apiCall).mock.calls.filter(([path]) => path === '/api/screener/monitors');
+    expect(JSON.parse(String(posts[1][1]?.body)).request).toMatchObject(change === 'venue' ? { venue: 'NXT' } : { expression: 'NOT A' });
+    expect(client.apiAction).toHaveBeenCalledWith('/api/screener/monitors/request-1', { method: 'DELETE' });
+    act(() => queryClient.setQueryData(['screener-saves'], { saves: [] }));
+    await waitFor(() => expect(useScreenerPanelStore.getState().monitoringActive).toBe(false));
+    expect(client.apiAction).toHaveBeenCalledWith('/api/screener/monitors/request-2', { method: 'DELETE' });
+    unmount();
+    queryClient.clear();
   });
 
   it('lists saved screeners in the dropdown', async () => {

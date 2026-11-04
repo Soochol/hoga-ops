@@ -8,7 +8,7 @@ vi.mock('../config', () => ({
   resolveWsUrl: (config: { api_url: string }, path: string) =>
     `${config.api_url.replace(/^http/, 'ws')}${path.startsWith('/') ? path : `/${path}`}`,
 }));
-import { apiCall, __resetConfigForTests } from './client';
+import { apiAction, apiCall, __resetConfigForTests } from './client';
 
 function mockFetch(status: number, body: unknown) {
   return vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
@@ -21,6 +21,11 @@ function mockFetch(status: number, body: unknown) {
 describe('buildApiError (via apiCall)', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
   beforeEach(() => { vi.clearAllMocks(); __resetConfigForTests(); });
+
+  it('accepts a monitor DELETE 204 without trying to parse a JSON response', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    await expect(apiAction('/api/screener/monitors/stopped', { method: 'DELETE' })).resolves.toBeUndefined();
+  });
 
   it.each(['감시를 찾을 수 없습니다.', 'Not Found'])('preserves the current string detail %s', async detail => {
     const body = { detail };
@@ -74,5 +79,15 @@ describe('buildApiError (via apiCall)', () => {
   it('falls back to "<status> <path>" when a validation array has no usable msgs', async () => {
     mockFetch(422, { detail: [] });
     await expect(apiCall('/api/x', {})).rejects.toThrow('422 /api/x');
+  });
+
+  it.each([null, '', '   ', 12, {}])('falls back for unusable detail %j', async detail => {
+    mockFetch(500, { detail });
+    await expect(apiCall('/broken')).rejects.toMatchObject({ message: '500 /broken', status: 500 });
+  });
+
+  it('keeps status and fallback when an error body is malformed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('not json', { status: 502 }));
+    await expect(apiCall('/broken')).rejects.toMatchObject({ message: '502 /broken', status: 502, data: {} });
   });
 });

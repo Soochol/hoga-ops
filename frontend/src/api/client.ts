@@ -64,7 +64,8 @@ async function buildApiError(r: Response, path: string): Promise<ApiError> {
   }
 
   const detail = rawDetail as { code?: string; message?: string } | undefined;
-  const err = new Error(detail?.message ?? `${r.status} ${path}`) as ApiError;
+  const message = typeof rawDetail === 'string' && rawDetail.trim() ? rawDetail : detail?.message;
+  const err = new Error(message ?? `${r.status} ${path}`) as ApiError;
   err.code = detail?.code;
   err.status = r.status;
   err.data = body;

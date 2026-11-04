@@ -204,7 +204,7 @@ export function Screener() {
     const anchored = !editor.dirty && editor.anchorId != null;
     const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
     const savedId = anchored ? editor.anchorId : null;
-    const savedName = anchored ? editor.anchorName : null;
+    const savedName = anchored ? saved?.name ?? editor.anchorName : null;
     setLastScan({
       savedId,
       savedName,
@@ -230,8 +230,8 @@ export function Screener() {
     }, true);
   };
   const monitoring = monitorKey === scanKey && !invalidEditor;
-  const screener = useScreener({ continuous: !!monitoring, anchor: scanKey,
-    request: scanBody, onProgress: publishScan });
+  const screener = useScreener({ continuous: !!monitoring, request: scanBody,
+    onResult: ({ result, request, phase, background }) => publishScan(result, request, phase === 'complete' && !background) });
   // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
   // 드로어 스캔은 scanKey null → 비교 불가 시 stale 판정하지 않는다.
   const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
@@ -251,23 +251,15 @@ export function Screener() {
     loadEditor(save);
   };
   const runScan = async (mode: 'once' | 'monitor' | 'refresh' = 'once'): Promise<boolean> => {
-    if (invalidEditor || !hasConditions || screener.isPending) return false;
+    if (invalidEditor || !hasConditions || screener.state.kind === 'pending') return false;
     const background = mode === 'refresh';
     if (mode === 'once') setMonitorKey(null);
-    try {
-      await screener.mutateAsync({ request: scanBody, mode: mode === 'once' ? 'once' : 'monitor' }, {
-        onSuccess: (res) => {
-          // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
-          // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
-          publishScan(res, scanBody, !background);
-          if (mode === 'monitor') setMonitorKey(scanKey);
-          if (!background) setSortMode('default');
-        },
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    return await screener.run({ mode: mode === 'once' ? 'once' : 'monitor', background,
+      onSuccess: () => {
+        if (mode === 'monitor') setMonitorKey(scanKey);
+        if (!background) setSortMode('default');
+      },
+    }) === 'success';
   };
   const liveVolume = editor.conditions.some(isRankCondition)
     || !!editor.universe.scopes?.length && hasContinuousVolume(scanBody);
@@ -397,14 +389,14 @@ export function Screener() {
               {!invalidEditor && screener.preparation?.minute_date && <ScreenerPreparationStatus run={screener.preparation} />}
             </div>
             <ToolbarButton tone="primary" onClick={() => { void runScan(); }}
-              disabled={screener.isPending || notSeeded || !hasConditions || !!invalidEditor}
+              disabled={screener.state.kind === 'pending' || notSeeded || !hasConditions || !!invalidEditor}
               data-tooltip={invalidEditor ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
               className="px-lg py-sm text-base">
-              {screener.isPending ? '조회 중…' : '조회'}
+              {screener.state.kind === 'pending' ? '조회 중…' : '조회'}
             </ToolbarButton>
             {liveVolume && <ToolbarButton
-              onClick={() => { if (monitoring) { setMonitorKey(null); screener.reset(); } else void runScan('monitor'); }}
-              disabled={!monitoring && (screener.isPending || notSeeded || !hasConditions || !!invalidEditor)}>
+              onClick={() => { if (monitoring) { setMonitorKey(null); } else void runScan('monitor'); }}
+              disabled={!monitoring && (screener.state.kind === 'pending' || notSeeded || !hasConditions || !!invalidEditor)}>
               {monitoring ? '실시간 감시 종료' : '실시간 감시 시작'}
             </ToolbarButton>}
             {!notSeeded && (
@@ -454,7 +446,7 @@ export function Screener() {
             {/* role=status: 조회 시작·완료(결과 N건)가 스크린리더에 공지된다 — 종전엔
                 스크리너 전역에 라이브 리전이 0건이라 조회 결과가 무음이었다. */}
             <span role="status">
-              {screener.isPending ? (
+              {screener.state.kind === 'pending' ? (
                 <span className="text-sm text-fg-dim">조회 중…</span>
               ) : lastScan ? (
                 <span data-testid="screener-result-meta" className="font-data text-sm tabular-nums text-fg">
@@ -490,34 +482,34 @@ export function Screener() {
             <InlineState tone="warn" className="text-sm">
               <span className="font-semibold">시드 필요</span> 스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요
             </InlineState>
-          ) : screener.isError ? (
+          ) : screener.state.kind === 'error' ? (
             <InlineState tone="error" role="alert" className="text-sm">
               <span className="font-semibold">조회할 수 없습니다</span>
-              {screener.error instanceof Error && screener.error.message && (
-                <span className="ml-2 text-fg-dim">{screener.error.message}</span>
+              {screener.state.error instanceof Error && screener.state.error.message && (
+                <span className="ml-2 text-fg-dim">{screener.state.error.message}</span>
               )}
             </InlineState>
           ) : (
             <>
               {bannerFlag && <InlineState tone="warn">{bannerFlag.text}</InlineState>}
-              {screener.data?.depth_coverage && (
+              {screener.state.kind === 'success' && screener.state.data.depth_coverage && (
                 // key = 결측 코드 집합. 재조회로 집합이 바뀌면 배너를 새 인스턴스로
                 // 리마운트해 stale "수집 중 N건"/사라진 버튼 상태를 리셋한다(같은 집합이면
                 // 인스턴스 유지 → 진행 안내·자동수집 가드 보존).
                 <DepthCoverageBanner
-                  key={screener.data.depth_coverage.excluded.map((c) => c.code).join(',')}
-                  coverage={screener.data.depth_coverage}
+                  key={screener.state.data.depth_coverage.excluded.map((c) => c.code).join(',')}
+                  coverage={screener.state.data.depth_coverage}
                   autoCollect={liveSettings?.screener_depth_autocollect ?? false}
                 />
               )}
               {lastScan == null ? (
                 // "조회 전"과 "조건에 맞는 종목 없음"은 다른 상태다 — 30분 TTL 로 결과가
                 // 만료된 직후를 0건으로 오독하면 사용자는 조건이 틀렸다고 착각한다.
-                <EmptyState className="flex-1" title={screener.isPending ? '데이터를 준비하고 있습니다' : '아직 조회하지 않았습니다'}>
-                  {screener.isPending ? '준비된 종목부터 결과를 자동으로 표시합니다' : '조건을 확인하고 조회를 누르면 결과가 여기 표시됩니다 · 결과는 30분 뒤 만료됩니다'}
+                <EmptyState className="flex-1" title={screener.state.kind === 'pending' ? '데이터를 준비하고 있습니다' : '아직 조회하지 않았습니다'}>
+                  {screener.state.kind === 'pending' ? '준비된 종목부터 결과를 자동으로 표시합니다' : '조건을 확인하고 조회를 누르면 결과가 여기 표시됩니다 · 결과는 30분 뒤 만료됩니다'}
                 </EmptyState>
               ) : (
-                <div className={`flex min-h-0 flex-1 flex-col ${screener.isPending ? 'opacity-60' : ''}`}>
+                <div className={`flex min-h-0 flex-1 flex-col ${screener.state.kind === 'pending' ? 'opacity-60' : ''}`}>
                   {rows.length === 0 && screener.preparation && ['queued', 'preparing'].includes(screener.preparation.status)
                     ? <InlineState>확인된 일치 종목이 없습니다 · 준비·검증 대기 중인 종목은 아직 판정하지 않았습니다</InlineState>
                     : <ScreenerResults

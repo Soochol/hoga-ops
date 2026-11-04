@@ -228,28 +228,11 @@ export function ScreenerDrawer() {
       dataStale: false,
     }, true);
   };
-  const screener = useScreener({ continuous: monitoringActive, request: drawerRequest, onProgress: publishScan,
-    anchor: selected ? `${selected.id}:${selected.updated_at_ms}` : '' });
+  const screener = useScreener({ continuous: monitoringActive, request: drawerRequest,
+    identity: selected?.id, onResult: ({ result, request }) => publishScan(result, request) });
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
-
-  // 1회 조회 + 결과 처리. 수동 버튼과 실시간 모니터링 루프가 공유하는 단일 seam(두
-  // 경로의 결과 처리 드리프트 방지). 메타는 항상 갱신하고, 같은 행의 참조를
-  // 재사용하는 일은 setLastScan의 구조적 공유가 맡는다.
-  const scanOnce = async (): Promise<boolean> => {
-    const sel = selected;
-    if (!sel) return false;
-    try {
-      const request = drawerRequest!;
-      const res = await screener.mutateAsync(request);
-      publishScan(res, request);
-      // 정렬은 여기서 리셋하지 않는다 — 이 seam 은 모니터링 tick 도 공유하므로 매 재조회
-      // 마다 사용자 정렬을 밀어버렸다. 사용자 정렬은 명시적 변경 때만 바뀐다(조건 전환
-      // 시 default 로 복귀하는 진입순 스택은 useEntryOrder 의 resetKey 가 처리).
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  const scanOnce = async (): Promise<boolean> =>
+    await screener.run({ mode: monitoringActive ? 'monitor' : 'once' }) === 'success';
 
   // 결과 전 종목에 Live Quote 오버레이(ADR-0056). scanRows 메모화로 lastScan null 동안
   // 매 렌더 새 [] 가 훅 내부 codes 메모를 무효화하지 않게 한다(풀페이지 Screener.tsx 와
@@ -265,8 +248,7 @@ export function ScreenerDrawer() {
   const monitor = useScreenerMonitor({
     acceptsVolumeEvent: screener.acceptsVolumeEvent,
     active: monitoringActive,
-    selectedId: selected?.conditions.some(isRankCondition)
-      ? `${selectedSavedId}:${venue}` : selectedSavedId,
+    selectedId: screener.scopeKey,
     periodMs: effectivePeriodMs,
     disabled: notSeeded || !selected,
     resultCodes,
@@ -470,7 +452,7 @@ export function ScreenerDrawer() {
         {notSeeded && (
           <RailState tone="warn" className="p-0">시드 필요 — 운영자 CLI로 시드 후 시작하세요</RailState>
         )}
-        {lastScan && !screener.isError && (
+        {lastScan && screener.state.kind !== 'error' && (
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-sm text-xs text-fg-dim">
             <DismissExitedButton onClick={dismissExited} disabled={exitedCodes.size === 0} />
             <ScreenerResultSortControl mode={sortMode} onChange={handleSortChange} disabled={lastScan.rows.length === 0} />
@@ -482,11 +464,11 @@ export function ScreenerDrawer() {
 
       {/* Results */}
       <RailDrawerBody testId="screener-scroll" scrollRef={scrollRef} quoteNav>
-        {screener.isError ? (
+        {screener.state.kind === 'error' ? (
           <RailState tone="error">
             <div className="font-semibold" style={{ color: 'var(--error)' }}>조회 실패</div>
-            {screener.error instanceof Error && screener.error.message && (
-              <div className="text-fg-dim">{screener.error.message}</div>
+            {screener.state.error instanceof Error && screener.state.error.message && (
+              <div className="text-fg-dim">{screener.state.error.message}</div>
             )}
           </RailState>
         ) : lastScan ? (
@@ -521,7 +503,7 @@ export function ScreenerDrawer() {
               </DndContext>
             )}
           </>
-        ) : monitoringActive || screener.isPending ? (
+        ) : monitoringActive || screener.state.kind === 'pending' ? (
           // 결과를 비운 뒤 첫 응답이 오기 전. 이 자리를 비워 두면 "조건에 맞는 종목이
           // 없습니다"와 구분이 안 돼, 초기화가 '결과 0건'으로 오독된다.
           <RailState>조회 중…</RailState>

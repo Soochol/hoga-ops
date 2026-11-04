@@ -1,4 +1,4 @@
-import { apiCall, type ApiError } from '../api/client';
+import { apiAction, apiCall, type ApiError } from '../api/client';
 import { readContinuousResult, type ScanRequest, type ScreenerResponse, type ContinuousStatus } from '../api/screener';
 
 export const hasContinuousVolume = (request: ScanRequest) => request.conditions.some(leaf =>
@@ -20,7 +20,7 @@ export class ContinuousClient {
     this.key = null;
     this.pending = null;
     if (id) {
-      try { await apiCall<void>(`/api/screener/monitors/${id}`, { method: 'DELETE' }); }
+      try { await apiAction(`/api/screener/monitors/${id}`, { method: 'DELETE' }); }
       catch (error) { if ((error as ApiError).status !== 404) throw error; }
     }
   }
@@ -48,7 +48,7 @@ export class ContinuousClient {
         body: JSON.stringify({ client_id: `${this.clientId}:${generation}`, request }),
       }).then(async status => {
         if (generation !== this.generation) {
-          await apiCall<void>(`/api/screener/monitors/${status.id}`, { method: 'DELETE' });
+          await apiAction(`/api/screener/monitors/${status.id}`, { method: 'DELETE' });
           throw new Error('감시 조건이 변경되었습니다.');
         }
         this.id = status.id;
@@ -56,15 +56,14 @@ export class ContinuousClient {
       }).finally(() => { if (generation === this.generation) this.pending = null; });
       await this.pending;
     }
+    const id = this.id!;
     try {
-      const result = await readContinuousResult(this.id!);
+      const result = await readContinuousResult(id);
       if (generation !== this.generation) throw new DOMException('감시 조건이 변경되었습니다.', 'AbortError');
       return result;
     } catch (error) {
-      if (generation === this.generation && (error as ApiError).status === 404) {
-        this.id = null;
-        throw new Error('감시가 만료되었습니다. 다시 조회하면 준비를 재개합니다.');
-      }
+      if (generation !== this.generation) throw new DOMException('감시 조건이 변경되었습니다.', 'AbortError');
+      if (this.id === id && (error as ApiError).status === 404) this.id = null;
       throw error;
     }
   }

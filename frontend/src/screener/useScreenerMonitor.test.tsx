@@ -158,6 +158,37 @@ describe('useScreenerMonitor', () => {
     expect(scanOnce).toHaveBeenCalledTimes(2);            // 재앵커 즉시 조회
   });
 
+  it('a retired loop failure cannot stop or reschedule the replacement loop', async () => {
+    let finish!: (value: boolean) => void;
+    const scanOnce = vi.fn().mockImplementationOnce(() => new Promise<boolean>(resolve => { finish = resolve; }))
+      .mockResolvedValue(true);
+    const onAutoStop = vi.fn();
+    const { rerender } = renderHook((props: UseScreenerMonitorArgs) => useScreenerMonitor(props), {
+      initialProps: baseArgs({ scanOnce, onAutoStop }),
+    });
+    await act(async () => { rerender(baseArgs({ scanOnce, onAutoStop, selectedId: 'replacement' })); });
+    expect(scanOnce).toHaveBeenCalledTimes(2);
+    await act(async () => { finish(false); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(MONITOR_PERIOD_FULL_MS); });
+    expect(scanOnce).toHaveBeenCalledTimes(3);
+    expect(onAutoStop).not.toHaveBeenCalled();
+  });
+
+  it('reconnect queries the owned request while visibility and failure gates still apply', async () => {
+    const scanOnce = vi.fn().mockResolvedValue(true);
+    renderHook(() => useScreenerMonitor(baseArgs({ scanOnce, conditions: volumeConditions })));
+    await act(async () => {});
+    act(() => push({ type: 'connected' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(scanOnce).toHaveBeenCalledTimes(2);
+    act(() => { setHidden(true); push({ type: 'connected' }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(scanOnce).toHaveBeenCalledTimes(2);
+    act(() => setHidden(false));
+    await act(async () => {});
+    expect(scanOnce).toHaveBeenCalledTimes(3);
+  });
+
   it('거래량 도달 푸시는 30초를 기다리지 않고 모아서 조회한다', async () => {
     const scanOnce = vi.fn().mockResolvedValue(true);
     renderHook(() => useScreenerMonitor(baseArgs({ scanOnce, conditions: volumeConditions })));
