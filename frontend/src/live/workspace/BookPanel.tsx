@@ -705,7 +705,9 @@ function QtyBar({
           top: BAR_INSET,
           bottom: BAR_INSET,
           width: `${widthPct}%`,
-          background: isAsk ? 'var(--bar-ask)' : 'var(--bar-bid)',
+          background: isAsk
+            ? 'linear-gradient(to right, color-mix(in srgb, var(--bar-ask) 40%, transparent), var(--bar-ask))'
+            : 'linear-gradient(to left, color-mix(in srgb, var(--bar-bid) 40%, transparent), var(--bar-bid))',
         }}
       />
       {/* 뱃지는 잔량과 같은 flex 안에 둔다(#746 절대배치 겹침 교훈). 가격축 반대편에

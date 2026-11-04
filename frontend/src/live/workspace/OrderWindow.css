@@ -129,7 +129,7 @@
 .order-info { display:flex; align-items:center; justify-content:space-between; gap:4px; padding:0 var(--order-cell-padding); font-size:var(--live-text-data,var(--text-sm)); white-space:nowrap; }
 .order-meta { font-size:var(--live-text-meta,var(--text-xs)); color:var(--fg-dim); }
 .order-depth { position:relative; padding:0 var(--order-cell-padding); font-size:var(--live-text-data,var(--text-sm)); }
-.order-depth::before { content:""; position:absolute; right:3px; height:16px; top:calc(50% - 8px); width:calc((100% - 6px) * var(--order-depth)); background:var(--bar-ask); border-radius:3px; }
+.order-depth::before { content:""; position:absolute; right:3px; height:16px; top:calc(50% - 8px); width:calc((100% - 6px) * var(--order-depth)); background:linear-gradient(to right,color-mix(in srgb,var(--bar-ask) 40%,transparent),var(--bar-ask)); border-radius:3px; }
 .order-depth span { position:relative; }
 .order-depth .order-depth-values { display:flex; align-items:baseline; gap:var(--order-cell-gap); white-space:nowrap; }
 .order-bid .order-depth-values { flex-direction:row-reverse; }
@@ -137,7 +137,7 @@
 .order-depth .book-qty-delta { flex-shrink:0; white-space:nowrap; }
 .order-ask { text-align:right; color:var(--price-down); }
 .order-bid { color:var(--price-up); }
-.order-bid::before { left:3px; right:auto; background:var(--bar-bid); }
+.order-bid::before { left:3px; right:auto; background:linear-gradient(to left,color-mix(in srgb,var(--bar-bid) 40%,transparent),var(--bar-bid)); }
 .order-cancel-active { outline:1px dashed var(--error); outline-offset:-1px; }
 .order-window .order-submit { color:var(--accent); border-color:var(--accent); }
 .order-notice { padding:4px 8px; overflow-wrap:anywhere; font-size:var(--live-text-meta,var(--text-xs)); }
