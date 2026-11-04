@@ -2436,7 +2436,7 @@ test('메뉴와 호가주문은 소프트 컴팩트 툴팁·키보드·화면 �
   expect(box.x + box.width).toBeLessThanOrEqual(viewport.width - 7);
   expect(box.y + box.height).toBeLessThanOrEqual(triggerBox.y - 3);
   await drawing.click();
-  await expect(page.getByRole('menu', { name: '그리기 도구' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '그리기 도구' })).toBeVisible();
   await expect(tooltip).toHaveCount(0);
   expect(commands).toHaveLength(0);
 });
