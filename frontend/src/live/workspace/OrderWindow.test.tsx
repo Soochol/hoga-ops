@@ -206,7 +206,7 @@ describe('신규 주문 HTTP 대기 중 독립 입력', () => {
     await act(async () => held.reject(0, unknown()));
     await act(async () => held.accept(1));
     quantity('75');
-    fireEvent.click(screen.getByRole('button', { name: '25주' }));
+    fireEvent.click(screen.getByRole('button', { name: '10주' }));
     expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 요청');
     fireEvent.doubleClick(buy('67,000'));
     expect(mock.command).toHaveBeenCalledTimes(2);
@@ -383,6 +383,107 @@ describe('신규 주문 HTTP 대기 중 독립 입력', () => {
     expect(mock.command).toHaveBeenCalledTimes(3);
     expect(mock.command.mock.calls[2]).toEqual(original);
     await act(async () => held.accept(2));
+  });
+
+  it('persistent 실패를 유지한 채 다른 실패를 선택하고 다른 ID의 재확인도 응답 대기 없이 시작한다', async () => {
+    const held = holdCommands();
+    show();
+    fireEvent.doubleClick(buy());
+    fireEvent.doubleClick(buy('67,100'));
+    await act(async () => { held.reject(0, unknown()); held.reject(1, unknown()); });
+    retry();
+    expect(mock.command).toHaveBeenCalledTimes(3);
+    fireEvent.click(screen.getByRole('button', { name: '다음 주문 실패' }));
+    retry();
+    expect(mock.command).toHaveBeenCalledTimes(4);
+    expect(mock.command.mock.calls[2]).toEqual(mock.command.mock.calls[0]);
+    expect(mock.command.mock.calls[3]).toEqual(mock.command.mock.calls[1]);
+    await act(async () => held.accept(3));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 요청');
+    await act(async () => held.accept(2));
+  });
+
+  it('처음 unresolved-order-exists 거절은 자기 UNKNOWN 재확인·수동 확인을 만들지 않는다', async () => {
+    const held = holdCommands();
+    show();
+    fireEvent.doubleClick(buy());
+    await act(async () => held.reject(0, Object.assign(new Error('다른 명령 결과 확인 필요'), { code: 'unresolved-order-exists', status: 503 })));
+    fireEvent.click(screen.getByRole('button', { name: '주문 알림 상세 보기' }));
+    expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: '해당 증권사의 실제 주문·체결 여부를 확인했습니다' })).not.toBeInTheDocument();
+  });
+
+  it('후속 취소 접수와 입력 변경은 지난 신규 접수 알림을 다시 표시하지 않는다', async () => {
+    mock.orders = [order()];
+    const view = show();
+    fireEvent.doubleClick(buy('67,100'));
+    await screen.findByRole('status', { name: '주문 접수 알림' });
+    mock.command.mockResolvedValueOnce({ results: [] });
+    fireEvent.contextMenu(view.container.querySelector('.order-ladder')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: '전체 주문 취소' }));
+    await waitFor(() => expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('취소 요청 접수됨'));
+    fireEvent.click(screen.getByRole('button', { name: '주문 알림 닫기' }));
+    expect(screen.queryByRole('status', { name: '주문 접수 알림' })).not.toBeInTheDocument();
+    fireEvent.doubleClick(buy('67,100'));
+    await screen.findByRole('status', { name: '주문 접수 알림' });
+    quantity('50');
+    expect(screen.queryByRole('status', { name: '주문 접수 알림' })).not.toBeInTheDocument();
+  });
+
+  it('기존 취소 실패와 신규 실패는 서로 지우지 않고 같은 선택 경로에서 원래 ID에 접근한다', async () => {
+    const held = holdCommands();
+    mock.orders = [order()];
+    show();
+    fireEvent.doubleClick(buy('67,100'));
+    await act(async () => held.reject(0, unknown()));
+    fireEvent.contextMenu(buy());
+    fireEvent.click(screen.getByRole('button', { name: '주문 1 개별 취소' }));
+    await act(async () => held.reject(1, unknown()));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('취소 결과 확인 필요');
+    fireEvent.click(screen.getByRole('button', { name: '다음 주문 실패' }));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('주문 결과 확인 필요');
+    retry();
+    expect(mock.command.mock.calls[2]).toEqual(mock.command.mock.calls[0]);
+    await act(async () => held.accept(2));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('취소 결과 확인 필요');
+  });
+
+  it('실패 선택을 바꾼 뒤 이전 경고의 만료가 persistent 실패를 지우지 않는다', async () => {
+    vi.useFakeTimers();
+    try {
+      const held = holdCommands();
+      show();
+      fireEvent.doubleClick(buy());
+      fireEvent.doubleClick(buy('67,100'));
+      await act(async () => held.reject(0, Object.assign(new Error('합성 확정 거절'), { code: 'order-hours-closed', status: 422 })));
+      act(() => vi.advanceTimersByTime(7000));
+      await act(async () => held.reject(1, unknown()));
+      fireEvent.click(screen.getByRole('button', { name: '다음 주문 실패' }));
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 요청');
+      fireEvent.click(screen.getByRole('button', { name: '이전 주문 실패' }));
+      expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 확정 거절');
+      act(() => vi.advanceTimersByTime(8000));
+      expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 요청');
+      expect(screen.queryByRole('button', { name: '다음 주문 실패' })).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('만료한 신규 접수 알림은 늦은 음원 실패로 되살아나지 않는다', async () => {
+    vi.useFakeTimers();
+    try {
+      const held = holdCommands();
+      let finishSound: (started: boolean) => void = () => {};
+      vi.mocked(notifyOrderReceiptAccepted).mockReturnValueOnce(new Promise(resolve => { finishSound = resolve; }));
+      show(); enableReceiptSound();
+      fireEvent.doubleClick(buy());
+      await act(async () => held.accept(0));
+      expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 접수됨');
+      act(() => vi.advanceTimersByTime(4000));
+      expect(screen.queryByRole('status', { name: '주문 접수 알림' })).not.toBeInTheDocument();
+      await act(async () => finishSound(false));
+      expect(screen.queryByRole('status', { name: '주문 접수 알림' })).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
   });
 });
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; symbolMaster.securityType = 'stock'; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });

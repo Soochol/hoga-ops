@@ -51,6 +51,7 @@ import { OrderSettingsForm } from './OrderSettingsForm';
 import { WindowHeaderAction } from './WindowHeaderAction';
 import { WindowSettingsPopover } from './WindowSettingsPopover';
 import { useOrderQuantity } from './useOrderQuantity';
+import { useCreateOrders, type CreateOrderRecord } from './useCreateOrders';
 import { orderPriceRange } from './orderPriceRange';
 import { useOrderPriceExplorer } from './useOrderPriceExplorer';
 import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
@@ -107,20 +108,23 @@ export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSy
   }, [preferences.orderReceiptSound, preferences.buyFillSound, preferences.sellFillSound]);
   const [quantity, setQuantity] = useOrderQuantity(code, account, preferences.rememberQuantity, preferences.quantityPresets[0]);
   const [profitAsPercent, setProfitAsPercent] = useState(false);
+  const creates = useCreateOrders();
   function applySettings(next: OrderWindowSettings) {
     const quantitySlot = quantity == null ? -1 : preferences.quantityPresets.indexOf(quantity);
     if (quantitySlot >= 0) setQuantity(next.quantityPresets[quantitySlot]);
     setLocalSettings(next); onSettingsChange?.(next);
   }
   return <OrderWindowContent key={code} code={code} name={name}
+    creates={creates}
     preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} onApplySettings={applySettings}
     profitAsPercent={profitAsPercent} onToggleProfitDisplay={() => setProfitAsPercent(value => !value)}
     accounts={accounts} account={account} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} onOpenExecutions={onOpenExecutions} onOpenTrades={onOpenTrades} />;
 }
 
-function OrderWindowContent({ code, name, accounts, account, onAccountChange, onSelectSymbol, onOpenExecutions, onOpenTrades,
+function OrderWindowContent({ code, name, accounts, account, onAccountChange, onSelectSymbol, onOpenExecutions, onOpenTrades, creates,
   preferences, quantity, onQuantityChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
   code: string; name: string;
+  creates: ReturnType<typeof useCreateOrders>;
   accounts: ReturnType<typeof useTradingAccounts>; account: TradingAccountId; onAccountChange: (account: TradingAccountId) => void; preferences: OrderWindowSettings;
   quantity: number | null; onQuantityChange: (quantity: number | null) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
@@ -204,10 +208,26 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const closeMenu = useCallback(() => setContextMenu(null), []);
   const [noticeState, setNoticeState] = useState<(OrderNotice & { account: TradingAccountId }) | null>(null);
   const [cancelFailures, setCancelFailures] = useState<CancelFailure[]>([]);
-  const cancelFailure = cancelFailures.find(item => item.action.base.account_seq === account);
-  const notice = cancelFailure?.notice ?? (noticeState?.account === account ? noticeState : null);
+  const scopeCreates = creates.records.filter(record => record.body.account_seq === account && record.body.code === code);
+  const failures = [
+    ...cancelFailures.filter(item => item.action.base.account_seq === account).map(item => ({ kind: 'cancel' as const, id: item.action.base.command_id, item })),
+    ...scopeCreates.filter(record => record.status !== 'accepted' && record.failure)
+      .map(record => ({ kind: 'create' as const, id: record.body.command_id, record })),
+  ];
+  const [selectedFailureId, selectFailure] = useState<string | null>(null);
+  const failureIndex = Math.max(0, failures.findIndex(item => item.id === selectedFailureId));
+  const selectedFailure = failures[failureIndex];
+  const cancelFailure = selectedFailure?.kind === 'cancel' ? selectedFailure.item : undefined;
+  const createFailure = selectedFailure?.kind === 'create' ? selectedFailure.record : undefined;
+  const notice = cancelFailure?.notice ?? (createFailure?.status !== 'accepted' ? createFailure?.failure?.notice : null)
+    ?? (noticeState?.account === account ? noticeState : null);
+  const createReceipt = scopeCreates.filter(record => record.status === 'accepted').at(-1);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
+  const displayedReceipt = receipt ?? createReceipt?.receipt ?? null;
+  const unresolvedIds = [...new Set([...(state.data?.unresolved_commands ?? []),
+    ...scopeCreates.filter(record => record.status !== 'accepted' && record.failure?.unknown).map(record => record.body.command_id)])];
   function setNotice(value: string | OrderNotice | null) {
+    for (const record of scopeCreates) if (record.status === 'accepted') creates.consume(record);
     if (value) setReceipt(null);
     setNoticeState(value == null ? null : {
       ...(typeof value === 'string' ? { title: '주문 확인 필요', message: value, tone: 'warn' as const } : value), account,
@@ -218,7 +238,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const busyRef = useRef(false);
   const cancellingRef = useRef(new Set<string>());
   const [cancelling, setCancelling] = useState<ReadonlySet<string>>(() => new Set());
-  const busy = exclusiveBusy || cancelling.size > 0;
+  const createBusy = creates.records.some(record => record.status === 'pending');
+  const busy = exclusiveBusy || cancelling.size > 0 || createBusy;
   const [pendingIds, setPending] = useState<Record<string, string>>({});
   const [accountTab, setAccountTab] = useState<AccountListTab | null>(null);
   const accountAnchor = useRef<HTMLDivElement>(null);
@@ -310,13 +331,14 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = !restBook && bookFresh;
-  const ready = !!account && !!activeAccount && !!state.data && !state.isError && !exclusiveBusy && activeAccount.order_enabled !== false;
+  const ready = !!account && !!activeAccount && !!state.data && !state.isError && !exclusiveBusy && !createBusy && activeAccount.order_enabled !== false;
   const availability = {
     accountsLoading: accounts.isLoading, configured: accounts.data?.configured === true, account,
     accountError: accounts.error ?? (!accounts.data?.accounts.length && Object.keys(accounts.data?.errors ?? {}).length
       ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
     stateReady: !!state.data && !state.isError, stateError: state.error,
-    unresolved: !!state.data?.unresolved_commands.length || cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent), settingsOpen: !!settingsDraft,
+    unresolved: !!state.data?.unresolved_commands.length || creates.unknown(account, code)
+      || cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent), settingsOpen: !!settingsDraft,
     locked: dragInProgress, stored: !!restBook || ladderSource === 'saved' || ladderSource === 'retained', singlePrice: activeSinglePrice !== null,
     hasBook: !!book, fresh, quantity,
     bookIssue: bookAvailability ? { title: '주문 대기', message: bookAvailability.message, tone: 'warn' as const } : undefined,
@@ -430,22 +452,44 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   }
   function dismissNotice() {
     if (cancelFailure) setCancelFailures(prev => prev.filter(item => item !== cancelFailure));
+    else if (createFailure) creates.consume(createFailure);
     else setNotice(null);
   }
+  function admitCreate(body: Readonly<CreateTradingOrder>, expected?: CreateOrderRecord) {
+    if (busyRef.current || cancellingRef.current.size) return false;
+    if (body.account_seq !== account || body.code !== code) return false;
+    const issue = newOrderIssue({ ...(body.order_type === 'PREOPEN_CLOSE' ? preopenAvailability : availability),
+      quantity: body.quantity, unresolved: expected ? false : availability.unresolved || creates.unknown(account, code) });
+    if (issue) { setNotice(issue); return false; }
+    if (!Number.isSafeInteger(body.price) || body.price <= 0
+      || (body.price * body.quantity >= HIGH_VALUE_WON && !body.confirm_high_value)) return false;
+    if (body.route && routes && !routes.includes(body.route)) { setNotice('주문 거래소를 확인하세요.'); return false; }
+    if (!creates.submit(expected ?? { body, sound: preferences.orderReceiptSound, name }, expected)) return false;
+    setNoticeState(null); setReceipt(null);
+    return true;
+  }
   async function submit(next: Action, high = false) {
-    if (busyRef.current) return;
+    if (next.type === 'create') {
+      if (next.side == null || next.quantity == null) return;
+      const body: CreateTradingOrder = { ...next.base, side: next.side, price: next.price,
+        quantity: next.quantity, confirm_high_value: high,
+        ...(next.orderType === 'PREOPEN_CLOSE' ? { order_type: next.orderType } : {}) };
+      if (admitCreate(body)) {
+        setReceipt(null);
+        setAction(current => current?.base.command_id === body.command_id ? null : current);
+        confirmHigh(false);
+      }
+      return;
+    }
+    if (busyRef.current || creates.active()) return;
     const cancellingOrders = cancelsOrders(next);
-    // New orders and cancel-all keep their existing exclusive submission boundary.
     if (!cancellingOrders && cancellingRef.current.size && next.type !== 'modify' && next.type !== 'group') return;
     if (!account || next.base.account_seq !== account || next.base.code !== code) { setNotice('계좌·종목이 변경되었습니다. 다시 선택하세요.'); return; }
     const targets = next.batch ?? (next.order ? [{ order: next.order, base: next.base }] : []);
     if (targets.some(item => cancellingRef.current.has(orderKey(account, item.order.orderId)) || awaitingResult(item.order)
       || cancelFailures.some(failure => failure.action.base.account_seq === account && failure.action.order?.orderId === item.order.orderId
         && failure.notice.persistent && failure.action.base.command_id !== item.base.command_id))) return;
-    const issue = next.type === 'create' ? newOrderIssue({ ...(next.orderType === 'PREOPEN_CLOSE' ? preopenAvailability : availability), quantity: next.quantity,
-      unresolved: cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent)
-        || !!state.data?.unresolved_commands.some(id => id !== next.base.command_id) })
-      : changesPrice(next) && !fresh ? newOrderIssue({ ...availability, settingsOpen: false, locked: false }) : null;
+    const issue = changesPrice(next) && !fresh ? newOrderIssue({ ...availability, settingsOpen: false, locked: false }) : null;
     if (issue) { setNotice(issue); return; }
     const announceReceipt = changesPrice(next) && preferences.orderReceiptSound;
     if (announceReceipt) prepareOrderReceiptSound();
@@ -457,7 +501,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     } else { busyRef.current = true; setBusy(true); }
     setNotice(null); setFailedRequest(null);
     const resumeRefresh = pauseTradingRefresh(client, mode, account);
-    const label = next.type === 'create' ? '주문' : (next.operation ?? next.type) === 'modify' ? '정정' : '취소';
+    const label = (next.operation ?? next.type) === 'modify' ? '정정' : '취소';
     setReceipt(null);
     let retryAction = next;
     let groupFailure: OrderNotice | null = null;
@@ -518,20 +562,13 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         setPending(prev => ({ ...prev, ...Object.fromEntries(result.results.filter(r => r.accepted).map(r => [orderKey(account, r.order_id), r.operation_id ?? r.order_id])) }));
       } else {
         let response: TradingCommandResponse;
-        if (next.type === 'create') {
-          const body: CreateTradingOrder = { ...next.base, side: next.side!, price: next.price, quantity: next.quantity!, confirm_high_value: high,
-            ...(next.orderType === 'PREOPEN_CLOSE' ? { order_type: next.orderType } : {}),
-            ...(typeof account === 'string' ? { route: next.base.route } : {}) };
-          response = await tradingCommand<TradingCommandResponse>('/orders', body, mode);
-        } else {
-          const path = `/orders/${encodeURIComponent(next.order!.orderId)}/${next.type}`;
-          if (next.type === 'modify') {
-            const body: ModifyTradingOrder = { ...next.base, price: next.price, quantity: next.quantity, confirm_high_value: high };
-            response = await tradingCommand<TradingCommandResponse>(path, body, mode);
-          } else response = await tradingCommand<TradingCommandResponse>(path, next.base, mode);
-          if (next.type === 'modify') acceptTradingReplacement(client, mode, account, code, next.order!.orderId, response.order_id);
-          setPending(prev => ({ ...prev, [orderKey(account, next.order!.orderId)]: response.order_id }));
-        }
+        const path = `/orders/${encodeURIComponent(next.order!.orderId)}/${next.type}`;
+        if (next.type === 'modify') {
+          const body: ModifyTradingOrder = { ...next.base, price: next.price, quantity: next.quantity, confirm_high_value: high };
+          response = await tradingCommand<TradingCommandResponse>(path, body, mode);
+        } else response = await tradingCommand<TradingCommandResponse>(path, next.base, mode);
+        if (next.type === 'modify') acceptTradingReplacement(client, mode, account, code, next.order!.orderId, response.order_id);
+        setPending(prev => ({ ...prev, [orderKey(account, next.order!.orderId)]: response.order_id }));
         firstAcceptedCommandId = next.base.command_id;
       }
       // A late cancel ACK must not close a newer order menu or confirmation.
@@ -584,12 +621,13 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     else { resetAction(); void submit(next); }
   }
   async function reviewCommand(commandId: string) {
-    if (!reviewedUnknown || busyRef.current || cancellingRef.current.size) return;
+    if (!reviewedUnknown || busyRef.current || cancellingRef.current.size || creates.active()) return;
     busyRef.current = true; setBusy(true);
     try {
       const body: ReviewTradingCommand = { ...base(), command_id: commandId, confirmed: true };
       await tradingCommand<TradingReviewResponse>(`/commands/${encodeURIComponent(commandId)}/review`, body, mode);
       setCancelFailures(prev => prev.filter(item => item.action.base.command_id !== commandId));
+      creates.reviewed(commandId);
       closeAction(); reviewUnknown(false);
     } catch (error) { setNotice(error instanceof Error ? error.message : '내역 확인 기록 실패'); }
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
@@ -599,7 +637,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     const issue = orderType === 'PREOPEN_CLOSE' ? preopenCreationIssue : creationIssue;
     if (issue) {
       // A blocked new order must not hide the outstanding request's reconciliation action.
-      if (!(issue.persistent && notice?.retry && failedRequest)) setNotice(issue);
+      if (!(issue.persistent && notice?.retry && (failedRequest || createFailure))) setNotice(issue);
       return;
     }
     if (!Number.isSafeInteger(price) || price <= 0) { setNotice('유효한 주문 가격을 확인하세요.'); return; }
@@ -608,7 +646,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
 
   function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false) {
     const targets = candidates.filter(order => order.orderType !== 'PREOPEN_CLOSE' && editableOrder(order) && !pending(order) && orderRemainder(order) > 0);
-    if (e.button !== 0 || !targets.length || !ready || settingsDraft || action || drag.current) return;
+    if (e.button !== 0 || !targets.length || !ready || creates.active() || settingsDraft || action || drag.current) return;
     e.stopPropagation();
     drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
     setDragInProgress(true); e.currentTarget.setPointerCapture(e.pointerId);
@@ -687,7 +725,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   function orderCell(side: TradingSide, price: number, rowKey: string) {
     const group = groups.get(`${side}:${price}`) ?? [];
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
-    const canCreate = !busy && !creationIssue && price > 0;
+    const canCreate = !exclusiveBusy && !cancelling.size && !creationIssue && price > 0;
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
       data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
@@ -738,7 +776,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       ? { price: snapshot?.exp_price ?? 0, qty: snapshot?.exp_qty ?? null }
       : { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null }} />;
   function saveSettingsEdits(next: OrderWindowSettings) {
-    if (busy) return;
+    if (busy || creates.active()) return;
     setSettingsDraft(next);
     // An incomplete preset must not block saving other fields or replace its last valid value.
     onApplySettings({ ...next,
@@ -791,7 +829,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     <div className="order-controls order-account-controls">
       <div className="order-account-group" ref={accountAnchor}>
       {accounts.data && (accounts.data.accounts.length > 1 || (accounts.data.accounts.length > 0 && !activeAccount)) ? <select className="order-account-select" aria-label="주문 계좌" value={account} disabled={busy || dragInProgress}
-        onChange={e => { const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
+        onChange={e => { if (creates.active()) return;
+          const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
           if (next) onAccountChange(next.account_seq);
           closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); reviewUnknown(false); }}>
         {!activeAccount && <option value={account} disabled>선택 계좌 연결 확인</option>}
@@ -816,7 +855,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           <span className="order-route-prefix">주문</span>
           {activeAccount?.order_enabled === false && <span>검증 대기</span>}
           {routes.length > 1 ? <select aria-label="주문 거래소" value={orderRoute} disabled={busy || dragInProgress}
-            onChange={e => { chooseRoute(e.target.value as 'SOR' | 'KRX' | 'NXT'); closeAction(); resetDrag(); setFailedRequest(null); }}>
+            onChange={e => { if (creates.active()) return;
+              chooseRoute(e.target.value as 'SOR' | 'KRX' | 'NXT'); closeAction(); resetDrag(); setFailedRequest(null); }}>
             {routes.map(route => <option key={route} value={route}>{route}</option>)}
           </select> : activeAccount?.order_enabled !== false && <span>{orderRoute}</span>}
         </span>
@@ -867,7 +907,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
         <div className="order-input-mode order-surface-segment" role="group" aria-label="빠른 입력 방식">
           {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || dragInProgress}
-            onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '주'}</button>)}
+            onClick={() => { if (creates.active()) return;
+              closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '주'}</button>)}
         </div>
         <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="0" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''}
           onFocus={e => e.currentTarget.select()} onClick={e => e.currentTarget.select()}
@@ -906,7 +947,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         open={!!settingsDraft} disabled={busy || dragInProgress}
         onOpenChange={open => {
           if (!open) { closeSettings(); return; }
-          if (busy || dragInProgress) return;
+          if (busy || creates.active() || dragInProgress) return;
           closeAction(); setAccountTab(null); setInfoOpen(false);
           setSettingsDraft(normalizeOrderSettings(preferences));
         }}
@@ -1008,7 +1049,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         const direction = side === 'ask' ? 'SELL' : 'BUY';
         return <TextTooltip text={preopenCreationIssue?.message ?? `${orderSideLabel(direction)} ${fmt(preopenPrice)}원 · 더블클릭 주문 · 우클릭 미체결 취소`}>
           <button type="button" className={`order-preopen-total ${direction === 'SELL' ? 'order-sell' : 'order-buy'}`}
-            aria-label={`장전 종가 ${orderSideLabel(direction)} 총잔량`} aria-disabled={busy || !!preopenCreationIssue}
+            aria-label={`장전 종가 ${orderSideLabel(direction)} 총잔량`} aria-disabled={exclusiveBusy || cancelling.size > 0 || !!preopenCreationIssue}
             onDoubleClick={() => create(direction, preopenPrice ?? 0, 'PREOPEN_CLOSE')}
             onContextMenu={event => {
               event.preventDefault(); event.stopPropagation();
@@ -1053,18 +1094,25 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         <label><input type="checkbox" checked={confirmedHigh} onChange={e => confirmHigh(e.target.checked)} />1억원 이상 주문 금액을 확인했습니다</label>
       </div>
       <div className="order-surface-footer">
-        <button type="button" disabled={busy} onClick={closeAction}>취소</button>
-        <button type="button" className="order-primary" disabled={busy || !confirmedHigh || (action.type === 'modify' && !!currentOrder && (!editableOrder(currentOrder) || pending(currentOrder)))}
+        <button type="button" disabled={action.type === 'create' ? exclusiveBusy || cancelling.size > 0 : busy} onClick={closeAction}>취소</button>
+        <button type="button" className="order-primary" disabled={(action.type === 'create' ? exclusiveBusy || cancelling.size > 0 : busy) || !confirmedHigh || (action.type === 'modify' && !!currentOrder && (!editableOrder(currentOrder) || pending(currentOrder)))}
           onClick={() => void submit(action, true)}>확인 후 주문</button>
       </div>
       </div>
     </ModalShell></div>, document.body)}
-    <OrderStatusBar key={`order-notice:${account}`} notice={notice ?? (!receipt && state.data?.unresolved_commands.length ? UNRESOLVED_NOTICE : null)} receipt={receipt} busy={busy}
-      onDismiss={dismissNotice} onExpireReceipt={() => setReceipt(null)}
-      onRetry={() => { if (cancelFailure) void submit(cancelFailure.action); else if (failedRequest) void submit(failedRequest.action, failedRequest.high); }}>
-      {!!state.data?.unresolved_commands.length && <>
+    <OrderStatusBar key={`order-notice:${account}`} notice={notice ?? (!displayedReceipt && unresolvedIds.length ? UNRESOLVED_NOTICE : null)} receipt={displayedReceipt}
+      busy={createFailure ? exclusiveBusy || cancelling.size > 0 || createFailure.status === 'pending' : busy}
+      failureSelection={{ index: failureIndex, total: failures.length, onSelect: index => selectFailure(failures[index].id) }}
+      onDismiss={dismissNotice} onExpireReceipt={() => { if (receipt) setReceipt(current => current === receipt ? null : current); else if (createReceipt) creates.consume(createReceipt); }}
+      onRetry={() => { if (cancelFailure) void submit(cancelFailure.action);
+        else if (createFailure) admitCreate(createFailure.body, createFailure);
+        else if (failedRequest) void submit(failedRequest.action, failedRequest.high); }}>
+      {(createFailure || unresolvedIds.length > 0) && <>
+        {createFailure && <p>{createFailure.name || createFailure.body.code} · {orderSideLabel(createFailure.body.side)} {fmt(createFailure.body.price)}원 · {fmt(createFailure.body.quantity)}주 · 요청 {createFailure.body.command_id.slice(0, 8)}</p>}
+        {!!unresolvedIds.length && <>
         <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />해당 증권사의 실제 주문·체결 여부를 확인했습니다</label>
-        {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
+        {unresolvedIds.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
+        </>}
       </>}
     </OrderStatusBar>
   </div>;

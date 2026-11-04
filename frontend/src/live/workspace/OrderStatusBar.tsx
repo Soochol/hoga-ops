@@ -9,10 +9,11 @@ import './OrderStatusBar.css';
 
 export interface OrderReceipt { text: string; commandId: string; soundFailed?: boolean }
 
-export function OrderStatusBar({ notice, receipt, busy, onDismiss, onExpireReceipt, onRetry, children }: {
+export function OrderStatusBar({ notice, receipt, busy, onDismiss, onExpireReceipt, onRetry, failureSelection, children }: {
   notice: OrderNotice | null; receipt: OrderReceipt | null; busy: boolean;
   onDismiss: () => void; onExpireReceipt: () => void; onRetry: () => void;
   children?: ReactNode;
+  failureSelection?: { index: number; total: number; onSelect: (index: number) => void };
 }) {
   const incoming = notice ?? receipt;
   // A new result never opens details or takes focus by itself.
@@ -62,6 +63,12 @@ export function OrderStatusBar({ notice, receipt, busy, onDismiss, onExpireRecei
         {text}
       </button>
       {(notice?.retry || children) && <button type="button" className="order-status-action" onClick={showDetails}>내역 확인</button>}
+      {failureSelection && failureSelection.total > 1 && <>
+        <button type="button" className="order-status-action" aria-label="이전 주문 실패"
+          onClick={() => failureSelection.onSelect((failureSelection.index + failureSelection.total - 1) % failureSelection.total)}>‹</button>
+        <button type="button" className="order-status-action" aria-label="다음 주문 실패"
+          onClick={() => failureSelection.onSelect((failureSelection.index + 1) % failureSelection.total)}>›</button>
+      </>}
       <button type="button" className="order-status-dismiss" aria-label="주문 알림 닫기"
         style={{ visibility: incoming && !notice?.persistent ? 'visible' : 'hidden' }} onClick={dismiss}><span aria-hidden="true" data-symbol="×" /></button>
     </div>

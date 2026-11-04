@@ -242,7 +242,7 @@ test.describe('신규 주문 HTTP 대기 중 독립 입력', () => {
     return { ...fixture, requests,
       accept: (index: number) => respond(index, { json: { command_id: requests[index].body.command_id,
         order_id: `synthetic-accepted-${index}`, status: 'accepted' } }),
-      reject: (index: number, code: string, message: string) => respond(index, { status: 503, json: { detail: { code, message } } }),
+      reject: (index: number, code: string, message: string, status = 503) => respond(index, { status, json: { detail: { code, message } } }),
       abort: async (index: number) => { pending.delete(requests[index].route); await requests[index].route.abort('failed'); },
       cleanup: () => Promise.allSettled([...pending].map(route => route.abort())),
     };
@@ -293,7 +293,7 @@ test.describe('신규 주문 HTTP 대기 중 독립 입력', () => {
       await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
       await expect.poll(() => stateRequests.filter(part => part === 'orders').length).toBeGreaterThan(0);
       await expect(next).toBeEmpty();
-      ws.pushEvent({ type: 'trading_changed', mode: 'live', revision: 2, account_seq: 1,
+      ws.pushEvent({ type: 'trading_order', mode: 'live', revision: 2, account_seq: 1,
         order: { ...mkOrder('synthetic-canonical', '67100', '0'), quantity: '50' } });
       await expect(next).toHaveText('50');
       await expect(first).toHaveText('70');
@@ -354,7 +354,7 @@ test.describe('신규 주문 HTTP 대기 중 독립 입력', () => {
       await held.accept(1);
       await expect(window.getByRole('button', { name: '내역 확인', exact: true })).toBeVisible();
       await input.fill('75');
-      await window.getByRole('button', { name: '25주', exact: true }).click();
+      await window.getByRole('button', { name: '10주', exact: true }).click();
       await expect(window.getByRole('button', { name: '내역 확인', exact: true })).toBeVisible();
       expect(requests).toHaveLength(2);
       await window.getByRole('button', { name: '내역 확인', exact: true }).click();
@@ -398,6 +398,86 @@ test.describe('신규 주문 HTTP 대기 중 독립 입력', () => {
       }
       expect(requests[2].body.command_id).not.toBe(requests[3].body.command_id);
       await expect(next).toHaveAttribute('aria-disabled', 'false');
+    } finally { await held.cleanup(); }
+  });
+
+  test('persistent 실패를 지우지 않고 다른 실패의 가격·수량·요청을 선택한다', async ({ page }, info) => {
+    const held = await heldCreates(page);
+    const { window, requests } = held;
+    try {
+      await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('25');
+      await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(1);
+      await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('50');
+      await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(2);
+      await held.reject(0, 'order-outcome-unknown', '합성 첫 요청 결과 불명확');
+      await held.reject(1, 'order-hours-closed', '합성 두 번째 거절', 422);
+      await expect(window.getByRole('alert', { name: '주문 알림' })).toContainText('합성 첫 요청');
+      await window.getByRole('button', { name: '다음 주문 실패' }).click();
+      await expect(window.getByRole('alert', { name: '주문 알림' })).toContainText('합성 두 번째 거절');
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+      const detail = page.getByRole('dialog', { name: '주문 알림 상세' });
+      await expect(detail).toContainText('67,100원 · 50주');
+      await expect(detail).toContainText(String(requests[1].body.command_id).slice(0, 8));
+      await page.screenshot({ path: info.outputPath('create-failure-selection.png') });
+      await detail.getByRole('button', { name: '주문 알림 상세 닫기' }).click();
+      await window.getByRole('button', { name: '주문 알림 닫기' }).click();
+      await expect(window.getByRole('alert', { name: '주문 알림' })).toContainText('합성 첫 요청');
+      expect(requests).toHaveLength(2);
+    } finally { await held.cleanup(); }
+  });
+
+  test('재확인 403 뒤에도 원UNKNOWN과 서버 목록에 없는 같은 ID의 수동 확인을 보존한다', async ({ page }) => {
+    const held = await heldCreates(page);
+    const { window, requests } = held;
+    const reviews: Record<string, unknown>[] = [];
+    await page.route(/\/api\/trading\/commands\/[^/]+\/review$/, route => {
+      const body = route.request().postDataJSON(); reviews.push(body);
+      return route.fulfill({ json: { command_id: body.command_id } });
+    });
+    try {
+      await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(1);
+      await held.abort(0);
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+      const detail = page.getByRole('dialog', { name: '주문 알림 상세' });
+      await detail.getByRole('button', { name: '같은 요청 다시 확인' }).click();
+      await expect.poll(() => requests.length).toBe(2);
+      expect(requests[1].body).toEqual(requests[0].body);
+      await held.reject(1, 'forbidden', '합성 인증 거절', 403);
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+      await expect(detail.getByRole('button', { name: '같은 요청 다시 확인' })).toBeEnabled();
+      const review = detail.getByRole('button', { name: `요청 ${String(requests[0].body.command_id).slice(0, 8)} 확인 완료` });
+      await expect(review).toBeDisabled();
+      await detail.getByRole('checkbox', { name: '해당 증권사의 실제 주문·체결 여부를 확인했습니다' }).check();
+      await review.click();
+      await expect.poll(() => reviews.length).toBe(1);
+      expect(reviews[0]).toMatchObject({ command_id: requests[0].body.command_id, confirmed: true });
+      await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'false');
+    } finally { await held.cleanup(); }
+  });
+
+  test('창을 닫아도 진행 명령은 계속되고 다음 같은 계좌 창의 pause를 먼저 해제하지 않는다', async ({ page }) => {
+    const held = await heldCreates(page);
+    try {
+      await held.window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect.poll(() => held.requests.length).toBe(1);
+      await page.getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
+      await expect(held.window).toHaveCount(0);
+      await page.getByTestId('workspace-add-menu-button').click();
+      await page.getByTestId('workspace-add-order').click();
+      const next = page.getByTestId('order-window');
+      await next.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
+      await expect.poll(() => held.requests.length).toBe(2);
+      held.stateRequests.length = 0;
+      await held.accept(0);
+      await expect(next.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+      expect(held.stateRequests).toHaveLength(0);
+      await held.accept(1);
+      await expect(next.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+      await expect.poll(() => held.stateRequests.filter(part => part === 'orders').length).toBeGreaterThan(0);
+      expect(held.requests[0].body).toMatchObject({ code: '005930', account_seq: 1, price: 67200 });
     } finally { await held.cleanup(); }
   });
 });
