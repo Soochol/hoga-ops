@@ -15,6 +15,7 @@ from pathlib import Path
 
 TESTS = [
     "tests/unit/api/test_broker_trading.py",
+    "tests/unit/api/test_kiwoom_amend_concurrency.py",
     "tests/unit/api/test_toss_trading.py",
     "tests/unit/api/test_toss_rate_limits.py",
     "tests/unit/api/test_paper_trading.py",

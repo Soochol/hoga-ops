@@ -5168,10 +5168,16 @@ test('미체결 주문·보유종목은 우측 내 체결 왼쪽에 나란히 �
 });
 
 
-for (const scenario of [{ broker: 'toss', events: true }, { broker: 'toss', events: false }, { broker: 'kiwoom', events: false }] as const) {
-  test(`묶음 가격정정의 독립 요청 한도와 확인된 사다리 반영: ${scenario.broker}/${scenario.events}`, async ({ page }) => {
+for (const scenario of [{ broker: 'toss', events: true, environment: 'real' }, { broker: 'toss', events: false, environment: 'real' },
+  { broker: 'kiwoom', events: false, environment: 'real' }, { broker: 'kiwoom', events: false, environment: 'mock' },
+  { broker: 'kiwoom', events: false, environment: undefined }] as const) {
+  test(`묶음 가격정정의 독립 요청 한도와 확인된 사다리 반영: ${scenario.broker}/${scenario.environment ?? 'unknown'}/${scenario.events}`, async ({ page }) => {
     const { window, toss, kiwoom, ws } = await multiBrokerSetup(page);
     const account = scenario.broker === 'toss' ? toss : kiwoom;
+    if (scenario.broker === 'kiwoom') await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: {
+      configured: true, accounts: [{ account_ref: kiwoom, broker: 'kiwoom', environment: scenario.environment,
+        label: '격리 키움 계좌', routes: ['KRX'], order_enabled: true }],
+    } }));
     let orders = Array.from({ length: 10 }, (_, i) => ({ order_ref: `batch-${i}`, account_ref: account, code: '005930',
       side: 'BUY', order_type: 'LIMIT', status: 'PENDING', price: '67200', quantity: '1', remaining_quantity: '1',
       filled_quantity: '0', ordered_at: new Date().toISOString(), average_filled_price: null, editable: true }));
@@ -5208,7 +5214,7 @@ for (const scenario of [{ broker: 'toss', events: true }, { broker: 'toss', even
     await expect(source).toHaveText('10');
     await ws.waitForSubscribe('005930');
     reads.length = 0;
-    const bound = scenario.broker === 'toss' ? 2 : 1;
+    const bound = scenario.broker === 'toss' || scenario.environment === 'real' ? 2 : 1;
     try {
       await drag(page, source, destination);
       await expect.poll(() => started.length).toBe(bound);
@@ -5217,7 +5223,7 @@ for (const scenario of [{ broker: 'toss', events: true }, { broker: 'toss', even
       await expect(destination).toBeEmpty();
       await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
       // Complete later requests while the first ACK stays withheld. Each freed slot refills.
-      const sequence = scenario.broker === 'toss' ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 0] : started.concat([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      const sequence = bound === 2 ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 0] : started.concat([1, 2, 3, 4, 5, 6, 7, 8, 9]);
       for (const [count, index] of sequence.entries()) {
         await expect.poll(() => releases.has(index)).toBe(true);
         releases.get(index)!();
