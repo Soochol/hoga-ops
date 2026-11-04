@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { TossOrder } from '../../api/trading';
+import type { TossOrder, TradingCommandResponse } from '../../api/trading';
+import { tradingRefreshPaused } from '../../api/tradingRefresh';
 import { OrderWindow } from './OrderWindow';
 import { DataWindow } from './DataWindow';
 import type { WorkspaceWindow } from '../../state/workspace';
@@ -73,6 +74,17 @@ function enableReceiptSound() {
   fireEvent.click(screen.getByRole('switch', { name: '주문·정정 접수 소리' }));
   fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
 }
+
+function holdCommands() {
+  const pending: { resolve: (response: TradingCommandResponse) => void; reject: (error: Error) => void }[] = [];
+  mock.command.mockImplementation(() => new Promise<TradingCommandResponse>((resolve, reject) => pending.push({ resolve, reject })));
+  return {
+    accept: (index: number) => pending[index].resolve({ command_id: mock.command.mock.calls[index][1].command_id,
+      order_id: `synthetic-order-${index}`, status: 'accepted' }),
+    reject: (index: number, error: Error) => pending[index].reject(error),
+  };
+}
+
 beforeEach(() => {
   mock.now = 1791856800000; mock.afterHours = [];
   mock.broker = undefined;
@@ -88,6 +100,290 @@ beforeEach(() => {
   vi.mocked(playOrderReceiptSound).mockReset().mockResolvedValue(true);
   vi.mocked(playOrderSound).mockReset().mockResolvedValue(true);
   vi.mocked(subscribeOrderReceiptSoundRecovery).mockReset().mockReturnValue(() => {});
+});
+
+describe('신규 주문 HTTP 대기 중 독립 입력', () => {
+  const buy = (price = '67,200') => screen.getByRole('button', { name: new RegExp(`매수 ${price}원 주문 추가`) });
+  const quantity = (value: string) => fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value } });
+  const retry = () => {
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    fireEvent.click(screen.getByRole('button', { name: '같은 요청 다시 확인' }));
+  };
+  const unknown = () => Object.assign(new Error('합성 요청의 접수 결과를 확인하세요'), { code: 'order-outcome-unknown', status: 503 });
+
+  it('첫 ACK 전에 다른 가격과 동일 payload의 더블클릭을 각각 새 ID로 전송한다', async () => {
+    const held = holdCommands();
+    show();
+    quantity('25');
+    fireEvent.click(buy());
+    fireEvent.keyDown(buy(), { key: 'Enter' });
+    fireEvent.keyDown(buy(), { key: ' ' });
+    expect(mock.command).not.toHaveBeenCalled();
+    fireEvent.doubleClick(buy());
+    quantity('50');
+    fireEvent.doubleClick(buy('67,100'));
+    fireEvent.doubleClick(buy('67,100'));
+    expect(mock.command).toHaveBeenCalledTimes(3);
+    const bodies = mock.command.mock.calls.map(call => call[1]);
+    expect(bodies).toEqual([
+      expect.objectContaining({ account_seq: 1, code: '005930', side: 'BUY', price: 67200, quantity: 25, confirm_high_value: false }),
+      expect.objectContaining({ account_seq: 1, code: '005930', side: 'BUY', price: 67100, quantity: 50, confirm_high_value: false }),
+      expect.objectContaining({ account_seq: 1, code: '005930', side: 'BUY', price: 67100, quantity: 50, confirm_high_value: false }),
+    ]);
+    expect(new Set(bodies.map(body => body.command_id)).size).toBe(3);
+    await act(async () => { held.accept(2); held.accept(1); held.accept(0); });
+  });
+
+  it('역순 ACK는 자기 pause만 해제하고 마지막 ACK까지 원주문·계좌·설정 잠금을 유지한다', async () => {
+    const held = holdCommands();
+    const client = new QueryClient();
+    mock.accountCount = 2;
+    mock.orders = [order('synthetic-original')];
+    const content = () => <QueryClientProvider client={client}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>;
+    const view = render(content());
+    quantity('25');
+    fireEvent.doubleClick(buy());
+    fireEvent.doubleClick(buy('67,100'));
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    expect(tradingRefreshPaused(client, 'live', 1)).toBe(true);
+    await act(async () => held.accept(1));
+    expect(tradingRefreshPaused(client, 'live', 1)).toBe(true);
+    expect(screen.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '주문 설정' })).toBeDisabled();
+    expect(screen.getByLabelText('매수 67,200원 주문', { exact: true })).toHaveClass('order-quantity-blocked');
+    fireEvent.contextMenu(buy());
+    expect(screen.getByRole('button', { name: '주문 1 개별 취소' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '주문 목록 닫기' }));
+    expect(buy()).toHaveAttribute('aria-disabled', 'false');
+    await act(async () => held.accept(0));
+    expect(tradingRefreshPaused(client, 'live', 1)).toBe(false);
+    expect(screen.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '주문 설정' })).toBeEnabled();
+    expect(buy()).toHaveTextContent(/^70$/);
+    expect(buy('67,100')).toHaveTextContent('');
+    mock.orders = [...mock.orders, { ...order('synthetic-canonical'), price: '67100', quantity: '25', execution: { ...order().execution, filledQuantity: '0' } }];
+    view.rerender(content());
+    expect(buy('67,100')).toHaveTextContent(/^25$/);
+    expect(buy()).toHaveTextContent(/^70$/);
+  });
+
+  it('고액 확인은 전송 즉시 닫고 이전 ACK가 새 고액 초안의 확인을 지우지 않는다', async () => {
+    const held = holdCommands();
+    show();
+    quantity('2000');
+    fireEvent.doubleClick(buy());
+    expect(mock.command).not.toHaveBeenCalled();
+    const confirm = screen.getByRole('button', { name: '확인 후 주문' });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }));
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(mock.command).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog', { name: '고액 주문 확인' })).not.toBeInTheDocument();
+    quantity('2100');
+    fireEvent.doubleClick(buy('67,100'));
+    expect(screen.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' })).not.toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }));
+    await act(async () => held.accept(0));
+    expect(screen.getByRole('dialog', { name: '고액 주문 확인' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: '확인 후 주문' }));
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    expect(mock.command.mock.calls[0][1]).toMatchObject({ price: 67200, quantity: 2000, confirm_high_value: true });
+    expect(mock.command.mock.calls[1][1]).toMatchObject({ price: 67100, quantity: 2100, confirm_high_value: true });
+    await act(async () => held.accept(1));
+  });
+
+  it('다른 성공과 수량·프리셋 변경은 UNKNOWN의 원래 payload 재확인을 지우지 않는다', async () => {
+    const held = holdCommands();
+    show();
+    quantity('25');
+    fireEvent.doubleClick(buy());
+    quantity('50');
+    fireEvent.doubleClick(buy('67,100'));
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    const first = mock.command.mock.calls[0];
+    await act(async () => held.reject(0, unknown()));
+    await act(async () => held.accept(1));
+    quantity('75');
+    fireEvent.click(screen.getByRole('button', { name: '25주' }));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 요청');
+    fireEvent.doubleClick(buy('67,000'));
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    retry();
+    expect(mock.command).toHaveBeenCalledTimes(3);
+    expect(mock.command.mock.calls[2]).toEqual(first);
+    await act(async () => held.accept(2));
+  });
+
+  it('복수 UNKNOWN은 다른 미확정 ID가 있어도 각각 원래 ID로만 재확인한다', async () => {
+    const held = holdCommands();
+    const client = new QueryClient();
+    const content = () => <QueryClientProvider client={client}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>;
+    const view = render(content());
+    fireEvent.doubleClick(buy());
+    fireEvent.doubleClick(buy('67,100'));
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    const original = mock.command.mock.calls.slice();
+    await act(async () => { held.reject(1, unknown()); held.reject(0, unknown()); });
+    mock.unresolved = original.map(call => call[1].command_id);
+    view.rerender(content());
+    fireEvent.doubleClick(buy('67,000'));
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    for (const index of [2, 3]) {
+      retry();
+      expect(mock.command).toHaveBeenCalledTimes(index + 1);
+      expect(original).toContainEqual(mock.command.mock.calls[index]);
+      await act(async () => held.accept(index));
+    }
+    expect(mock.command.mock.calls[2][1].command_id).not.toBe(mock.command.mock.calls[3][1].command_id);
+  });
+
+  it('역순으로 실패한 두 신규 요청의 사유는 닫기 전까지 각각 남는다', async () => {
+    const held = holdCommands();
+    show();
+    fireEvent.doubleClick(buy());
+    fireEvent.doubleClick(buy('67,100'));
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    const rejection = (message: string) => Object.assign(new Error(message), { code: 'order-hours-closed', status: 422 });
+    await act(async () => held.reject(1, rejection('합성 두 번째 거절')));
+    await act(async () => held.reject(0, rejection('합성 첫 번째 거절')));
+    quantity('75');
+    const messages: string[] = [];
+    for (let index = 0; index < 2; index++) {
+      messages.push(screen.getByRole('alert', { name: '주문 알림' }).textContent ?? '');
+      fireEvent.click(screen.getByRole('button', { name: '주문 알림 닫기' }));
+    }
+    expect(messages.some(message => message.includes('합성 첫 번째 거절'))).toBe(true);
+    expect(messages.some(message => message.includes('합성 두 번째 거절'))).toBe(true);
+    expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
+  });
+
+  it('Code 변경은 전송한 요청과 계좌 잠금의 수명을 초기화하지 않는다', async () => {
+    const held = holdCommands();
+    const client = new QueryClient();
+    mock.accountCount = 2;
+    const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} /></QueryClientProvider>;
+    const view = render(content('005930'));
+    quantity('25');
+    fireEvent.doubleClick(buy());
+    view.rerender(content('000660'));
+    expect(screen.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '주문 설정' })).toBeDisabled();
+    expect(tradingRefreshPaused(client, 'live', 1)).toBe(true);
+    expect(mock.command.mock.calls[0][1]).toMatchObject({ code: '005930', quantity: 25 });
+    await act(async () => held.accept(0));
+    expect(tradingRefreshPaused(client, 'live', 1)).toBe(false);
+    expect(screen.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+  });
+
+  it('창 닫힘과 역순 완료는 같은 계좌의 다른 창 pause를 해제하지 않고 다른 계좌와 독립이다', async () => {
+    const held = holdCommands();
+    mock.accountCount = 2;
+    const client = new QueryClient();
+    const content = (first: boolean) => <QueryClientProvider client={client}>
+      {first && <div key="first" data-testid="first"><OrderWindow code="005930" name="합성 A" selectedAccountId={1} /></div>}
+      <div key="second" data-testid="second"><OrderWindow code="005930" name="합성 B" selectedAccountId={1} /></div>
+      <div key="third" data-testid="third"><OrderWindow code="005930" name="합성 C" selectedAccountId={2} /></div>
+    </QueryClientProvider>;
+    const view = render(content(true));
+    for (const name of ['first', 'second', 'third']) fireEvent.doubleClick(within(screen.getByTestId(name)).getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    expect(mock.command).toHaveBeenCalledTimes(3);
+    view.rerender(content(false));
+    await act(async () => held.accept(0));
+    expect(tradingRefreshPaused(client, 'live', 1)).toBe(true);
+    expect(tradingRefreshPaused(client, 'live', 2)).toBe(true);
+    await act(async () => held.accept(2));
+    expect(tradingRefreshPaused(client, 'live', 1)).toBe(true);
+    expect(tradingRefreshPaused(client, 'live', 2)).toBe(false);
+    await act(async () => held.accept(1));
+    expect(tradingRefreshPaused(client, 'live', 1)).toBe(false);
+  });
+
+  it('역순 성공과 UNKNOWN 재확인의 접수음은 실제 성공한 원래 ID에 귀속한다', async () => {
+    const held = holdCommands();
+    show(); enableReceiptSound();
+    fireEvent.doubleClick(buy());
+    fireEvent.doubleClick(buy('67,100'));
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    const ids = mock.command.mock.calls.map(call => call[1].command_id);
+    expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
+    await act(async () => held.accept(1));
+    expect(notifyOrderReceiptAccepted).toHaveBeenCalledExactlyOnceWith(1, ids[1]);
+    await act(async () => held.reject(0, unknown()));
+    expect(notifyOrderReceiptAccepted).toHaveBeenCalledOnce();
+    retry();
+    expect(mock.command.mock.calls[2][1].command_id).toBe(ids[0]);
+    await act(async () => held.accept(2));
+    expect(notifyOrderReceiptAccepted).toHaveBeenCalledTimes(2);
+    expect(notifyOrderReceiptAccepted).toHaveBeenNthCalledWith(2, 1, ids[0]);
+  });
+
+  it('등록 전 통신 실패의 같은 요청 재확인은 원래 수량을 쓰되 오래된 호가를 우회하지 않는다', async () => {
+    const held = holdCommands();
+    const client = new QueryClient();
+    const content = () => <QueryClientProvider client={client}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>;
+    const view = render(content());
+    quantity('25');
+    fireEvent.doubleClick(buy());
+    const original = mock.command.mock.calls[0];
+    await act(async () => held.reject(0, new Error('합성 전송 연결 끊김')));
+    quantity('');
+    mock.snapshotAt = mock.now - 60_000;
+    view.rerender(content());
+    retry();
+    expect(mock.command).toHaveBeenCalledOnce();
+    mock.snapshotAt = mock.now;
+    view.rerender(content());
+    retry();
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    expect(mock.command.mock.calls[1]).toEqual(original);
+    await act(async () => held.accept(1));
+  });
+
+  it('재확인 인증 거절은 원래 UNKNOWN을 보존하고 서버 목록에 없어도 같은 ID를 수동 확인한다', async () => {
+    const held = holdCommands();
+    show();
+    fireEvent.doubleClick(buy());
+    const id = mock.command.mock.calls[0][1].command_id;
+    await act(async () => held.reject(0, unknown()));
+    retry();
+    await act(async () => held.reject(1, Object.assign(new Error('합성 인증 거절'), { status: 403, code: 'forbidden' })));
+    expect(buy()).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    const details = screen.getByRole('dialog', { name: '주문 알림 상세' });
+    expect(within(details).getByRole('button', { name: '같은 요청 다시 확인' })).toBeEnabled();
+    const review = within(details).getByRole('button', { name: `요청 ${id.slice(0, 8)} 확인 완료` });
+    expect(review).toBeDisabled();
+    fireEvent.click(within(details).getByRole('checkbox', { name: '해당 증권사의 실제 주문·체결 여부를 확인했습니다' }));
+    mock.command.mockResolvedValueOnce({ command_id: id });
+    fireEvent.click(review);
+    await act(async () => {});
+    expect(mock.command.mock.calls[2]).toEqual([`/commands/${encodeURIComponent(id)}/review`, expect.objectContaining({ command_id: id, confirmed: true }), 'live']);
+    expect(buy()).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it('자기 UNKNOWN은 계좌와 Code 범위에 남고 원scope로 돌아와야 재확인한다', async () => {
+    const held = holdCommands();
+    const client = new QueryClient();
+    const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} /></QueryClientProvider>;
+    const view = render(content('005930'));
+    fireEvent.doubleClick(buy());
+    const original = mock.command.mock.calls[0];
+    await act(async () => held.reject(0, unknown()));
+    view.rerender(content('000660'));
+    quantity('25');
+    fireEvent.doubleClick(buy());
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    expect(mock.command.mock.calls[1][1]).toMatchObject({ code: '000660' });
+    await act(async () => held.accept(1));
+    view.rerender(content('005930'));
+    quantity('75');
+    retry();
+    expect(mock.command).toHaveBeenCalledTimes(3);
+    expect(mock.command.mock.calls[2]).toEqual(original);
+    await act(async () => held.accept(2));
+  });
 });
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; symbolMaster.securityType = 'stock'; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
@@ -727,9 +1023,9 @@ describe('호가 주문', () => {
     expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
     expect(screen.queryByRole('status', { name: '주문 접수 알림' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: new RegExp(label) })).toHaveAttribute('aria-disabled', 'true');
-    fireEvent.doubleClick(screen.getByRole('button', { name: new RegExp(label) }));
+    expect(screen.getByRole('button', { name: new RegExp(label) })).toHaveAttribute('aria-disabled', 'false');
     fireEvent.keyDown(screen.getByRole('button', { name: new RegExp(label) }), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('button', { name: new RegExp(label) }), { key: ' ' });
     expect(mock.command).toHaveBeenCalledOnce();
     expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
     await act(async () => resolve({ command_id: mock.command.mock.calls[0][1].command_id, order_id: 'new', status: 'accepted' }));
@@ -2298,6 +2594,21 @@ describe('장전 시간외 종가 총잔량 주문', () => {
       can_order: true, reason: null, fetched_at_ms: mock.now };
     return show();
   }
+
+  it('장전 신규 주문 HTTP 대기 중에도 다음 의도의 KRX·고정 가격·수량 snapshot을 보존한다', async () => {
+    const held = holdCommands();
+    morning();
+    const total = screen.getByRole('button', { name: '장전 종가 매수 총잔량' });
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '10' } });
+    fireEvent.doubleClick(total);
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '20' } });
+    fireEvent.doubleClick(total);
+    expect(mock.command).toHaveBeenCalledTimes(2);
+    expect(mock.command.mock.calls[0][1]).toMatchObject({ order_type: 'PREOPEN_CLOSE', route: 'KRX', price: 66000, quantity: 10 });
+    expect(mock.command.mock.calls[1][1]).toMatchObject({ order_type: 'PREOPEN_CLOSE', route: 'KRX', price: 66000, quantity: 20 });
+    expect(mock.command.mock.calls[0][1].command_id).not.toBe(mock.command.mock.calls[1][1].command_id);
+    await act(async () => { held.accept(1); held.accept(0); });
+  });
 
   it.each(['매수', '매도'])('맨 아래 총잔량 숫자를 더블클릭해 키움 KRX %s 주문을 전송한다', async side => {
     morning();
