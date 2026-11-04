@@ -70,6 +70,7 @@ const UNRESOLVED_NOTICE: OrderNotice = {
 };
 const mode = 'live' as const;
 const MAX_CONCURRENT_GROUP_CANCELS = 10;
+const MAX_CONCURRENT_TOSS_MODIFICATIONS = 2;
 type Action = {
   type: 'create' | 'modify' | 'cancel' | 'bulk' | 'group';
   base: TradingCommand;
@@ -488,8 +489,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             }
           }
         };
-        // Refill each completed cancel slot immediately; grouped replacements keep their order.
-        await Promise.all(Array.from({ length: Math.min(batch.length, cancellingOrders ? MAX_CONCURRENT_GROUP_CANCELS : 1) }, submitOrders));
+        const toss = activeAccount?.broker === 'toss' || (activeAccount?.broker == null && typeof account === 'number');
+        const concurrency = cancellingOrders ? MAX_CONCURRENT_GROUP_CANCELS : toss ? MAX_CONCURRENT_TOSS_MODIFICATIONS : 1;
+        await Promise.all(Array.from({ length: Math.min(batch.length, concurrency) }, submitOrders));
         if (messages.length) {
           if (cancellingOrders) accepted = false;
           else {
