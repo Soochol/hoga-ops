@@ -860,7 +860,7 @@ async def independent_modification_transport(setup, context):
 
 
 @pytest.mark.parametrize("context", ["same-symbol", "other-symbol", "other-account"])
-async def test_independent_modifications_overlap_with_two_shared_slots(
+async def test_independent_modifications_refill_four_shared_slots(
     setup, context, independent_modification_transport,
 ):
     broker, service, api = setup
@@ -880,19 +880,19 @@ async def test_independent_modifications_overlap_with_two_shared_slots(
     tasks = [asyncio.create_task(submit(i)) for i in range(10)]
     duplicate = None
     try:
-        first = await asyncio.wait_for(started.get(), 2)
-        second = await asyncio.wait_for(started.get(), 2)
-        assert first != second
-        assert active() == (2, 2)
+        admitted = [await asyncio.wait_for(started.get(), 2) for _ in range(4)]
+        assert len(set(admitted)) == 4
+        assert active() == (4, 4)
+        first, second = admitted[:2]
         # Abandoning the HTTP waiter cannot release the owned order's slot or replay it.
         index = int(first.rsplit("-", 1)[1])
         tasks[index].cancel()
         await asyncio.gather(tasks[index], return_exceptions=True)
         duplicate = asyncio.create_task(submit(index))
         releases[second].set()
-        third = await asyncio.wait_for(started.get(), 2)
-        assert third not in {first, second}
-        assert active() == (2, 2)
+        fifth = await asyncio.wait_for(started.get(), 2)
+        assert fifth not in admitted
+        assert active() == (4, 4)
         assert not releases[first].is_set()
     finally:
         release_all.set()
@@ -901,7 +901,7 @@ async def test_independent_modifications_overlap_with_two_shared_slots(
             results.append(await duplicate)
     assert all(isinstance(result, asyncio.CancelledError) or result.status_code == 200 for result in results)
     assert sorted(details) == sorted(releases)
-    assert active()[1] == 2
+    assert active()[1] == 4
     # Accepted replay also skips both validation and write.
     replay = await submit(0)
     assert replay.status_code == 200
