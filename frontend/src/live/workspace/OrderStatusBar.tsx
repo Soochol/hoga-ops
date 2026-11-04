@@ -9,8 +9,9 @@ import './OrderStatusBar.css';
 
 export interface OrderReceipt { text: string; commandId: string; soundFailed?: boolean }
 
-export function OrderStatusBar({ notice, receipt, busy, onDismiss, onExpireReceipt, onRetry, failureSelection, children }: {
+export function OrderStatusBar({ notice, receipt, followupMessage, busy, onDismiss, onExpireReceipt, onRetry, failureSelection, children }: {
   notice: OrderNotice | null; receipt: OrderReceipt | null; busy: boolean;
+  followupMessage?: string | null;
   onDismiss: () => void; onExpireReceipt: () => void; onRetry: () => void;
   children?: ReactNode;
   failureSelection?: { index: number; total: number; onSelect: (index: number) => void };
@@ -35,7 +36,8 @@ export function OrderStatusBar({ notice, receipt, busy, onDismiss, onExpireRecei
       if (document.activeElement === document.body || layer?.contains(document.activeElement)) trigger?.focus({ preventScroll: true });
     };
   }, [open, ref]);
-  const text = notice?.message ?? receipt?.text ?? '주문 대기';
+  const message = notice?.message ?? receipt?.text ?? '주문 대기';
+  const text = followupMessage ? `${message} · 최근 확인 실패: ${followupMessage}` : message;
   const tooltip = useTextTooltip(incoming && !open ? `${notice ? `${notice.title} · ` : ''}${text}` : '', 500, 'order-tooltip');
   const durationMs = open || notice?.persistent ? null : notice ? 8000 : 4000;
   const timer = useToastTimer({ visible: !!incoming, durationMs, resetKey: incoming,

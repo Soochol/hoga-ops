@@ -460,10 +460,18 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     if (body.account_seq !== account || body.code !== code) return false;
     const issue = newOrderIssue({ ...(body.order_type === 'PREOPEN_CLOSE' ? preopenAvailability : availability),
       quantity: body.quantity, unresolved: expected ? false : availability.unresolved || creates.unknown(account, code) });
-    if (issue) { setNotice(issue); return false; }
+    if (issue) {
+      if (expected) creates.reportFollowup(expected, issue.message);
+      else setNotice(issue);
+      return false;
+    }
     if (!Number.isSafeInteger(body.price) || body.price <= 0
       || (body.price * body.quantity >= HIGH_VALUE_WON && !body.confirm_high_value)) return false;
-    if (body.route && routes && !routes.includes(body.route)) { setNotice('주문 거래소를 확인하세요.'); return false; }
+    if (body.route && routes && !routes.includes(body.route)) {
+      if (expected) creates.reportFollowup(expected, '주문 거래소를 확인하세요.');
+      else setNotice('주문 거래소를 확인하세요.');
+      return false;
+    }
     if (!creates.submit(expected ?? { body, sound: preferences.orderReceiptSound, name }, expected)) return false;
     setNoticeState(null); setReceipt(null);
     return true;
@@ -622,6 +630,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   }
   async function reviewCommand(commandId: string) {
     if (!reviewedUnknown || busyRef.current || cancellingRef.current.size || creates.active()) return;
+    const reviewedCreate = creates.records.find(record => record.body.command_id === commandId);
     busyRef.current = true; setBusy(true);
     try {
       const body: ReviewTradingCommand = { ...base(), command_id: commandId, confirmed: true };
@@ -629,7 +638,11 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       setCancelFailures(prev => prev.filter(item => item.action.base.command_id !== commandId));
       creates.reviewed(commandId);
       closeAction(); reviewUnknown(false);
-    } catch (error) { setNotice(error instanceof Error ? error.message : '내역 확인 기록 실패'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '내역 확인 기록 실패';
+      if (reviewedCreate) creates.reportFollowup(reviewedCreate, message);
+      else setNotice(message);
+    }
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
   }
   function create(side: TradingSide, price: number, orderType: 'LIMIT' | 'PREOPEN_CLOSE' = 'LIMIT') {
@@ -1101,6 +1114,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       </div>
     </ModalShell></div>, document.body)}
     <OrderStatusBar key={`order-notice:${account}`} notice={notice ?? (!displayedReceipt && unresolvedIds.length ? UNRESOLVED_NOTICE : null)} receipt={displayedReceipt}
+      followupMessage={createFailure?.status !== 'accepted' ? createFailure?.failure?.followupMessage : null}
       busy={createFailure ? exclusiveBusy || cancelling.size > 0 || createFailure.status === 'pending' : busy}
       failureSelection={{ index: failureIndex, total: failures.length, onSelect: index => selectFailure(failures[index].id) }}
       onDismiss={dismissNotice} onExpireReceipt={() => { if (receipt) setReceipt(current => current === receipt ? null : current); else if (createReceipt) creates.consume(createReceipt); }}

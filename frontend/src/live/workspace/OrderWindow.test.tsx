@@ -333,6 +333,10 @@ describe('신규 주문 HTTP 대기 중 독립 입력', () => {
     view.rerender(content());
     retry();
     expect(mock.command).toHaveBeenCalledOnce();
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('실시간 호가가 오래되었습니다');
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    expect(screen.getByRole('dialog', { name: '주문 알림 상세' })).toHaveTextContent('합성 전송 연결 끊김');
+    expect(screen.getByRole('dialog', { name: '주문 알림 상세' })).toHaveTextContent('실시간 호가가 오래되었습니다');
     mock.snapshotAt = mock.now;
     view.rerender(content());
     retry();
@@ -341,17 +345,24 @@ describe('신규 주문 HTTP 대기 중 독립 입력', () => {
     await act(async () => held.accept(1));
   });
 
-  it('재확인 인증 거절은 원래 UNKNOWN을 보존하고 서버 목록에 없어도 같은 ID를 수동 확인한다', async () => {
+  it.each([
+    { status: 403, code: 'forbidden' },
+    { status: 401, code: 'unauthorized' },
+    { status: 409, code: 'account-binding-mismatch' },
+  ])('재확인 $code 거절은 사유와 원래 UNKNOWN을 보존하고 같은 ID를 수동 확인한다', async error => {
     const held = holdCommands();
     show();
     fireEvent.doubleClick(buy());
     const id = mock.command.mock.calls[0][1].command_id;
     await act(async () => held.reject(0, unknown()));
     retry();
-    await act(async () => held.reject(1, Object.assign(new Error('합성 인증 거절'), { status: 403, code: 'forbidden' })));
+    await act(async () => held.reject(1, Object.assign(new Error('합성 인증 거절'), error)));
     expect(buy()).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 인증 거절');
     fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
     const details = screen.getByRole('dialog', { name: '주문 알림 상세' });
+    expect(details).toHaveTextContent('합성 요청의 접수 결과를 확인하세요');
+    expect(details).toHaveTextContent('합성 인증 거절');
     expect(within(details).getByRole('button', { name: '같은 요청 다시 확인' })).toBeEnabled();
     const review = within(details).getByRole('button', { name: `요청 ${id.slice(0, 8)} 확인 완료` });
     expect(review).toBeDisabled();
@@ -361,6 +372,72 @@ describe('신규 주문 HTTP 대기 중 독립 입력', () => {
     await act(async () => {});
     expect(mock.command.mock.calls[2]).toEqual([`/commands/${encodeURIComponent(id)}/review`, expect.objectContaining({ command_id: id, confirmed: true }), 'live']);
     expect(buy()).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it('수동 확인 실패는 이미 열린 상세와 상태줄에 표시하고 UNKNOWN과 확인 체크를 유지한다', async () => {
+    const held = holdCommands();
+    show();
+    fireEvent.doubleClick(buy());
+    const id = mock.command.mock.calls[0][1].command_id;
+    await act(async () => held.reject(0, unknown()));
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    const details = screen.getByRole('dialog', { name: '주문 알림 상세' });
+    fireEvent.click(within(details).getByRole('checkbox'));
+    fireEvent.click(within(details).getByRole('button', { name: `요청 ${id.slice(0, 8)} 확인 완료` }));
+    await act(async () => held.reject(1, Object.assign(new Error('합성 수동 확인 권한 거절'), { status: 403 })));
+    expect(screen.getByRole('dialog', { name: '주문 알림 상세' })).toBe(details);
+    expect(details).toHaveTextContent('합성 수동 확인 권한 거절');
+    expect(details).toHaveTextContent('합성 요청의 접수 결과를 확인하세요');
+    expect(within(details).getByRole('checkbox')).toBeChecked();
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 수동 확인 권한 거절');
+    expect(buy()).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByRole('button', { name: '주문 알림 닫기' })).not.toBeInTheDocument();
+    expect(within(details).getByRole('button', { name: '같은 요청 다시 확인' })).toBeEnabled();
+    expect(mock.command).toHaveBeenCalledTimes(2);
+  });
+
+  it('선택을 바꾼 뒤 도착한 수동 확인 실패는 해당 명령에만 남는다', async () => {
+    const held = holdCommands();
+    show();
+    fireEvent.doubleClick(buy());
+    fireEvent.doubleClick(buy('67,100'));
+    const id = mock.command.mock.calls[0][1].command_id;
+    await act(async () => { held.reject(0, unknown()); held.reject(1, unknown()); });
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: `요청 ${id.slice(0, 8)} 확인 완료` }));
+    fireEvent.click(screen.getByRole('button', { name: '다음 주문 실패' }));
+    await act(async () => held.reject(2, new Error('합성 첫 명령 수동 확인 실패')));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).not.toHaveTextContent('합성 첫 명령 수동 확인 실패');
+    fireEvent.click(screen.getByRole('button', { name: '이전 주문 실패' }));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('합성 첫 명령 수동 확인 실패');
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    expect(screen.getByRole('dialog', { name: '주문 알림 상세' })).toHaveTextContent(`요청 ${id.slice(0, 8)}`);
+    expect(buy()).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('복수 명령의 역순 재확인 오류는 각각의 ID에 남고 입력 변경으로 지워지지 않는다', async () => {
+    const held = holdCommands();
+    show();
+    fireEvent.doubleClick(buy());
+    fireEvent.doubleClick(buy('67,100'));
+    const originals = [...mock.command.mock.calls];
+    await act(async () => { held.reject(0, unknown()); held.reject(1, unknown()); });
+    retry();
+    fireEvent.click(screen.getByRole('button', { name: '다음 주문 실패' }));
+    retry();
+    await act(async () => held.reject(3, Object.assign(new Error('합성 두 번째 binding 실패'), { status: 409 })));
+    await act(async () => held.reject(2, Object.assign(new Error('합성 첫 번째 인증 실패'), { status: 403 })));
+    quantity('25');
+    const status = screen.getByRole('alert', { name: '주문 알림' });
+    expect(status).toHaveTextContent('합성 두 번째 binding 실패');
+    expect(status).not.toHaveTextContent('합성 첫 번째 인증 실패');
+    fireEvent.click(screen.getByRole('button', { name: '이전 주문 실패' }));
+    expect(status).toHaveTextContent('합성 첫 번째 인증 실패');
+    expect(status).not.toHaveTextContent('합성 두 번째 binding 실패');
+    expect(mock.command.mock.calls[2]).toEqual(originals[0]);
+    expect(mock.command.mock.calls[3]).toEqual(originals[1]);
+    expect(buy()).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('자기 UNKNOWN은 계좌와 Code 범위에 남고 원scope로 돌아와야 재확인한다', async () => {
@@ -411,6 +488,48 @@ describe('신규 주문 HTTP 대기 중 독립 입력', () => {
     fireEvent.click(screen.getByRole('button', { name: '주문 알림 상세 보기' }));
     expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: '해당 증권사의 실제 주문·체결 여부를 확인했습니다' })).not.toBeInTheDocument();
+  });
+
+  it('다른 명령 때문에 거절된 알림은 닫을 수 있고 실제 미확정 ID의 차단과 확인은 유지한다', async () => {
+    const held = holdCommands();
+    const client = new QueryClient();
+    const content = () => <QueryClientProvider client={client}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>;
+    const view = render(content());
+    fireEvent.doubleClick(buy());
+    await act(async () => held.reject(0, Object.assign(new Error('합성 다른 명령 차단 거절'), { code: 'unresolved-order-exists', status: 503 })));
+    mock.unresolved = ['synthetic-real-blocker'];
+    view.rerender(content());
+    fireEvent.click(screen.getByRole('button', { name: '주문 알림 닫기' }));
+    expect(screen.getByTestId('order-status-bar')).not.toHaveTextContent('합성 다른 명령 차단 거절');
+    expect(buy()).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: '요청 syntheti 확인 완료' }));
+    expect(mock.command.mock.calls[1][0]).toBe('/commands/synthetic-real-blocker/review');
+    await act(async () => held.accept(1));
+    mock.unresolved = [];
+    view.rerender(content());
+    quantity('25');
+    fireEvent.doubleClick(buy());
+    await act(async () => held.accept(2));
+    expect(screen.getByTestId('order-status-bar')).toHaveTextContent('주문 요청 접수됨');
+    expect(buy()).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it('다른 명령 때문에 거절된 알림은 기존 8초 수명으로 만료한다', async () => {
+    vi.useFakeTimers();
+    try {
+      const held = holdCommands();
+      show();
+      fireEvent.doubleClick(buy());
+      await act(async () => held.reject(0, Object.assign(new Error('합성 다른 명령 차단 거절'), { code: 'unresolved-order-exists', status: 503 })));
+      act(() => vi.advanceTimersByTime(7999));
+      expect(screen.getByTestId('order-status-bar')).toHaveTextContent('합성 다른 명령 차단 거절');
+      act(() => vi.advanceTimersByTime(1));
+      expect(screen.getByTestId('order-status-bar')).not.toHaveTextContent('합성 다른 명령 차단 거절');
+      expect(mock.command).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
   });
 
   it('후속 취소 접수와 입력 변경은 지난 신규 접수 알림을 다시 표시하지 않는다', async () => {

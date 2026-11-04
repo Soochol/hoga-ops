@@ -7,7 +7,7 @@ import type { OrderReceipt } from './OrderStatusBar';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound } from './orderReceiptSound';
 
 type CreateSnapshot = { readonly body: Readonly<CreateTradingOrder>; readonly sound: boolean; readonly name: string };
-type CreateFailure = { notice: OrderNotice; unknown: boolean };
+type CreateFailure = { notice: OrderNotice; unknown: boolean; followupMessage: string | null };
 export type CreateOrderRecord = CreateSnapshot & (
   | { status: 'pending'; failure: CreateFailure | null }
   | { status: 'failed'; failure: CreateFailure }
@@ -54,8 +54,10 @@ export function useCreateOrders() {
         }
       } catch (error) {
         const notice = orderFailure(error);
-        replace(id, { ...snapshot, status: 'failed', failure: failureBeforeRetry?.unknown ? failureBeforeRetry
-          : { notice, unknown: !!notice.persistent && !!notice.retry } });
+        const unknown = !!notice.persistent && !!notice.retry;
+        replace(id, { ...snapshot, status: 'failed', failure: failureBeforeRetry?.unknown
+          ? { ...failureBeforeRetry, followupMessage: notice.message }
+          : { notice: { ...notice, persistent: unknown }, unknown, followupMessage: null } });
       } finally { resume(); }
     })();
     return true;
@@ -66,9 +68,13 @@ export function useCreateOrders() {
     active: () => [...current.current.values()].some(record => record.status === 'pending'),
     unknown: (account: TradingAccountId, code: string) => [...current.current.values()].some(record =>
       record.body.account_seq === account && record.body.code === code && record.status !== 'accepted' && record.failure?.unknown),
+    reportFollowup: (expected: CreateOrderRecord, message: string) => {
+      if (current.current.get(expected.body.command_id) !== expected || expected.status !== 'failed') return;
+      replace(expected.body.command_id, { ...expected, failure: { ...expected.failure, followupMessage: message } });
+    },
     consume: (expected: CreateOrderRecord) => {
       if (current.current.get(expected.body.command_id) !== expected || expected.status === 'pending'
-        || (expected.status === 'failed' && expected.failure.notice.persistent)) return;
+        || (expected.status === 'failed' && expected.failure.unknown)) return;
       replace(expected.body.command_id, null);
     },
     reviewed: (id: string) => {
