@@ -51,9 +51,9 @@ vi.mock('../../api/tradeHistory', () => ({ useTradeHistory: vi.fn(() => ({ data:
 vi.mock('../../api/liveViStatus', () => ({ useLiveViStatus: vi.fn(() => ({ data: { vi: null } })) }));
 vi.mock('../../util/useWallClockSecond', () => ({ useWallClockSecond: () => mock.now }));
 vi.mock('../useMinuteClock', () => ({ useMinuteClock: () => mock.now }));
-const symbolMaster = vi.hoisted(() => ({ nxtEnabled: true as boolean | null }));
+const symbolMaster = vi.hoisted(() => ({ nxtEnabled: true as boolean | null, securityType: 'stock' as 'stock' | 'etf' | 'etn' }));
 const afterHoursBook = vi.hoisted(() => ({ data: undefined as LiveAfterHoursBookResponse | undefined }));
-vi.mock('../../capture/useSymbols', () => ({ useSymbols: () => ({ data: { symbols: [{ code: '005930', nxt_enabled: symbolMaster.nxtEnabled }] } }) }));
+vi.mock('../../capture/useSymbols', () => ({ useSymbols: () => ({ data: { symbols: [{ code: '005930', nxt_enabled: symbolMaster.nxtEnabled, security_type: symbolMaster.securityType }] } }) }));
 vi.mock('../../api/liveAfterHoursBook', async importOriginal => ({
   ...await importOriginal<typeof import('../../api/liveAfterHoursBook')>(), useAfterHoursBook: () => afterHoursBook,
 }));
@@ -89,7 +89,7 @@ beforeEach(() => {
   vi.mocked(playOrderSound).mockReset().mockResolvedValue(true);
   vi.mocked(subscribeOrderReceiptSoundRecovery).mockReset().mockReturnValue(() => {});
 });
-beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
+beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; symbolMaster.securityType = 'stock'; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
   it('체결 빈 행도 더블클릭으로 열고 체결강도·주문 입력은 실행하지 않는다', () => {
@@ -719,12 +719,12 @@ describe('호가 주문', () => {
   });
   it.each([
     ['67240.5', 67200],
-    ['67300', 67200],
+    ['67300', null],
     ['67300.00000000000000001', null],
     ['67400', null],
     ['67499.99999999999999999', null],
-    ['67500', 67600],
-  ])('빈 호가 구간의 평단가 %s는 최근접 호가에서 1틱 이내일 때만 표시한다', (average, price) => {
+    ['67500', null],
+  ])('빈 호가 구간의 평단가 %s는 정본 앵커가 있을 때만 표시한다', (average, price) => {
     expect(holdingBookMarker(100, average, [67600, 67200])).toEqual({ price, outside: false });
   });
   it.each([
@@ -733,9 +733,9 @@ describe('호가 주문', () => {
   ])('%i원 가격대 경계는 평단가 방향의 1틱을 적용한다', (boundary, lowerTick, upperTick) => {
     const lowerPrices = [boundary, boundary - 4 * lowerTick];
     const upperPrices = [boundary + 4 * upperTick, boundary];
-    expect(holdingBookMarker(3, String(boundary - lowerTick), lowerPrices)).toEqual({ price: boundary, outside: false });
+    expect(holdingBookMarker(3, String(boundary - lowerTick), lowerPrices)).toEqual({ price: null, outside: false });
     expect(holdingBookMarker(3, String(boundary - lowerTick - 0.1), lowerPrices)).toEqual({ price: null, outside: false });
-    expect(holdingBookMarker(3, String(boundary + upperTick), upperPrices)).toEqual({ price: boundary, outside: false });
+    expect(holdingBookMarker(3, String(boundary + upperTick), upperPrices)).toEqual({ price: null, outside: false });
     expect(holdingBookMarker(3, String(boundary + upperTick + 0.1), upperPrices)).toEqual({ price: null, outside: false });
   });
   it('평단가가 표시 호가에서 1틱을 넘으면 원만 숨기고 상단 평단가는 유지한다', () => {
@@ -751,7 +751,7 @@ describe('호가 주문', () => {
       const view = render(content());
       expect(view.container.querySelector('.order-average-marker')).toBeNull();
       expect(screen.getByLabelText('매입평단가')).toHaveTextContent('67,400');
-      for (const [average, price] of [['67300', '67200'], ['67500', '67600']] as const) {
+      for (const [average, price] of [['67240.5', '67200'], ['67560.5', '67600']] as const) {
         mock.averagePrice = average;
         view.rerender(content());
         expect(view.container.querySelector('.order-average-marker')?.closest('.order-row')).toHaveAttribute('data-order-price', price);
@@ -776,6 +776,24 @@ describe('호가 주문', () => {
     }
     expect(holdingBookMarker(100, '67200', [0, NaN])).toEqual({ price: null, outside: false });
     expect(holdingBookMarker(100, '67200', [])).toEqual({ price: null, outside: false });
+  });
+  it.each(['etf', 'etn'] as const)('%s 평단가 원은 일반·전체 호가에서 종목 격자를 사용한다', security => {
+    const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    vi.mocked(useLiveSeries).mockImplementation((...args) => ({ ...originalSeries(...args),
+      latestOb: { t_ms: mock.snapshotAt, asks: [{ price: 67210, qty: 100 }], bids: [{ price: 67205, qty: 200 }],
+        total_ask_qty: 100, total_bid_qty: 200 },
+    }));
+    try {
+      symbolMaster.securityType = security;
+      mock.averagePrice = '67207.5';
+      const { container } = show();
+      expect(container.querySelector('.order-average-marker')?.closest('.order-row')).toHaveAttribute('data-order-price', '67205');
+      fireEvent.click(screen.getByRole('button', { name: '전체 호가' }));
+      expect(container.querySelector('.order-average-marker')?.closest('.order-row')).toHaveAttribute('data-order-price', '67205');
+      expect(mock.command).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(useLiveSeries).mockImplementation(originalSeries);
+    }
   });
   it('평단가 원과 저가 배지를 같은 가격에 함께 표시하고 정확한 원본 평단가를 설명한다', async () => {
     mock.averagePrice = '67000.1';

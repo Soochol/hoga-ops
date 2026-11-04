@@ -1,5 +1,5 @@
 import type { TossOrder } from '../../api/trading';
-import { krxTickSize } from '../krxTick';
+import { orderPriceRange } from './orderPriceRange';
 
 export const ORDER_ROW_HEIGHT = 24;
 export const HIGH_VALUE_WON = 100_000_000;
@@ -19,33 +19,33 @@ function exactHoldingCost(quantity: number | null, averagePrice: string | null |
   return { amount: cost * BigInt(quantity), scale, quantity: BigInt(quantity) };
 }
 
-/** Compare the original decimal cost; ties select the lower displayed price.
- * Only mark a displayed price within one tick toward the actual average. */
-export function holdingBookMarker(quantity: number | null, averagePrice: string | null | undefined, prices: Iterable<number>) {
+/** Anchor to the canonical price grid, independently of the displayed book.
+ * Compare the original decimal cost exactly; ties select the lower valid price. */
+export function holdingBookMarker(quantity: number | null, averagePrice: string | null | undefined, prices: Iterable<number>,
+  security: Parameters<typeof orderPriceRange>[2] = 'stock') {
   const hidden = { price: null, outside: false };
   const cost = exactHoldingCost(quantity, averagePrice);
   if (!cost || cost.amount <= 0n) return hidden;
   const scale = cost.scale * cost.quantity;
-  let nearest: number | null = null, distance: bigint | null = null;
+  const displayed = new Set<number>();
   let min: bigint | null = null, max: bigint | null = null;
   for (const price of prices) {
     if (!Number.isSafeInteger(price) || price <= 0) continue;
+    displayed.add(price);
     const scaled = BigInt(price) * scale;
-    const delta = scaled - cost.amount;
-    const absolute = delta < 0n ? -delta : delta;
-    if (distance === null || absolute < distance || (absolute === distance && (nearest === null || price < nearest))) {
-      nearest = price; distance = absolute;
-    }
     if (min === null || scaled < min) min = scaled;
     if (max === null || scaled > max) max = scaled;
   }
   if (min === null || max === null) return hidden;
   const outside = cost.amount < min || cost.amount > max;
   if (outside) return { price: null, outside };
-  if (nearest === null || distance === null) return hidden;
-  // At a band boundary the next lower price uses the lower band's tick.
-  const tick = krxTickSize(cost.amount < BigInt(nearest) * scale ? nearest - 1 : nearest);
-  return { price: distance <= BigInt(tick) * scale ? nearest : null, outside: false };
+  const grid = orderPriceRange(1, 1_000_000_000, security);
+  if (!grid || cost.amount < scale || cost.amount > 1_000_000_000n * scale) return hidden;
+  // Floor the exact decimal before indexOf so sub-Number precision cannot cross a tick.
+  const index = grid.indexOf(Number(cost.amount / scale));
+  const lower = grid.priceAt(index), upper = grid.priceAt(index - 1);
+  const anchor = cost.amount - BigInt(lower) * scale <= BigInt(upper) * scale - cost.amount ? lower : upper;
+  return { price: displayed.has(anchor) ? anchor : null, outside: false };
 }
 
 function ceilWon(amount: bigint, scale: bigint): number | null {

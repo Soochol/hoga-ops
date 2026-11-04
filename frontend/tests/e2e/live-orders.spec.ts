@@ -4936,3 +4936,51 @@ test('전체 호가에서 수신 사다리가 없어도 조회 실패 안내를 
   await expect(window.locator('[data-order-price]').first()).toBeVisible();
   expect(commands).toHaveLength(0);
 });
+
+for (const venue of ['KRX', 'NXT', 'UN'] as const) {
+  test(`평단가 가격 앵커는 ${venue} 반복 호가 갱신·누락·전체 호가에서도 이웃 가격으로 이동하지 않는다`, async ({ page }, info) => {
+    const market = { venue, nxtEnabled: true, averagePrice: '67240.5', holdingQuantity: '100' };
+    const { window, ws, commands } = await setup(page, false, true, false, 0, 1, market);
+    const writes = trackTradingWrites(page);
+    await ws.waitForSubscribe('005930');
+    const markerRow = window.locator('.order-row').filter({ has: page.locator('.order-average-marker') });
+    await expect(markerRow).toHaveAttribute('data-order-price', '67200');
+    let time = Date.now(), sequence = 100;
+    async function update(asks: number[], bids: number[], full: boolean) {
+      // Unique quantities prove this frame was rendered before inspecting its marker.
+      const qty = ++sequence;
+      time += 1000;
+      ws.pushLive('005930', { kind: 'ob', venue, t_ms: time,
+        asks: asks.map(price => ({ price, qty })), bids: bids.map(price => ({ price, qty })),
+        total_ask_qty: qty, total_bid_qty: qty });
+      await expect(window.locator(`[data-order-price="${asks[0]}"] .order-depth-qty`).first())
+        .toHaveText(qty.toLocaleString('ko-KR'));
+      if (full || asks.includes(67200) || bids.includes(67200)) {
+        await expect(markerRow).toHaveAttribute('data-order-price', '67200');
+        await expect(window.locator('.order-average-marker')).toHaveCount(1);
+      } else {
+        await expect(window.locator('.order-average-marker')).toHaveCount(0);
+      }
+      await expect(window.getByLabel('매입평단가').locator('.order-field-value')).toHaveText('67,241');
+    }
+    for (const full of [false, true]) {
+      if (full) await window.getByRole('button', { name: '전체 호가', exact: true }).click();
+      for (let repeat = 0; repeat < 3; repeat++) {
+        await update([67300, 67400], [67200, 67100], full);
+        await update([67400, 67300], [67100, 67200], full);
+        await update([67300, 67500], [67100, 67000], full);
+        await update([67400, 67500], [67200, 67000], full);
+      }
+      await page.screenshot({ path: info.outputPath(`anchor-${venue}-${full ? 'full' : 'normal'}.png`) });
+    }
+    // A changed original average must move immediately on a real balance refresh.
+    market.averagePrice = '67360.5';
+    ws.pushEvent({ type: 'trading_changed', mode: 'live' });
+    await expect(markerRow).toHaveAttribute('data-order-price', '67400', { timeout: 15_000 });
+    market.holdingQuantity = '0';
+    ws.pushEvent({ type: 'trading_changed', mode: 'live' });
+    await expect(window.locator('.order-average-marker')).toHaveCount(0, { timeout: 15_000 });
+    expect(commands).toHaveLength(0);
+    expect(writes).toHaveLength(0);
+  });
+}

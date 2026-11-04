@@ -369,7 +369,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const averagePriceDisplay = hasHolding && Number.isFinite(averagePrice) && averagePrice > 0
     ? fmt(Math.ceil(averagePrice)) : '';
   const averageMarker = preferences.showAveragePrice
-    ? holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen) : { price: null, outside: false };
+    ? holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen, securityType) : { price: null, outside: false };
   const averageMarkerIndex = prices.findIndex(level => level.price === averageMarker.price);
   const [averageWhole, averageFraction] = (state.data?.average_purchase_price ?? '').split('.');
   const averagePriceText = averageWhole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (averageFraction ? `.${averageFraction}` : '');
