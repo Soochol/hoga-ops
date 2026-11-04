@@ -720,3 +720,60 @@ async def test_operation_still_in_open_does_not_hide_conflicting_history_and_rel
         == "order-processing"
     )
     assert len(broker.writes) == 1
+
+
+@pytest.mark.parametrize("ambiguous_first", [True, False])
+async def test_duplicated_leader_identity_never_establishes_parallel_fence(setup, ambiguous_first):
+    broker, _, adapter, service, _ = setup
+    orders = await targets(broker, adapter, count=2)
+    plain = dict(broker.opens[0])
+    ambiguous = {**plain, "io_tp_nm": "매수정정", "ord_stt": "확인", "orig_ord_no": "0000002"}
+    broker.opens = ([ambiguous, plain] if ambiguous_first else [plain, ambiguous]) + [broker.opens[1]]
+    barrier = WriteBarrier(broker, adapter)
+    tasks = [
+        asyncio.create_task(service.execute(modification(adapter, f"duplicate-leader-{i}"), "modify", o.order_ref))
+        for i, o in enumerate(orders)
+    ]
+    try:
+        await until(lambda: barrier.pending == 1)
+        await settle()
+        assert len(barrier.calls) == 1
+        barrier.drain()
+        await asyncio.gather(*tasks)
+        assert barrier.peak == 1
+    finally:
+        barrier.drain()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.parametrize("ambiguous_first", [True, False])
+async def test_new_duplicate_follower_identity_invalidates_frozen_proof(setup, ambiguous_first):
+    broker, _, adapter, service, _ = setup
+    orders = await targets(broker, adapter, count=2)
+    original = broker.handle
+
+    async def duplicate_after_first_send(request):
+        response = await original(request)
+        if request.headers["api-id"] == "kt10002" and json.loads(request.content)["orig_ord_no"] == "0000001":
+            plain = next(dict(row) for row in broker.opens if row["ord_no"] == "0000002")
+            ambiguous = {**plain, "io_tp_nm": "매수정정", "ord_stt": "확인", "orig_ord_no": "0000001"}
+            broker.opens = [row for row in broker.opens if row["ord_no"] != "0000002"]
+            broker.opens.extend([ambiguous, plain] if ambiguous_first else [plain, ambiguous])
+        return response
+
+    broker.handle = duplicate_after_first_send
+    barrier = WriteBarrier(broker, adapter)
+    tasks = [
+        asyncio.create_task(
+            outcome(service.execute(modification(adapter, f"duplicate-follower-{i}"), "modify", o.order_ref))
+        )
+        for i, o in enumerate(orders)
+    ]
+    try:
+        assert await tasks[1] == "order-state-syncing"
+        assert len(barrier.calls) == 1
+        barrier.drain()
+        assert (await tasks[0]).operation_ref
+    finally:
+        barrier.drain()
+        await asyncio.gather(*tasks, return_exceptions=True)

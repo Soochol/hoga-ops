@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections import deque
+from collections import Counter, deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
@@ -48,8 +48,10 @@ class AmendmentLease:
     def observe(self, snapshot: BrokerOrderState) -> None:
         if not self.parallel:
             return
+        counts = Counter(o.order_ref for o in snapshot.orders)
         identities = {
-            o.order_ref: identity for o in snapshot.orders if o.editable and (identity := _identity(o)) is not None
+            o.order_ref: identity for o in snapshot.orders
+            if counts[o.order_ref] == 1 and o.editable and (identity := _identity(o)) is not None
         }
         current = identities.get(self.order_ref)
         if self.follower:
