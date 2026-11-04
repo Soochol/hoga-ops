@@ -356,15 +356,16 @@ class BrokerTradingService:
                             and payload.get("command_id") != command.command_id
                         ):
                             operation_ref = (prior or {}).get("operation_ref")
+                            operation_open = any(o.order_ref == operation_ref for o in snapshot.orders)
                             terminals = [
-                                o for o in (*snapshot.orders, *snapshot.recent_orders)
+                                o for o in snapshot.recent_orders
                                 if o.order_ref == operation_ref
                             ]
                             expected = {"modify": "REPLACE_REJECTED", "cancel": "CANCEL_REJECTED"}.get(
                                 payload.get("action")
                             )
                             related = {native, order.original_order_id, order.root_order_id} - {None, ""}
-                            if not terminals or any(
+                            if operation_open or not terminals or any(
                                 terminal.status != expected or terminal.route != route
                                 or terminal.trading_date != date or terminal.original_order_id not in related
                                 for terminal in terminals

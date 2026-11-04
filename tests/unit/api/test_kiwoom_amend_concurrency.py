@@ -706,3 +706,17 @@ async def test_contradictory_exact_operation_rows_never_authorize_old_target(set
         == "order-processing"
     )
     assert len(broker.writes) == 1
+
+
+async def test_operation_still_in_open_does_not_hide_conflicting_history_and_release_old(setup):
+    broker, _, adapter, service, _ = setup
+    order = (await targets(broker, adapter, count=1))[0]
+    await service.execute(modification(adapter, "open-contradiction-parent"), "modify", order.order_ref)
+    replacement = dict(broker.opens[0])
+    replacement.update(ord_stt="거부", io_tp_nm="매수정정", orig_ord_no=order.broker_order_id)
+    broker.opens = [open_order(), replacement]
+    assert (
+        await outcome(service.execute(modification(adapter, "open-contradictory-retry"), "modify", order.order_ref))
+        == "order-processing"
+    )
+    assert len(broker.writes) == 1

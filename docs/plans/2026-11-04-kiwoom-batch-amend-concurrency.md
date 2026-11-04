@@ -31,7 +31,9 @@ owner 슬롯과 기존 조회/주문 budget을 공유하고, 다른 계좌는 �
 ACK는 정정·취소의 접수 번호를 뜻한다. 원주문의 정정 완료를 뜻하지 않는다. 기존 accepted
 명령 중 같은 원주문을 대상으로 한 각 operation은, fresh canonical 조회가 그 동작의 정확한
 거절을 확인할 때만 원주문의 재시도를 허용한다. 정정은 `REPLACE_REJECTED`, 취소는
-`CANCEL_REJECTED`이며 operation ID·원주문 관계·거래일·route도 맞아야 한다. 성공 확인,
+`CANCEL_REJECTED`이며 operation ID·원주문 관계·거래일·route도 맞아야 한다. 해당 operation이
+OPEN에 남아 있으면 이력의 거절을 재시도 근거로 사용하지 않으며, 동일 ID의 모든 이력 행이
+서로 일치해야 한다. 성공 확인,
 누락, pending, 다른 동작의 거절은 원주문을 다시 전송할 근거가 아니다. 이 검사는 journal에
 남은 accepted 기록을 사용하며 별도의 ACK 기반 영구 폐기 상태를 만들지 않는다.
 
