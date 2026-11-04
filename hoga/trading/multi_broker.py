@@ -356,15 +356,19 @@ class BrokerTradingService:
                             and payload.get("command_id") != command.command_id
                         ):
                             operation_ref = (prior or {}).get("operation_ref")
-                            terminal = next(
-                                (o for o in snapshot.recent_orders if o.order_ref == operation_ref), None
-                            )
+                            terminals = [
+                                o for o in (*snapshot.orders, *snapshot.recent_orders)
+                                if o.order_ref == operation_ref
+                            ]
                             expected = {"modify": "REPLACE_REJECTED", "cancel": "CANCEL_REJECTED"}.get(
-                            payload.get("action")
-                        )
+                                payload.get("action")
+                            )
                             related = {native, order.original_order_id, order.root_order_id} - {None, ""}
-                            if (terminal is None or terminal.status != expected or terminal.route != route
-                                    or terminal.trading_date != date or terminal.original_order_id not in related):
+                            if not terminals or any(
+                                terminal.status != expected or terminal.route != route
+                                or terminal.trading_date != date or terminal.original_order_id not in related
+                                for terminal in terminals
+                            ):
                                 raise TradingError(
                                     409, "order-processing", "이 주문의 정정·취소 결과를 동기화 중입니다."
                                 )

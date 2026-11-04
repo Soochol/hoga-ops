@@ -690,3 +690,19 @@ async def test_close_drains_existing_bulk_children_but_rejects_new_external_work
     finally:
         barrier.drain()
         await asyncio.gather(batch, *([closing] if closing else []), return_exceptions=True)
+
+
+@pytest.mark.parametrize("rejection_first", [True, False])
+async def test_contradictory_exact_operation_rows_never_authorize_old_target(setup, rejection_first):
+    broker, _, adapter, service, _ = setup
+    order = (await targets(broker, adapter, count=1))[0]
+    await service.execute(modification(adapter, "contradiction-parent"), "modify", order.order_ref)
+    broker.opens = [open_order()]
+    success = dict(broker.history[-1])
+    rejection = {**success, "acpt_tp": "거부"}
+    broker.history = [rejection, success] if rejection_first else [success, rejection]
+    assert (
+        await outcome(service.execute(modification(adapter, "contradictory-retry"), "modify", order.order_ref))
+        == "order-processing"
+    )
+    assert len(broker.writes) == 1
