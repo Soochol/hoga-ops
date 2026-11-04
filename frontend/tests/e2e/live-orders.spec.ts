@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import { test, expect, type Page, type Locator, type Route } from '@playwright/test';
+import { API_URL } from './worktreeEnv';
 import { installLiveMocks } from './helpers/liveMocks';
 import { installLiveWs } from './helpers/liveWs';
 import { nativeScrollbarTest } from './helpers/nativeScrollbarTest';
@@ -218,6 +219,268 @@ function trackTradingWrites(page: Page) {
   });
   return writes;
 }
+
+test.describe('신규 주문 HTTP 대기 중 독립 입력', () => {
+  test.use({ baseURL: API_URL });
+
+  async function heldCreates(page: Page, withOrder = false) {
+    await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'synthetic fixture only' } }));
+    await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
+    const fixture = await setup(page, withOrder, true, false, 0, 2);
+    const requests: { route: Route; body: Record<string, unknown> }[] = [];
+    const pending = new Set<Route>();
+    await page.route(/\/api\/trading\/orders$/, route => {
+      expect(route.request().headers()['x-hoga-order']).toBe('1');
+      requests.push({ route, body: route.request().postDataJSON() });
+      pending.add(route);
+    });
+    const respond = async (index: number, response: Parameters<Route['fulfill']>[0]) => {
+      const { route } = requests[index];
+      pending.delete(route);
+      await route.fulfill(response);
+    };
+    return { ...fixture, requests,
+      accept: (index: number) => respond(index, { json: { command_id: requests[index].body.command_id,
+        order_id: `synthetic-accepted-${index}`, status: 'accepted' } }),
+      reject: (index: number, code: string, message: string, status = 503) => respond(index, { status, json: { detail: { code, message } } }),
+      abort: async (index: number) => { pending.delete(requests[index].route); await requests[index].route.abort('failed'); },
+      cleanup: () => Promise.allSettled([...pending].map(route => route.abort())),
+    };
+  }
+
+  test('첫 ACK 전에 다른 가격과 동일 payload를 전송하고 역순 ACK에도 마지막 요청의 잠금을 유지한다', async ({ page }, info) => {
+    const held = await heldCreates(page, true);
+    const { window, requests, ws, stateRequests } = held;
+    const input = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+    const first = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    const next = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+    try {
+      await input.fill('25');
+      await next.click();
+      await next.press('Enter');
+      await next.press('Space');
+      expect(requests).toHaveLength(0);
+      await first.dblclick();
+      await expect.poll(() => requests.length).toBe(1);
+      await expect(next).toHaveAttribute('aria-disabled', 'false');
+      await input.fill('50');
+      await next.dblclick();
+      await expect.poll(() => requests.length).toBe(2);
+      await next.dblclick();
+      await expect.poll(() => requests.length).toBe(3);
+      expect(requests.map(request => request.body)).toEqual([
+        expect.objectContaining({ account_seq: 1, code: '005930', side: 'BUY', price: 67200, quantity: 25, confirm_high_value: false }),
+        expect.objectContaining({ account_seq: 1, code: '005930', side: 'BUY', price: 67100, quantity: 50, confirm_high_value: false }),
+        expect.objectContaining({ account_seq: 1, code: '005930', side: 'BUY', price: 67100, quantity: 50, confirm_high_value: false }),
+      ]);
+      expect(new Set(requests.map(request => request.body.command_id)).size).toBe(3);
+      await expect(window.getByLabel('매수 가능 금액')).toContainText('20,000,000원');
+      stateRequests.length = 0;
+      await held.accept(2);
+      await held.accept(1);
+      await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+      await expect(orderSettingsButton(window)).toBeDisabled();
+      await expect(first).toHaveText('70');
+      await expect(next).toBeEmpty();
+      await first.click({ button: 'right' });
+      const menu = page.getByRole('menu', { name: '매수 67,200원 주문 목록' });
+      await expect(menu.getByRole('button', { name: '주문 1 개별 취소' })).toBeDisabled();
+      await menu.getByRole('button', { name: '주문 목록 닫기' }).click();
+      ws.pushEvent({ type: 'trading_changed', mode: 'live', revision: 1 });
+      await page.screenshot({ path: info.outputPath('create-first-ack-held.png') });
+      expect(stateRequests).toHaveLength(0);
+      await held.accept(0);
+      await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+      await expect.poll(() => stateRequests.filter(part => part === 'orders').length).toBeGreaterThan(0);
+      await expect(next).toBeEmpty();
+      ws.pushEvent({ type: 'trading_order', mode: 'live', revision: 2, account_seq: 1,
+        order: { ...mkOrder('synthetic-canonical', '67100', '0'), quantity: '50' } });
+      await expect(next).toHaveText('50');
+      await expect(first).toHaveText('70');
+    } finally { await held.cleanup(); }
+  });
+
+  test('고액 전송은 확인창을 즉시 닫고 늦은 ACK는 새 고액 확인창에 영향을 주지 않는다', async ({ page }) => {
+    const held = await heldCreates(page);
+    const { window, requests } = held;
+    const input = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+    const confirmation = page.getByRole('dialog', { name: '고액 주문 확인' });
+    try {
+      await input.fill('2000');
+      await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect(confirmation).toBeVisible();
+      expect(requests).toHaveLength(0);
+      await confirmation.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }).check();
+      await confirmation.getByRole('button', { name: '확인 후 주문' }).click();
+      await expect.poll(() => requests.length).toBe(1);
+      await expect(confirmation).toBeHidden();
+      await input.fill('25');
+      await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(2);
+      await input.fill('2100');
+      await window.getByRole('button', { name: /매수 67,000원 주문 추가/ }).dblclick();
+      const checkbox = confirmation.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' });
+      await expect(checkbox).not.toBeChecked();
+      await checkbox.check();
+      await held.accept(0);
+      await expect(confirmation).toBeVisible();
+      await expect(checkbox).toBeChecked();
+      await confirmation.getByRole('button', { name: '확인 후 주문' }).click();
+      await expect.poll(() => requests.length).toBe(3);
+      expect(requests.map(request => request.body)).toEqual([
+        expect.objectContaining({ price: 67200, quantity: 2000, confirm_high_value: true }),
+        expect.objectContaining({ price: 67100, quantity: 25, confirm_high_value: false }),
+        expect.objectContaining({ price: 67000, quantity: 2100, confirm_high_value: true }),
+      ]);
+      await held.accept(2);
+      await held.accept(1);
+    } finally { await held.cleanup(); }
+  });
+
+  test('응답 소실과 다른 주문의 성공 뒤에도 원래 요청만 명시적으로 재확인한다', async ({ page }) => {
+    const held = await heldCreates(page);
+    const { window, requests } = held;
+    const input = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+    try {
+      await input.fill('25');
+      await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(1);
+      const next = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+      await expect(next).toHaveAttribute('aria-disabled', 'false');
+      await input.fill('50');
+      await next.dblclick();
+      await expect.poll(() => requests.length).toBe(2);
+      await held.abort(0);
+      await held.accept(1);
+      await expect(window.getByRole('button', { name: '내역 확인', exact: true })).toBeVisible();
+      await input.fill('75');
+      await window.getByRole('button', { name: '10주', exact: true }).click();
+      await expect(window.getByRole('button', { name: '내역 확인', exact: true })).toBeVisible();
+      expect(requests).toHaveLength(2);
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+      await page.getByRole('dialog', { name: '주문 알림 상세' }).getByRole('button', { name: '같은 요청 다시 확인' }).click();
+      await expect.poll(() => requests.length).toBe(3);
+      expect(requests[2].body).toEqual(requests[0].body);
+      await held.accept(2);
+      await expect(window.getByRole('status', { name: '주문 접수 알림' })).toContainText('주문 요청 접수됨');
+    } finally { await held.cleanup(); }
+  });
+
+  test('복수 UNKNOWN은 서버에 다른 미확정 ID가 있어도 각각 같은 payload로 재확인한다', async ({ page }) => {
+    const held = await heldCreates(page);
+    const { window, requests } = held;
+    let unresolved: unknown[] = [];
+    await page.route(/\/api\/trading\/state\?/, route => {
+      if (new URL(route.request().url()).searchParams.get('part') !== 'orders') return route.fallback();
+      return route.fulfill({ json: { account_seq: 1, code: '005930', orders: [], recent_orders: [],
+        fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: unresolved } });
+    });
+    try {
+      await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(1);
+      const next = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+      await expect(next).toHaveAttribute('aria-disabled', 'false');
+      await next.dblclick();
+      await expect.poll(() => requests.length).toBe(2);
+      unresolved = requests.map(request => request.body.command_id);
+      await held.reject(1, 'order-outcome-unknown', '합성 두 번째 결과 불명확');
+      await held.reject(0, 'order-outcome-unknown', '합성 첫 번째 결과 불명확');
+      await expect(next).toHaveAttribute('aria-disabled', 'true');
+      expect(requests).toHaveLength(2);
+      const originals = requests.map(request => request.body);
+      for (const index of [2, 3]) {
+        await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+        await page.getByRole('dialog', { name: '주문 알림 상세' }).getByRole('button', { name: '같은 요청 다시 확인' }).click();
+        await expect.poll(() => requests.length).toBe(index + 1);
+        expect(originals).toContainEqual(requests[index].body);
+        unresolved = unresolved.filter(id => id !== requests[index].body.command_id);
+        await held.accept(index);
+      }
+      expect(requests[2].body.command_id).not.toBe(requests[3].body.command_id);
+      await expect(next).toHaveAttribute('aria-disabled', 'false');
+    } finally { await held.cleanup(); }
+  });
+
+  test('persistent 실패를 지우지 않고 다른 실패의 가격·수량·요청을 선택한다', async ({ page }, info) => {
+    const held = await heldCreates(page);
+    const { window, requests } = held;
+    try {
+      await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('25');
+      await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(1);
+      await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('50');
+      await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(2);
+      await held.reject(0, 'order-outcome-unknown', '합성 첫 요청 결과 불명확');
+      await held.reject(1, 'order-hours-closed', '합성 두 번째 거절', 422);
+      await expect(window.getByRole('alert', { name: '주문 알림' })).toContainText('합성 첫 요청');
+      await window.getByRole('button', { name: '다음 주문 실패' }).click();
+      await expect(window.getByRole('alert', { name: '주문 알림' })).toContainText('합성 두 번째 거절');
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+      const detail = page.getByRole('dialog', { name: '주문 알림 상세' });
+      await expect(detail).toContainText('67,100원 · 50주');
+      await expect(detail).toContainText(String(requests[1].body.command_id).slice(0, 8));
+      await page.screenshot({ path: info.outputPath('create-failure-selection.png') });
+      await detail.getByRole('button', { name: '주문 알림 상세 닫기' }).click();
+      await window.getByRole('button', { name: '주문 알림 닫기' }).click();
+      await expect(window.getByRole('alert', { name: '주문 알림' })).toContainText('합성 첫 요청');
+      expect(requests).toHaveLength(2);
+    } finally { await held.cleanup(); }
+  });
+
+  test('재확인 403 뒤에도 원UNKNOWN과 서버 목록에 없는 같은 ID의 수동 확인을 보존한다', async ({ page }) => {
+    const held = await heldCreates(page);
+    const { window, requests } = held;
+    const reviews: Record<string, unknown>[] = [];
+    await page.route(/\/api\/trading\/commands\/[^/]+\/review$/, route => {
+      const body = route.request().postDataJSON(); reviews.push(body);
+      return route.fulfill({ json: { command_id: body.command_id } });
+    });
+    try {
+      await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect.poll(() => requests.length).toBe(1);
+      await held.abort(0);
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+      const detail = page.getByRole('dialog', { name: '주문 알림 상세' });
+      await detail.getByRole('button', { name: '같은 요청 다시 확인' }).click();
+      await expect.poll(() => requests.length).toBe(2);
+      expect(requests[1].body).toEqual(requests[0].body);
+      await held.reject(1, 'forbidden', '합성 인증 거절', 403);
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+      await expect(detail.getByRole('button', { name: '같은 요청 다시 확인' })).toBeEnabled();
+      const review = detail.getByRole('button', { name: `요청 ${String(requests[0].body.command_id).slice(0, 8)} 확인 완료` });
+      await expect(review).toBeDisabled();
+      await detail.getByRole('checkbox', { name: '해당 증권사의 실제 주문·체결 여부를 확인했습니다' }).check();
+      await review.click();
+      await expect.poll(() => reviews.length).toBe(1);
+      expect(reviews[0]).toMatchObject({ command_id: requests[0].body.command_id, confirmed: true });
+      await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'false');
+    } finally { await held.cleanup(); }
+  });
+
+  test('창을 닫아도 진행 명령은 계속되고 다음 같은 계좌 창의 pause를 먼저 해제하지 않는다', async ({ page }) => {
+    const held = await heldCreates(page);
+    try {
+      await held.window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+      await expect.poll(() => held.requests.length).toBe(1);
+      await page.getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
+      await expect(held.window).toHaveCount(0);
+      await page.getByTestId('workspace-add-menu-button').click();
+      await page.getByTestId('workspace-add-order').click();
+      const next = page.getByTestId('order-window');
+      await next.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
+      await expect.poll(() => held.requests.length).toBe(2);
+      held.stateRequests.length = 0;
+      await held.accept(0);
+      await expect(next.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+      expect(held.stateRequests).toHaveLength(0);
+      await held.accept(1);
+      await expect(next.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+      await expect.poll(() => held.stateRequests.filter(part => part === 'orders').length).toBeGreaterThan(0);
+      expect(held.requests[0].body).toMatchObject({ code: '005930', account_seq: 1, price: 67200 });
+    } finally { await held.cleanup(); }
+  });
+});
 
 test('주문 수량은 첫 클릭·포커스 중 재클릭·Tab 진입마다 전체 교체한다', async ({ page }, info) => {
   const { window, commands } = await setup(page);
@@ -2173,7 +2436,7 @@ test('메뉴와 호가주문은 소프트 컴팩트 툴팁·키보드·화면 �
   expect(box.x + box.width).toBeLessThanOrEqual(viewport.width - 7);
   expect(box.y + box.height).toBeLessThanOrEqual(triggerBox.y - 3);
   await drawing.click();
-  await expect(page.getByRole('menu', { name: '그리기 도구' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '그리기 도구' })).toBeVisible();
   await expect(tooltip).toHaveCount(0);
   expect(commands).toHaveLength(0);
 });
