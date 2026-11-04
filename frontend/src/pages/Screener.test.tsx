@@ -219,19 +219,20 @@ it('시세 검증 실패 안내는 숨기고 결과 상한은 재진입해도 �
   expect(screen.queryByText(/일부 종목 장중 미반영/)).not.toBeInTheDocument();
 });
 
-it('조회 중 편집해도 실행 당시 요청과 서버 조회시각을 보존하고 다시 들어와 확인할 수 있다', async () => {
+it('완료 후 편집해도 실행 당시 요청과 서버 조회시각을 보존하고 다시 들어와 확인할 수 있다', async () => {
   let finish!: (res: Awaited<ReturnType<typeof runScan>>) => void;
   vi.mocked(runScan).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
   const { unmount } = await renderPageReady();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await waitFor(() => expect(finish).toBeDefined());
   expect(screen.queryByRole('group', { name: '스크리너 기준' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'A 조건 제거' }));
   const serverTime = Date.now() - 1000;
   await act(async () => finish({ status: 'ok', warnings: [], scanned_at_ms: serverTime,
     rows: [{ code: '005930', name: '삼성전자', market: 'KOSPI', price: 100, change_pct: 1,
       trade_value_won: 1e9, price_date: '2026-09-07' }],
   }));
+  await waitFor(() => expect(useScreenerPanelStore.getState().lastScan).not.toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'A 조건 제거' }));
   const snapshot = useScreenerPanelStore.getState().lastScan!;
   expect(JSON.parse(snapshot.requestJson!)).toMatchObject({ basis: 'auto', conditions: [{ type: 'trade_value' }] });
   expect(snapshot.scannedAtMs).toBe(serverTime);
@@ -241,6 +242,19 @@ it('조회 중 편집해도 실행 당시 요청과 서버 조회시각을 보�
   fireEvent.click(await screen.findByRole('button', { name: '조회 당시' }));
   expect(screen.getByText('100 (+1.00%)')).toBeInTheDocument();
   expect(screen.getByText('2026-09-07')).toBeInTheDocument();
+});
+
+it('retires a pending ordinary query when its request is edited and keeps the new editor idle', async () => {
+  let finish!: (res: Awaited<ReturnType<typeof runScan>>) => void;
+  vi.mocked(runScan).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await renderPageReady();
+  fireEvent.click(screen.getByRole('button', { name: '조회' }));
+  await waitFor(() => expect(finish).toBeDefined());
+  fireEvent.click(screen.getByRole('button', { name: 'A 조건 제거' }));
+  await act(async () => finish({ status: 'ok', warnings: [], rows: [] }));
+  expect(useScreenerPanelStore.getState().lastScan).toBeNull();
+  expect(screen.getByText('아직 조회하지 않았습니다')).toBeInTheDocument();
+  expect(screen.queryByText('조회할 수 없습니다')).not.toBeInTheDocument();
 });
 
 it('시세 보기·정렬에서는 검색어를 유지하고 새 조회 완료 후 검색어를 초기화한다', async () => {

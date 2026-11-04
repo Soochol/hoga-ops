@@ -33,22 +33,22 @@ it('does not collect when editing, delivers partial results only for the current
     send = callback;
     return new Promise(resolve => { finish = resolve; });
   });
-  const onProgress = vi.fn();
-  const { result, rerender } = renderHook(({ anchor }) => useScreener({ anchor, request: body, onProgress }), {
+  const onResult = vi.fn();
+  const { result, rerender } = renderHook(({ anchor }) => useScreener({ identity: anchor, request: body, onResult }), {
     initialProps: { anchor: 'old' }, wrapper,
   });
   expect(runPreparedScan).not.toHaveBeenCalled();
-  let done: Promise<ScreenerResponse>;
-  act(() => { done = result.current.mutateAsync(body); });
+  let done: ReturnType<typeof result.current.run>;
+  act(() => { done = result.current.run({ mode: 'once' }); });
   await waitFor(() => expect(send).toBeDefined());
   act(() => { send!(progress); });
-  expect(onProgress).toHaveBeenCalledTimes(1);
+  expect(onResult).toHaveBeenCalledTimes(1);
   expect(result.current.preparation?.preparing).toBe(1);
-  const rejected = expect(done!).rejects.toMatchObject({ name: 'AbortError' });
+  const rejected = expect(done!).resolves.toBe('retired');
   rerender({ anchor: 'new' });
   expect(result.current.preparation).toBeNull();
   await act(async () => { finish!(response); await rejected; });
-  expect(onProgress).toHaveBeenCalledTimes(1);
+  expect(onResult).toHaveBeenCalledTimes(1);
   expect(runPreparedScan).toHaveBeenCalledTimes(1);
 });
 
@@ -59,8 +59,9 @@ it.each(['1m', '3m', '5m', '10m'] as const)('retains the scoped %s monitor after
   vi.mocked(runPreparedScan).mockResolvedValue(response);
   const live = { ...response, basis_at_ms: 123 };
   liveScan.mockResolvedValue(live);
-  const { result, unmount } = renderHook(() => useScreener({ continuous: true, anchor: 'mixed' }), { wrapper });
-  await act(async () => { expect(await result.current.mutateAsync(mixed)).toEqual(live); });
+  const { result, unmount } = renderHook(() => useScreener({ continuous: true, request: mixed }), { wrapper });
+  await act(async () => { expect(await result.current.run({ mode: 'monitor' })).toBe('success'); });
+  await waitFor(() => expect(result.current.state).toEqual({ kind: 'success', data: live }));
   expect(runPreparedScan).toHaveBeenCalledTimes(1);
   expect(liveScan).toHaveBeenCalledWith(mixed);
   unmount();
@@ -70,8 +71,9 @@ it.each(['3m', '5m', '10m'] as const)('keeps unscoped %s on the full API prepara
   const unscoped: ScanRequest = { universe: {}, conditions: [{ id: 'minute', type: 'new_high_vol_today',
     params: { timeframe, period: 3 } }] };
   vi.mocked(runPreparedScan).mockResolvedValue(response);
-  const { result, unmount } = renderHook(() => useScreener({ continuous: true, anchor: 'unscoped' }), { wrapper });
-  await act(async () => { expect(await result.current.mutateAsync(unscoped)).toEqual(response); });
+  const { result, unmount } = renderHook(() => useScreener({ continuous: true, request: unscoped }), { wrapper });
+  await act(async () => { expect(await result.current.run({ mode: 'monitor' })).toBe('success'); });
+  await waitFor(() => expect(result.current.state).toEqual({ kind: 'success', data: response }));
   expect(runPreparedScan).toHaveBeenCalledTimes(1);
   expect(liveScan).not.toHaveBeenCalled();
   unmount();
@@ -82,8 +84,8 @@ it('an explicit one-shot invocation never starts a scoped WS monitor', async () 
     { id: 'minute', type: 'new_high_vol', params: { timeframe: '3m', period: 40, lookback: 3 } },
   ] };
   vi.mocked(runPreparedScan).mockResolvedValue(response);
-  const { result } = renderHook(() => useScreener({ continuous: true }), { wrapper });
-  await act(async () => { await result.current.mutateAsync({ request: scoped, mode: 'once' }); });
+  const { result } = renderHook(() => useScreener({ continuous: true, request: scoped }), { wrapper });
+  await act(async () => { await result.current.run({ mode: 'once' }); });
   expect(runPreparedScan).toHaveBeenCalledTimes(1);
   expect(runPreparedScan).toHaveBeenCalledWith(scoped, expect.any(AbortSignal), expect.any(Function), undefined);
   expect(liveScan).not.toHaveBeenCalled();
@@ -94,8 +96,8 @@ it('an explicit monitor invocation starts immediately before the active-state re
     { id: 'minute', type: 'new_high_vol', params: { timeframe: '3m', period: 40, lookback: 3 } },
   ] };
   liveScan.mockResolvedValue(response);
-  const { result } = renderHook(() => useScreener({ continuous: false }), { wrapper });
-  await act(async () => { await result.current.mutateAsync({ request: scoped, mode: 'monitor' }); });
+  const { result } = renderHook(() => useScreener({ continuous: false, request: scoped }), { wrapper });
+  await act(async () => { await result.current.run({ mode: 'monitor' }); });
   expect(liveScan).toHaveBeenCalledWith(scoped);
   expect(runPreparedScan).not.toHaveBeenCalled();
 });

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { apiCall } from '../api/client';
+import { apiAction, apiCall } from '../api/client';
 import { readContinuousResult, type ScanRequest } from '../api/screener';
 import { ContinuousClient, hasContinuousVolume } from './continuousClient';
 
-vi.mock('../api/client', () => ({ apiCall: vi.fn() }));
+vi.mock('../api/client', () => ({ apiCall: vi.fn(), apiAction: vi.fn(async () => {}) }));
 vi.mock('../api/screener', () => ({ readContinuousResult: vi.fn() }));
 const request: ScanRequest = { conditions: [{ id: 'v', type: 'new_high_vol',
   params: { timeframe: '1m', period: 100, lookback: 5 } }], universe: { scopes: ['watchlist'] }, basis: 'auto' };
@@ -22,7 +22,7 @@ describe('continuous monitor ownership', () => {
     expect(readContinuousResult).toHaveBeenCalledTimes(2);
     await owner.heartbeat();
     await owner.stop();
-    expect(apiCall).toHaveBeenLastCalledWith('/api/screener/monitors/m1', { method: 'DELETE' });
+    expect(apiAction).toHaveBeenLastCalledWith('/api/screener/monitors/m1', { method: 'DELETE' });
   });
 
   it('releases a monitor whose creation completes after its owner stopped', async () => {
@@ -36,7 +36,7 @@ describe('continuous monitor ownership', () => {
     await owner.stop();
     resolve({ id: 'late' });
     await failure;
-    expect(apiCall).toHaveBeenLastCalledWith('/api/screener/monitors/late', { method: 'DELETE' });
+    expect(apiAction).toHaveBeenLastCalledWith('/api/screener/monitors/late', { method: 'DELETE' });
     expect(readContinuousResult).not.toHaveBeenCalled();
   });
 
@@ -64,7 +64,7 @@ describe('continuous monitor ownership', () => {
     vi.mocked(readContinuousResult).mockResolvedValue({ status: 'ok', rows: [], warnings: [] });
     const owner = new ContinuousClient();
     await owner.scan(request);
-    vi.mocked(apiCall).mockRejectedValueOnce(Object.assign(new Error('expired'), { status: 404 }));
+    vi.mocked(apiAction).mockRejectedValueOnce(Object.assign(new Error('expired'), { status: 404 }));
     await expect(owner.stop()).resolves.toBeUndefined();
     expect(owner.acceptsEvent('expired')).toBe(false);
   });
@@ -86,4 +86,37 @@ describe('continuous monitor ownership', () => {
     finish({ status: 'ok', rows: [], warnings: [] });
     await rejected;
   });
+
+  it('a late old-ID 404 cannot clear a replacement acquired in the same generation', async () => {
+    vi.mocked(apiCall).mockResolvedValueOnce({ id: 'old' }).mockResolvedValueOnce({ id: 'new' });
+    let rejectOld!: (error: Error) => void;
+    const missing = Object.assign(new Error('감시가 만료되었거나 종료되었습니다. 다시 시작해 주세요.'), { status: 404 });
+    vi.mocked(readContinuousResult).mockResolvedValueOnce({ status: 'ok', rows: [], warnings: [] })
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }))
+      .mockRejectedValueOnce(missing)
+      .mockResolvedValue({ status: 'ok', rows: [], warnings: [] });
+    const owner = new ContinuousClient();
+    await owner.scan(request);
+    const old = owner.scan(request);
+    const oldFailure = expect(old).rejects.toBe(missing);
+    await expect(owner.scan(request)).rejects.toBe(missing);
+    await owner.scan(request);
+    expect(owner.acceptsEvent('new')).toBe(true);
+    rejectOld(missing);
+    await oldFailure;
+    expect(owner.acceptsEvent('new')).toBe(true);
+    await owner.scan(request);
+    expect(apiCall).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['감시가 만료되었거나 종료되었습니다. 다시 시작해 주세요.', 'Not Found'])(
+    'keeps current 404 detail and transport context: %s', async message => {
+      const error = Object.assign(new Error(message), { status: 404, data: { detail: message } });
+      vi.mocked(apiCall).mockResolvedValue({ id: 'missing' });
+      vi.mocked(readContinuousResult).mockRejectedValue(error);
+      const owner = new ContinuousClient();
+      await expect(owner.scan(request)).rejects.toBe(error);
+      expect(owner.acceptsEvent('missing')).toBe(false);
+    },
+  );
 });
