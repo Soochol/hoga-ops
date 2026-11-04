@@ -112,6 +112,27 @@ describe('independent trading reads and refresh coordination', () => {
     expect(result.current.isError).toBe(false);
     expect(result.current.balancesError).toBe(true);
   });
+  it.each([
+    { account: 2, code: '005930', mode: 'live' as const },
+    { account: 1, code: '000660', mode: 'live' as const },
+    { account: 1, code: '005930', mode: 'paper' as const },
+  ])('does not mix old balances into a pending $account/$code/$mode selection', async next => {
+    const initial: { account: number; code: string; mode: 'live' | 'paper' } = { account: 1, code: '005930', mode: 'live' };
+    const { result, rerender } = renderHook(({ account, code, mode }) => useTradingState(account, code, mode),
+      { wrapper, initialProps: initial });
+    await advance();
+    expect(result.current.data?.average_purchase_price).toBe('100');
+    let resolveBalance: (value: unknown) => void = () => { throw new Error('balance not requested'); };
+    mock.call.mockImplementation((path: string) => path.includes('part=orders')
+      ? Promise.resolve({ ...orders, account_seq: next.account, code: next.code })
+      : new Promise(resolve => { resolveBalance = resolve; }));
+    rerender(next);
+    await advance();
+    expect(result.current.data?.average_purchase_price).toBeUndefined();
+    await act(async () => resolveBalance({ ...balances, account_seq: next.account, code: next.code, average_purchase_price: '67240.5' }));
+    await advance();
+    expect(result.current.data?.average_purchase_price).toBe('67240.5');
+  });
   it('coalesces a burst across two windows and defers balances', async () => {
     renderHook(() => { useTradingState(1, '005930', 'live'); useTradingState(1, '005930', 'live'); }, { wrapper });
     await advance();
