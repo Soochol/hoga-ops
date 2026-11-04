@@ -79,7 +79,7 @@ export function OrderSettingsForm({ draft, onChange, busy, costContext }: {
         <OrderSettingsToggleRow label="호가 등락률 표시"
           checked={draft.showPriceChangePercent} disabled={busy} onChange={showPriceChangePercent => onChange({ ...draft, showPriceChangePercent })} />
       </WindowSettingsGroup>
-      <WindowSettingsGroup title={<span className="sr-only">평가 비용</span>}>
+      <WindowSettingsGroup title={<>수수료·<span className="whitespace-nowrap">세금</span></>}>
         <OrderSettingsToggleRow label="수수료·세금 반영" hideLabel checked={draft.reflectSellCosts} disabled={busy}
           onChange={reflectSellCosts => onChange({ ...draft, reflectSellCosts })} />
         {draft.reflectSellCosts && (['commissionPercent', 'taxPercent'] as const).map(key => {

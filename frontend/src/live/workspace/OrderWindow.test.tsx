@@ -1500,7 +1500,7 @@ describe('호가 주문', () => {
     expect(within(dialog).getByRole('status')).toHaveTextContent('변경 즉시 반영');
     const quantity = within(dialog).getByRole('spinbutton', { name: '수량 프리셋 1' });
     fireEvent.change(quantity, { target: { value: '25' } });
-    for (const section of ['주문 입력', '호가 표시', '주문 알림']) {
+    for (const section of ['주문 입력', '호가 표시', '수수료·세금', '주문 알림']) {
       expect(within(dialog).getByRole('region', { name: section })).toBeVisible();
       expect(within(dialog).getByRole('heading', { name: section })).toBeVisible();
     }
