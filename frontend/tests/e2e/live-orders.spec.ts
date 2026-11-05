@@ -5139,6 +5139,45 @@ test('장전 종가: 하단 총잔량은 종료 후 지정가 주문으로 바�
   expect(commands).toHaveLength(0);
 });
 
+test('장전 총잔량: 미수신은 종료 뒤에도 대시이고 수신한 0은 숫자로 표시한다', async ({ page }, testInfo) => {
+  const { window, commands, ws } = await setup(page, false, true, false, 0, 1, { preopen: true });
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => route.fulfill({ json: {
+    code: '005930', date: '20261030', session_open_ms: null, session_close_ms: null, is_open: true,
+    snapshots: [], trades: [], brokers: [], programs: [], after_hours: [], expected: [],
+    today_ask_peak: null, today_bid_peak: null,
+  } }));
+  await page.reload();
+  const strip = window.getByTestId('book-total-strip');
+  for (const time of ['08:35:00', '08:40:00', '08:49:00']) {
+    await page.clock.setFixedTime(new Date(`2026-10-30T${time}+09:00`));
+    if (time !== '08:35:00') {
+      await expect(strip.getByRole('button', { name: '장전 종가 매수 총잔량', exact: true })).toHaveCount(0);
+    }
+    await expect(strip.getByLabel('매도총잔량 미수신', { exact: true })).toHaveText('—');
+    await expect(strip.getByLabel('매수총잔량 미수신', { exact: true })).toHaveText('—');
+    await expect(strip.getByTestId('book-total-masked')).toBeVisible();
+    await expect(strip.getByTestId('book-total-fill')).toHaveCount(0);
+  }
+  await window.screenshot({ path: testInfo.outputPath('preopen-totals-missing.png') });
+
+  await ws.waitForSubscribe('005930');
+  const at = Date.parse('2026-10-30T08:49:00+09:00');
+  ws.pushLive('005930', { kind: 'ah', venue: 'KRX', t_ms: at, total_ask_qty: 0, total_bid_qty: 123 });
+  await expect(strip.getByLabel('시간외 매도총잔량 0', { exact: true })).toHaveText('0');
+  await expect(strip.getByLabel('시간외 매수총잔량 123', { exact: true })).toHaveText('123');
+  await expect(strip.getByTestId('book-total-fill')).toHaveCSS('grid-template-columns', /0px /);
+
+  await page.clock.setFixedTime(at + 1000);
+  ws.pushLive('005930', { kind: 'ob', venue: 'KRX', t_ms: at + 1000,
+    asks: [{ price: 67300, qty: 0 }], bids: [{ price: 67200, qty: 0 }], total_ask_qty: 0, total_bid_qty: 0 });
+  await expect(strip.getByLabel('매도총잔량 0', { exact: true })).toHaveText('0');
+  await expect(strip.getByLabel('매수총잔량 0', { exact: true })).toHaveText('0');
+  await expect(strip.getByTestId('book-total-masked')).toBeVisible();
+  await expect(strip.getByLabel('매수총잔량 미수신', { exact: true })).toHaveCount(0);
+  await window.screenshot({ path: testInfo.outputPath('preopen-totals-confirmed-zero.png') });
+  expect(commands).toHaveLength(0);
+});
+
 for (const fullPrices of [false, true]) {
   test(`REST 복합 오류와 재시도는 ${fullPrices ? '전체' : '기본'} 호가 위치를 유지하고 원인을 함께 표시한다`, async ({ page }, testInfo) => {
     const now = Date.parse('2026-10-24T10:15:00+09:00');

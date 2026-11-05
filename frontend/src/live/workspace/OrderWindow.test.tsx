@@ -2802,6 +2802,24 @@ describe('호가 주문', () => {
 
 describe('장전 시간외 종가 총잔량 주문', () => {
   afterEach(() => { mock.now = 1791856800000; });
+  it.each(['08:35:00', '08:40:00', '08:49:00'])('사다리와 시간외 잔량이 없는 %s에는 0 대신 미수신을 표시한다', time => {
+    mock.broker = 'kiwoom';
+    symbolMaster.nxtEnabled = false;
+    mock.now = Date.parse(`2026-11-05T${time}+09:00`);
+    mock.snapshotAt = mock.now;
+    mock.askCount = 0; mock.bidCount = 0;
+    show();
+
+    const strip = within(screen.getByTestId('book-total-strip'));
+    expect(strip.getByLabelText('매도총잔량 미수신')).toHaveTextContent('—');
+    expect(strip.getByLabelText('매수총잔량 미수신')).toHaveTextContent('—');
+    expect(strip.queryByLabelText('매도총잔량 0')).not.toBeInTheDocument();
+    expect(strip.queryByLabelText('매수총잔량 0')).not.toBeInTheDocument();
+    expect(strip.getByTestId('book-total-masked')).toBeInTheDocument();
+    expect(strip.queryByTestId('book-total-fill')).not.toBeInTheDocument();
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
   function morning() {
     mock.broker = 'kiwoom';
     symbolMaster.nxtEnabled = false;
