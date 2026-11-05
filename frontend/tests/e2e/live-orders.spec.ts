@@ -3454,7 +3454,7 @@ test('VI처럼 호가가 줄어도 중앙 경계·체결 위치를 유지하고 
     ws.pushLive('005930', { ...frame, t_ms: ++nextTimestamp,
       asks: frame.asks.map((level, i) => i < askCount ? level : { price: 0, qty: 0 }),
       bids: frame.bids.map((level, i) => i < bidCount ? level : { price: 0, qty: 0 }) });
-    await expect(window.locator('[data-order-price]')).toHaveCount(askCount + bidCount + (bidCount === 0 ? 1 : 0));
+    await expect(window.locator('[data-order-price]')).toHaveCount(askCount + bidCount);
     await expect(window.locator('.order-row')).toHaveCount(20);
     await expect(window.locator('.order-empty button, .order-empty [data-order-price]')).toHaveCount(0);
     await expect(window.locator('.order-row').nth(10)).toContainText('체결강도');
