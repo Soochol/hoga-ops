@@ -2621,7 +2621,30 @@ export function LiveChartRoot({
       useLiveCursorStore.getState().clearSyncCursorFrom(cursorOriginRef.current.windowId);
       return;
     }
-    let pending: number | null = null;
+    type HoverLocation = Readonly<{ time: number | null; x: number }>;
+    type HoverInput =
+      | (HoverLocation & { readonly kind: 'pointer' })
+      | (HoverLocation & { readonly kind: 'redraw'; readonly synthetic: boolean });
+    let pending: Readonly<{ frame: number; input: HoverInput }> | null = null;
+    const cancelPendingHover = () => {
+      const frame = pending?.frame;
+      pending = null;
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+    const enqueueHover = (input: HoverInput) => {
+      if (pending !== null) {
+        if (pending.input.kind === 'pointer' && input.kind === 'redraw') return;
+        pending = { frame: pending.frame, input };
+        return;
+      }
+      const frame = requestAnimationFrame(() => {
+        const next = pending?.input;
+        pending = null;
+        if (!next) return;
+        publishCursorHover(next.time, next.x, next.kind === 'pointer', next.kind === 'redraw' && next.synthetic);
+      });
+      pending = { frame, input };
+    };
     let pendingLeaveClear: number | null = null;
     const cancelPendingLeaveClear = () => {
       if (pendingLeaveClear === null) return;
@@ -2629,7 +2652,7 @@ export function LiveChartRoot({
       pendingLeaveClear = null;
     };
     const clearCursorForLeave = () => {
-      if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
+      cancelPendingHover();
       if (publishedCursorActiveRef.current !== false) {
         publishedCursorActiveRef.current = false;
         onCursorActiveChange?.(false);
@@ -2653,25 +2676,12 @@ export function LiveChartRoot({
           && Number.isFinite(param.sourceEvent.localX)
           ? param.sourceEvent.localX
           : null;
-      if (param.point == null && separatorX !== null) {
-        cancelPendingLeaveClear();
-        if (pending !== null) cancelAnimationFrame(pending);
-        pending = requestAnimationFrame(() => {
-          pending = null;
-          const t = typeof param.time === 'number'
-            ? param.time
-            : (readNumericCrosshairTimeFromSeriesData(param.seriesData)
-              ?? chart.timeScale().coordinateToTime(separatorX));
-          // 이 분기는 `param.sourceEvent.localX` 가 있어야 진입한다 → 사용자 입력.
-          publishCursorHover(t, separatorX, true);
-        });
-        return;
-      }
+      const x = param.point != null ? param.point.x : separatorX;
       // Cursor left the chart pane entirely (mouse-leave) → return the sidebar
       // to latest mode. Cancel any pending valid-hover write so a queued rAF
       // can't re-set the cursor after the pointer is already off-chart.
-      if (param.point == null) {
-        if (pending !== null) { cancelAnimationFrame(pending); pending = null; }
+      if (x === null) {
+        cancelPendingHover();
         cancelPendingLeaveClear();
         pendingLeaveClear = window.setTimeout(() => {
           pendingLeaveClear = null;
@@ -2680,30 +2690,17 @@ export function LiveChartRoot({
         return;
       }
       cancelPendingLeaveClear();
-      if (pending !== null) cancelAnimationFrame(pending);
-      const point = param.point;
-      // rAF 밖에서 뽑는다 — lwc 가 param 객체를 재사용하면 프레임이 도는 사이 값이
-      // 바뀔 수 있다(`point` 를 여기서 잡아 두는 것과 같은 이유).
-      const hasSourceEvent = param.sourceEvent != null;
-      // 합성 여부도 **여기서** 뽑는다. rAF 안에서 읽으면 늦다 — 실측 순서가
-      // `옆 창이 슬롯 비움 → 이 창 cleanup(합성 해제) → 미뤄진 rAF 발행` 이라
-      // 그때는 항상 false 라서 가드가 통째로 무력해진다(`syntheticCrosshair.ts`).
-      const fromSyntheticCrosshair = hasSyntheticCrosshair(chart);
-      pending = requestAnimationFrame(() => {
-        pending = null;
-        const t = typeof param.time === 'number'
-          ? param.time
-          : (readNumericCrosshairTimeFromSeriesData(param.seriesData)
-            ?? chart.timeScale().coordinateToTime(point.x));
-        // sourceEvent 가 있으면 내 마우스가 만든 이벤트다. 없으면 데이터 갱신에
-        // 따른 재발화이고, 그때는 sync 소비 중인 창이 발행하지 못하게 막힌다.
-        publishCursorHover(t, point.x, hasSourceEvent, fromSyntheticCrosshair);
-      });
+      const time = typeof param.time === 'number'
+        ? param.time
+        : readNumericCrosshairTimeFromSeriesData(param.seriesData);
+      enqueueHover(param.sourceEvent != null
+        ? { kind: 'pointer', time, x }
+        : { kind: 'redraw', time, x, synthetic: hasSyntheticCrosshair(chart) });
     };
     chart.subscribeCrosshairMove(handler);
     return () => {
       safeUnsubscribe(() => chart.unsubscribeCrosshairMove(handler));
-      if (pending !== null) cancelAnimationFrame(pending);
+      cancelPendingHover();
       cancelPendingLeaveClear();
       publishedBasisDateRef.current = null;
       onCandleBasisHover?.(null);

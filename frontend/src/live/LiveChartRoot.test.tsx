@@ -6,7 +6,7 @@ vi.mock('../chart/util/retainRightPriceScaleWidth', () => ({
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, waitFor, createEvent, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 const resizeObserverCallbacks: ResizeObserverCallback[] = [];
 
@@ -6214,7 +6214,7 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
 
   function renderWithCrosshair() {
     let crosshairHandler:
-      | ((p: { time?: unknown; point?: { x: number } | null; sourceEvent?: unknown }) => void)
+      | ((p: { time?: unknown; point?: { x: number } | null; sourceEvent?: unknown; seriesData?: unknown }) => void)
       | null = null;
     const realMs = Date.UTC(2026, 5, 19, 0, 0, 0);
     const bundle: RangeBundle = {
@@ -6222,20 +6222,20 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
       from_date: '20260619',
       to_date: '20260619',
       segments: [{ date: '20260619', session_open_ms: realMs, session_close_ms: realMs + 23400000, source: 'kiwoom_live' }],
-      candles: [{ ts_ms: realMs, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0 }],
+      candles: [0, 60000, 120000].map(offset => ({
+        ts_ms: realMs + offset, open: 1, high: 1, low: 1, close: 1, vol_a: 1, vol_b: 0,
+      })),
     } as unknown as RangeBundle;
     const base = vi.mocked(createChartEx).getMockImplementation();
     const chart = base ? (base as unknown as () => Record<string, unknown>)() : {};
     (chart as Record<string, unknown>).subscribeCrosshairMove = vi.fn((h) => { crosshairHandler = h; });
     (chart as Record<string, unknown>).unsubscribeCrosshairMove = vi.fn();
     vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
-    render(
-      <LiveChartRoot
-        code="005930" timeframe="1m" bundle={bundle}
-        clampEngaged={false} captureFloorEngaged={false} isPastCandlesLoading={false}
-      />,
-      { wrapper },
-    );
+    const props = {
+      code: '005930', timeframe: '1m', bundle,
+      clampEngaged: false, captureFloorEngaged: false, isPastCandlesLoading: false,
+    } satisfies ComponentProps<typeof LiveChartRoot>;
+    const rendered = render(<LiveChartRoot {...props} />, { wrapper });
     const axis = createVirtualAxis(
       [{ date: '20260619', sessionOpenMs: realMs, sessionCloseMs: realMs + 23400000 }],
       realMs,
@@ -6250,6 +6250,11 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
     return {
       fire: () => crosshairHandler,
       vsec: realMsToVirtualSeconds(axis, realMs),
+      realMs,
+      bundle,
+      unmount: rendered.unmount,
+      rerender: (next: Partial<ComponentProps<typeof LiveChartRoot>>) =>
+        rendered.rerender(<LiveChartRoot {...props} {...next} />),
       // 합성 표시는 **차트 인스턴스별**이라 테스트가 같은 객체를 쥐어야 한다.
       chart: chart as never,
     };
@@ -6261,6 +6266,143 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
 
   beforeEach(() => {
     useLiveCursorStore.getState().resetCursor();
+  });
+
+  describe('pointer publication across a same-frame redraw', () => {
+    const DAILY_OWNER = { ...OTHER, timeframe: 'D' as const };
+
+    function publishOtherOwner() {
+      act(() => {
+        useLiveCursorStore.getState().setSidebarCursor(1_000_000, DAILY_OWNER);
+        useLiveCursorStore.getState().setSyncCursor(1_000_000, DAILY_OWNER);
+      });
+    }
+
+    function expectOwnCursor(ms: number) {
+      expect(useLiveCursorStore.getState()).toMatchObject({
+        cursorMs: ms,
+        syncCursorMs: ms,
+        syncCursorOrigin: { windowId: null, code: '005930', timeframe: '1m' },
+      });
+    }
+
+    it.each([false, true])('preserves actual pointer publication with a prior frame=%s', async priorFrame => {
+      const { fire, vsec, realMs } = renderWithCrosshair();
+      publishOtherOwner();
+      act(() => { fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } }); });
+      if (priorFrame) await flushRaf();
+      act(() => { fire()?.({ time: vsec, point: { x: 10 } }); });
+      await flushRaf();
+      expectOwnCursor(realMs);
+    });
+
+    it('keeps the actual pointer time when a synthetic redraw has a different position', async () => {
+      const { fire, vsec, realMs, chart } = renderWithCrosshair();
+      publishOtherOwner();
+      act(() => {
+        fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } });
+        markSyntheticCrosshair(chart);
+        fire()?.({ time: vsec + 60, point: { x: 40 } });
+      });
+      await flushRaf();
+      expectOwnCursor(realMs);
+    });
+
+    it('publishes the latest actual pointer after an intervening redraw', async () => {
+      const { fire, vsec, realMs } = renderWithCrosshair();
+      publishOtherOwner();
+      act(() => {
+        fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } });
+        fire()?.({ time: vsec + 60, point: { x: 40 } });
+        fire()?.({ time: vsec + 120, point: { x: 70 }, sourceEvent: { localX: 70 } });
+      });
+      await flushRaf();
+      expectOwnCursor(realMs + 120000);
+    });
+
+    it('lets the latest actual pointer clear whitespace after an intervening redraw', async () => {
+      const { fire, vsec } = renderWithCrosshair();
+      publishOtherOwner();
+      act(() => {
+        fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } });
+        fire()?.({ time: vsec + 60, point: { x: 40 } });
+        fire()?.({ time: vsec + 3600, point: { x: 700 }, sourceEvent: { localX: 700 } });
+      });
+      await flushRaf();
+      expect(useLiveCursorStore.getState().cursorMs).toBeNull();
+      expect(useLiveCursorStore.getState().syncCursorMs).toBe(1_000_000);
+      expect(useLiveCursorStore.getState().syncCursorOrigin).toEqual(DAILY_OWNER);
+    });
+
+    it('snapshots the actual event before native objects are reused', async () => {
+      const { fire, vsec, realMs } = renderWithCrosshair();
+      const event = { time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } };
+      act(() => {
+        fire()?.(event);
+        event.time = vsec + 60;
+        event.point.x = 40;
+        event.sourceEvent.localX = 40;
+      });
+      await flushRaf();
+      expectOwnCursor(realMs);
+    });
+
+    it('preserves separator input and its series-data time across redraw', async () => {
+      const { fire, vsec, realMs } = renderWithCrosshair();
+      const seriesData = new Map([['candle', { time: vsec }]]);
+      publishOtherOwner();
+      act(() => {
+        fire()?.({ point: null, sourceEvent: { localX: 10 }, seriesData });
+        seriesData.set('candle', { time: vsec + 120 });
+        fire()?.({ time: vsec + 60, point: { x: 40 } });
+      });
+      await flushRaf();
+      expectOwnCursor(realMs);
+    });
+
+    it('ends pointer authority after the frame publishes', async () => {
+      const { fire, vsec, realMs } = renderWithCrosshair();
+      act(() => { fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } }); });
+      await flushRaf();
+      expectOwnCursor(realMs);
+      publishOtherOwner();
+      act(() => { fire()?.({ time: vsec + 60, point: { x: 40 } }); });
+      await flushRaf();
+      expect(useLiveCursorStore.getState().syncCursorOrigin).toEqual(DAILY_OWNER);
+      expect(useLiveCursorStore.getState().syncCursorMs).toBe(1_000_000);
+    });
+
+    it.each([false, true])('cancels queued input on leave, separator=%s', async separator => {
+      const { fire, vsec } = renderWithCrosshair();
+      publishOtherOwner();
+      act(() => {
+        fire()?.({ time: vsec, point: separator ? null : { x: 10 }, sourceEvent: { localX: 10 } });
+        fire()?.({ time: vsec + 60, point: { x: 40 } });
+        fire()?.({ point: null });
+      });
+      await flushRaf();
+      expect(useLiveCursorStore.getState().syncCursorOrigin).toEqual(DAILY_OWNER);
+      expect(useLiveCursorStore.getState().syncCursorMs).toBe(1_000_000);
+    });
+
+    it.each(['unmount', 'code', 'timeframe', 'view', 'axis'] as const)('discards queued input on %s replacement', async replacement => {
+      const { fire, vsec, realMs, bundle, rerender, unmount } = renderWithCrosshair();
+      publishOtherOwner();
+      act(() => {
+        fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } });
+        if (replacement === 'unmount') unmount();
+        if (replacement === 'code') rerender({ code: '000660' });
+        if (replacement === 'timeframe') rerender({ timeframe: '5m' });
+        if (replacement === 'view') rerender({ viewIdentity: 'replacement-view' });
+        if (replacement === 'axis') rerender({ bundle: { ...bundle, segments: [{
+          date: '20260622', session_open_ms: realMs + 259200000,
+          session_close_ms: realMs + 282600000, source: 'kiwoom_live',
+        }] } });
+      });
+      await flushRaf();
+      expect(useLiveCursorStore.getState().syncCursorOrigin).toEqual(DAILY_OWNER);
+      expect(useLiveCursorStore.getState().syncCursorMs).toBe(1_000_000);
+    });
   });
 
   it('sourceEvent 없는 재발화는 옆 창의 발행을 덮어쓰지 않는다', async () => {
