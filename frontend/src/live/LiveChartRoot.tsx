@@ -582,9 +582,6 @@ export function LiveChartRoot({
           : spec.bundleKind === 'live'
             ? (liveBundle ?? candlePath)
             : candlePath;
-  // 창 간 크로스헤어 동기화가 다리를 놓는 재료. 소비자가 없는 봉(W/M)에서는 빈
-  // 배열이라 비용이 없다. `close` 는 크로스헤어 가로선 높이로 쓴다.
-  //
   // **`{ts_ms, close}` 로 다시 만들지 않는다.** `Candle` 이 이미 그 두 필드를 가져
   // 구조적으로 `SyncCandle` 이고, 분봉 번들은 틱마다 갱신되므로 map 을 걸면 캔들
   // 수만큼의 할당을 초당 여러 번 하게 된다. 원본을 그대로 넘긴다.
@@ -907,14 +904,6 @@ export function LiveChartRoot({
 
   // 창 간 크로스헤어 동기화 발행 — origin 을 실은 **즉시** 채널. 기존 두 채널을
   // 쓰지 못하는 이유는 `useLiveCursorStore` 의 해당 필드 주석 참조.
-  //
-  // **소비자가 있는 봉만 발행한다**(분봉 · `D`). 슬롯이 하나라 아무나 쓰면 마지막 쓴
-  // 사람이 이기는데, 아무도 받지 않는 발행은 표시에 기여하지 않으면서 **유효한 발행만
-  // 밀어낸다**. `/live` 실측(2026-08-11): 포인터가 분봉 창에 있는데도 일봉 창이 자기
-  // 크로스헤어를 발행해 슬롯을 덮었고, 동기화 표시가 그대로 사라졌다. 그때는 일봉에
-  // 소비자가 없어서 그랬고 지금은 있다 — 그래서 술어가 `canPublishSyncCursor` 이고,
-  // 그것이 곧 `isSyncConsumerTimeframe` 이다(두 집합을 갈라 놓지 않겠다는 뜻).
-  // W/M 은 여전히 소비자가 없어 발행하지 않는다.
   const publishSyncCursor = useCallback((cursorMs: number) => {
     if (!canPublishSyncCursor(cursorOriginRef.current.timeframe)) return;
     useLiveCursorStore.getState().setSyncCursor(cursorMs, cursorOriginRef.current);
@@ -3008,12 +2997,6 @@ export function LiveChartRoot({
           {savedRangeBand && !isMinuteTimeframe(timeframe) && (
             <StudySavedRangeBandHost axis={axis} paneSeries={paneSeries} marks={savedRangeBand} showEdges={timeframe !== 'D'} />
           )}
-          {/* 창 간 크로스헤어 동기화(옆 창 호버 → 이 창). 게이트가 둘이다:
-              **분봉 · `D` 만** — 소비자가 자기 축으로 스냅할 다리가 있는 봉이다(바로 위
-              동시호가 음영이 그 스냅을 안 해서 좌표계가 어긋나 삭제됐다). W/M 은 한
-              캔들이 여러 날을 담아 범위 밖이다. 방향 넷(분봉→일봉·일봉→일봉·
-              분봉→분봉·일봉→분봉)의 규칙은 `cursorSync.ts` 헤더가 갖는다.
-              **`cursorSyncCrosshair` 로 켠다** — 그 prop 주석 참조. */}
           {cursorSyncCrosshair && isSyncConsumerTimeframe(timeframe) && (
             <CursorSyncCrosshair
               chart={chart}

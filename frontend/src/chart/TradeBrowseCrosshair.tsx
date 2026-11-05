@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { PaneSeriesMap } from './drawing/chartCoordinates';
-import { hasSyntheticCrosshair, markSyntheticCrosshair, releaseSyntheticCrosshair } from './syntheticCrosshair';
+import { applySyntheticCrosshair } from './persistentCrosshair';
 import { useTradeBrowseStore } from '../live/tradeBrowse';
 import type { VirtualAxis } from '../util/virtualAxis';
 import type { SyncCandle } from './cursorSync';
@@ -44,7 +44,7 @@ export function TradeBrowseCrosshair({ chart, axis, candles, paneSeries, windowI
   useEffect(() => {
     const series = paneSeries.get('candle');
     if (!series || targetMs === null || close === null) return;
-    let owned = false;
+    let release: (() => void) | undefined;
     let retry = 0;
     let pans = 0;
     let frame = 0;
@@ -74,15 +74,13 @@ export function TradeBrowseCrosshair({ chart, axis, candles, paneSeries, windowI
         if (retry++ < 2) frame = requestAnimationFrame(paint);
         return;
       }
-      chart.setCrosshairPosition(close, time, series);
-      markSyntheticCrosshair(chart);
-      owned = true;
+      release = applySyntheticCrosshair({ chart, price: close, time, series });
       setDrawn(targetMs);
     };
     frame = requestAnimationFrame(paint);
     return () => {
       cancelAnimationFrame(frame);
-      if (owned && hasSyntheticCrosshair(chart)) { chart.clearCrosshairPosition(); releaseSyntheticCrosshair(chart); }
+      release?.();
     };
   }, [chart, axis, paneSeries, targetMs, close]);
 

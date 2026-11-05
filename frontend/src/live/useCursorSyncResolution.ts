@@ -22,13 +22,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { useLiveCursorStore } from './useLiveCursorStore';
 import { WindowViewContext } from './workspace/windowView';
 import { useActivePrefs } from '../state/chartPrefs';
-import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
+import type { LiveTimeframe } from '../state/livePage';
 import {
-  indexCandlesByKstDate,
+  buildSyncTargetSource,
+  isSyncConsumerTimeframe,
   resolveSyncTarget,
   type SyncCandle,
   type SyncResolution,
-  type SyncTargetSource,
 } from '../chart/cursorSync';
 
 export function useCursorSyncResolution(params: {
@@ -46,21 +46,12 @@ export function useCursorSyncResolution(params: {
   const myGroup = winCtx?.group ?? null;
   const allowCrossSymbol = useActivePrefs((p) => p.cursorSyncCrossSymbol);
 
-  // 다리는 **내 봉**이 고른다. 분봉이면 인덱스를 만들지 않는다 — 분봉 번들은 틱마다
-  // 갱신되므로 그때마다 캔들 전량을 훑게 된다(`snapToInstant` 가 이진 탐색을 쓰는 이유).
-  const minuteConsumer = isMinuteTimeframe(timeframe);
-  const byDate = useMemo(
-    () => (minuteConsumer ? null : indexCandlesByKstDate(candles)),
-    [candles, minuteConsumer],
-  );
-  const source = useMemo<SyncTargetSource>(
-    () => (byDate ? { axis: 'date', byDate, candles } : { axis: 'instant', candles }),
-    [byDate, candles],
-  );
+  const source = useMemo(() => buildSyncTargetSource(candles, timeframe), [candles, timeframe]);
+  const consuming = enabled && isSyncConsumerTimeframe(timeframe);
 
   // Subscribe to the resolved result, not every raw cursor publication. Shallow
   // equality keeps a daily hit stable while minute cursors move within its date.
-  return useLiveCursorStore(useShallow((s): SyncResolution => enabled
+  return useLiveCursorStore(useShallow((s): SyncResolution => consuming
     ? resolveSyncTarget({
       cursor: s.syncCursorMs !== null && s.syncCursorOrigin !== null
         ? { tsMs: s.syncCursorMs, origin: s.syncCursorOrigin }

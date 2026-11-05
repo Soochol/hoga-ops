@@ -1,10 +1,50 @@
 import type { IChartApi, MouseEventParams, Time } from 'lightweight-charts';
+import { hasSyntheticCrosshair, markSyntheticCrosshair, releaseSyntheticCrosshair } from './syntheticCrosshair';
 
 type Series = Parameters<IChartApi['setCrosshairPosition']>[2];
 type Hover = { kind: 'pointer'; clientX: number; clientY: number }
   | { kind: 'synthetic'; price: number; time: Time; series: Series };
 type ClearableChart = Partial<Pick<IChartApi, 'clearCrosshairPosition'>>;
 const controllers = new WeakMap<ClearableChart, PersistentCrosshair>();
+
+export function aliasPersistentCrosshairChart(chart: IChartApi, underlying: IChartApi): void {
+  const controller = controllers.get(underlying);
+  if (controller) {
+    controllers.set(chart, controller);
+    controller.aliases.add(chart);
+  }
+}
+
+export function hasLocalCrosshairPointer(chart: IChartApi): boolean {
+  return controllers.get(chart)?.hasPointer() ?? false;
+}
+
+export function subscribeCrosshairPointer(chart: IChartApi, listener: () => void): () => void {
+  return controllers.get(chart)?.subscribePointer(listener) ?? (() => {});
+}
+
+export function applySyncedCrosshair(position: Parameters<typeof applySyntheticCrosshair>[0]): (() => void) | undefined {
+  if (hasLocalCrosshairPointer(position.chart)) return;
+  return applySyntheticCrosshair(position);
+}
+
+export function applySyntheticCrosshair({ chart, price, time, series }: {
+  chart: IChartApi; price: number; time: Time; series: Series;
+}): () => void {
+  chart.setCrosshairPosition(price, time, series);
+  markSyntheticCrosshair(chart);
+  const controller = controllers.get(chart);
+  const applied = controller?.currentHover();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const current = controller?.currentHover();
+    if (controller && current !== applied && current?.kind === 'synthetic') return;
+    if (controller ? current === applied : hasSyntheticCrosshair(chart)) chart.clearCrosshairPosition();
+    releaseSyntheticCrosshair(chart);
+  };
+}
 
 /** Keep the native stale-index guard, but restore hover once the new grid and
  * viewport have drawn. Shared by full-history and windowed chart renderers.
@@ -34,6 +74,7 @@ export function preserveCrosshairDuringDataChange(chart: ClearableChart, change:
 
 class PersistentCrosshair {
   readonly chart: IChartApi;
+  readonly aliases = new Set<IChartApi>();
   private readonly native: IChartApi;
   private hover: Hover | null = null;
   private updating = false;
@@ -42,6 +83,19 @@ class PersistentCrosshair {
   private paintedHoverFrame: number | null = null;
   private element: HTMLElement | null = null;
   private removed = false;
+  private readonly pointerListeners = new Set<() => void>();
+
+  hasPointer(): boolean { return this.hover?.kind === 'pointer'; }
+  currentHover(): Hover | null { return this.hover; }
+  subscribePointer(listener: () => void): () => void {
+    this.pointerListeners.add(listener);
+    return () => { this.pointerListeners.delete(listener); };
+  }
+  private setHover(hover: Hover | null): void {
+    const wasPointer = this.hasPointer();
+    this.hover = hover;
+    if (wasPointer !== this.hasPointer()) for (const listener of this.pointerListeners) listener();
+  }
 
   private readonly trackHover = (param: MouseEventParams): void => {
     if (this.updating) return;
@@ -50,7 +104,7 @@ class PersistentCrosshair {
         || this.hover.clientX !== param.sourceEvent.clientX || this.hover.clientY !== param.sourceEvent.clientY) {
         this.releasePaintedHover();
       }
-      this.hover = { kind: 'pointer', clientX: param.sourceEvent.clientX, clientY: param.sourceEvent.clientY };
+      this.setHover({ kind: 'pointer', clientX: param.sourceEvent.clientX, clientY: param.sourceEvent.clientY });
     } else if (!param.point && this.restoreFrame === null) {
       this.clear();
     }
@@ -71,7 +125,7 @@ class PersistentCrosshair {
       setCrosshairPosition: (price, time, series) => {
         this.releasePaintedHover();
         native.setCrosshairPosition(price, time, series);
-        this.hover = { kind: 'synthetic', price, time, series };
+        this.setHover({ kind: 'synthetic', price, time, series });
       },
       removeSeries: series => {
         if (this.hover?.kind === 'synthetic' && this.hover.series === series) this.clear();
@@ -84,6 +138,9 @@ class PersistentCrosshair {
         native.unsubscribeCrosshairMove(this.trackHover);
         controllers.delete(this.chart);
         controllers.delete(native);
+        for (const alias of this.aliases) controllers.delete(alias);
+        this.aliases.clear();
+        this.pointerListeners.clear();
         native.remove();
       },
     };
@@ -104,7 +161,7 @@ class PersistentCrosshair {
   }
 
   private clear(): void {
-    this.hover = null;
+    this.setHover(null);
     if (this.restoreFrame !== null) cancelAnimationFrame(this.restoreFrame);
     this.restoreFrame = null;
     this.releasePaintedHover();

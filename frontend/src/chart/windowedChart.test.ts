@@ -3,6 +3,7 @@ import type { MouseEventParams, ISeriesPrimitive, SeriesAttachedParameter } from
 import type { SeriesType } from 'lightweight-charts';
 import { describe, expect, it, vi } from 'vitest';
 import { LineSeries, CandlestickSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+import { applySyncedCrosshair, hasLocalCrosshairPointer, subscribeCrosshairPointer } from './persistentCrosshair';
 import { replaceSeriesData } from './replaceSeriesData';
 import { createWindowedChart, flushWindowedChart, readChartInteractionViewport, setWindowedChartTimeMapping, windowedChartDiagnostics } from './windowedChart';
 
@@ -474,4 +475,23 @@ describe('full-history chart / bounded native renderer', () => {
     expect(chart.timeScale().getVisibleLogicalRange()).toEqual({ from: 0, to: 99 });
     chart.remove();
   });
+});
+
+it('shares pointer ownership with the persistent controller without bypassing series remapping', () => {
+  const { chart, native, rows, mouse } = fixture();
+  const series = chart.addSeries(LineSeries);
+  series.setData(rows);
+  flushWindowedChart(chart);
+  const release = applySyncedCrosshair({ chart, price: 200, time: rows[200].time, series });
+  expect(native.setCrosshairPosition).toHaveBeenCalledWith(200, rows[200].time, native.panes()[0].getSeries()[0]);
+  const changed = vi.fn();
+  const unsubscribe = subscribeCrosshairPointer(chart, changed);
+  mouse({ point: { x: 50, y: 70 }, sourceEvent: { clientX: 50, clientY: 70 }, seriesData: new Map() });
+  expect(hasLocalCrosshairPointer(chart)).toBe(true);
+  expect(changed).toHaveBeenCalledOnce();
+  native.clearCrosshairPosition.mockClear();
+  release?.();
+  expect(native.clearCrosshairPosition).not.toHaveBeenCalled();
+  unsubscribe(); chart.remove();
+  expect(hasLocalCrosshairPointer(chart)).toBe(false);
 });

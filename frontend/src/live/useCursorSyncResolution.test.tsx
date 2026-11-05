@@ -53,3 +53,26 @@ it('disabled consumers do not render for cursor events and resolve when enabled'
   rerender({ enabled: true });
   expect(result.current.kind).toBe('hit');
 });
+
+for (const timeframe of ['W', 'M'] as const) {
+  it(`${timeframe} resolves remote legend candles even with target tooltip ON and coalesces in-period movement`, () => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders++;
+      return useCursorSyncResolution({ candles: [candles[0]], timeframe, code: '005930' });
+    }, { wrapper });
+    act(() => useLiveCursorStore.getState().setSyncCursor(day, origin));
+    expect(result.current).toEqual({ kind: 'hit', candle: candles[0] });
+    const hitRenders = renders;
+    act(() => useChartPrefsStore.getState().setToggle('candleTooltipEnabled', true));
+    act(() => useLiveCursorStore.getState().setSyncCursor(day + 3600000, origin));
+    expect(renders).toBe(hitRenders);
+    expect(result.current).toEqual({ kind: 'hit', candle: candles[0] });
+  });
+}
+
+it('does not resolve a remote cursor for a seconds receiver', () => {
+  const { result } = renderHook(() => useCursorSyncResolution({ candles, timeframe: '1s', code: '005930' }), { wrapper });
+  act(() => useLiveCursorStore.getState().setSyncCursor(day, origin));
+  expect(result.current).toEqual({ kind: 'none' });
+});

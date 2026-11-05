@@ -3,7 +3,7 @@ import type { SeriesType } from 'lightweight-charts';
 import type { IChartApi, IPriceScaleApi, ISeriesApi, ITimeScaleApi, Logical, LogicalRange, Time } from 'lightweight-charts';
 import { classifyDataChange, syncSeriesData, type SeriesDataSink } from './seriesDataDiff';
 import { viewportHasReprojectableAnchor } from '../live/minuteViewportPolicy';
-import { createPersistentCrosshairChart, preserveCrosshairDuringDataChange } from './persistentCrosshair';
+import { aliasPersistentCrosshairChart, createPersistentCrosshairChart, preserveCrosshairDuringDataChange } from './persistentCrosshair';
 
 type Point = Parameters<SeriesDataSink['setData']>[0][number];
 type Series = ISeriesApi<SeriesType>;
@@ -74,7 +74,9 @@ export function createWindowedChart(native: IChartApi): IChartApi {
   // Touch inertia is owned by lwc and uses a gesture-start local index. Keep
   // its full renderer on touch devices; this adapter owns mouse panning only.
   if (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) return createPersistentCrosshairChart(native);
-  const controller = new WindowedChart(createPersistentCrosshairChart(native));
+  const persistent = createPersistentCrosshairChart(native);
+  const controller = new WindowedChart(persistent);
+  aliasPersistentCrosshairChart(controller.chart, persistent);
   controllers.set(controller.chart, controller);
   return controller.chart;
 }
