@@ -10,7 +10,7 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { securityType?: 'stock' | 'etf' | 'etn'; preopen?: boolean; time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed'; sameTimeVolumePct?: number } = {}) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { securityType?: 'stock' | 'etf' | 'etn'; preopen?: boolean; time?: number; staleBook?: boolean; nxtEnabled?: boolean; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed'; emptyBook?: boolean; sameTimeVolumePct?: number } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   const subject = market.lastBook ? { code: '456160', name: '지투지바이오' } : { code: '005930', name: '삼성전자' };
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
@@ -29,12 +29,12 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => route.fulfill({ json: {
     code: new URL(route.request().url()).searchParams.get('code') ?? '005930', date: new URL(route.request().url()).searchParams.get('date'), session_open_ms: Date.now(), session_close_ms: null, is_open: true,
-    snapshots: market.lastBook ? [] : [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: market.preopen ? Date.parse('2026-10-30T08:25:00+09:00') : market.time ?? Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
+    snapshots: market.lastBook || market.emptyBook ? [] : [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: market.preopen ? Date.parse('2026-10-30T08:25:00+09:00') : market.time ?? Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
     trades: market.sameTimeVolumePct == null ? [] : [{ kind: 'trade', venue: market.venue ?? 'UN', t_ms: Date.now(),
       vs_prev_volume_pct: 61.7, vs_prev_same_time_volume_pct: market.sameTimeVolumePct, cum_volume: 1_234_000, trades: [] }],
     brokers: [], programs: [], after_hours: market.preopen ? [{ venue: 'KRX', t_ms: new Date('2026-10-30T08:35:00+09:00').getTime(), total_ask_qty: 1234, total_bid_qty: 5678 }] : [], expected: [], today_ask_peak: null, today_bid_peak: null,
   } }));
-  if (market.lastBook) {
+  if (market.lastBook || market.emptyBook) {
     await page.route('**/api/live/status', route => route.fulfill({ json: {
       running: true, kiwoom: { connection_allowed: false },
     } }));
@@ -136,7 +136,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   const initialPrice = (initialSide === '매도' ? 67300 : 67200) + priceOffset;
   if (market.preopen) await expect(window.getByTestId('preopen-strip-label')).toBeVisible();
   else if (market.lastBook === 'ready') await expect(window.getByRole('button', { name: /매수 49,500원 주문 추가/ })).toBeVisible();
-  else if (market.lastBook) await expect(window.getByTestId('order-empty-book')).toBeVisible();
+  else if (market.lastBook || market.emptyBook) await expect(window.getByTestId('order-empty-book')).toBeVisible();
   else if (market.staleBook) await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'true');
   else await expect(window.getByRole('button', { name: new RegExp(`${initialSide} ${initialPrice.toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
   return { window, commands, ws, stateRequests };
@@ -798,7 +798,9 @@ test('전체 호가는 입력 줄에서 전환하고 상하한가·10호가 밖 
   await expect(quantity).toHaveValue('25');
   await page.screenshot({ path: testInfo.outputPath('full-price-orders.png') });
   await toggle.click();
-  await expect(window.locator('[data-order-price]')).toHaveCount(20);
+  await expect(window.locator('[data-order-price]')).toHaveCount(22);
+  await expect(window.getByRole('button', { name: '매도 85,800원 미체결 주문', exact: true })).toHaveText('25');
+  await expect(window.getByRole('button', { name: '매수 46,200원 미체결 주문', exact: true })).toHaveText('25');
 });
 
 test('전체 호가 가격열의 휠·드래그는 주문을 전송하지 않고 창 크기에 맞는 가격만 렌더한다', async ({ page }) => {
@@ -3451,7 +3453,7 @@ test('VI처럼 호가가 줄어도 중앙 경계·체결 위치를 유지하고 
     ws.pushLive('005930', { ...frame, t_ms: ++nextTimestamp,
       asks: frame.asks.map((level, i) => i < askCount ? level : { price: 0, qty: 0 }),
       bids: frame.bids.map((level, i) => i < bidCount ? level : { price: 0, qty: 0 }) });
-    await expect(window.locator('[data-order-price]')).toHaveCount(askCount + bidCount);
+    await expect(window.locator('[data-order-price]')).toHaveCount(askCount + bidCount + (bidCount === 0 ? 1 : 0));
     await expect(window.locator('.order-row')).toHaveCount(20);
     await expect(window.locator('.order-empty button, .order-empty [data-order-price]')).toHaveCount(0);
     await expect(window.locator('.order-row').nth(10)).toContainText('체결강도');
@@ -5582,3 +5584,260 @@ for (const change of ['close', 'symbol'] as const) {
     } finally { release(); }
   });
 }
+
+test('누락 시장 가격에서도 내 지정가 원가격과 잔량을 보존한다', async ({ page }) => {
+  const { window, ws, commands } = await setup(page, [
+    mkOrder('inside-buy', '66900'), { ...mkOrder('inside-sell', '67600', '40'), side: 'SELL' },
+    mkOrder('edge-buy', '66300'), { ...mkOrder('edge-sell', '68200', '40'), side: 'SELL' },
+  ]);
+  await ws.waitForSubscribe('005930');
+  const at = Date.now();
+  const asks = Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 100 + i }));
+  const bids = Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 200 + i }));
+  for (const [index, missing] of ['zero', 'absent', 'omitted', 'edge'].entries()) {
+    const erase = (levels: typeof asks) => missing === 'omitted' ? levels.filter((_, i) => i !== 3)
+      : levels.map((level, i) => i !== (missing === 'edge' ? 9 : 3) ? level
+        : missing === 'absent' ? { qty: level.qty } : { ...level, price: 0 });
+    ws.pushLive('005930', { kind: 'ob', venue: 'UN', t_ms: at + index,
+      asks: erase(asks), bids: erase(bids).map((level, i) => i === 0 ? { ...level, qty: 901 + index } : level),
+      total_ask_qty: 1000, total_bid_qty: 2000 });
+    await expect(window.locator('.order-row[data-order-price="67200"] .order-bid .order-depth-qty')).toHaveText(String(901 + index));
+    const buy = missing === 'edge' ? '66,300' : '66,900';
+    const sell = missing === 'edge' ? '68,200' : '67,600';
+    await expect.soft(window.getByLabel(`매수 ${buy}원 주문`, { exact: true }), missing).toBeVisible({ timeout: 800 });
+    await expect.soft(window.getByLabel(`매도 ${sell}원 주문`, { exact: true }), missing).toBeVisible({ timeout: 800 });
+  }
+  expect(commands).toEqual([]);
+});
+
+async function resizeOrderFrame(page: Page, panel: Locator, width: number) {
+  const frame = page.locator('[data-win]').filter({ has: panel });
+  const frameBox = (await frame.boundingBox())!, panelBox = (await panel.boundingBox())!;
+  const handle = (await frame.locator('[data-handle="e"]').boundingBox())!;
+  const x = handle.x + handle.width / 2, y = handle.y + handle.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + width - panelBox.width, y, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBeCloseTo(width, 0);
+  expect((await frame.boundingBox())!.height).toBeCloseTo(frameBox.height, 0);
+}
+
+function missingPriceBook(qty: number, asks = [68200, 68100, 68000, 67900, 67800, 67700, 67600, 67500, 67400, 67300], bids = [67200, 67100, 67000, 66900, 66800, 66700, 66600, 66500, 66400, 66300]) {
+  return { kind: 'ob', venue: 'UN', t_ms: Date.now(), asks: asks.map(price => ({ price, qty })),
+    bids: bids.map(price => ({ price, qty })), total_ask_qty: 1000, total_bid_qty: 2000 };
+}
+
+test('내 지정가 보완행은 관측 밖 가격을 정확히 읽고 생성·드롭을 막되 기존 정정·취소를 유지한다', async ({ page }, info) => {
+  const { window, commands, ws } = await setup(page, [mkOrder('outside', '66001'), mkOrder('inside'), mkOrder('outward', '66002')]);
+  const writes = trackTradingWrites(page);
+  await ws.waitForSubscribe('005930');
+  const source = window.getByRole('button', { name: '매수 66,001원 미체결 주문', exact: true });
+  const row = window.locator('[data-order-price="66001"]');
+  await expect(source).toHaveText('70');
+  await expect(row.locator('.order-price-value')).toHaveText('66,001');
+  await expect(row.locator('.order-depth, [data-order-side]')).toHaveCount(0);
+  await expect(row.locator('button')).toHaveCount(1);
+  await source.dblclick();
+  await source.press('Enter');
+  await source.press('Space');
+  await drag(page, window.getByLabel('매수 67,200원 주문', { exact: true }), source);
+  await expect(page.getByRole('dialog', { name: '고액 주문 확인' })).toHaveCount(0);
+  expect(commands).toEqual([]);
+  await drag(page, source, window.getByRole('button', { name: /매수 67,100원 주문 추가/ }));
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0]).toMatchObject({ account_seq: 1, code: '005930', price: 67100 });
+  await expect(window.getByLabel('매수 67,100원 주문', { exact: true })).toHaveText('70');
+  await expect(row).toHaveCount(0);
+  ws.pushLive('005930', missingPriceBook(801, [67300], [67200]));
+  const newSource = window.getByRole('button', { name: '매수 67,100원 미체결 주문', exact: true });
+  await expect(newSource).toHaveText('70');
+  await newSource.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: '매수 67,100원 주문 목록' });
+  await menu.getByRole('button', { name: '주문 1 개별 취소', exact: true }).click();
+  await expect.poll(() => commands.length).toBe(2);
+  expect(commands[1]).toMatchObject({ account_seq: 1, code: '005930' });
+  await expect(newSource).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await drag(page, window.getByRole('button', { name: '매수 66,002원 미체결 주문', exact: true }), orderSettingsButton(window));
+  await expect.poll(() => commands.length).toBe(3);
+  expect(writes.map(write => write.path)).toEqual(['/api/trading/orders/outside/modify', '/api/trading/orders/replacement-1/cancel', '/api/trading/orders/outward/cancel']);
+  expect(writes[2].body).toMatchObject({ account_seq: 1, code: '005930' });
+  await page.screenshot({ path: info.outputPath('source-modify-cancel.png') });
+});
+
+test('내 지정가 첫 무수신은 양방향 원가격·안내를 유지하고 계좌 전환에 이전 가격을 남기지 않는다', async ({ page }, info) => {
+  const orders = [mkOrder('buy', '123456789'), { ...mkOrder('sell', '123456789'), side: 'SELL' }];
+  const { window, commands, ws } = await setup(page, orders, true, false, 0, 2, { emptyBook: true });
+  await ws.waitForSubscribe('005930');
+  const row = window.locator('[data-order-price="123456789"]');
+  await expect(row).toHaveCount(1);
+  await expect(row.getByLabel('매수 123,456,789원 주문', { exact: true })).toHaveText('70');
+  await expect(row.getByLabel('매도 123,456,789원 주문', { exact: true })).toHaveText('70');
+  await expect(row.locator('.order-depth, [data-order-side]')).toHaveCount(0);
+  await expect(window.getByTestId('order-empty-book')).toBeVisible();
+  await expect(window.locator('.order-average-marker')).toHaveCount(0);
+  await expect(window.locator('.order-row')).toHaveCount(20);
+  const width = await row.locator('.order-price-value').evaluate(el => ({ width: el.clientWidth, needed: el.scrollWidth }));
+  expect(width.needed).toBeLessThanOrEqual(width.width);
+  await page.screenshot({ path: info.outputPath('first-no-book.png') });
+  await page.route('**/api/live/stock-limits?*', route => route.fulfill({ json: { code: '005930', base_price: null,
+    upper_limit: null, lower_limit: null, fetched_at_ms: Date.now(), source: 'kiwoom' } }));
+  await page.route('**/api/symbols/all', route => route.fulfill({ json: { symbols: [], status: 'fresh', fetched_at_ms: Date.now(), reason: null } }));
+  await page.reload();
+  await expect(row.getByLabel('매수 123,456,789원 주문', { exact: true })).toHaveText('70');
+  await expect(window.getByRole('button', { name: '전체 호가', exact: true })).toBeDisabled();
+  await page.unroute('**/api/symbols/all');
+  await page.reload();
+  await expect(row.getByLabel('매수 123,456,789원 주문', { exact: true })).toHaveText('70');
+  const restore = page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '원래 크기로 복원', exact: true });
+  if (await restore.isVisible()) await restore.click();
+  const widths = [];
+  for (const width of [696, 695, 560, 559]) {
+    await resizeOrderFrame(page, window, width);
+    await expect(row.locator('.order-price-value')).toHaveText('123,456,789');
+    const size = await row.locator('.order-price-value').evaluate(el => ({ width: el.clientWidth, needed: el.scrollWidth }));
+    expect(size.needed).toBeLessThanOrEqual(size.width);
+    widths.push({ panelWidth: width, ...size });
+    await expect(row).toHaveCSS('height', '24px');
+  }
+  await info.attach('source-widths', { body: JSON.stringify(widths), contentType: 'application/json' });
+  await window.screenshot({ path: info.outputPath('source-width-559.png') });
+  ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 100,
+    order: { ...orders[1], status: 'CANCELED' } });
+  await expect(row.getByLabel('매도 123,456,789원 주문', { exact: true })).toHaveCount(0);
+  await expect(window.locator('.order-row').nth(10)).toHaveAttribute('data-order-price', '123456789');
+  orders.splice(0);
+  await window.getByRole('combobox', { name: '주문 계좌' }).selectOption('2');
+  await expect(row).toHaveCount(0);
+  await expect(window.getByTestId('order-empty-book')).toBeVisible();
+  orders.push({ ...mkOrder('other-code', '234567890'), symbol: '000660' });
+  await page.getByRole('button', { name: '종목 검색 열기' }).click();
+  const dialog = page.getByRole('dialog', { name: '종목 검색' });
+  await dialog.getByRole('combobox', { name: '종목 검색' }).fill('SK하이닉스');
+  await dialog.getByRole('option').first().click();
+  await expect(window.getByLabel('매수 234,567,890원 주문', { exact: true })).toHaveText('70');
+  await expect(row).toHaveCount(0);
+  await page.getByTestId('live-venue-picker').click();
+  await page.getByTestId('live-venue-option-NXT').click();
+  await expect(window.getByLabel('매수 234,567,890원 주문', { exact: true })).toHaveText('70');
+  expect(commands).toEqual([]);
+});
+
+test('내 지정가 대칭 확장은 24px·중앙경계·요약·최근9체결·스크롤을 유지한다', async ({ page }, info) => {
+  const { window, ws, commands } = await setup(page, [mkOrder('outside', '68250')]);
+  await ws.waitForSubscribe('005930');
+  await expect(window.locator('.order-row')).toHaveCount(22);
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(), fill_strength_pct: 75.14,
+    trades: Array.from({ length: 9 }, (_, i) => ({ price: 67200, qty: 901 + i, side: 1 })) });
+  await expect(window.locator('.order-row').nth(11)).toContainText('체결강도');
+  await expect(window.locator('.order-row').nth(12).locator('.order-trade')).toHaveCount(9);
+  await expect(window.getByLabel('매도총잔량 1,000')).toBeVisible();
+  await expect(window.getByLabel('매수총잔량 2,000')).toBeVisible();
+  const measure = () => window.evaluate(el => {
+    const rows = [...el.querySelectorAll('.order-row')].map(node => node.getBoundingClientRect());
+    const ladder = el.querySelector('.order-ladder')!.getBoundingClientRect();
+    const summary = el.querySelector('.order-summary-layer')!.getBoundingClientRect();
+    const divider = el.querySelector('.order-divider')!.getBoundingClientRect();
+    return { heights: rows.map(row => row.height), before: rows.filter(row => row.y < divider.y).length,
+      centered: Math.abs(divider.y - ladder.y - ladder.height / 2), summaryBottom: Math.abs(summary.bottom - divider.y) };
+  });
+  await expect(async () => {
+    const m = await measure();
+    expect(m.heights).toEqual(Array(22).fill(24));
+    expect(m.before).toBe(11);
+    expect(m.centered).toBeLessThan(1);
+    expect(m.summaryBottom).toBeLessThan(1);
+  }).toPass();
+  await info.attach('geometry-22', { body: JSON.stringify(await measure()), contentType: 'application/json' });
+  await page.screenshot({ path: info.outputPath('expanded-22.png') });
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await expect.poll(() => window.locator('.order-scroll').evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  await window.locator('.order-row').last().scrollIntoViewIfNeeded();
+  await expect(window.locator('.order-row').last()).toBeInViewport();
+  await expect(window.locator('.order-row').last()).toHaveCSS('height', '24px');
+  await page.screenshot({ path: info.outputPath('expanded-low-scroll.png') });
+  expect(commands).toEqual([]);
+});
+
+test('내 지정가 상태·시장 재등장은 잔량·marker 후보와 중복 양방향 가격을 정확히 보존한다', async ({ page }, info) => {
+  const buy = mkOrder('gap', '67200');
+  const { window, ws, commands } = await setup(page, [buy, { ...mkOrder('sell', '67200'), side: 'SELL' }], true, false, 0, 1,
+    { averagePrice: '67240.5' });
+  await ws.waitForSubscribe('005930');
+  const marker = window.locator('.order-average-marker');
+  await expect(marker).toHaveCount(1);
+  ws.pushLive('005930', missingPriceBook(802, [67300, 67400], [67100, 67000]));
+  const row = window.locator('[data-order-price="67200"]');
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('.order-depth')).toHaveCount(0);
+  await expect(marker).toHaveCount(0);
+  await expect(row.getByLabel('매수 67,200원 주문', { exact: true })).toHaveText('70');
+  await expect(row.getByLabel('매도 67,200원 주문', { exact: true })).toHaveText('70');
+  for (const [revision, status, filled] of [[100, 'PARTIAL_FILLED', '50'], [101, 'PENDING_CANCEL', '50'], [102, 'PENDING_REPLACE', '50']] as const) {
+    ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision,
+      order: { ...buy, status, execution: { ...buy.execution, filledQuantity: filled } } });
+    await expect(row.getByLabel('매수 67,200원 주문', { exact: true })).toHaveText('50');
+  }
+  ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 103,
+    order: { ...buy, status: 'CANCELED', execution: { ...buy.execution, filledQuantity: '50' } } });
+  await expect(row.getByLabel('매수 67,200원 주문', { exact: true })).toHaveCount(0);
+  await expect(row.getByLabel('매도 67,200원 주문', { exact: true })).toHaveText('70');
+  ws.pushLive('005930', missingPriceBook(803, [67200, 67400], [67200, 67100]));
+  await expect(row).toHaveCount(2);
+  await expect(row.locator('.order-depth-qty')).toHaveText(['803', '803']);
+  await expect(marker).toHaveCount(1);
+  await expect(marker.locator('xpath=ancestor::*[@data-order-price][1]')).toHaveAttribute('data-order-price', '67200');
+  await page.screenshot({ path: info.outputPath('duplicate-market-marker.png') });
+  expect(commands).toEqual([]);
+});
+
+test('내 지정가 드래그 중 고정 포인터의 시장·source 전환은 표시 target과 최종 명령을 다시 판정한다', async ({ page }, info) => {
+  const { window, ws, commands } = await setup(page, [mkOrder('origin', '66900'), mkOrder('target', '67100')]);
+  await ws.waitForSubscribe('005930');
+  const source = window.getByLabel('매수 66,900원 주문', { exact: true });
+  const target = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+  const a = (await source.boundingBox())!, b = (await target.boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
+  await expect(window.locator('.order-target')).toHaveAttribute('data-order-price', '67100');
+  const inserted = mkOrder('inserted', '67150');
+  ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 100, order: inserted });
+  await expect(window.getByRole('button', { name: '매수 67,150원 미체결 주문', exact: true })).toBeVisible();
+  await expect(window.locator('.order-target, .order-drag-destination')).toHaveCount(0);
+  ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 101, order: { ...inserted, status: 'CANCELED' } });
+  await expect(window.locator('.order-target')).toHaveAttribute('data-order-price', '67100');
+  const missing = missingPriceBook(811);
+  ws.pushLive('005930', { ...missing, bids: missing.bids.map(level => level.price === 67100 ? { ...level, price: 0 } : level) });
+  await expect(window.getByRole('button', { name: '매수 67,100원 미체결 주문', exact: true })).toBeVisible();
+  await expect(window.locator('.order-target, .order-drag-destination')).toHaveCount(0);
+  await page.mouse.up();
+  expect(commands).toEqual([]);
+  await drag(page, source, window.getByRole('button', { name: '매수 67,100원 미체결 주문', exact: true }));
+  expect(commands).toEqual([]);
+  await page.screenshot({ path: info.outputPath('source-drag-target-cleared.png') });
+});
+
+test('같은 방향의 중복 시장 가격은 각각의 잔량을 보존하고 다른 source 삽입에도 key가 충돌하지 않는다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', message => {
+    if (message.type() === 'error' && /same key|unique.*key/i.test(message.text())) errors.push(message.text());
+  });
+  page.on('pageerror', error => errors.push(error.message));
+  const { window, ws, commands } = await setup(page);
+  await ws.waitForSubscribe('005930');
+  const frame = missingPriceBook(900, [67400, 67400, 67300], [67200, 67200]);
+  ws.pushLive('005930', { ...frame, asks: frame.asks.map((level, i) => ({ ...level, qty: 901 + i })),
+    bids: frame.bids.map((level, i) => ({ ...level, qty: 904 + i })) });
+  const asks = window.locator('[data-order-price="67400"] .order-depth-qty');
+  const bids = window.locator('[data-order-price="67200"] .order-depth-qty');
+  await expect(asks).toHaveText(['902', '901']);
+  await expect(bids).toHaveText(['904', '905']);
+  ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 100, order: mkOrder('inserted', '67350') });
+  await expect(window.getByLabel('매수 67,350원 주문', { exact: true })).toHaveText('70');
+  await expect(asks).toHaveText(['902', '901']);
+  await expect(bids).toHaveText(['904', '905']);
+  expect(errors).toEqual([]);
+  expect(commands).toEqual([]);
+});

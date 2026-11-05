@@ -75,9 +75,6 @@
 .order-controls label { display:flex; align-items:center; gap:0.25rem; }
 .order-scroll { --order-lane-width:max(48px,var(--order-lane-content-width)); --order-depth-min:calc(var(--order-depth-content-width) + var(--book-trade-gutter,0px)); --order-columns:var(--order-lane-width) minmax(var(--order-depth-min),1fr) var(--book-price-width) minmax(var(--order-depth-min),1fr) var(--order-lane-width); display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
 .order-ladder { position:relative; flex:1 0 auto; min-width:calc(16px + 2 * var(--order-lane-width) + 2 * var(--order-depth-min) + var(--book-price-width)); min-height:244px; padding:4px 8px 0; }
-/* Twenty fixed slots; the top spacer balances the totals row
- * so the spread stays centered while the totals follow the last slot.
- * Small windows scroll the full ladder instead of shrinking its order targets. */
 .order-ladder-centered { display:flex; flex-direction:column; min-height:536px; padding-block:0; }
 .order-ladder-centered::before,.order-ladder-centered::after { content:""; flex:1 0 4px; }
 .order-ladder-centered::before { flex-basis:28px; }
