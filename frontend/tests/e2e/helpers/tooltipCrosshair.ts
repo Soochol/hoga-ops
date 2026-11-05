@@ -24,6 +24,21 @@ const minute = daily.slice(-6).flatMap((d, di) => Array.from({ length: 390 }, (_
   low: 39900 + di * 10 + i / 10, close: 40040 + di * 10 + i / 10, volume: 1000 + i,
 })));
 
+function calendarCandles(timeframe: 'W' | 'M') {
+  const buckets = new Map<string, (typeof daily)[number]>();
+  for (const candle of daily) {
+    const key = period(candle.t_ms, timeframe);
+    const previous = buckets.get(key);
+    buckets.set(key, previous ? {
+      ...previous, high: Math.max(previous.high, candle.high), low: Math.min(previous.low, candle.low),
+      close: candle.close, volume: previous.volume + candle.volume,
+    } : { ...candle });
+  }
+  return [...buckets.values()];
+}
+
+const calendar = { W: calendarCandles('W'), M: calendarCandles('M') };
+
 export function syncWindows(sourceTooltip = false, targetTooltip = false): SyncWindow[] {
   return (['1m', 'D', 'W', 'M'] as const).map((timeframe, i) => ({
     id: ['s', 'd', 'w', 'm'][i], timeframe, group: 1, code: i ? '005930' : '098460',
@@ -41,6 +56,16 @@ export async function installSyncWorkspace(page: Page, windows: SyncWindow[], cr
       cached_dates: [], fresh_dates: [], cached_batches: [], fresh_batches: [], data_warnings: [],
     } }));
   }
+  await page.route(apiExact('live/past-calendar-candles'), route => {
+    const params = new URL(route.request().url()).searchParams;
+    const timeframe = params.get('timeframe');
+    if (timeframe !== 'W' && timeframe !== 'M') throw new Error(`Unexpected calendar timeframe ${timeframe}`);
+    return route.fulfill({ json: {
+      code: params.get('code'), timeframe, venue: params.get('venue'),
+      from: '20250601', to: '20261104', candles: calendar[timeframe],
+      cached_batches: [], fresh_batches: [], data_warnings: [],
+    } });
+  });
   await page.route(apiExact('live/series'), route => route.fulfill({ json: {
     code: new URL(route.request().url()).searchParams.get('code'), date: '20261104',
     session_open_ms: Date.UTC(2026, 10, 4), session_close_ms: Date.UTC(2026, 10, 4) + 23400000,
