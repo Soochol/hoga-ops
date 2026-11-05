@@ -884,11 +884,8 @@ export function TotalQtyStrip({
   sessionControl: BookSessionControl;
   sessionMode: BookSessionMode;
   onSelectSessionMode?: (mode: BookSessionMode) => void;
-  /** 그릴 총잔량. **어느 출처를 쓸지는 호출부가 정한다** — 시간외 값이 있으면 그것,
-   *  없으면 사다리 스냅샷의 총잔량. 여기서 `snapshot` 을 직접 받아 `?? ` 로 떨어뜨리면
-   *  "사다리도 없고 시간외도 없다" 는 **불가능한 상태가 타입에 생기고**, 그 폴백이
-   *  0 을 조용히 삼켜 `0fr 0fr` 격자가 된다. 각 호출부가 non-null 을 보장한다. */
-  totals: { ask: number; bid: number };
+  /** 호출부가 고른 시간외·사다리 총잔량. null은 미수신이며 확인된 0과 구분한다. */
+  totals: { ask: number; bid: number } | null;
   maskRatio: boolean;
   /** 값이 아니라 **출처 판정**용이다 — non-null 이면 위 `totals` 가 시간외 값이라는 뜻이라
    *  라벨·체결량 줄이 붙는다. 사다리(정규장 마지막 값)와 합이 안 맞는 것을 설명하는 장치. */
@@ -898,7 +895,7 @@ export function TotalQtyStrip({
    *  스팟 경로를 타지 않으므로 호출부가 빈 문자열을 넘긴다. */
   dimClass?: string;
   /** 주문창은 기존 총잔량 자리를 주문 표면으로 사용한다. 일반 10호가는 표시만 유지한다. */
-  renderTotal?: (side: 'ask' | 'bid', quantity: number) => ReactNode;
+  renderTotal?: (side: 'ask' | 'bid', quantity: number | null) => ReactNode;
   centerContent?: ReactNode;
 }) {
   // 시간외 총잔량이 오면 그걸 쓴다 — 위 사다리(정규장 15:30 마지막 스냅샷)는
@@ -906,10 +903,13 @@ export function TotalQtyStrip({
   // 여기가 시간외의 유일한 호가 신호다(Props.afterHoursTotals 주석). 사다리가 아예
   // 없는 장전 08:30–08:40 에는 이 스트립이 **패널의 유일한 내용**이 된다.
   const isAfterHours = afterHoursTotals !== null;
-  const { ask, bid } = totals;
+  const ask = totals?.ask ?? null;
+  const bid = totals?.bid ?? null;
+  const askText = ask?.toLocaleString('ko-KR') ?? '—';
+  const bidText = bid?.toLocaleString('ko-KR') ?? '—';
   return (
     <div data-testid="book-total-strip" className={`border-t border-border ${dimClass}`}>
-      {maskRatio ? (
+      {maskRatio || totals === null ? (
         <div className="h-1 bg-bg-subtle" data-testid="book-total-masked" />
       ) : (
         <div
@@ -934,10 +934,10 @@ export function TotalQtyStrip({
           바깥 5행 설명이고, 그건 시간외 선택 라벨이 그대로 진다. */}
       <div className="flex items-center justify-between px-2 py-1">
         {renderTotal ? renderTotal('ask', ask) : <span
-          aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매도총잔량 ${ask.toLocaleString('ko-KR')}`}
+          aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매도총잔량 ${ask === null ? '미수신' : askText}`}
           className="font-data text-sm tabular-nums text-price-down"
         >
-          {ask.toLocaleString('ko-KR')}
+          {askText}
         </span>}
         {/* 여기 라벨 아래에 누적 체결량("체결 17,474")을 두 줄로 쌓았었다. **뺐다**
             (사용자 결정 2026-08-19) — 그것을 두었던 근거가 무효가 됐기 때문이다.
@@ -951,10 +951,10 @@ export function TotalQtyStrip({
           fallbackLabel={isAfterHours ? afterHoursLabel : null}
         />}
         {renderTotal ? renderTotal('bid', bid) : <span
-          aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매수총잔량 ${bid.toLocaleString('ko-KR')}`}
+          aria-label={`${isAfterHours ? `${afterHoursLabel} ` : ''}매수총잔량 ${bid === null ? '미수신' : bidText}`}
           className="font-data text-sm tabular-nums text-price-up"
         >
-          {bid.toLocaleString('ko-KR')}
+          {bidText}
         </span>}
       </div>
     </div>

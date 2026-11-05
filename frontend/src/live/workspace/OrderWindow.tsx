@@ -367,7 +367,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const showInlineSummary = !explorer.enabled && (expanded || prices.length === 0);
   const onScreen = new Set(prices.map(l => l.price));
   const maxQty = Math.max(1, ...asks.concat(bids).map(l => l.qty));
-  const displayTotals = (restBook ? null : afterHoursTotals) ?? { ask: book?.tot_ask ?? 0, bid: book?.tot_bid ?? 0 };
+  const displayTotals = (restBook ? null : afterHoursTotals) ?? (book ? { ask: book.tot_ask, bid: book.tot_bid } : null);
   const baseline = resolveBookBaseline({ isPastDateLadder: false, ladderBaseline: null,
     singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
@@ -1051,7 +1051,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     </div>
     {(showPreopen || book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip
       totals={displayTotals}
-      maskRatio={displayTotals.ask + displayTotals.bid === 0}
+      maskRatio={displayTotals === null || displayTotals.ask + displayTotals.bid === 0}
       afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel}
       sessionControl={restBook ? { kind: 'label', label: '마지막 조회 호가' } : sessionControl} sessionMode={sessionMode}
       onSelectSessionMode={selectSessionMode}
@@ -1068,7 +1068,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
               event.preventDefault(); event.stopPropagation();
               if (!drag.current && !action && !settingsDraft && !exclusiveBusy) setContextMenu({ x: event.clientX, y: event.clientY, side: direction, preopen: true });
             }}>
-            <span aria-label={`${afterHoursTotals ? `${afterHoursLabel} ` : ''}${orderSideLabel(direction)}총잔량 ${fmt(quantity)}`}>{book || afterHoursTotals ? fmt(quantity) : '—'}</span>
+            <span aria-label={`${afterHoursTotals ? `${afterHoursLabel} ` : ''}${orderSideLabel(direction)}총잔량 ${quantity === null ? '미수신' : fmt(quantity)}`}>{fmt(quantity)}</span>
           </button>
         </TextTooltip>;
       } : undefined} />}
