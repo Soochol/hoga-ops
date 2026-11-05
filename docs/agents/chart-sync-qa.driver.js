@@ -11,9 +11,9 @@
 // 대신 `__liveCharts.get(id).chartElement()` 로 **그 창의 DOM 까지 내려가** 이벤트를
 // 직접 dispatch 한다. 히트테스트를 안 거치므로 겹침과 무관하다.
 window.__qa = {
-  /** 워크스페이스 창 메타(localStorage) — id·kind·봉·그룹. */
+  /** 현재 탭의 워크스페이스 창 메타 — id·kind·봉·그룹. */
   meta() {
-    const w = JSON.parse(localStorage.getItem('live.workspace.v1') || '{}');
+    const w = JSON.parse(sessionStorage.getItem('live.workspace.v1') ?? localStorage.getItem('live.workspace.v1') ?? '{}');
     return (w.windows || []).map((x) => ({
       id: x.id, kind: x.kind, tf: x.chart?.timeframe ?? null,
       group: x.group, pinned: x.pinned?.code ?? null,

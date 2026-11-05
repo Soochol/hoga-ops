@@ -3,7 +3,7 @@ import type { SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import {
   canPublishSyncCursor,
   formatKstMmdd,
-  indexCandlesByKstDate,
+  buildSyncTargetSource,
   isSyncConsumerTimeframe,
   resolveSyncTarget,
   snapToInstant,
@@ -52,7 +52,7 @@ function target(over: Partial<SidebarCursorOrigin> = {}, tsMs = CURSOR_1500) {
     myWindowId: 'daily-window',
     myGroup: 1,
     myCode: '064350',
-    source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
+    source: buildSyncTargetSource(CANDLES, 'D'),
     allowCrossSymbol: false,
   }));
 }
@@ -97,17 +97,10 @@ function targetCross(over: Partial<SidebarCursorOrigin> = {}, tsMs = CURSOR_1500
     myWindowId: 'daily-window',
     myGroup: 1,
     myCode: '064350',
-    source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
+    source: buildSyncTargetSource(CANDLES, 'D'),
     allowCrossSymbol: true,
   }));
 }
-
-describe('indexCandlesByKstDate', () => {
-  it('KST 날짜를 키로 쓴다 — UTC 로 나누면 자정~09시 봉이 전날로 밀린다', () => {
-    const byDate = indexCandlesByKstDate(CANDLES);
-    expect([...byDate.keys()]).toEqual(['20250619', '20250620']);
-  });
-});
 
 describe('resolveSyncTarget', () => {
   it('분봉 커서의 시각을 같은 KST 날짜의 일봉 캔들로 스냅한다', () => {
@@ -118,7 +111,7 @@ describe('resolveSyncTarget', () => {
   it('발행이 없으면 대상이 없다', () => {
     expect(hitOf(resolveSyncTarget({
       cursor: null, myWindowId: 'daily-window', myGroup: 1, myCode: '064350',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
+      source: buildSyncTargetSource(CANDLES, 'D'), allowCrossSymbol: false,
     }))).toBeNull();
   });
 
@@ -146,7 +139,7 @@ describe('resolveSyncTarget', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin() },
       myWindowId: 'daily-window', myGroup: 1, myCode: null,
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
+      source: buildSyncTargetSource(CANDLES, 'D'), allowCrossSymbol: false,
     })).not.toBeNull();
   });
 
@@ -185,7 +178,7 @@ describe('resolveSyncTarget — /live 스코프', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ group: null }) },
       myWindowId: 'daily-window', myGroup: null, myCode: '064350',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
+      source: buildSyncTargetSource(CANDLES, 'D'),
       allowCrossSymbol: false,
     })).toEqual({ kind: 'hit', candle: { ts_ms: DAY_20250619, close: 212000 } });
   });
@@ -200,7 +193,7 @@ describe('resolveSyncTarget — /live 스코프', () => {
     expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
       myWindowId: 'daily-window', myGroup: 1, myCode: 'index:KOSDAQ',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
+      source: buildSyncTargetSource(CANDLES, 'D'), allowCrossSymbol: false,
     }))).toBeNull();
   });
 
@@ -211,7 +204,7 @@ describe('resolveSyncTarget — /live 스코프', () => {
     expect(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: null }) },
       myWindowId: 'daily-window', myGroup: 1, myCode: null,
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: false,
+      source: buildSyncTargetSource(CANDLES, 'D'), allowCrossSymbol: false,
     })).not.toBeNull();
   });
 });
@@ -235,7 +228,7 @@ describe('resolveSyncTarget — 다른 종목까지(cursorSyncCrossSymbol 켬)',
     expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: '005930' }) },
       myWindowId: 'daily-window', myGroup: 1, myCode: 'index:KOSPI',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: true,
+      source: buildSyncTargetSource(CANDLES, 'D'), allowCrossSymbol: true,
     }))).toEqual({ ts_ms: DAY_20250619, close: 212000 });
   });
 
@@ -243,7 +236,7 @@ describe('resolveSyncTarget — 다른 종목까지(cursorSyncCrossSymbol 켬)',
     expect(hitOf(resolveSyncTarget({
       cursor: { tsMs: CURSOR_1500, origin: origin({ code: 'index:KOSPI' }) },
       myWindowId: 'daily-window', myGroup: 1, myCode: 'index:KOSDAQ',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES }, allowCrossSymbol: true,
+      source: buildSyncTargetSource(CANDLES, 'D'), allowCrossSymbol: true,
     }))).toEqual({ ts_ms: DAY_20250619, close: 212000 });
   });
 
@@ -427,7 +420,7 @@ describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
     myWindowId: 'daily-window',
     myGroup: 1,
     myCode: '064350',
-    source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
+    source: buildSyncTargetSource(CANDLES, 'D'),
     allowCrossSymbol: false,
   });
 
@@ -448,7 +441,7 @@ describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
       myWindowId: 'daily-window',
       myGroup: 1,
       myCode: '064350',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(holed), candles: holed },
+      source: buildSyncTargetSource(holed, 'D'),
       allowCrossSymbol: false,
     })).toEqual({ kind: 'none' });
   });
@@ -459,7 +452,7 @@ describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
       myWindowId: 'daily-window',
       myGroup: 1,
       myCode: '064350',
-      source: { axis: 'date', byDate: new Map(), candles: [] },
+      source: buildSyncTargetSource([], 'D'),
       allowCrossSymbol: false,
     })).toEqual({ kind: 'none' });
   });
@@ -470,7 +463,7 @@ describe('resolveSyncTarget — 로드 범위 밖 안내', () => {
       myWindowId: 'daily-window',
       myGroup: 1,
       myCode: '064350',
-      source: { axis: 'date', byDate: indexCandlesByKstDate(CANDLES), candles: CANDLES },
+      source: buildSyncTargetSource(CANDLES, 'D'),
       allowCrossSymbol: false,
     })).toEqual({ kind: 'none' });
   });
@@ -501,14 +494,18 @@ describe('snapToLastOfKstDay', () => {
 });
 
 describe('발행 ↔ 소비 집합', () => {
-  it('분봉과 D 만 발행하고, 같은 집합만 소비한다', () => {
+  it('분봉과 D 만 발행하고 W/M까지 소비한다', () => {
     for (const tf of ['1m', '5m', '60m', '240m', 'D'] as const) {
       expect(canPublishSyncCursor(tf)).toBe(true);
       expect(isSyncConsumerTimeframe(tf)).toBe(true);
     }
-    for (const tf of ['W', 'M'] as const) {
+    for (const tf of ['1s', '5s'] as const) {
       expect(canPublishSyncCursor(tf)).toBe(false);
       expect(isSyncConsumerTimeframe(tf)).toBe(false);
+    }
+    for (const tf of ['W', 'M'] as const) {
+      expect(canPublishSyncCursor(tf)).toBe(false);
+      expect(isSyncConsumerTimeframe(tf)).toBe(true);
     }
   });
 });
@@ -526,3 +523,49 @@ describe('라벨 포맷', () => {
     expect(formatKstMmdd(Date.UTC(2025, 5, 19, 15, 30))).toBe('06/20');
   });
 });
+
+for (const granularity of ['W', 'M'] as const) {
+  describe(`${granularity} calendar receivers`, () => {
+    const ms = (date: string) => Date.parse(`${date}T09:00:00+09:00`);
+    const dates = granularity === 'W'
+      ? ['2024-12-24', '2024-12-31', '2025-01-14']
+      : ['2024-11-04', '2024-12-03', '2025-02-04'];
+    const candles = dates.map((date, i) => ({ ts_ms: ms(date), close: 100 + i * 10 }));
+    const resolve = (date: string, over: Partial<SidebarCursorOrigin> = {}, data = candles) => resolveSyncTarget({
+      cursor: { tsMs: ms(date), origin: origin(over) }, myWindowId: 'receiver', myGroup: 1, myCode: '064350',
+      source: buildSyncTargetSource(data, granularity), allowCrossSymbol: false,
+    });
+
+    it('uses the actual first trading timestamp and close within a holiday-start period', () => {
+      const beforeTrading = granularity === 'W' ? '2024-12-23' : '2024-11-01';
+      const middle = granularity === 'W' ? '2024-12-26' : '2024-11-15';
+      const end = granularity === 'W' ? '2024-12-29' : '2024-11-30';
+      for (const date of [beforeTrading, middle, end]) {
+        for (const timeframe of ['3m', 'D'] as const) {
+          expect(resolve(date, { timeframe })).toEqual({ kind: 'hit', candle: candles[0] });
+        }
+      }
+    });
+
+    it('resolves the last loaded period after its representative timestamp', () => {
+      expect(resolve(granularity === 'W' ? '2025-01-19' : '2025-02-28'))
+        .toEqual({ kind: 'hit', candle: candles[2] });
+    });
+
+    it('keeps year/week/month boundaries distinct and finds an internally missing bucket', () => {
+      expect(resolve(granularity === 'W' ? '2025-01-01' : '2024-12-31'))
+        .toEqual({ kind: 'hit', candle: candles[1] });
+      expect(resolve(granularity === 'W' ? '2025-01-06' : '2025-01-31')).toEqual({ kind: 'none' });
+      expect(resolve(granularity === 'W' ? '2024-12-22' : '2024-10-31')).toEqual({ kind: 'out-of-range', side: 'left' });
+      expect(resolve(granularity === 'W' ? '2025-01-20' : '2025-03-01')).toEqual({ kind: 'out-of-range', side: 'right' });
+      expect(resolve('2025-01-01', {}, [])).toEqual({ kind: 'none' });
+    });
+
+    it('retains self, group, Code and origin timeframe gates', () => {
+      for (const gate of [{ windowId: 'receiver' }, { group: 2 }, { code: '005930' },
+        { timeframe: 'W' as const }, { timeframe: 'M' as const }, { timeframe: '1s' as const }]) {
+        expect(resolve(dates[0], gate)).toEqual({ kind: 'none' });
+      }
+    });
+  });
+}

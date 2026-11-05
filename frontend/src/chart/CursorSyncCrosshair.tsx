@@ -2,11 +2,6 @@
  * **다른 창의 마우스 위치**를 이 창의 크로스헤어로 표시한다. `/study` 와 `/live`
  * 워크스페이스가 둘 다 쓰고, 동작은 페이지에 무관하다.
  *
- * 방향은 넷이다 — 분봉→일봉 · 일봉→일봉 · 분봉→분봉 · 일봉→분봉. 대상을 어떻게
- * 찾는지는 **이 창의 봉**과 **발행 봉**이 함께 정하고, 그 판정은 전부 `cursorSync.ts`
- * 가 갖는다. 여기서 하는 일은 자기 봉으로 다리(`SyncTargetSource`)를 고르고 판정
- * 결과 세 갈래(`SyncResolution`)를 각각 그리는 것뿐이다.
- *
  * 선은 직접 그리지 않는다 — lightweight-charts 가 "두 차트의 크로스헤어 동기화"
  * 용도로 문서화한 `setCrosshairPosition` 을 부른다(`typings.d.ts` 의 예시가 곧 이
  * 기능이다). 그래서 세로선·가로선뿐 아니라 **시간축 날짜 배지와 가격축 값 배지가
@@ -50,14 +45,15 @@
  * `atTimeSec`). **`CandleTooltip` 은 실제 마우스가 있는 차트에만 표시한다**
  * (2026-10-30 사용자 요청). 날짜·크로스헤어·레전드 동기화는 툴팁을 열지 않는다.
  */
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import type { PaneSeriesMap } from './drawing/chartCoordinates';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
 import { useLiveCursorStore } from '../live/useLiveCursorStore';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { formatKstMmdd, type SyncCandle } from './cursorSync';
-import { markSyntheticCrosshair, releaseSyntheticCrosshair } from './syntheticCrosshair';
+import { applySyncedCrosshair, hasLocalCrosshairPointer, subscribeCrosshairPointer } from './persistentCrosshair';
+import { useActivePrefs } from '../state/chartPrefs';
 import { useCursorSyncResolution } from '../live/useCursorSyncResolution';
 import type { LiveTimeframe } from '../state/livePage';
 
@@ -83,7 +79,12 @@ const chipStyle = { background: 'var(--accent)', color: 'var(--accent-fg)' } as 
 
 function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [, force] = useState(0);
+  const [revision, force] = useState(0);
+  const tooltipEnabled = useActivePrefs(p => p.candleTooltipEnabled);
+  const subscribePointer = useCallback((listener: () => void) => subscribeCrosshairPointer(chart, listener), [chart]);
+  const getPointer = useCallback(() => hasLocalCrosshairPointer(chart), [chart]);
+  const localPointer = useSyncExternalStore(subscribePointer, getPointer, getPointer);
+  const showRemote = !tooltipEnabled && !localPointer;
   const syncCursorMs = useLiveCursorStore((s) => s.syncCursorMs);
   // 판정은 **레전드와 공유한다** — 각자 하면 게이트가 갈려 "선은 여기, 숫자는 저기"
   // 가 된다(`useCursorSyncResolution` 헤더).
@@ -100,7 +101,7 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
       raf = requestAnimationFrame(() => force((n) => n + 1));
     };
     ts.subscribeVisibleLogicalRangeChange(schedule);
-    const parent = containerRef.current?.parentElement;
+    const parent = chart.chartElement?.() ?? containerRef.current?.parentElement;
     const ro = parent && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
     if (ro && parent) ro.observe(parent);
     return () => {
@@ -110,51 +111,26 @@ function CursorSyncCrosshair({ chart, axis, candles, timeframe, paneSeries, code
     };
   }, [chart]);
 
-
-  // 크로스헤어 자체. cleanup 이 이전 위치를 지우므로 커서가 바뀌면 옮겨 가고,
-  // 발행이 끊기거나(포인터가 발행 창을 벗어남) 언마운트되면 사라진다.
-  // **`out-of-range` 에는 걸지 않는다** — 가리킬 캔들이 이 창에 없다.
   useEffect(() => {
-    const series = paneSeries.get('candle');
-    if (!series || !target) return;
-    // ⚠ **못 그리는 차트에는 걸지 않는다 — 걸면 lwc 가 던진다.**
-    //
-    // `setCrosshairPosition` 은 내부(`setAndSaveSyntheticPosition`, lwc 5.2.0)에서 두
-    // 값을 `ensureNotNull` 로 깐다: pane 기본 가격축의 `firstValue` 와 `timeToIndex`.
-    // 둘 다 **정상 상태에서** null 이 되고, 그러면 `Error: Value is null` 이 이 이펙트
-    // 에서 올라와 `ChartErrorBoundary` 가 창을 통째로 폴백으로 바꾼다. 도달 경로 셋:
-    //   - pane 폭이 0 (레이아웃 전 · 접힌 창) → timeScale 이 `isEmpty`
-    //   - 이 차트의 시리즈에 아직 데이터가 없다(캔들 prop 은 섰는데 `setData` 전 —
-    //     자식 이펙트가 부모보다 **먼저** 도는 이 리포의 상시 순서다)
-    //   - 캔들 전체가 뷰포트 **왼쪽 밖**으로 밀렸다. `firstValue` 는 보이는 구간의
-    //     왼쪽 끝에서 **오른쪽으로** 봉을 찾으므로 그때만 null 이다(오른쪽 밖은 무해).
-    //
-    // 공개 API 로 그 셋을 **한 번에** 재는 것이 `priceToCoordinate` 다. 이 값이
-    // non-null 이면 시리즈 `firstValue` 가 있고, 그건 보이는 구간과 점 배열이 둘 다
-    // 서 있다는 뜻이라 위 셋이 모두 배제된다(② 는 점이 0개일 때만 null 이다).
-    // **전제 하나**: 캔들 시리즈가 pane 기본 가격축(`right`)에 있다 — ① 이 보는 것은
-    // 그 축이고 여기서 재는 것은 시리즈다. 캔들을 다른 축으로 옮기면 이 줄부터 다시 볼 것.
-    //
-    // 건너뛴 프레임은 **다음 커서 틱이 복구한다**(`target` 이 바뀌어 이펙트가 다시 돈다).
-    // 발행 창의 포인터가 멈춰 있으면 그동안 선이 없다 — 그 대가로 창이 살아 있다.
-    if (series.priceToCoordinate(target.close) === null) return;
-    chart.setCrosshairPosition(
-      target.close,
-      (axis.toVirtual(target.ts_ms) / 1000) as UTCTimestamp,
-      series,
-    );
-    // 이 창의 크로스헤어는 이제 **내 포인터가 아니다**. 그 사실을 발행 층이 읽어야
-    // 하는 이유는 `syntheticCrosshair.ts` 헤더에 있다(요약: lwc 가 데이터 갱신마다
-    // 이 위치로 `crosshairMove` 를 재발화하는데, 그걸로 발행하면 빈 슬롯을 차지해
-    // **포인터가 있는 창**의 크로스헤어를 남의 캔들로 끌어간다).
-    markSyntheticCrosshair(chart);
-    return () => {
-      chart.clearCrosshairPosition();
-      releaseSyntheticCrosshair(chart);
+    if (!showRemote || !target) return;
+    let release: (() => void) | undefined;
+    const paint = () => {
+      const series = paneSeries.get('candle');
+      if (!series || hasLocalCrosshairPointer(chart) || series.priceToCoordinate(target.close) === null) return;
+      const time = (axis.toVirtual(target.ts_ms) / 1000) as UTCTimestamp;
+      if (chart.timeScale().timeToIndex?.(time) === null) return;
+      release = applySyncedCrosshair({ chart, price: target.close, time, series });
     };
-  }, [target, chart, axis, paneSeries]);
+    paint();
+    // Child effects can run before the parent's data commit seats the series.
+    const frame = release ? null : requestAnimationFrame(paint);
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      release?.();
+    };
+  }, [target, chart, axis, paneSeries, showRemote, revision]);
 
-  if (resolution.kind === 'none' || syncCursorMs === null) return null;
+  if (!showRemote || resolution.kind === 'none' || syncCursorMs === null) return null;
 
   const ts = chart.timeScale();
   const paneWidth = ts.width();

@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import CursorSyncCrosshair from './CursorSyncCrosshair';
+import type { IChartApi, MouseEventParams } from 'lightweight-charts';
+import { createPersistentCrosshairChart } from './persistentCrosshair';
 import { hasSyntheticCrosshair } from './syntheticCrosshair';
 import { useLiveCursorStore, type SidebarCursorOrigin } from '../live/useLiveCursorStore';
 import { useChartPrefsStore } from '../state/chartPrefs';
+import { useWindowSettingsStore } from '../state/windowSettings';
 import type { LiveTimeframe } from '../state/livePage';
 import {
   WindowViewContext,
@@ -30,15 +33,26 @@ const axis = { toVirtual: (ms: number) => ms } as unknown as VirtualAxis;
 const setCrosshairPosition = vi.fn();
 const clearCrosshairPosition = vi.fn();
 
+let moveCrosshair: (param: Partial<MouseEventParams>) => void;
+let signalRange: () => void;
+let chartElement: HTMLDivElement;
+
 function makeChart(coords: Map<number, number | null>) {
   const timeScale = {
     width: () => 500,
     height: () => 28,
     timeToCoordinate: vi.fn((t: number) => coords.get(t) ?? null),
-    subscribeVisibleLogicalRangeChange: vi.fn(),
-    unsubscribeVisibleLogicalRangeChange: vi.fn(),
+    subscribeVisibleLogicalRangeChange: vi.fn((listener: () => void) => { signalRange = listener; }),
+    unsubscribeVisibleLogicalRangeChange: vi.fn((listener: () => void) => { signalRange = listener; }),
   };
-  return { timeScale: () => timeScale, setCrosshairPosition, clearCrosshairPosition };
+  const listeners = new Set<(param: MouseEventParams) => void>();
+  moveCrosshair = param => { for (const listener of listeners) listener({ seriesData: new Map(), ...param }); };
+  chartElement = document.createElement('div');
+  return createPersistentCrosshairChart({ timeScale: () => timeScale, setCrosshairPosition, clearCrosshairPosition,
+    chartElement: () => chartElement,
+    subscribeCrosshairMove: (listener: (param: MouseEventParams) => void) => { listeners.add(listener); },
+    unsubscribeCrosshairMove: (listener: (param: MouseEventParams) => void) => { listeners.delete(listener); },
+  } as unknown as IChartApi);
 }
 
 /**
@@ -95,12 +109,73 @@ describe('CursorSyncCrosshair', () => {
     // 이 컴포넌트는 chartPrefs 도 읽는다 — 다른 스펙이 남긴 토글 값이 새면
     // 종목 축 판정이 조용히 뒤집힌다.
     useChartPrefsStore.getState().resetToDefaults();
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false);
     setCrosshairPosition.mockClear();
     clearCrosshairPosition.mockClear();
     priceToCoordinate.mockClear();
     priceToCoordinate.mockReturnValue(260);
   });
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); useWindowSettingsStore.getState().drop(['daily-window']); });
+
+  it('target tooltip ON immediately releases an existing remote crosshair without another publication', () => {
+    renderCrosshair();
+    publish();
+    expect(setCrosshairPosition).toHaveBeenCalled();
+    clearCrosshairPosition.mockClear();
+
+    act(() => { useChartPrefsStore.getState().setToggle('candleTooltipEnabled', true); });
+
+    expect(clearCrosshairPosition).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('study-cursor-sync')).toBeNull();
+    expect(useLiveCursorStore.getState().syncCursorOrigin).toEqual(MINUTE_ORIGIN);
+  });
+
+  it('uses the receiving window tooltip setting independently of the global fallback', () => {
+    useWindowSettingsStore.getState().patch('daily-window', 'chart', { candleTooltipEnabled: true });
+    renderCrosshair(); publish();
+    expect(setCrosshairPosition).not.toHaveBeenCalled();
+    act(() => { useWindowSettingsStore.getState().patch('daily-window', 'chart', { candleTooltipEnabled: false }); });
+    expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries);
+  });
+
+  it('target tooltip OFF immediately reapplies the current remote cursor', () => {
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', true);
+    renderCrosshair(); publish();
+    expect(setCrosshairPosition).not.toHaveBeenCalled();
+    act(() => { useChartPrefsStore.getState().setToggle('candleTooltipEnabled', false); });
+    expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries);
+  });
+
+  for (const timeframe of ['D', 'W', 'M'] as const) {
+    it(`${timeframe} local pointer takes ownership without cleanup erasing it, and leave restores remote`, () => {
+      renderCrosshair(undefined, '064350', timeframe); publish();
+      expect(setCrosshairPosition).toHaveBeenCalled();
+      clearCrosshairPosition.mockClear();
+      act(() => moveCrosshair({ point: { x: 200, y: 100 } as MouseEventParams['point'],
+        sourceEvent: { clientX: 200, clientY: 100 } as MouseEventParams['sourceEvent'] }));
+      expect(clearCrosshairPosition).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('study-cursor-sync')).toBeNull();
+      setCrosshairPosition.mockClear();
+      act(() => chartElement.dispatchEvent(new MouseEvent('mouseleave')));
+      expect(setCrosshairPosition).toHaveBeenCalled();
+    });
+  }
+
+  it('retries a stationary remote cursor after the parent data commit', async () => {
+    priceToCoordinate.mockReturnValue(null);
+    renderCrosshair(); publish();
+    expect(setCrosshairPosition).not.toHaveBeenCalled();
+    priceToCoordinate.mockReturnValue(260);
+    await waitFor(() => expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries));
+  });
+
+  it('retries the same target when a range settlement makes the series drawable', async () => {
+    priceToCoordinate.mockReturnValue(null);
+    renderCrosshair(); publish();
+    priceToCoordinate.mockReturnValue(260);
+    act(() => signalRange());
+    await waitFor(() => expect(setCrosshairPosition).toHaveBeenCalled());
+  });
 
   it('선은 lwc 에 맡긴다 — 종가와 스냅된 일봉 시각으로 setCrosshairPosition 을 부른다', () => {
     renderCrosshair();

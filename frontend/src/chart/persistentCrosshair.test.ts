@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { IChartApi, MouseEventParams, Time } from 'lightweight-charts';
-import { createPersistentCrosshairChart, preserveCrosshairDuringDataChange } from './persistentCrosshair';
+import { aliasPersistentCrosshairChart, applySyncedCrosshair, applySyntheticCrosshair, createPersistentCrosshairChart, hasLocalCrosshairPointer, preserveCrosshairDuringDataChange, subscribeCrosshairPointer } from './persistentCrosshair';
+
+import { hasSyntheticCrosshair } from './syntheticCrosshair';
 
 afterEach(() => {
   Reflect.deleteProperty(document, 'elementsFromPoint');
@@ -145,5 +147,77 @@ it('bridges the blank native draw with hover layers only and removes them after 
   h.element.dispatchEvent(new MouseEvent('mouseleave'));
   expect(h.element.querySelector('[data-persistent-crosshair]')).toBeNull();
   expect(h.frames.size).toBe(0);
+  h.chart.remove();
+});
+
+it('releasing remote ownership preserves the new local pointer and its pending data restore (#2433)', () => {
+  const h = fixture();
+  const release = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series });
+  h.pointer(620, 310);
+  preserveCrosshairDuringDataChange(h.chart, () => {});
+  h.native.clearCrosshairPosition.mockClear();
+  release();
+  release();
+  expect(h.native.clearCrosshairPosition).not.toHaveBeenCalled();
+  expect(hasSyntheticCrosshair(h.chart)).toBe(false);
+  h.draw();
+  expect(h.move.mock.lastCall?.[0]).toMatchObject({ clientX: 620, clientY: 310 });
+  h.chart.remove();
+});
+
+it('releasing a synthetic position cancels its pending restore and is idempotent', () => {
+  const h = fixture();
+  const release = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series });
+  preserveCrosshairDuringDataChange(h.chart, () => {});
+  h.native.clearCrosshairPosition.mockClear();
+  h.native.setCrosshairPosition.mockClear();
+  release(); release(); h.draw();
+  expect(h.native.clearCrosshairPosition).toHaveBeenCalledOnce();
+  expect(h.native.setCrosshairPosition).not.toHaveBeenCalled();
+  expect(h.frames.size).toBe(0);
+  expect(hasSyntheticCrosshair(h.chart)).toBe(false);
+  h.chart.remove();
+});
+
+it('an older synthetic writer cannot clear or unmark a newer writer', () => {
+  const h = fixture();
+  const first = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series });
+  const second = applySyntheticCrosshair({ chart: h.chart, price: 20, time: 200 as Time, series: h.series });
+  h.native.clearCrosshairPosition.mockClear();
+  first();
+  expect(h.native.clearCrosshairPosition).not.toHaveBeenCalled();
+  expect(hasSyntheticCrosshair(h.chart)).toBe(true);
+  preserveCrosshairDuringDataChange(h.chart, () => {});
+  h.native.setCrosshairPosition.mockClear(); h.draw();
+  expect(h.native.setCrosshairPosition).toHaveBeenCalledWith(20, 200, h.series);
+  second();
+  expect(hasSyntheticCrosshair(h.chart)).toBe(false);
+  h.chart.remove();
+});
+
+it('reports only pointer ownership transitions through an alias and unregisters on removal', () => {
+  const h = fixture();
+  const alias = new Proxy(h.chart, {});
+  aliasPersistentCrosshairChart(alias, h.chart);
+  const changed = vi.fn();
+  const unsubscribe = subscribeCrosshairPointer(alias, changed);
+  expect(hasLocalCrosshairPointer(alias)).toBe(false);
+  h.pointer(); h.pointer(650, 320);
+  expect(hasLocalCrosshairPointer(alias)).toBe(true);
+  expect(changed).toHaveBeenCalledTimes(1);
+  h.element.dispatchEvent(new MouseEvent('mouseleave'));
+  expect(changed).toHaveBeenCalledTimes(2);
+  expect(hasLocalCrosshairPointer(alias)).toBe(false);
+  h.pointer();
+  unsubscribe();
+  h.chart.remove();
+  expect(changed).toHaveBeenCalledTimes(3);
+  expect(hasLocalCrosshairPointer(alias)).toBe(false);
+});
+
+it('refuses remote application while a local pointer owns any pane', () => {
+  const h = fixture(); h.pointer();
+  expect(applySyncedCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series })).toBeUndefined();
+  expect(h.native.setCrosshairPosition).not.toHaveBeenCalled();
   h.chart.remove();
 });

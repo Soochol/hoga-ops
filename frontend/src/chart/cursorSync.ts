@@ -1,51 +1,4 @@
-/**
- * 창 간 크로스헤어 동기화 — **소비 측 판정**만 담는 순수 층. `/study` 와 `/live`
- * 워크스페이스가 같은 판정을 쓴다.
- *
- * 한 창의 호버를 다른 창이 받아 "내 축의 어느 캔들인가" 로 바꾸는 결정이 전부
- * 여기 있다. 그리는 일은 `CursorSyncCrosshair` 가 lightweight-charts 에
- * 맡긴다(`setCrosshairPosition`).
- *
- * ── 다리가 둘이다 — **소비 창의 봉**이 고른다 ─────────────────────────────
- * 좌표계가 둘이기 때문이다. 분봉 창은 intraday `VirtualAxis` 의 가상시각을 쓰고,
- * 캘린더 창은 하루 1포인트로 인덱싱된다. 발행 ms 를 남의 축에 **그대로 태우면
- * 안 된다** — `LiveChartRoot` 의 동시호가 배경 음영이 정확히 이 실수로 깨져
- * 2026-08-09 에 삭제됐고, 그 주석이 여전히 그 자리에 남아 있다.
- *
- * - **`date` 다리**(소비자 = `D`): 발행 ms → `unixMsToKSTDate` → 그 날의 일봉.
- *   압축이라 정확하고, 한 캔들 = 하루인 `D` 에서만 성립한다.
- * - **`instant` 다리**(소비자 = 분봉): 같은 **순간**으로 스냅한다. 발행 ms 에 가장
- *   가까운 내 봉을 찾되 **같은 KST 날짜일 때만** 인정한다.
- *
- * ── 받아 주는 발행은 소비자마다 다르다 ────────────────────────────────────
- * 두 소비자 모두 **분봉·일봉 발행을 받는다**. 방향 넷이 전부 산다 —
- * 분봉→일봉(2026-08-11) · 일봉→일봉 · 분봉→분봉 · 일봉→분봉(2026-08-21).
- *
- * 일봉→일봉이 의미가 있는 이유: 창마다 뷰포트가 독립이다. 옛 주석이 "같은 축이면
- * 그냥 같은 칸" 이라며 막았지만, A 창의 06/19 가 B 창에서 같은 x 라는 보장은 애초에
- * 없었다(종목까지 다르면 더더욱).
- *
- * ── 일봉 → 분봉: 하루는 구간이라 **어디에 설지**를 정해야 했다 ─────────────
- * 발행 ms 는 일봉 캔들의 ts, 즉 **그 날 09:00 앵커**다. 최근접 스냅을 쓰면 그 날
- * **첫** 봉이 잡히는데, 거기엔 이미 「날짜 구분선」이 서 있어 두 선이 겹쳐 읽히지
- * 않는다. 그래서 **그 날 마지막 봉**에 세운다(사용자 결정 2026-08-21) — 소비 창이
- * 자기 캔들의 종가를 가로선 높이로 쓰므로 세로선과 가로선이 **실제 점에서 교차**하고,
- * 같은 종목이면 그 값이 일봉 종가와 일치한다.
- *
- * 즉 `instant` 다리의 스냅은 **발행 봉에 따라 갈린다**: 분봉 발행이면 같은 순간
- * 최근접, 일봉 발행이면 그 날 마지막 봉.
- *
- * ── 대상이 없을 때 — 침묵하지 않는다 ──────────────────────────────────────
- * 일봉 창은 수개월을 보여주는데 분봉 창은 보통 1~2일치만 들고 있어 **대부분의 일봉
- * 호버가 대상 없음으로 떨어진다**. 아무것도 안 그리면 "동기화가 고장났다" 로 읽힌다.
- * 그래서 판정이 **세 갈래**를 낸다(`SyncResolution`): 게이트에 걸림(`none`) · 대상
- * 있음(`hit`) · 게이트는 통과했는데 **그 날이 이 창의 로드 범위 밖**(`out-of-range`).
- * 마지막 것은 방향과 날짜를 가장자리 칩으로 남긴다 — 분봉↔분봉에서 한쪽 창만 과거로
- * 팬한 경우에도 같은 칩이 뜬다(2026-08-21 이전엔 그것도 침묵이었다).
- *
- * W/M 은 여전히 범위 밖이다(한 캔들이 여러 날을 담아 "그 날이 캔들 안 어디인가" 가
- * 다른 질문이 된다).
- */
+import { calendarBucketKey } from '../live/aggregateCandles';
 import { unixMsToKSTDate } from '../util/time';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import type { SidebarCursorOrigin } from '../live/useLiveCursorStore';
@@ -63,54 +16,24 @@ export type SyncCursor = {
   origin: SidebarCursorOrigin;
 };
 
-/**
- * 이 봉의 창에 소비자(`CursorSyncCrosshair`)를 마운트하는가.
- * 분봉(`instant` 다리)과 `D`(`date` 다리)뿐이다 — 위 헤더의 범위 절 참조.
- */
 export function isSyncConsumerTimeframe(tf: LiveTimeframe): boolean {
+  return isMinuteTimeframe(tf) || tf === 'D' || tf === 'W' || tf === 'M';
+}
+
+export function canPublishSyncCursor(tf: LiveTimeframe): boolean {
   return isMinuteTimeframe(tf) || tf === 'D';
 }
 
-/**
- * 이 봉의 창이 동기화 채널에 **발행**해도 되는가.
- *
- * 슬롯이 전역 한 벌(마지막 쓴 사람이 이김)이라 **아무도 받지 않는 봉은 발행하면
- * 안 된다** — 표시에 기여하지 않으면서 유효한 발행을 밀어내기만 한다. `/live`
- * 실측(2026-08-11): 포인터가 분봉 창에 있는데 일봉 창 발행이 슬롯을 가져가 동기화
- * 표시가 그대로 사라졌다. 그때는 일봉에 소비자가 없어서 그랬고, 지금은 있다.
- *
- * 그래서 발행 집합은 **소비 집합과 같아야 한다** — 한쪽만 늘리면 그 실측이 그대로
- * 재현된다. 같은 술어를 쓰는 것이 그 불변식을 코드로 적는 방법이다. W/M 은 소비자가
- * 없으므로 여전히 발행하지 않는다.
- */
-export function canPublishSyncCursor(tf: LiveTimeframe): boolean {
-  return isSyncConsumerTimeframe(tf);
-}
-
-/** KST 날짜(`YYYYMMDD`) → 캔들. 같은 날이 둘일 수 없어 뒤에 온 것이 이긴다.
- *  **`date` 다리 전용** — 분봉 소비자는 인덱스를 만들지 않는다(`snapToInstant` 주석). */
-export function indexCandlesByKstDate(
-  candles: readonly SyncCandle[],
-): ReadonlyMap<string, SyncCandle> {
-  const m = new Map<string, SyncCandle>();
-  for (const c of candles) m.set(unixMsToKSTDate(c.ts_ms), c);
-  return m;
-}
-
-/**
- * 소비 창이 대상을 찾는 방식. **소비 창의 봉**이 고른다.
- *
- * `candles` 는 **양쪽 다** 필요하다 — `date` 다리는 조회에 `byDate` 를 쓰지만,
- * "그 날이 내 로드 범위 밖인가"(`out-of-range`) 판정에는 **첫·마지막 캔들**이 있어야
- * 한다. Map 의 삽입 순서에 기대는 건 취약하고, 호출부엔 배열이 이미 있어 참조만
- * 넘기면 되므로 비용이 0이다. **ts 오름차순**이어야 한다(이진 탐색과 span 판정이
- * 둘 다 그 성질에 기댄다).
- */
 export type SyncTargetSource =
-  /** 캘린더 소비자(`D`) — 날짜로 스냅. */
-  | { axis: 'date'; byDate: ReadonlyMap<string, SyncCandle>; candles: readonly SyncCandle[] }
-  /** 분봉 소비자 — 발행 봉에 따라 최근접(분봉) 또는 그 날 마지막 봉(일봉)으로 스냅. */
+  | { axis: 'calendar'; granularity: 'D' | 'W' | 'M'; byBucket: ReadonlyMap<string, SyncCandle>; candles: readonly SyncCandle[] }
   | { axis: 'instant'; candles: readonly SyncCandle[] };
+
+export function buildSyncTargetSource(candles: readonly SyncCandle[], timeframe: LiveTimeframe): SyncTargetSource {
+  if (timeframe !== 'D' && timeframe !== 'W' && timeframe !== 'M') return { axis: 'instant', candles };
+  const byBucket = new Map<string, SyncCandle>();
+  for (const candle of candles) byBucket.set(calendarBucketKey(candle.ts_ms, timeframe), candle);
+  return { axis: 'calendar', granularity: timeframe, byBucket, candles };
+}
 
 /**
  * 판정 결과 **세 갈래**. 불리언(대상 있음/없음)으로 두면 "게이트에 걸렸다" 와 "그 날이
@@ -228,10 +151,9 @@ function acceptsOriginTimeframe(originTimeframe: LiveTimeframe): boolean {
 
 /** 다리를 건넌 결과 — 대상 캔들이거나 `null`. 게이트는 이미 통과한 뒤다. */
 function crossBridge(source: SyncTargetSource, cursor: SyncCursor): SyncCandle | null {
-  if (source.axis === 'date') {
-    return source.byDate.get(unixMsToKSTDate(cursor.tsMs)) ?? null;
+  if (source.axis === 'calendar') {
+    return source.byBucket.get(calendarBucketKey(cursor.tsMs, source.granularity)) ?? null;
   }
-  // 분봉 축에서는 **발행 봉이 스냅을 가른다** — 헤더의 「하루는 구간」 절 참조.
   return isMinuteTimeframe(cursor.origin.timeframe)
     ? snapToInstant(source.candles, cursor.tsMs)
     : snapToLastOfKstDay(source.candles, cursor.tsMs);
