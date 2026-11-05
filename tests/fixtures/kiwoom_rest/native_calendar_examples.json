@@ -1,0 +1,935 @@
+{
+  "source": "PR #2434 committed public quote examples, 2026-11-05",
+  "examples": [
+    {
+      "mode": "adjusted",
+      "code": "005930",
+      "api_id": "ka10082",
+      "frame": "W",
+      "base_dt": "20261105",
+      "venue": "KRX",
+      "period_result": {
+        "key": "W:2017-0-2",
+        "first_daily_date": "20170102",
+        "last_daily_date": "20170106",
+        "native_date": "20170102",
+        "daily_rows": 5,
+        "fields": {
+          "open": {
+            "status": "equal",
+            "daily": "35980",
+            "native": "35980",
+            "native_raw": "35980"
+          },
+          "high": {
+            "status": "equal",
+            "daily": "36620",
+            "native": "36620",
+            "native_raw": "36620"
+          },
+          "low": {
+            "status": "equal",
+            "daily": "35540",
+            "native": "35540",
+            "native_raw": "35540"
+          },
+          "close": {
+            "status": "equal",
+            "daily": "36200",
+            "native": "36200",
+            "native_raw": "36200"
+          },
+          "volume": {
+            "status": "equal",
+            "daily": "39828400",
+            "native": "39828400",
+            "native_raw": "39828400"
+          },
+          "trade_value_won": {
+            "status": "different",
+            "daily": "1438763000000",
+            "native": "1438763465212",
+            "native_raw": "1438763465212",
+            "won_delta": "465212",
+            "daily_resolution_won": "1000000",
+            "native_resolution_won": "1",
+            "rounding": "unknown",
+            "daily_raw": [
+              "167932",
+              "267688",
+              "289085",
+              "392321",
+              "321737"
+            ]
+          }
+        }
+      },
+      "daily_wire_rows": [
+        {
+          "dt": "20170102",
+          "open_pric": "35980",
+          "high_pric": "36240",
+          "low_pric": "35880",
+          "cur_prc": "36100",
+          "trde_qty": "4650600",
+          "trde_prica": "167932"
+        },
+        {
+          "dt": "20170103",
+          "open_pric": "36280",
+          "high_pric": "36620",
+          "low_pric": "36020",
+          "cur_prc": "36480",
+          "trde_qty": "7357650",
+          "trde_prica": "267688"
+        },
+        {
+          "dt": "20170104",
+          "open_pric": "36500",
+          "high_pric": "36520",
+          "low_pric": "36100",
+          "cur_prc": "36160",
+          "trde_qty": "7971750",
+          "trde_prica": "289085"
+        },
+        {
+          "dt": "20170105",
+          "open_pric": "36060",
+          "high_pric": "36060",
+          "low_pric": "35540",
+          "cur_prc": "35560",
+          "trde_qty": "10967450",
+          "trde_prica": "392321"
+        },
+        {
+          "dt": "20170106",
+          "open_pric": "36180",
+          "high_pric": "36440",
+          "low_pric": "36040",
+          "cur_prc": "36200",
+          "trde_qty": "8880950",
+          "trde_prica": "321737"
+        }
+      ],
+      "native_wire_row": {
+        "dt": "20170102",
+        "open_pric": "35980",
+        "high_pric": "36620",
+        "low_pric": "35540",
+        "cur_prc": "36200",
+        "trde_qty": "39828400",
+        "trde_prica": "1438763465212"
+      },
+      "daily_capture_sha256": "be142b98150597830339bd0ce325a0b5bfda21f0fd60b76eaf011e7151834100",
+      "native_capture_sha256": "df57c766cb4dbb50c89ce00858f5c02cd000567cf851b24d6a73dda551ea2336"
+    },
+    {
+      "mode": "adjusted",
+      "code": "035720",
+      "api_id": "ka10082",
+      "frame": "W",
+      "base_dt": "20261105",
+      "venue": "KRX",
+      "period_result": {
+        "key": "W:2017-0-2",
+        "first_daily_date": "20170102",
+        "last_daily_date": "20170106",
+        "native_date": "20170102",
+        "daily_rows": 5,
+        "fields": {
+          "open": {
+            "status": "equal",
+            "daily": "15534",
+            "native": "15534",
+            "native_raw": "15534"
+          },
+          "high": {
+            "status": "equal",
+            "daily": "17260",
+            "native": "17260",
+            "native_raw": "17260"
+          },
+          "low": {
+            "status": "equal",
+            "daily": "15374",
+            "native": "15374",
+            "native_raw": "15374"
+          },
+          "close": {
+            "status": "equal",
+            "daily": "16799",
+            "native": "16799",
+            "native_raw": "16799"
+          },
+          "volume": {
+            "status": "different",
+            "daily": "14127096",
+            "native": "14127095",
+            "native_raw": "14127095"
+          },
+          "trade_value_won": {
+            "status": "different",
+            "daily": "234748000000",
+            "native": "234749158000",
+            "native_raw": "234749158000",
+            "won_delta": "1158000",
+            "daily_resolution_won": "1000000",
+            "native_resolution_won": "1",
+            "rounding": "unknown",
+            "daily_raw": [
+              "11019",
+              "35105",
+              "102580",
+              "51895",
+              "34149"
+            ]
+          }
+        }
+      },
+      "daily_wire_rows": [
+        {
+          "dt": "20170102",
+          "open_pric": "15534",
+          "high_pric": "15574",
+          "low_pric": "15374",
+          "cur_prc": "15394",
+          "trde_qty": "713204",
+          "trde_prica": "11019"
+        },
+        {
+          "dt": "20170103",
+          "open_pric": "15494",
+          "high_pric": "16056",
+          "low_pric": "15454",
+          "cur_prc": "16056",
+          "trde_qty": "2218137",
+          "trde_prica": "35105"
+        },
+        {
+          "dt": "20170104",
+          "open_pric": "16136",
+          "high_pric": "17080",
+          "low_pric": "16116",
+          "cur_prc": "16919",
+          "trde_qty": "6100623",
+          "trde_prica": "102580"
+        },
+        {
+          "dt": "20170105",
+          "open_pric": "17060",
+          "high_pric": "17260",
+          "low_pric": "16859",
+          "cur_prc": "16859",
+          "trde_qty": "3047897",
+          "trde_prica": "51895"
+        },
+        {
+          "dt": "20170106",
+          "open_pric": "16939",
+          "high_pric": "16959",
+          "low_pric": "16498",
+          "cur_prc": "16799",
+          "trde_qty": "2047235",
+          "trde_prica": "34149"
+        }
+      ],
+      "native_wire_row": {
+        "dt": "20170102",
+        "open_pric": "15534",
+        "high_pric": "17260",
+        "low_pric": "15374",
+        "cur_prc": "16799",
+        "trde_qty": "14127095",
+        "trde_prica": "234749158000"
+      },
+      "daily_capture_sha256": "79841dfe9b1705a899067a43897cd9b32754ed0d211e9d7dbf44780c01a451ee",
+      "native_capture_sha256": "8271eadc64a3619fe0e5ae436c53c17f63143619a835aa77eda26598a770d021"
+    },
+    {
+      "mode": "raw",
+      "code": "035720",
+      "api_id": "ka10082",
+      "frame": "W",
+      "base_dt": "20261105",
+      "venue": "KRX",
+      "period_result": {
+        "key": "W:2017-0-2",
+        "first_daily_date": "20170102",
+        "last_daily_date": "20170106",
+        "native_date": "20170102",
+        "daily_rows": 5,
+        "fields": {
+          "open": {
+            "status": "equal",
+            "daily": "77400",
+            "native": "77400",
+            "native_raw": "77400"
+          },
+          "high": {
+            "status": "equal",
+            "daily": "86000",
+            "native": "86000",
+            "native_raw": "86000"
+          },
+          "low": {
+            "status": "equal",
+            "daily": "76600",
+            "native": "76600",
+            "native_raw": "76600"
+          },
+          "close": {
+            "status": "equal",
+            "daily": "83700",
+            "native": "83700",
+            "native_raw": "83700"
+          },
+          "volume": {
+            "status": "equal",
+            "daily": "2835308",
+            "native": "2835308",
+            "native_raw": "2835308"
+          },
+          "trade_value_won": {
+            "status": "different",
+            "daily": "234748000000",
+            "native": "234749158000",
+            "native_raw": "234749158000",
+            "won_delta": "1158000",
+            "daily_resolution_won": "1000000",
+            "native_resolution_won": "1",
+            "rounding": "unknown",
+            "daily_raw": [
+              "11019",
+              "35105",
+              "102580",
+              "51895",
+              "34149"
+            ]
+          }
+        }
+      },
+      "daily_wire_rows": [
+        {
+          "dt": "20170102",
+          "open_pric": "77400",
+          "high_pric": "77600",
+          "low_pric": "76600",
+          "cur_prc": "76700",
+          "trde_qty": "143140",
+          "trde_prica": "11019"
+        },
+        {
+          "dt": "20170103",
+          "open_pric": "77200",
+          "high_pric": "80000",
+          "low_pric": "77000",
+          "cur_prc": "80000",
+          "trde_qty": "445180",
+          "trde_prica": "35105"
+        },
+        {
+          "dt": "20170104",
+          "open_pric": "80400",
+          "high_pric": "85100",
+          "low_pric": "80300",
+          "cur_prc": "84300",
+          "trde_qty": "1224395",
+          "trde_prica": "102580"
+        },
+        {
+          "dt": "20170105",
+          "open_pric": "85000",
+          "high_pric": "86000",
+          "low_pric": "84000",
+          "cur_prc": "84000",
+          "trde_qty": "611713",
+          "trde_prica": "51895"
+        },
+        {
+          "dt": "20170106",
+          "open_pric": "84400",
+          "high_pric": "84500",
+          "low_pric": "82200",
+          "cur_prc": "83700",
+          "trde_qty": "410880",
+          "trde_prica": "34149"
+        }
+      ],
+      "native_wire_row": {
+        "dt": "20170102",
+        "open_pric": "77400",
+        "high_pric": "86000",
+        "low_pric": "76600",
+        "cur_prc": "83700",
+        "trde_qty": "2835308",
+        "trde_prica": "234749158000"
+      },
+      "daily_capture_sha256": "32f52ab2e9cf71171654ec9f8e715e3726a93020e2ec239f912c16a9d41d85d4",
+      "native_capture_sha256": "71d3f21220e863765321fe88531df0b26953a97a5e90ff897586c0bf2f841b39"
+    },
+    {
+      "mode": "adjusted",
+      "code": "035720",
+      "api_id": "ka10083",
+      "frame": "M",
+      "base_dt": "20261105",
+      "venue": "KRX",
+      "period_result": {
+        "key": "2017-1",
+        "first_daily_date": "20170201",
+        "last_daily_date": "20170228",
+        "native_date": "20170201",
+        "daily_rows": 20,
+        "fields": {
+          "open": {
+            "status": "equal",
+            "daily": "15695",
+            "native": "15695",
+            "native_raw": "15695"
+          },
+          "high": {
+            "status": "equal",
+            "daily": "18103",
+            "native": "18103",
+            "native_raw": "18103"
+          },
+          "low": {
+            "status": "equal",
+            "daily": "15454",
+            "native": "15454",
+            "native_raw": "15454"
+          },
+          "close": {
+            "status": "equal",
+            "daily": "17140",
+            "native": "17140",
+            "native_raw": "17140"
+          },
+          "volume": {
+            "status": "different",
+            "daily": "52079130",
+            "native": "52079128",
+            "native_raw": "52079128"
+          },
+          "trade_value_won": {
+            "status": "different",
+            "daily": "888274000000",
+            "native": "888274500600",
+            "native_raw": "888274500600",
+            "won_delta": "500600",
+            "daily_resolution_won": "1000000",
+            "native_resolution_won": "1",
+            "rounding": "unknown",
+            "daily_raw": [
+              "15501",
+              "22522",
+              "13892",
+              "13118",
+              "13567",
+              "21205",
+              "129327",
+              "67422",
+              "33491",
+              "35947",
+              "27233",
+              "47239",
+              "47642",
+              "24897",
+              "138488",
+              "92550",
+              "44916",
+              "32686",
+              "28642",
+              "37989"
+            ]
+          }
+        }
+      },
+      "daily_wire_rows": [
+        {
+          "dt": "20170201",
+          "open_pric": "15695",
+          "high_pric": "15835",
+          "low_pric": "15655",
+          "cur_prc": "15735",
+          "trde_qty": "984106",
+          "trde_prica": "15501"
+        },
+        {
+          "dt": "20170202",
+          "open_pric": "15875",
+          "high_pric": "16056",
+          "low_pric": "15574",
+          "cur_prc": "15594",
+          "trde_qty": "1423368",
+          "trde_prica": "22522"
+        },
+        {
+          "dt": "20170203",
+          "open_pric": "15655",
+          "high_pric": "15755",
+          "low_pric": "15554",
+          "cur_prc": "15655",
+          "trde_qty": "888092",
+          "trde_prica": "13892"
+        },
+        {
+          "dt": "20170206",
+          "open_pric": "15675",
+          "high_pric": "15755",
+          "low_pric": "15454",
+          "cur_prc": "15514",
+          "trde_qty": "842785",
+          "trde_prica": "13118"
+        },
+        {
+          "dt": "20170207",
+          "open_pric": "15454",
+          "high_pric": "15875",
+          "low_pric": "15454",
+          "cur_prc": "15715",
+          "trde_qty": "863199",
+          "trde_prica": "13567"
+        },
+        {
+          "dt": "20170208",
+          "open_pric": "15815",
+          "high_pric": "16016",
+          "low_pric": "15614",
+          "cur_prc": "16016",
+          "trde_qty": "1341764",
+          "trde_prica": "21205"
+        },
+        {
+          "dt": "20170209",
+          "open_pric": "16397",
+          "high_pric": "17200",
+          "low_pric": "16317",
+          "cur_prc": "17140",
+          "trde_qty": "7725999",
+          "trde_prica": "129327"
+        },
+        {
+          "dt": "20170210",
+          "open_pric": "17120",
+          "high_pric": "17320",
+          "low_pric": "16879",
+          "cur_prc": "17080",
+          "trde_qty": "3949880",
+          "trde_prica": "67422"
+        },
+        {
+          "dt": "20170213",
+          "open_pric": "17140",
+          "high_pric": "17160",
+          "low_pric": "16799",
+          "cur_prc": "16879",
+          "trde_qty": "1981216",
+          "trde_prica": "33491"
+        },
+        {
+          "dt": "20170214",
+          "open_pric": "16859",
+          "high_pric": "17120",
+          "low_pric": "16658",
+          "cur_prc": "17039",
+          "trde_qty": "2131794",
+          "trde_prica": "35947"
+        },
+        {
+          "dt": "20170215",
+          "open_pric": "17080",
+          "high_pric": "17180",
+          "low_pric": "16879",
+          "cur_prc": "17039",
+          "trde_qty": "1600548",
+          "trde_prica": "27233"
+        },
+        {
+          "dt": "20170216",
+          "open_pric": "16979",
+          "high_pric": "17019",
+          "low_pric": "16498",
+          "cur_prc": "16538",
+          "trde_qty": "2838680",
+          "trde_prica": "47239"
+        },
+        {
+          "dt": "20170217",
+          "open_pric": "16538",
+          "high_pric": "17120",
+          "low_pric": "16538",
+          "cur_prc": "16999",
+          "trde_qty": "2808625",
+          "trde_prica": "47642"
+        },
+        {
+          "dt": "20170220",
+          "open_pric": "16939",
+          "high_pric": "17120",
+          "low_pric": "16779",
+          "cur_prc": "17019",
+          "trde_qty": "1468700",
+          "trde_prica": "24897"
+        },
+        {
+          "dt": "20170221",
+          "open_pric": "17200",
+          "high_pric": "17882",
+          "low_pric": "17200",
+          "cur_prc": "17742",
+          "trde_qty": "7841460",
+          "trde_prica": "138488"
+        },
+        {
+          "dt": "20170222",
+          "open_pric": "17782",
+          "high_pric": "18103",
+          "low_pric": "17702",
+          "cur_prc": "17963",
+          "trde_qty": "5154405",
+          "trde_prica": "92550"
+        },
+        {
+          "dt": "20170223",
+          "open_pric": "17882",
+          "high_pric": "17963",
+          "low_pric": "17581",
+          "cur_prc": "17642",
+          "trde_qty": "2530927",
+          "trde_prica": "44916"
+        },
+        {
+          "dt": "20170224",
+          "open_pric": "17762",
+          "high_pric": "17983",
+          "low_pric": "17581",
+          "cur_prc": "17682",
+          "trde_qty": "1841898",
+          "trde_prica": "32686"
+        },
+        {
+          "dt": "20170227",
+          "open_pric": "17561",
+          "high_pric": "17642",
+          "low_pric": "17200",
+          "cur_prc": "17220",
+          "trde_qty": "1647912",
+          "trde_prica": "28642"
+        },
+        {
+          "dt": "20170228",
+          "open_pric": "17361",
+          "high_pric": "17421",
+          "low_pric": "17039",
+          "cur_prc": "17140",
+          "trde_qty": "2213772",
+          "trde_prica": "37989"
+        }
+      ],
+      "native_wire_row": {
+        "dt": "20170201",
+        "open_pric": "15695",
+        "high_pric": "18103",
+        "low_pric": "15454",
+        "cur_prc": "17140",
+        "trde_qty": "52079128",
+        "trde_prica": "888274500600"
+      },
+      "daily_capture_sha256": "79841dfe9b1705a899067a43897cd9b32754ed0d211e9d7dbf44780c01a451ee",
+      "native_capture_sha256": "19c91e827f9eecb55cebdd66bfa3b2a9e296a0d088e061765f8502d7684bdeec"
+    },
+    {
+      "mode": "adjusted",
+      "code": "005930",
+      "api_id": "ka10083",
+      "frame": "M",
+      "base_dt": "20261105",
+      "venue": "KRX",
+      "period_result": {
+        "key": "2002-9",
+        "first_daily_date": "20021001",
+        "last_daily_date": "20021031",
+        "native_date": "20021001",
+        "daily_rows": 22,
+        "fields": {
+          "open": {
+            "status": "equal",
+            "daily": "5820",
+            "native": "5820",
+            "native_raw": "5820"
+          },
+          "high": {
+            "status": "equal",
+            "daily": "7260",
+            "native": "7260",
+            "native_raw": "7260"
+          },
+          "low": {
+            "status": "equal",
+            "daily": "5310",
+            "native": "5310",
+            "native_raw": "5310"
+          },
+          "close": {
+            "status": "equal",
+            "daily": "6900",
+            "native": "6900",
+            "native_raw": "6900"
+          },
+          "volume": {
+            "status": "equal",
+            "daily": "1043530700",
+            "native": "1043530700",
+            "native_raw": "1043530700"
+          },
+          "trade_value_won": {
+            "status": "different",
+            "daily": "6560834000000",
+            "native": "6560834110000",
+            "native_raw": "6560834110000",
+            "won_delta": "110000",
+            "daily_resolution_won": "1000000",
+            "native_resolution_won": "1",
+            "rounding": "unknown",
+            "daily_raw": [
+              "204617",
+              "221650",
+              "208350",
+              "132573",
+              "176264",
+              "165900",
+              "405240",
+              "371962",
+              "277392",
+              "270884",
+              "318077",
+              "354835",
+              "586970",
+              "212155",
+              "260226",
+              "300879",
+              "336772",
+              "305886",
+              "411335",
+              "324361",
+              "430694",
+              "283812"
+            ]
+          }
+        }
+      },
+      "daily_wire_rows": [
+        {
+          "dt": "20021001",
+          "open_pric": "5820",
+          "high_pric": "5990",
+          "low_pric": "5820",
+          "cur_prc": "5950",
+          "trde_qty": "34583750",
+          "trde_prica": "204617"
+        },
+        {
+          "dt": "20021002",
+          "open_pric": "6140",
+          "high_pric": "6160",
+          "low_pric": "5960",
+          "cur_prc": "5990",
+          "trde_qty": "36474900",
+          "trde_prica": "221650"
+        },
+        {
+          "dt": "20021004",
+          "open_pric": "5840",
+          "high_pric": "6150",
+          "low_pric": "5840",
+          "cur_prc": "6120",
+          "trde_qty": "34511550",
+          "trde_prica": "208350"
+        },
+        {
+          "dt": "20021007",
+          "open_pric": "6060",
+          "high_pric": "6080",
+          "low_pric": "5920",
+          "cur_prc": "5920",
+          "trde_qty": "22181450",
+          "trde_prica": "132573"
+        },
+        {
+          "dt": "20021008",
+          "open_pric": "5890",
+          "high_pric": "6000",
+          "low_pric": "5890",
+          "cur_prc": "6000",
+          "trde_qty": "29610900",
+          "trde_prica": "176264"
+        },
+        {
+          "dt": "20021009",
+          "open_pric": "6040",
+          "high_pric": "6040",
+          "low_pric": "5920",
+          "cur_prc": "5950",
+          "trde_qty": "27812500",
+          "trde_prica": "165900"
+        },
+        {
+          "dt": "20021010",
+          "open_pric": "5810",
+          "high_pric": "5870",
+          "low_pric": "5450",
+          "cur_prc": "5470",
+          "trde_qty": "72534550",
+          "trde_prica": "405240"
+        },
+        {
+          "dt": "20021011",
+          "open_pric": "5670",
+          "high_pric": "5670",
+          "low_pric": "5310",
+          "cur_prc": "5470",
+          "trde_qty": "67422000",
+          "trde_prica": "371962"
+        },
+        {
+          "dt": "20021014",
+          "open_pric": "5700",
+          "high_pric": "5810",
+          "low_pric": "5660",
+          "cur_prc": "5760",
+          "trde_qty": "48321000",
+          "trde_prica": "277392"
+        },
+        {
+          "dt": "20021015",
+          "open_pric": "5860",
+          "high_pric": "6050",
+          "low_pric": "5750",
+          "cur_prc": "6000",
+          "trde_qty": "45912250",
+          "trde_prica": "270884"
+        },
+        {
+          "dt": "20021016",
+          "open_pric": "6100",
+          "high_pric": "6140",
+          "low_pric": "5950",
+          "cur_prc": "6100",
+          "trde_qty": "52577800",
+          "trde_prica": "318077"
+        },
+        {
+          "dt": "20021017",
+          "open_pric": "6060",
+          "high_pric": "6220",
+          "low_pric": "5930",
+          "cur_prc": "6150",
+          "trde_qty": "58126650",
+          "trde_prica": "354835"
+        },
+        {
+          "dt": "20021018",
+          "open_pric": "6400",
+          "high_pric": "6610",
+          "low_pric": "6320",
+          "cur_prc": "6530",
+          "trde_qty": "90722300",
+          "trde_prica": "586970"
+        },
+        {
+          "dt": "20021021",
+          "open_pric": "6500",
+          "high_pric": "6630",
+          "low_pric": "6420",
+          "cur_prc": "6480",
+          "trde_qty": "32514500",
+          "trde_prica": "212155"
+        },
+        {
+          "dt": "20021022",
+          "open_pric": "6630",
+          "high_pric": "6640",
+          "low_pric": "6260",
+          "cur_prc": "6390",
+          "trde_qty": "40337050",
+          "trde_prica": "260226"
+        },
+        {
+          "dt": "20021023",
+          "open_pric": "6410",
+          "high_pric": "6560",
+          "low_pric": "6270",
+          "cur_prc": "6560",
+          "trde_qty": "46751900",
+          "trde_prica": "300879"
+        },
+        {
+          "dt": "20021024",
+          "open_pric": "6650",
+          "high_pric": "6760",
+          "low_pric": "6640",
+          "cur_prc": "6680",
+          "trde_qty": "50298350",
+          "trde_prica": "336772"
+        },
+        {
+          "dt": "20021025",
+          "open_pric": "6610",
+          "high_pric": "6840",
+          "low_pric": "6610",
+          "cur_prc": "6800",
+          "trde_qty": "45287150",
+          "trde_prica": "305886"
+        },
+        {
+          "dt": "20021028",
+          "open_pric": "6960",
+          "high_pric": "7260",
+          "low_pric": "6950",
+          "cur_prc": "7220",
+          "trde_qty": "57721050",
+          "trde_prica": "411335"
+        },
+        {
+          "dt": "20021029",
+          "open_pric": "7190",
+          "high_pric": "7260",
+          "low_pric": "7060",
+          "cur_prc": "7060",
+          "trde_qty": "45246950",
+          "trde_prica": "324361"
+        },
+        {
+          "dt": "20021030",
+          "open_pric": "6940",
+          "high_pric": "6980",
+          "low_pric": "6640",
+          "cur_prc": "6760",
+          "trde_qty": "63299200",
+          "trde_prica": "430694"
+        },
+        {
+          "dt": "20021031",
+          "open_pric": "6900",
+          "high_pric": "6960",
+          "low_pric": "6750",
+          "cur_prc": "6900",
+          "trde_qty": "41282950",
+          "trde_prica": "283812"
+        }
+      ],
+      "native_wire_row": {
+        "dt": "20021001",
+        "open_pric": "5820",
+        "high_pric": "7260",
+        "low_pric": "5310",
+        "cur_prc": "6900",
+        "trde_qty": "1043530700",
+        "trde_prica": "6560834110000"
+      },
+      "daily_capture_sha256": "58d633c063330f9a696eb57bad81a07fa1b5b71d839f0bc0aba24c9a5c454c59",
+      "native_capture_sha256": "b4dca273e34146d820bc5584d44df411d832154cadc0ac046060977b661d79d5"
+    }
+  ]
+}

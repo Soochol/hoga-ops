@@ -112,3 +112,37 @@ describe('useLivePastDailyCandles', () => {
     await waitFor(() => expect(result.current.data?.code).toBe('000660'));
   });
 });
+
+it.each(['W', 'M'] as const)('uses the native %s endpoint with a period-isolated cache', async timeframe => {
+  const response = { ...RESPONSE, timeframe };
+  const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(response);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result, unmount } = renderHook(
+    () => useLivePastDailyCandles('005930', '20240101', '20240105', 'KRX', timeframe),
+    { wrapper: wrap(qc) },
+  );
+  await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
+  expect(spy).toHaveBeenLastCalledWith(
+    `/api/live/past-calendar-candles?code=005930&from=20240101&to=20240105&venue=KRX&timeframe=${timeframe}`,
+    { signal: expect.any(AbortSignal) },
+  );
+  unmount();
+  qc.clear();
+  vi.restoreAllMocks();
+});
+
+it('does not show weekly placeholder bars while monthly data is pending', async () => {
+  vi.spyOn(client, 'apiCall').mockImplementation(url => url.includes('timeframe=M')
+    ? new Promise(() => {}) : Promise.resolve({ ...RESPONSE, timeframe: 'W' }));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result, rerender, unmount } = renderHook(
+    ({ tf }: { tf: 'W' | 'M' }) => useLivePastDailyCandles('005930', '20240101', '20240105', 'KRX', tf),
+    { wrapper: wrap(qc), initialProps: { tf: 'W' } },
+  );
+  await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
+  rerender({ tf: 'M' });
+  expect(result.current.data).toBeUndefined();
+  unmount();
+  qc.clear();
+  vi.restoreAllMocks();
+});

@@ -58,18 +58,26 @@ export interface LivePastDailyCandlesResponse {
   data_warnings: LivePastDailyCandlesWarning[];
 }
 
+export type CalendarTimeframe = 'W' | 'M';
+
+export interface LivePastCalendarCandlesResponse extends LivePastDailyCandlesResponse {
+  timeframe: CalendarTimeframe;
+}
+
 export function useLivePastDailyCandles(
   code: string | null,
   from: string | null,
   to: string | null,
   venue: LiveVenueOption = 'KRX',
+  timeframe: 'D' | 'W' | 'M' = 'D',
 ) {
   const enabled = !!(code && from && to && from <= to);
+  const endpoint = timeframe === 'D' ? 'past-daily-candles' : 'past-calendar-candles';
   return useQuery({
-    queryKey: ['live', 'past-daily-candles', code, from, to, venue] as const,
+    queryKey: ['live', endpoint, code, from, to, venue, timeframe] as const,
     queryFn: ({ signal }) =>
-      apiCall<LivePastDailyCandlesResponse>(
-        `/api/live/past-daily-candles?code=${code}&from=${from}&to=${to}&venue=${venue}`,
+      apiCall<LivePastDailyCandlesResponse | LivePastCalendarCandlesResponse>(
+        `/api/live/${endpoint}?code=${code}&from=${from}&to=${to}&venue=${venue}${timeframe === 'D' ? '' : `&timeframe=${timeframe}`}`,
         { signal },
       ),
     enabled,
@@ -85,6 +93,9 @@ export function useLivePastDailyCandles(
     // See livePastCandles.ts for the rationale — code+venue-aware placeholder
     // prevents the previous code/venue's candle count from leaking into
     // LiveChartRoot's initial-view effect on watchlist and venue switches.
-    placeholderData: (prev) => (prev && prev.code === code && (prev.venue ?? 'KRX') === venue ? prev : undefined),
+    placeholderData: (prev) => (
+      prev && prev.code === code && (prev.venue ?? 'KRX') === venue
+      && ('timeframe' in prev ? prev.timeframe : 'D') === timeframe ? prev : undefined
+    ),
   });
 }

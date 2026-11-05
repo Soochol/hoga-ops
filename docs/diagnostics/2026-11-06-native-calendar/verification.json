@@ -1,0 +1,106 @@
+{
+  "base_sha": "05222f11c38a63c3e0439783bf6f91f4d1cc39e3",
+  "source_inputs_sha256": "d0570f43e5586e7e23482da57a32933e7261375259cdf7041000d1240b7a1bcd",
+  "source_inputs_count": 3044,
+  "fingerprint_algorithm": "SHA-256 of JSON object {relative_path: SHA-256(file bytes)}, sorted keys, separators comma/colon without spaces; UTF-8",
+  "input_paths": [
+    "hoga",
+    "frontend/src",
+    "frontend/tests",
+    "tests",
+    "pyproject.toml",
+    "uv.lock",
+    "ruff.toml",
+    ".python-version",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/vite.config.ts",
+    "frontend/playwright.config.ts",
+    "CONTEXT.md",
+    "docs/adr/0048-live-daily-direct-backfill.md",
+    "docs/plans/2026-11-06-native-calendar-candles.md"
+  ],
+  "file_selection": "git ls-files --cached --others --exclude-standard -- <input_paths>; files only",
+  "environment": {
+    "python": "3.14.7",
+    "node": "24.13.1",
+    "pytest": "9.0.3",
+    "vitest": "4.1.7",
+    "vendor_credentials": "blank",
+    "browser": "system Chrome, isolated profile, one worker"
+  },
+  "results": {
+    "frontend_typecheck": {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; app, unit and E2E projects"
+    },
+    "frontend_full": {
+      "command": "cd frontend && npx vitest run",
+      "files": 768,
+      "passed": 9991,
+      "result": "passed after integrating #2437"
+    },
+    "frontend_build": {
+      "command": "node node_modules/vite/bin/vite.js build --outDir <owned scratch>/dist --emptyOutDir",
+      "result": "passed after integrating #2437"
+    },
+    "browser": {
+      "spec": "frontend/tests/e2e/native-calendar-candles.spec.ts",
+      "passed": 1,
+      "result": "D/W/M selection, real pointer history pan, daily return and monthly reload; zero page errors",
+      "boundary": "quote API responses mocked; actual UI actions and chart display"
+    },
+    "backend_final_native_http_wire": {
+      "command": ".venv/bin/python -m pytest -q -m \"not wallclock\" tests/unit/live/test_kiwoom_calendar_candles.py tests/unit/live/test_api.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "passed": 160
+    },
+    "backend_final_native": {
+      "command": ".venv/bin/python -m pytest -q tests/unit/live/test_kiwoom_calendar_candles.py",
+      "passed": 21,
+      "includes": "real capacity scheduler with MockTransport, W and M"
+    },
+    "backend_regression": {
+      "passed": 269,
+      "scope": "daily adapter/backfill/cache, batched walk, REST seam, API and warning tests"
+    },
+    "backend_full": {
+      "command": ".venv/bin/python -m pytest -q -m \"not wallclock\"",
+      "passed": 8749,
+      "failed": 1,
+      "skipped": 2,
+      "deselected": 13,
+      "failure": "tests/util/test_git_sha.py::test_returns_none_when_not_a_git_repo; initial --basetemp was inside the repository, violating the non-git-directory premise",
+      "resolution": "reran the unchanged test module with --basetemp outside the repository: 3 passed; no test or product code was changed for this failure"
+    },
+    "ruff": {
+      "command": ".venv/bin/ruff check hoga tests",
+      "result": "passed",
+      "whole_repository": "37 pre-existing violations in three unchanged docs/diagnostics/2026-09-29-memory/harnesses/probe_*.py files; no config or suppression changes"
+    },
+    "diff_check": {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  },
+  "reuse": {
+    "final_changes_after_full_backend_start": [
+      "hoga/live/kiwoom_calendar_candles.py",
+      "hoga/live/live_calendar_candle_backfill.py",
+      "tests/unit/live/test_kiwoom_calendar_candles.py"
+    ],
+    "affected_checks": "Final native, HTTP and wire checks rerun; other backend inputs unchanged. #2437 changes frontend only; complete frontend checks and browser journey rerun on the integrated code.",
+    "final_browser_source_inputs": "all recorded source hashes match the final implementation",
+    "pr_head_binding": "The source fingerprint covers the implementation files committed by this PR; commit-only and verification-record-only updates do not change those inputs."
+  },
+  "limitations": [
+    "No live vendor requests or operational latency measurements.",
+    "Native adjusted volume and won-precision turnover may differ from daily sums.",
+    "Browser quote API mocks do not prove live vendor delivery."
+  ],
+  "cleanup": {
+    "owned_browser_servers_stopped": true,
+    "ports_released": true,
+    "scratch_removed": true,
+    "user_servers_preserved": true
+  }
+}
