@@ -22,7 +22,17 @@
       "ka10083": 240
     },
     "real_chart_requests_total": 118,
-    "errors": 0
+    "errors": 0,
+    "initial_calendar_days_from_source": {
+      "D": 350,
+      "W": 1750,
+      "M": 7750
+    },
+    "default_first_extension_from": {
+      "W": "20210204",
+      "M": "20010808"
+    },
+    "range_selection_note": "W measures the default first extension. M is a selected long-history interval from20020912, not the default first extension from20010808. Captured measurements are unchanged."
   },
   "workload": {
     "W": {
