@@ -5582,3 +5582,29 @@ for (const change of ['close', 'symbol'] as const) {
     } finally { release(); }
   });
 }
+
+
+test('누락 시장 가격에서도 내 지정가 원가격과 잔량을 보존한다', async ({ page }) => {
+  const { window, ws, commands } = await setup(page, [
+    mkOrder('inside-buy', '66900'), { ...mkOrder('inside-sell', '67600', '40'), side: 'SELL' },
+    mkOrder('edge-buy', '66300'), { ...mkOrder('edge-sell', '68200', '40'), side: 'SELL' },
+  ]);
+  await ws.waitForSubscribe('005930');
+  const at = Date.now();
+  const asks = Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 100 + i }));
+  const bids = Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 200 + i }));
+  for (const [index, missing] of ['zero', 'absent', 'omitted', 'edge'].entries()) {
+    const erase = (levels: typeof asks) => missing === 'omitted' ? levels.filter((_, i) => i !== 3)
+      : levels.map((level, i) => i !== (missing === 'edge' ? 9 : 3) ? level
+        : missing === 'absent' ? { qty: level.qty } : { ...level, price: 0 });
+    ws.pushLive('005930', { kind: 'ob', venue: 'UN', t_ms: at + index,
+      asks: erase(asks), bids: erase(bids).map((level, i) => i === 0 ? { ...level, qty: 901 + index } : level),
+      total_ask_qty: 1000, total_bid_qty: 2000 });
+    await expect(window.locator('.order-row[data-order-price="67200"] .order-bid .order-depth-qty')).toHaveText(String(901 + index));
+    const buy = missing === 'edge' ? '66,300' : '66,900';
+    const sell = missing === 'edge' ? '68,200' : '67,600';
+    await expect.soft(window.getByLabel(`매수 ${buy}원 주문`, { exact: true }), missing).toBeVisible({ timeout: 800 });
+    await expect.soft(window.getByLabel(`매도 ${sell}원 주문`, { exact: true }), missing).toBeVisible({ timeout: 800 });
+  }
+  expect(commands).toEqual([]);
+});
