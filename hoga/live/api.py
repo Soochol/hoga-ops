@@ -74,6 +74,7 @@ from hoga.live.kis_client import (
     KisRateLimitError,
 )
 from hoga.live.kiwoom_after_hours import KiwoomAfterHoursError, KiwoomAfterHoursFetcher
+from hoga.live.kiwoom_calendar_candles import CalendarTimeframe
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import (
     KiwoomApiError,
@@ -103,6 +104,7 @@ from hoga.live.kiwoom_rest import KiwoomRestClient, PageFetch
 from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
 from hoga.live.krx_close import KrxCloseResponse, KrxCloseStore
 from hoga.live.krx_previous_close import KrxPreviousCloseResponse, KrxPreviousCloseStore
+from hoga.live.live_calendar_candle_backfill import LiveCalendarCandleBackfill
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
@@ -1664,6 +1666,10 @@ class LivePastDailyCandlesResponse(BaseModel):
     data_warnings: list[LiveDataWarning] = Field(default_factory=list)
 
 
+class LivePastCalendarCandlesResponse(LivePastDailyCandlesResponse):
+    timeframe: CalendarTimeframe
+
+
 class ScreenerDailyCandlesResponse(BaseModel):
     code: str
     from_: str = Field(alias="from")
@@ -2996,6 +3002,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if data_dir is not None and daily_cache_instance is not None
         else None
     )
+    calendar_backfill = LiveCalendarCandleBackfill(
+        data_dir=data_dir, scheduler=kiwoom_rest_runtime.ensure_scheduler(data_dir),
+        daily_backfill=daily_backfill,
+    ) if data_dir is not None else None
     global index_candles_cache_instance  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     if data_dir is not None and index_candles_cache_instance is None:
         index_candles_cache_instance = IndexCandlesCache()
@@ -3189,6 +3199,27 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             policy=policy,
             from_label=from_,
             to_label=to,
+        )
+
+    @router.get("/past-calendar-candles")
+    async def _get_past_calendar_candles(
+        code: str = Query(...), from_: str = Query(..., alias="from"),
+        to: str = Query(...), timeframe: CalendarTimeframe = Query(...),
+        venue: str | None = Query("KRX"),
+    ) -> LivePastCalendarCandlesResponse:
+        frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
+        try:
+            policy = parse_live_venue_policy(venue)
+        except ValueError as exc:
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_VENUE, "message": str(exc)}) from exc
+        if calendar_backfill is None:
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "calendar cache not wired"})
+        bypass = live_settings.rest_bypass_enabled(data_dir)
+        if not bypass and kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized"})
+        return await calendar_backfill.collect(
+            code=code, frm=frm, too=too, today=today_d, venue=policy,
+            timeframe=timeframe, cache_only=bypass,
         )
 
     @router.get("/screener-daily-candles")

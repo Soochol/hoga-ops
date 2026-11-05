@@ -121,7 +121,8 @@ def venue_code(code: str, venue: Venue) -> str:
 
 
 def parse_row(
-    row: dict[str, Any], *, from_yyyymmdd: str, to_yyyymmdd: str
+    row: dict[str, Any], *, from_yyyymmdd: str, to_yyyymmdd: str,
+    trade_value_unit_won: int = 1_000_000,
 ) -> tuple[LiveCandle | None, DailyInvariantViolation | None]:
     """행 하나 → (캔들, 위반). 둘 중 하나만 채워진다.
 
@@ -164,7 +165,7 @@ def parse_row(
     amount = _abs_int(row.get("trde_prica"))  # ka10081: million KRW
     return LiveCandle(
         t_ms=daily_anchor_ms(date_s), open=o, high=h, low=low, close=c, volume=v,
-        trade_value_won=None if amount is None else amount * 1_000_000,
+        trade_value_won=None if amount is None else amount * trade_value_unit_won,
     ), None
 
 

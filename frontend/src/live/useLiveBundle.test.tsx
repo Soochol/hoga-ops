@@ -2993,7 +2993,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     );
 
     // 우회 ON: KIS 일봉은 code=null(미발사), 스크리너만 사용.
-    expect(livePastDailyCandlesSpy).toHaveBeenLastCalledWith(null, null, null, 'KRX');
+    expect(livePastDailyCandlesSpy).toHaveBeenLastCalledWith(null, null, null, 'KRX', 'D');
     expect(screenerDailyCandlesSpy).toHaveBeenCalledWith('005930', '20250611', '20260527');
     expect(result.current.chartBundle!.candles).toEqual([
       { ts_ms: 1779753600000, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 900, vol_b: 0 },
@@ -3778,14 +3778,14 @@ it('preserves daily turnover through the API-to-chart candle projection', () => 
   }
 });
 
-it.each(['W', 'M'] as const)('%s stock turnover reaches the chart from both daily data sources', tf => {
+it.each(['W', 'M'] as const)('%s stock turnover uses native bars or aggregates bypass daily bars', tf => {
   for (const bypass of [false, true]) {
     const mock = bypass ? screenerDailyCandlesMock : dailyCandlesMock;
     const previous = mock.candles;
-    mock.candles = [
+    mock.candles = bypass ? [
       { ...DEFAULT_CANDLE, t_ms: DEFAULT_CANDLE.t_ms - 86_400_000, ...{ trade_value_won: 120_000_000 } },
       { ...DEFAULT_CANDLE, ...{ trade_value_won: 340_000_000 } },
-    ];
+    ] : [{ ...DEFAULT_CANDLE, ...{ trade_value_won: 460_000_000 } }];
     try {
       const { result, unmount } = renderHook(
         () => useLiveBundle('005930', tf, '20260527', liveFixture, { hogaplaySourceEnabled: false }),
@@ -3819,7 +3819,7 @@ it.each([false, true])('includes saved calendar context with rest bypass %s', re
   renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture, { calendarFromDate: '20200401' }),
     { wrapper: createWrapper({ rest_bypass_enabled }) });
   const spy = rest_bypass_enabled ? screenerDailyCandlesSpy : livePastDailyCandlesSpy;
-  expect(spy).toHaveBeenLastCalledWith('005930', '20200401', '20260527', ...(rest_bypass_enabled ? [] : ['KRX']));
+  expect(spy).toHaveBeenLastCalledWith('005930', '20200401', '20260527', ...(rest_bypass_enabled ? [] : ['KRX', 'D']));
 });
 
 it('does not apply a calendar lower bound to minute requests', () => {
@@ -3827,4 +3827,22 @@ it('does not apply a calendar lower bound to minute requests', () => {
     { wrapper: createWrapper() });
   const args = livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[];
   expect(args[1]).not.toBe('20200401');
+});
+
+
+it.each(['W', 'M'] as const)('%s forwards native timeframe and preserves provider volume and amount', tf => {
+  const previous = dailyCandlesMock.candles;
+  dailyCandlesMock.candles = [{ ...DEFAULT_CANDLE, volume: 12345, ...{ trade_value_won: 987654321 } }];
+  try {
+    const { result, unmount } = renderHook(
+      () => useLiveBundle('005930', tf, '20260527', liveFixture),
+      { wrapper: createWrapper() },
+    );
+    expect(livePastDailyCandlesSpy).toHaveBeenLastCalledWith('005930', expect.any(String), '20260527', 'KRX', tf);
+    expect(result.current.chartBundle?.candles[0]?.vol_a).toBe(12345);
+    expect(result.current.chartBundle?.candles[0]?.trade_value_won).toBe(987654321);
+    unmount();
+  } finally {
+    dailyCandlesMock.candles = previous;
+  }
 });

@@ -759,7 +759,7 @@ export function useLiveBundle(
     minutePastTo === realTodayKstYyyymmdd() && !isKstWeekend(minutePastTo),
   );
 
-  // 벤더 일봉 past-candles(키움 `ka10081`) — D/W/M, 우회 OFF에서만 (ADR-0048).
+  // D uses ka10081; W/M use native ka10082/83. Bypass still aggregates disk daily bars.
   const enableDaily = !!(code && !isMinute && !restBypassEnabled);
   const dailyPastFrom = !isMinute && options.calendarFromDate && options.calendarFromDate < seedFrom
     ? options.calendarFromDate : seedFrom;
@@ -769,6 +769,7 @@ export function useLiveBundle(
     enableDaily ? dailyPastFrom : null,
     enableDaily ? dailyPastTo : null,
     candleVenue,
+    timeframe === 'W' || timeframe === 'M' ? timeframe : 'D',
   );
   // 스크리너 일봉 — D/W/M, 우회 ON 전용(디스크 소스).
   const enableScreenerDaily = !!(code && !isMinute && restBypassEnabled);
@@ -954,11 +955,12 @@ export function useLiveBundle(
   }, [isMinute, timeframe, venue, candleVenue, regularSessionOnly, bucketMs, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
-    // 우회 ON: 스크리너 일봉. OFF: 벤더 일봉. D는 그대로, W/M은 aggregateCalendar.
+    // Native W/M is already aggregated. Only the bypass daily source needs folding.
     const raw = restBypassEnabled
       ? screenerDailyCandlesQuery.data?.candles ?? []
       : pastDailyCandlesQuery.data?.candles ?? [];
-    const bars = raw.length === 0 ? [] : timeframe === 'D' ? raw : aggregateCalendar(raw, timeframe as 'W' | 'M');
+    const bars = raw.length === 0 ? [] : restBypassEnabled && (timeframe === 'W' || timeframe === 'M')
+      ? aggregateCalendar(raw, timeframe) : raw;
     return bars.map(kisBarToCandle);
   }, [isMinute, timeframe, restBypassEnabled, pastDailyCandlesQuery.data?.candles, screenerDailyCandlesQuery.data?.candles]);
   const kisCandles = isMinute ? minuteKisCandles : calendarKisCandles;
