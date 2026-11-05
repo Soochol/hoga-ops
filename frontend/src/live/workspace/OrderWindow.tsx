@@ -53,6 +53,7 @@ import { WindowSettingsPopover } from './WindowSettingsPopover';
 import { useOrderQuantity } from './useOrderQuantity';
 import { useCreateOrders, type CreateOrderRecord } from './useCreateOrders';
 import { orderPriceRange } from './orderPriceRange';
+import { orderDisplayRows } from './orderDisplayRows';
 import { useOrderPriceExplorer } from './useOrderPriceExplorer';
 import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
 import { OrderStatusBar, type OrderReceipt } from './OrderStatusBar';
@@ -65,6 +66,7 @@ import { BookTradeList } from './BookTradeList';
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
 const accountDisplayLabel = (label?: string) => label?.replace(' · 실전 ·', ' ·') ?? '계좌 연결 대기';
 const EMPTY_ORDERS: TossOrder[] = [];
+const TERMINAL_ORDER_STATUSES = new Set(['FILLED', 'CANCELED', 'REPLACED', 'REJECTED', 'EXPIRED', 'CANCEL_REJECTED', 'REPLACE_REJECTED']);
 const UNRESOLVED_NOTICE: OrderNotice = {
   title: '주문 결과 확인 필요', message: '결과가 불명확한 요청이 있습니다. 해당 증권사의 주문·체결 내역을 확인하세요.',
   tone: 'error', persistent: true,
@@ -204,7 +206,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number; preopen?: boolean } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number; preopen?: boolean; source?: boolean } | null>(null);
   const closeMenu = useCallback(() => setContextMenu(null), []);
   const [noticeState, setNoticeState] = useState<(OrderNotice & { account: TradingAccountId }) | null>(null);
   const [cancelFailures, setCancelFailures] = useState<CancelFailure[]>([]);
@@ -321,13 +323,19 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const latestOrders = useRef(orders);
   useLayoutEffect(() => { latestOrders.current = orders; }, [orders]);
   const groups = useMemo(() => groupPriceOrders(orders), [orders]);
+  const sourceOrders = useMemo(() => orders.filter(order => {
+    const price = Number(order.price), remainder = orderRemainder(order);
+    return order.symbol === code && order.orderType === 'LIMIT' && !TERMINAL_ORDER_STATUSES.has(order.status)
+      && Number.isSafeInteger(price) && price > 0 && Number.isSafeInteger(remainder) && remainder > 0;
+  }), [orders, code]);
+  const sourceGroups = useMemo(() => groupPriceOrders(sourceOrders), [sourceOrders]);
   const sideOrders = useMemo(() => {
     const active = orders.filter(order => order.symbol === code && orderRemainder(order) > 0);
     return { SELL: active.filter(order => order.side === 'SELL'), BUY: active.filter(order => order.side === 'BUY') };
   }, [orders, code]);
   const contextOrders = contextMenu?.side
     ? contextMenu.preopen ? allOrders.filter(order => order.orderType === 'PREOPEN_CLOSE' && order.side === contextMenu.side)
-    : contextMenu.price == null ? sideOrders[contextMenu.side] : groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
+    : contextMenu.price == null ? sideOrders[contextMenu.side] : (contextMenu.source ? sourceGroups : groups).get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
     : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = !restBook && bookFresh;
@@ -351,6 +359,11 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const preopenCreationIssue = newOrderIssue(preopenAvailability);
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
   const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
+  const { askSlots, bidSlots } = orderDisplayRows({ asks, bids,
+    ownPrices: sourceOrders.map(order => ({ price: Number(order.price), side: order.side })) });
+  const displayRows = [...askSlots, ...bidSlots];
+  const displayedPrices = displayRows.flatMap(row => row ? [{ price: row.price }] : []);
+  const displaySignature = displayRows.map(row => row ? `${row.kind}:${row.price}` : '_').join('|');
   const masterSymbol = symbols.data?.symbols.find(symbol => symbol.code === code);
   const securityType = masterSymbol?.security_type ?? 'stock';
   const currentLimits = limits.data?.code === code && realMsToYyyymmdd(limits.data.fetched_at_ms) === todayKst;
@@ -364,7 +377,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const explorer = useOrderPriceExplorer(`${displayKey}:${todayKst}:${morningReset}`, fullRange, explorerPrice, busy || dragInProgress || !!settingsDraft || !!action, priceViewportRef);
   const prices = explorer.enabled ? explorer.prices.map(price => ({ price, qty: 0 })) : asks.concat(bids);
   const dayMarkers = bookDayMarkers(prices.map(level => level.price), summary);
-  const showInlineSummary = !explorer.enabled && (expanded || prices.length === 0);
+  const showInlineSummary = !explorer.enabled && (expanded || displayedPrices.length === 0);
   const onScreen = new Set(prices.map(l => l.price));
   const maxQty = Math.max(1, ...asks.concat(bids).map(l => l.qty));
   const displayTotals = (restBook ? null : afterHoursTotals) ?? (book ? { ask: book.tot_ask, bid: book.tot_bid } : null);
@@ -372,7 +385,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
   const priceLayout = useBookPriceLayout(explorer.enabled && fullRange
-    ? [...prices, { price: fullRange.priceAt(0) }, { price: fullRange.priceAt(fullRange.count - 1) }] : prices, code, true, baseline, preferences.showPriceChangePercent);
+    ? [...prices, { price: fullRange.priceAt(0) }, { price: fullRange.priceAt(fullRange.count - 1) }] : displayedPrices, code, true, baseline, preferences.showPriceChangePercent);
   const estimatePrice = showPreopen && preopenPrice != null ? preopenPrice : quote?.price ?? null;
   const amountPresets = preferences.unit === 'amount';
   const presets = amountPresets ? preferences.amountPresets : preferences.quantityPresets;
@@ -395,7 +408,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     ? fmt(Math.ceil(averagePrice)) : '';
   const averageMarker = preferences.showAveragePrice
     ? holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen, securityType) : { price: null, outside: false };
-  const averageMarkerIndex = prices.findIndex(level => level.price === averageMarker.price);
+  const averageMarkerSlot = displayRows.findIndex(row => row?.kind === 'market' && row.price === averageMarker.price);
   const [averageWhole, averageFraction] = (state.data?.average_purchase_price ?? '').split('.');
   const averagePriceText = averageWhole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (averageFraction ? `.${averageFraction}` : '');
   const averageMarkerLabel = averageMarker.price == null ? '' : `내 평단가 ${averagePriceText}원${
@@ -695,7 +708,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       && lane.dataset.orderSide === d.orders[0].side && Number.isSafeInteger(price) && price > 0) d.price = price;
     setDragTarget(d.price); setDragCancel(d.cancel);
   }, []);
-  useLayoutEffect(updateDragTarget, [book, explorer.prices[0], updateDragTarget]);
+  useLayoutEffect(updateDragTarget, [book, explorer.prices[0], displaySignature, updateDragTarget]);
   function moveDrag(e: PointerEvent<HTMLElement>) {
     const d = drag.current;
     if (!d || d.pointer !== e.pointerId) return;
@@ -735,16 +748,17 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       quantity: targets.reduce((sum, order) => sum + orderRemainder(order), 0), batch: targets.map(order => ({ order, base: base() })), keepOrderList });
   }
 
-  function orderCell(side: TradingSide, price: number, rowKey: string) {
-    const group = groups.get(`${side}:${price}`) ?? [];
+  function orderCell(side: TradingSide, price: number, rowKey: string, source = false) {
+    const group = (source ? sourceGroups : groups).get(`${side}:${price}`) ?? [];
+    if (source && !group.length) return <div />;
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
     const canCreate = !exclusiveBusy && !cancelling.size && !creationIssue && price > 0;
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
-      data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
-      aria-disabled={!canCreate && !canDrag}
-      onDoubleClick={() => { if (!suppressClick.current) create(side, price); }}
-      onKeyDown={event => {
+      data-order-side={source ? undefined : side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 ${source ? '미체결 주문' : `주문 추가 ${rowKey}`}`}
+      aria-disabled={source ? !canDrag : !canCreate && !canDrag}
+      onDoubleClick={source ? undefined : () => { if (!suppressClick.current) create(side, price); }}
+      onKeyDown={source ? undefined : event => {
         if (creationIssue && !event.repeat && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault(); create(side, price);
         }
@@ -753,7 +767,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       onContextMenu={e => {
         if (!group.length) return;
         e.preventDefault(); e.stopPropagation();
-        if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY, side, price });
+        if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY, side, price, source });
       }}>
       {group.length > 0 && <span className={`order-quantity ${!canDrag ? 'order-quantity-blocked' : ''} ${draggingOrders.some(order => group.some(item => item.orderId === order.orderId)) ? 'order-chip-dragging' : ''}`}
         aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문${group.length > 1 ? ' 합계' : ''}`}
@@ -820,6 +834,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       {orderCell('BUY', price, key)}
     </div>;
   }
+  const priceOccurrences = new Map<string, number>();
   return <div ref={rootRef}
     onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={e => endDrag(e, true)}
     onLostPointerCapture={e => { if (e.target === drag.current?.element) endDrag(e, true); }}
@@ -967,14 +982,15 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         render={() => settingsDraft && <OrderSettingsForm costContext={costContext} draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
     <div className="book-status-host">
-      {(explorer.enabled || hasBookPrices(snapshot) || restBook) && <div className="book-status-overlay">
-        <BookAvailabilityState state={bookAvailability} onRetry={retryBook} testId={restBook ? 'order-rest-book-source' : undefined} />
+      {(explorer.enabled || displayedPrices.length > 0) && <div className="book-status-overlay">
+        {bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} testId={restBook ? 'order-rest-book-source' : asks.length + bids.length === 0 && needsRestBook ? 'order-empty-book' : undefined} />
+          : asks.length + bids.length === 0 && <p className="order-notice">{afterHoursTotals ? '호가 사다리 없음 (총잔량만 수신 중)' : '현재 표시할 호가가 없습니다'}</p>}
       </div>}
     <div ref={priceViewportRef} className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리"
       tabIndex={explorer.enabled ? 0 : undefined} onKeyDown={explorer.onKeyDown}
       onPointerDown={explorer.onPointerDown} onPointerMove={explorer.onPointerMove} onPointerUp={explorer.onPointerUp}
       onPointerCancel={explorer.onPointerUp} onLostPointerCapture={explorer.onPointerUp}>
-      <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${explorer.enabled ? 'order-ladder-full' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
+      <div className={`order-ladder ${displayedPrices.length > 0 || explorer.enabled ? 'order-ladder-centered' : ''} ${explorer.enabled ? 'order-ladder-full' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>
         <span ref={setProbe} aria-hidden="true" className="order-column-sizer">
           {['+', '−'].map(sign => <span key={sign} data-depth-probe className="order-depth-probe">
@@ -985,43 +1001,42 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           <span data-lane-probe className="order-lane-probe" data-figure={samples.order} />
           <span data-lane-probe className="order-total-probe" data-figure={samples.total} />
         </span>
-        {explorer.enabled ? explorer.prices.map(fullPriceRow) : prices.length === 0 ? <div className={`order-empty-layout ${expanded ? 'order-empty-expanded' : ''}`}>
+        {explorer.enabled ? explorer.prices.map(fullPriceRow) : displayedPrices.length === 0 ? <div className={`order-empty-layout ${expanded ? 'order-empty-expanded' : ''}`}>
           <div>{bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} testId={needsRestBook ? 'order-empty-book' : undefined} />
             : <p className="order-notice">{afterHoursTotals ? '호가 사다리 없음 (총잔량만 수신 중)' : '현재 표시할 호가가 없습니다'}</p>}</div>
           <div className="order-empty-summary">{renderSummary(264)}</div>
         </div>
-          : Array.from({ length: 20 }, (_, slot) => {
-          const isAsk = slot < 10;
-          const index = slot - (10 - asks.length);
-          const bidIndex = slot - 10;
-          const level = isAsk ? asks[index] : bids[bidIndex];
+          : displayRows.map((level, slot) => {
+          const isAsk = slot < askSlots.length;
+          const bidIndex = slot - askSlots.length;
           const firstBid = bidIndex === 0;
-          const key = `${isAsk ? 'ask' : 'bid'}-${slot}`;
+          const identity = `${isAsk ? 'ask' : 'bid'}-${level?.price ?? 'empty'}`;
+          const occurrence = priceOccurrences.get(identity) ?? 0;
+          priceOccurrences.set(identity, occurrence + 1);
+          const key = level ? `${identity}-${occurrence}` : `${identity}-${slot}`;
           const info = firstBid ? <div className="order-info order-strength"><span className="order-meta">체결강도</span>
             <span>{summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%`}</span></div>
             : bidIndex === 1 ? <div className="order-trades-slot"><BookTradeList
               key={`${code}:${todayKst}:${effectiveVenue}:${activeSinglePrice !== null}`} trades={trades}
               baselinePrice={baseline ?? null} layout="order" onOpen={onOpenTrades} /></div> : <div />;
-          // Empty slots preserve the center without becoming order/drag targets.
-          // Recent fills still occupy their fixed slots beside the bid ladder.
           if (!level) return <div className={`order-row order-empty ${firstBid ? 'order-divider' : ''}`} key={key}
             aria-hidden={isAsk ? true : undefined}>
             <div />{!isAsk ? info : <div />}<div /><div className={isAsk ? 'order-summary-slot' : undefined} /><div />
           </div>;
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
           return <div className={`order-row ${firstBid ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}>
-            {orderCell('SELL', level.price, key)}
-            {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div>
+            {orderCell('SELL', level.price, key, level.kind === 'source')}
+            {isAsk ? level.kind === 'market' ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div> : <div />
               : info}
             <div className={`order-price book-price-line ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value book-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
-              {index === averageMarkerIndex && <TextTooltip text={averageMarkerLabel}><span className="order-average-marker" role="img" aria-label={averageMarkerLabel} /></TextTooltip>}
-              <BookPriceAmount price={level.price} qty={level.qty} /></span>{preferences.showPriceChangePercent && <small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small>}</div>
+              {slot === averageMarkerSlot && <TextTooltip text={averageMarkerLabel}><span className="order-average-marker" role="img" aria-label={averageMarkerLabel} /></TextTooltip>}
+              {level.kind === 'market' ? <BookPriceAmount price={level.price} qty={level.qty} /> : fmt(level.price)}</span>{preferences.showPriceChangePercent && <small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small>}</div>
             {isAsk ? <div className="order-summary-slot" />
-              : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div>}
-            {orderCell('BUY', level.price, key)}
+              : level.kind === 'market' ? <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div> : <div />}
+            {orderCell('BUY', level.price, key, level.kind === 'source')}
           </div>;
         })}
-        {showInlineSummary && prices.length > 0 && <div ref={setSummaryProbe} className="order-summary-layer">{renderSummary(240)}</div>}
+        {showInlineSummary && displayedPrices.length > 0 && <div ref={setSummaryProbe} className="order-summary-layer">{renderSummary(240)}</div>}
         <div className="order-total-row" role="group" aria-label="방향별 총 접수 주문">
           {(['SELL', 'BUY'] as const).map(side => {
             const list = sideOrders[side];
