@@ -134,7 +134,7 @@ class ExecutionHistory:
                 row = parse_execution(clean, account_ref=ref, code=code, date=date)
                 if row is not None:
                     # Publish the same account/date-bound opaque order identity as the order API.
-                    row.order_ref = adapter.registry.order_ref(ref, row.order_ref, date, row.venue or "SOR")
+                    row.order_ref = adapter.registry.order_identity(ref, row.order_ref, date)
                     previous = rows.get(row.execution_id)
                     if previous is not None and previous != row:
                         raise adapter.gateway.failure(False)

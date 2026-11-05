@@ -133,7 +133,7 @@ class TossTradingAdapter:
         date = datetime.now(KST).strftime("%Y%m%d")
         native = ""
         if action != "create":
-            native, date, _ = self.registry.resolve_order(order_ref, command.account_ref)
+            native, date = self.registry.resolve_identity(order_ref, command.account_ref)
         if isinstance(command, CreateBrokerOrder):
             if command.order_type != "LIMIT":
                 raise TradingError(

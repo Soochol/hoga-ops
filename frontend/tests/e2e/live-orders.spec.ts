@@ -1498,6 +1498,45 @@ test('오디오 재생 거절은 주문 접수를 유지하고 복구 후 다음
   expect(commands).toHaveLength(2);
 });
 
+test('REST로 확인한 취소 주문은 최근 목록에서 빠진 뒤에도 두 주문 화면에 재등장하지 않는다', async ({ page }, info) => {
+  const { window, ws, commands } = await setup(page, true);
+  await ws.waitForSubscribe('005930');
+  let phase: 'active' | 'terminal' | 'gone' | 'stale' = 'active';
+  const reads: string[] = [];
+  const pending = mkOrder('old', '67200', '50');
+  const snapshot = (account: boolean) => ({ account_seq: 1, code: account ? '' : '005930',
+    revision: phase === 'terminal' ? 3 : phase === 'gone' ? 4 : 1,
+    orders: phase === 'active' || phase === 'stale' ? [pending] : [],
+    recent_orders: phase === 'terminal' ? [{ ...pending, status: 'CANCELED' }] : [],
+    fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [],
+  });
+  await page.route(/\/api\/trading\/state\?/, route => {
+    if (new URL(route.request().url()).searchParams.get('part') !== 'orders') return route.fallback();
+    reads.push(`symbol:${phase}`); return route.fulfill({ json: snapshot(false) });
+  });
+  await page.route(/\/api\/trading\/account-orders\?/, route => {
+    reads.push(`account:${phase}`); return route.fulfill({ json: snapshot(true) });
+  });
+  await window.getByRole('button', { name: '미체결 주문', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: '계좌 목록' });
+  await expect(panel.getByRole('button', { name: '삼성전자', exact: true })).toBeVisible();
+  ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 2, order: pending });
+  const own = window.getByLabel('매수 67,200원 주문', { exact: true });
+  await expect(own).toHaveText('50');
+  for (const next of ['terminal', 'gone', 'stale'] as const) {
+    phase = next;
+    ws.pushEvent({ type: 'trading_changed', mode: 'live', revision: snapshot(false).revision });
+    await expect.poll(() => reads.includes(`symbol:${next}`) && reads.includes(`account:${next}`)).toBe(true);
+    await expect(own).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: '삼성전자', exact: true })).toHaveCount(0);
+  }
+  ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 5, order: pending });
+  await expect(own).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: '삼성전자', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath('rest-cancel-aged-out.png') });
+  expect(commands).toHaveLength(0);
+});
+
 test('계좌 목록은 열 때만 조회하고 다른 종목 주문을 취소하며 보유종목으로 이동한다', async ({ page }, testInfo) => {
   const other = { ...mkOrder('other-sell', '185000', '0'), symbol: '000660', side: 'SELL', quantity: '22' };
   const reads: string[] = [];

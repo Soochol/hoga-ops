@@ -214,6 +214,90 @@ test('오늘 작성 재사용과 휴지통 복원 뒤에도 자유 배치가 남
   expect(visible(await read(request, id), 'freedraw')).toHaveLength(1);
 });
 
+for (const legacy of [false, true]) test(`휴지통 응답 대기 중 ${legacy ? '기존 보드' : '복기 노트'} 편집을 잠그고 실패 후 복구한다`, async ({ page, request }, info) => {
+  const response = await request.post(`${API_URL}/api/whiteboards`, { headers, data: {
+    id: uid(), mutation_id: uid(), name: '휴지통 경합 검증', ...(legacy ? {} : { review: emptyReview('2199-12-11') }),
+  } });
+  expect(response.ok()).toBe(true);
+  const doc: WhiteboardDocument = await response.json();
+  await page.goto(`/whiteboard?board=${doc.id}`);
+  await expect(page.getByTestId('whiteboard-editor')).toHaveAttribute('data-board-id', doc.id);
+  const title = page.getByLabel(legacy ? '보드 이름' : '하루 노트 제목', { exact: true });
+  await title.fill('휴지통 전 저장본');
+  await expect.poll(async () => (await read(request, doc.id)).name).toBe('휴지통 전 저장본');
+  const original = await read(request, doc.id);
+  let release!: () => void;
+  let entered!: () => void;
+  const held = new Promise<void>(done => { release = done; });
+  const requested = new Promise<void>(done => { entered = done; });
+  await page.route(`**/api/whiteboards/${doc.id}`, async route => {
+    if (route.request().method() !== 'PUT' || !route.request().postDataJSON().deleted) return route.fallback();
+    entered(); await held;
+    return route.fulfill({ status: 503, json: { detail: { code: 'whiteboard_write_failed', message: '휴지통 검증 실패' } } });
+  });
+  const trash = async () => {
+    const button = page.getByRole('button', { name: legacy ? '보드 삭제' : '휴지통으로 이동', exact: true });
+    if (!legacy && !await button.isVisible()) await page.getByLabel('노트 더보기').click();
+    await button.click();
+  };
+  await trash(); await requested;
+  try {
+    await expect(title).not.toBeEditable();
+    if (legacy) await expect(page.getByRole('radio', { name: '선택', exact: true })).toBeHidden();
+    else await expect(page.getByRole('toolbar', { name: '캔버스 편집 도구' })).toBeHidden();
+    const bounds = (await page.locator('canvas.interactive').boundingBox())!;
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 240);
+    await page.mouse.down(); await page.mouse.move(bounds.x + bounds.width / 2 + 80, bounds.y + 270, { steps: 8 }); await page.mouse.up();
+    await page.screenshot({ path: info.outputPath(`trash-pending-${legacy ? 'legacy' : 'review'}.png`) });
+  } finally { release(); }
+  await expect(page.getByRole('alert')).toContainText('휴지통 검증 실패');
+  await expect(title).toBeEditable();
+  await page.unroute(`**/api/whiteboards/${doc.id}`);
+  await title.fill('삭제 실패 후 편집 저장');
+  if (legacy) await page.getByRole('button', { name: '메모 추가', exact: true }).click();
+  else await draw(page);
+  await expect.poll(async () => (await read(request, doc.id)).scene.elements.length).toBe(original.scene.elements.length + (legacy ? 2 : 1));
+  await expect.poll(async () => (await read(request, doc.id)).name).toBe('삭제 실패 후 편집 저장');
+  const recovered = await read(request, doc.id);
+  expect(recovered.deleted_at_ms).toBeNull();
+
+  let finish!: () => void, started!: () => void;
+  const pending = new Promise<void>(done => { finish = done; });
+  const sending = new Promise<void>(done => { started = done; });
+  await page.route(`**/api/whiteboards/${doc.id}`, async route => {
+    if (route.request().method() !== 'PUT' || !route.request().postDataJSON().deleted) return route.fallback();
+    started(); await pending; return route.fallback();
+  });
+  await trash(); await sending;
+  const key = await page.evaluate(({ api, id }) => `${api}/api/whiteboards::${id}::${sessionStorage.getItem('whiteboard.tab.v1')}`, { api: API_URL, id: doc.id });
+  try {
+    await expect(title).not.toBeEditable();
+    await page.evaluate(async ({ key, recovered }) => {
+      await new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('ticklane-whiteboards-v1', 1);
+        req.onsuccess = () => {
+          const db = req.result, tx = db.transaction('drafts', 'readwrite');
+          tx.objectStore('drafts').put({ id: recovered.id, revision: recovered.revision, name: '새 세대 복구 초안',
+            elements: recovered.scene.elements, review: recovered.review, files: {}, assets: recovered.scene.files,
+            appState: {}, changedAt: Date.now(), token: 'newer-owner:99' }, key);
+          tx.oncomplete = () => { db.close(); resolve(); }; tx.onerror = () => reject(tx.error);
+        }; req.onerror = () => reject(req.error);
+      });
+    }, { key, recovered });
+  } finally { finish(); }
+  await expect.poll(async () => (await read(request, doc.id)).deleted_at_ms).not.toBeNull();
+  await expect(page.locator(`[data-testid="whiteboard-editor"][data-board-id="${doc.id}"]`)).toBeHidden();
+  const token = await page.evaluate(key => new Promise<string | undefined>((resolve, reject) => {
+    const req = indexedDB.open('ticklane-whiteboards-v1', 1);
+    req.onsuccess = () => {
+      const db = req.result, tx = db.transaction('drafts'), get = tx.objectStore('drafts').get(key);
+      get.onsuccess = () => resolve(get.result?.token); tx.oncomplete = () => db.close(); tx.onerror = () => reject(tx.error);
+    }; req.onerror = () => reject(req.error);
+  }), key);
+  expect(token).toBe('newer-owner:99');
+  expect((await read(request, doc.id)).scene).toEqual(recovered.scene);
+});
+
 test('외부 페이지 초안을 링크 메모로 복구하고 삽입 메뉴를 숨긴다', async ({ page, request }) => {
   const doc = await seed(request, '2199-12-09'); await open(page, doc.id);
   await expect(page.getByText('저장됨', { exact: true })).toBeVisible();

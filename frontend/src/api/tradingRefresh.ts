@@ -122,6 +122,28 @@ export function applyTradingOrderEvent(client: QueryClient, mode: TradingMode, a
   return true;
 }
 
+export function acceptTradingOrderSnapshot(client: QueryClient, mode: TradingMode, account: TradingAccountId,
+  snapshot: OrderStateResponse): OrderStateResponse {
+  const refresh = shared(client, mode, account);
+  let changed = false;
+  for (const order of snapshot.recent_orders) {
+    if (!terminalStates.has(order.status)) continue;
+    const key = `${order.symbol}:${order.orderId}`;
+    const prior = refresh.events.get(key);
+    const revision = snapshot.revision ?? -1;
+    if (prior && revision < prior.revision) continue;
+    const merged = mergeOrderSnapshot(prior?.order, order, true);
+    if (merged) {
+      refresh.events.set(key, { ...prior, order: merged, revision });
+      changed = true;
+    }
+  }
+  const terminals = [...refresh.events].filter(([, event]) => terminalStates.has(event.order.status));
+  for (const [oldKey] of terminals.slice(0, -200)) refresh.events.delete(oldKey);
+  if (changed) publish(refresh);
+  return snapshot;
+}
+
 export function mergeTradingOrderEvents(client: QueryClient, mode: TradingMode, account: TradingAccountId, code: string | null,
   base: OrderStateResponse | undefined): OrderStateResponse | undefined {
   if (!base) return undefined;
@@ -134,7 +156,8 @@ export function mergeTradingOrderEvents(client: QueryClient, mode: TradingMode, 
     // A full ready event for the ACK's new ID beats an eventually consistent PENDING_REPLACE read.
     const completed = event.replacementReady === true && canonical?.status === 'PENDING_REPLACE';
     if (!completed && (base.revision ?? -1) >= event.revision && canonical && mergeOrderSnapshot(event.order, canonical, true)) continue;
-    const order = mergeOrderSnapshot(canonical, event.order, completed) ?? canonical;
+    const newerEvent = (base.revision ?? -1) < event.revision;
+    const order = mergeOrderSnapshot(canonical, event.order, completed) ?? (newerEvent ? event.order : canonical);
     if (!order) continue;
     if (terminalStates.has(order.status)) {
       orders.delete(order.orderId); recent.delete(order.orderId); recent.set(order.orderId, order);

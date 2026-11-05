@@ -2,7 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall, type ApiError } from './client';
 import { subscribeEvents } from './ws';
-import { applyTradingOrderEvent, mergeTradingOrderEvents, resetTradingOrderEvents, scheduleTradingRefresh,
+import { acceptTradingOrderSnapshot, applyTradingOrderEvent, mergeTradingOrderEvents, resetTradingOrderEvents, scheduleTradingRefresh,
   subscribeTradingRefresh, tradingRefreshPaused, tradingRefreshVersion, tradingStateKey } from './tradingRefresh';
 
 export type TradingMode = 'paper' | 'live';
@@ -164,7 +164,8 @@ export function useTradingState(account: TradingAccountId, code: string, mode: T
   const path = `${tradingPrefix(mode, account)}/state?${accountParam(account)}&code=${encodeURIComponent(code)}`;
   const orders = useQuery({
     queryKey: [...tradingStateKey(mode, account), 'orders', code], enabled: !!account && !paused,
-    queryFn: async ({ signal }) => normalizeState(await apiCall<OrderStateResponse | BrokerStateWire>(`${path}&part=orders`, { signal })),
+    queryFn: async ({ signal }) => acceptTradingOrderSnapshot(client, mode, account,
+      normalizeState(await apiCall<OrderStateResponse | BrokerStateWire>(`${path}&part=orders`, { signal }))),
     staleTime: 500, refetchInterval: 3_000, retry: false,
   });
   const balances = useQuery({
@@ -194,8 +195,8 @@ export function useTradingAccountList(account: TradingAccountId, tab: 'orders' |
   const orders = useQuery({
     queryKey: [...tradingStateKey('live', account), 'orders', 'account'],
     enabled: !!account && tab === 'orders' && !paused,
-    queryFn: async ({ signal }) => normalizeState(await apiCall<OrderStateResponse | BrokerStateWire>(
-      `${tradingPrefix('live', account)}/account-orders?${accountParam(account)}`, { signal })),
+    queryFn: async ({ signal }) => acceptTradingOrderSnapshot(client, 'live', account, normalizeState(await apiCall<OrderStateResponse | BrokerStateWire>(
+      `${tradingPrefix('live', account)}/account-orders?${accountParam(account)}`, { signal }))),
     staleTime: 500, refetchInterval: tab === 'orders' ? 3_000 : false, retry: false,
   });
   const holdings = useQuery({
