@@ -2927,71 +2927,54 @@ describe('장전 시간외 종가 총잔량 주문', () => {
 
 });
 
-describe('기본 사다리의 내 지정가 보완행', () => {
-  it('열린 LIMIT 원가격만 같은 필터로 합산하고 pending 원본과 미확인 열린 상태를 보존한다', () => {
-    const original = { ...order('open'), price: '70001', remaining_quantity: '41' };
-    mock.orders = [original,
-      { ...original, orderId: 'canceling', status: 'PENDING_CANCEL', remaining_quantity: '7' },
-      { ...original, orderId: 'replacing', status: 'PENDING_REPLACE', remaining_quantity: '3' },
-      { ...original, orderId: 'unknown', status: 'BROKER_OPEN', remaining_quantity: '2' },
-      ...['FILLED', 'CANCELED', 'REPLACED', 'REJECTED', 'EXPIRED', 'CANCEL_REJECTED', 'REPLACE_REJECTED'].map(status => ({ ...original, orderId: status, status })),
-      { ...original, orderId: 'market', orderType: 'MARKET' },
-      { ...original, orderId: 'preopen', orderType: 'PREOPEN_CLOSE' },
-      { ...original, orderId: 'other', symbol: '000660' },
-      { ...original, orderId: 'zero', remaining_quantity: '0' },
-      ...['0', '-10', 'NaN', 'Infinity', '70000.5', '9007199254740992', ''].map(price => ({ ...original, orderId: price, price })),
-    ];
+describe('기본 사다리의 관측 가격에만 내 주문 표시', () => {
+  it('범위 밖과 범위 안 누락 가격은 행을 추가하지 않고 방향 합계에 남긴다', () => {
+    mock.bidCount = 2;
+    mock.orders = [{ ...order('outside'), price: '66001' }, { ...order('gap'), price: '67150' }, order('market')];
     const { container } = show();
-    const own = screen.getByLabelText('매수 70,001원 주문 합계', { exact: true });
-    expect(own).toHaveTextContent('53');
-    const row = own.closest('.order-row')!;
-    expect(row.querySelectorAll('button')).toHaveLength(1);
-    expect(row.querySelector('[data-order-side]')).toBeNull();
-    expect(row.querySelector('.order-depth')).toBeNull();
-    expect(row.querySelector('.order-price-value')).toHaveTextContent('70,001');
-    expect(container.querySelectorAll('.order-row')).toHaveLength(22);
-    fireEvent.doubleClick(own.closest('button')!);
-    fireEvent.keyDown(own.closest('button')!, { key: 'Enter' });
-    fireEvent.keyDown(own.closest('button')!, { key: ' ' });
+    expect(container.querySelector('[data-order-price="66001"]')).toBeNull();
+    expect(container.querySelector('[data-order-price="67150"]')).toBeNull();
+    expect(container.querySelectorAll('.order-row')).toHaveLength(20);
+    expect(screen.getByLabelText('매수 67,200원 주문', { exact: true })).toHaveTextContent('70');
+    expect(screen.getByRole('button', { name: '매수 총 접수 주문' })).toHaveTextContent('210(3)');
+    fireEvent.contextMenu(screen.getByRole('button', { name: '매수 총 접수 주문' }));
+    expect(screen.getByRole('menu', { name: '매수 전체 접수 주문 목록' })).toHaveTextContent('66,001');
     expect(mock.command).not.toHaveBeenCalled();
-    fireEvent.contextMenu(own);
-    expect(screen.getAllByRole('menuitem')).toHaveLength(4);
   });
 
-  it('첫 무수신에도 양방향 주문은 한 가격에 보이고 기존 무수신 안내와 명령 차단을 유지한다', () => {
+  it('첫 무수신에는 내 주문 가격 없이 기존 안내·요약·합계를 유지한다', () => {
     mock.now = Date.parse('2026-10-24T10:15:00+09:00'); mock.snapshotAt = mock.now;
     mock.askCount = mock.bidCount = 0;
     mock.orders = [{ ...order(), price: '123456789' }, { ...order('sell'), price: '123456789', side: 'SELL' }];
     const { container } = show();
-    expect(container.querySelectorAll('[data-order-price]')).toHaveLength(1);
-    expect(screen.getByLabelText('매수 123,456,789원 주문', { exact: true })).toHaveTextContent('70');
-    expect(screen.getByLabelText('매도 123,456,789원 주문', { exact: true })).toHaveTextContent('70');
+    expect(container.querySelectorAll('[data-order-price]')).toHaveLength(0);
+    expect(screen.queryByLabelText('매수 123,456,789원 주문', { exact: true })).not.toBeInTheDocument();
     expect(screen.getByTestId('order-empty-book')).toHaveTextContent('저장된 마지막 호가가 없습니다');
+    expect(screen.getByTestId('book-summary')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '매수 총 접수 주문' })).toHaveTextContent('70(1)');
+    expect(screen.getByRole('button', { name: '매도 총 접수 주문' })).toHaveTextContent('70(1)');
     expect(container.querySelector('[data-order-side]')).toBeNull();
-    expect(container.querySelector('.order-depth')).toBeNull();
     expect(container.querySelector('.order-average-marker')).toBeNull();
     expect(mock.command).not.toHaveBeenCalled();
   });
 
-  it('시장 재등장에는 같은 가격 DOM을 유지하며 잔량을 복원하고 마지막 활성 주문 종료에는 보완행만 지운다', () => {
+  it('시장 가격이 사라지면 내 수량을 숨기고 재등장에 시장 잔량과 함께 복원한다', () => {
     mock.bidCount = 1;
     mock.orders = [{ ...order(), price: '67100' }];
     const { container } = show();
-    const row = container.querySelector('[data-order-price="67100"]');
-    expect(row?.querySelector('[data-order-side]')).toBeNull();
+    expect(container.querySelector('[data-order-price="67100"]')).toBeNull();
     mock.bidCount = 2;
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '1' } });
-    expect(container.querySelector('[data-order-price="67100"]')).toBe(row);
-    expect(row?.querySelector('.order-depth-qty')).toHaveTextContent('201');
-    mock.orders = [{ ...order(), price: '67100', status: 'CANCELED' }];
+    expect(container.querySelector('[data-order-price="67100"] .order-depth-qty')).toHaveTextContent('201');
+    expect(screen.getByLabelText('매수 67,100원 주문', { exact: true })).toHaveTextContent('70');
     mock.bidCount = 1;
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '2' } });
     expect(container.querySelector('[data-order-price="67100"]')).toBeNull();
-    expect(container.querySelector('[data-order-price="67200"]')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '매수 총 접수 주문' })).toHaveTextContent('70(1)');
   });
 });
 
-it('같은 방향의 중복 시장 가격은 각각의 DOM과 수량을 source 삽입 뒤에도 보존한다', () => {
+it('같은 방향의 중복 시장 가격은 각각의 DOM과 수량을 내 주문 갱신 뒤에도 보존한다', () => {
   const original = vi.mocked(useLiveSeries).getMockImplementation()!;
   const duplicates = () => ({ ...original('005930', 'KRX'), ob: [], latestOb: { t_ms: mock.snapshotAt,
     asks: [{ price: 67400, qty: 11 }, { price: 67400, qty: 22 }, { price: 67300, qty: 33 }],
