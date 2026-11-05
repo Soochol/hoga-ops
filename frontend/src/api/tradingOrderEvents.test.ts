@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import type { OrderStateResponse, TossOrder } from './trading';
-import { acceptTradingReplacement, applyTradingOrderEvent, mergeOrderSnapshot, mergeTradingOrderEvents, resetTradingOrderEvents } from './tradingRefresh';
+import { acceptTradingOrderSnapshot, acceptTradingReplacement, applyTradingOrderEvent, mergeOrderSnapshot, mergeTradingOrderEvents, resetTradingOrderEvents } from './tradingRefresh';
 const order = (filled = '30', status = 'PARTIAL_FILLED'): TossOrder => ({
   orderId: 'a', symbol: '005930', side: 'BUY', orderType: 'LIMIT', timeInForce: 'DAY', status,
   price: '67200', quantity: '100', orderAmount: null, currency: 'KRW', orderedAt: '', canceledAt: null,
@@ -10,6 +10,32 @@ const order = (filled = '30', status = 'PARTIAL_FILLED'): TossOrder => ({
 const state = (): OrderStateResponse => ({ account_seq: 1, code: '005930', orders: [order()], recent_orders: [], revision: 1,
   events_connected: true, fetched_at_ms: 1, unresolved_commands: ['unknown-command'] });
 describe('display order event guards', () => {
+  it('keeps a newer fill event through an older terminal REST response and absent rows', () => {
+    const client = new QueryClient();
+    applyTradingOrderEvent(client, 'live', 1, order('50'), 5);
+    const stale = acceptTradingOrderSnapshot(client, 'live', 1, {
+      ...state(), revision: 3, orders: [], recent_orders: [order('30', 'CANCELED')],
+    });
+    const displayed = mergeTradingOrderEvents(client, 'live', 1, '005930', stale)!;
+    expect(displayed.orders.map(o => [o.orderId, o.status, o.execution.filledQuantity])).toEqual([['a', 'PARTIAL_FILLED', '50']]);
+    const absent = acceptTradingOrderSnapshot(client, 'live', 1, { ...state(), revision: 6, orders: [], recent_orders: [] });
+    expect(mergeTradingOrderEvents(client, 'live', 1, '005930', absent)?.orders[0].execution.filledQuantity).toBe('50');
+    client.clear();
+  });
+
+  it('retains REST completion without a prior event across reconnects and isolates account and symbol', () => {
+    const client = new QueryClient();
+    acceptTradingOrderSnapshot(client, 'live', 1, { ...state(), revision: 3, orders: [], recent_orders: [order('50', 'CANCELED')] });
+    resetTradingOrderEvents(client, 'live', 1);
+    const empty = { ...state(), revision: 4, orders: [], recent_orders: [] };
+    expect(mergeTradingOrderEvents(client, 'live', 1, '005930', empty)?.orders).toHaveLength(0);
+    expect(applyTradingOrderEvent(client, 'live', 1, order('50'), 5)).toBe(false);
+    expect(mergeTradingOrderEvents(client, 'live', 1, '000660', empty)?.recent_orders).toEqual([]);
+    expect(mergeTradingOrderEvents(client, 'live', 2, '005930', empty)?.recent_orders).toEqual([]);
+    expect(mergeTradingOrderEvents(client, 'paper', 1, '005930', empty)?.recent_orders).toEqual([]);
+    client.clear();
+  });
+
   it('does not roll back fills or resurrect terminal orders', () => {
     expect(mergeOrderSnapshot(order('50'), order('30'))).toBeNull();
     expect(mergeOrderSnapshot(order('50', 'CANCELED'), order('50'))).toBeNull();

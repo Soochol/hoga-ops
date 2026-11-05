@@ -13,6 +13,7 @@ import { loadImages, persistImages } from './images';
 
 export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict';
 export interface SessionState {
+  lifecycle: 'active' | 'trashing' | 'retired';
   status: SaveStatus;
   name: string;
   message: string;
@@ -49,7 +50,6 @@ export class BoardSession {
   private pending?: { request: WhiteboardWrite; generation: number };
   private readonly draftOwner = boardId();
   recoveredDraft?: { key: string; token: string };
-  private retired = false;
 
   constructor(doc: WhiteboardDocument, files: BinaryFiles, key: string, draft?: BoardDraft) {
     this.key = key;
@@ -58,6 +58,7 @@ export class BoardSession {
     this.files = draft?.files ?? files;
     this.appState = draft?.appState ?? doc.scene.appState;
     this.state = {
+      lifecycle: 'active',
       status: draft ? (draft.revision === doc.revision ? 'dirty' : 'conflict') : 'saved',
       name: draft?.name ?? doc.name,
       message: draft ? '이전 편집 초안을 복원했습니다' : '',
@@ -91,7 +92,7 @@ export class BoardSession {
   }
 
   change(elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) {
-    if (this.retired) return;
+    if (this.state.lifecycle !== 'active') return;
     const signature = this.contentSignature(elements);
     this.files = files;
     if (signature === this.signature) return;
@@ -101,13 +102,13 @@ export class BoardSession {
     this.changed();
   }
   rename(name: string) {
-    if (this.retired) return;
+    if (this.state.lifecycle !== 'active') return;
     if (name === this.state.name) return;
     this.update({ name });
     this.changed();
   }
   editReview(review: ReviewNote) {
-    if (this.retired) return;
+    if (this.state.lifecycle !== 'active') return;
     this.update({ review });
     this.changed();
   }
@@ -145,7 +146,7 @@ export class BoardSession {
     };
   }
   async persistDraft() {
-    if (this.retired || this.state.status === 'saved') return;
+    if (this.state.lifecycle === 'retired' || this.state.status === 'saved') return;
     const generation = this.generation;
     try {
       await writeLocal(this.key, this.draft());
@@ -165,7 +166,7 @@ export class BoardSession {
     clearTimeout(this.timer);
     clearTimeout(this.maxTimer);
     this.maxTimer = undefined;
-    if (this.retired) return;
+    if (this.state.lifecycle === 'retired') return;
     if (this.saving) return this.saving;
     if (this.state.status === 'saved' || this.state.status === 'conflict') return;
     this.saving = this.save();
@@ -247,26 +248,34 @@ export class BoardSession {
     return draft.review ? createBoard(name, scene, boardId(), draft.review) : createBoard(name, scene);
   }
   retire() {
-    this.retired = true;
+    this.update({ lifecycle: 'retired' });
     clearTimeout(this.timer);
     clearTimeout(this.maxTimer);
     clearTimeout(this.draftTimer);
   }
   async trash(deleted: boolean) {
-    await this.flush();
-    if (this.state.status !== 'saved') throw new Error('저장 또는 충돌 해결 후 보드를 삭제해 주세요');
-    this.document = await writeBoard(this.document.id, {
-      mutation_id: boardId(),
-      expected_revision: this.document.revision,
-      name: this.document.name,
-      scene: this.document.scene,
-      review: this.document.review,
-      deleted,
-    });
-    await writeLocal(this.key, null).catch(() => {});
-    this.retire();
-    sessions.delete(this.key);
-    publish();
+    if (this.state.lifecycle !== 'active') throw new Error('보드의 휴지통 작업을 처리 중입니다');
+    this.update({ lifecycle: 'trashing' });
+    const token = `${this.draftOwner}:${this.generation}`;
+    try {
+      await this.flush();
+      if (this.state.status !== 'saved') throw new Error('저장 또는 충돌 해결 후 보드를 삭제해 주세요');
+      this.document = await writeBoard(this.document.id, {
+        mutation_id: boardId(),
+        expected_revision: this.document.revision,
+        name: this.document.name,
+        scene: this.document.scene,
+        review: this.document.review,
+        deleted,
+      });
+      await clearDraft(this.key, token).catch(() => {});
+      this.retire();
+      sessions.delete(this.key);
+      publish();
+    } catch (error) {
+      this.update({ lifecycle: 'active' });
+      throw error;
+    }
   }
 }
 

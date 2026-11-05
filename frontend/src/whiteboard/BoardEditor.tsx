@@ -101,6 +101,7 @@ export function BoardEditor({
     const frameAt = (x: number, y: number) => api.getSceneElements().find(element => element.type === 'frame'
       && x >= element.x && x <= element.x + element.width && y >= element.y && y <= element.y + element.height)?.id ?? null;
     const addNote = (text = '새 메모\n\n여기에 내용을 적어보세요') => {
+      if (session.state.lifecycle !== 'active') return;
       const { x, y } = center();
       const elements = convertToExcalidrawElements([
         {
@@ -133,12 +134,13 @@ export function BoardEditor({
       api.setActiveTool({ type: 'selection' });
     };
     const addImages = async (blobs: Blob[], source?: Record<string, unknown>) => {
+      if (session.state.lifecycle !== 'active') return;
       const epoch = ++imageEpoch;
       const errors: string[] = [];
       for (let index = 0; index < blobs.length; index++) {
         try {
           const image = await imageFile(blobs[index]);
-          if (epoch !== imageEpoch) break;
+          if (epoch !== imageEpoch || session.state.lifecycle !== 'active') break;
           const { x, y } = center();
           const width = Math.min(560, image.width),
             height = (image.height * width) / image.width;

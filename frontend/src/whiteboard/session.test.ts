@@ -17,7 +17,7 @@ vi.mock('../api/whiteboards', () => ({
   writeBoard: vi.fn(),
 }));
 import { writeBoard, createBoard } from '../api/whiteboards';
-import { writeLocal } from './drafts';
+import { clearDraft, writeLocal } from './drafts';
 import { BoardSession } from './session';
 
 function document(): WhiteboardDocument {
@@ -55,6 +55,65 @@ describe('whiteboard durable saves', () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+  });
+
+  it('blocks scene, title and review edits from the start of trash until retirement', async () => {
+    const doc = document(), session = new BoardSession(doc, {}, 'trash-lock');
+    let resolve!: (doc: WhiteboardDocument) => void;
+    vi.mocked(writeBoard).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const trashing = session.trash(true);
+    await vi.advanceTimersByTimeAsync(0);
+    const request = vi.mocked(writeBoard).mock.calls[0][1];
+    session.change(element(1), {} as AppState, {});
+    session.rename('삭제 중 입력');
+    session.editReview({ date: '2026-11-05', summary: '삭제 중 입력', completed: false, stocks: [], good: '', change: '', principle: '', records: [] });
+    session.change(element(2), {} as AppState, {});
+    const during = { elements: session.elements, name: session.state.name, review: session.state.review };
+    resolve(acknowledgement(doc, request));
+    await trashing;
+    expect(request.deleted).toBe(true);
+    expect(during).toEqual({ elements: [], name: doc.name, review: null });
+    session.change(element(3), {} as AppState, {});
+    expect(session.elements).toEqual([]);
+    expect(writeLocal).not.toHaveBeenCalledWith('trash-lock', null);
+    expect(clearDraft).toHaveBeenCalledWith('trash-lock', expect.stringMatching(/:0$/));
+  });
+
+  it('locks edits during the pre-trash flush and restores editing after trash failure', async () => {
+    const doc = document(), session = new BoardSession(doc, {}, 'trash-failure');
+    session.change(element(1), {} as AppState, {});
+    let resolve!: (doc: WhiteboardDocument) => void;
+    vi.mocked(writeBoard).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const trashing = session.trash(true);
+    const failed = expect(trashing).rejects.toThrow('trash unavailable');
+    session.change(element(2), {} as AppState, {});
+    const during = session.elements;
+    await vi.advanceTimersByTimeAsync(0);
+    const saveRequest = vi.mocked(writeBoard).mock.calls[0][1];
+    expect(saveRequest.deleted).toBe(false);
+    vi.mocked(writeBoard).mockRejectedValueOnce(new Error('trash unavailable'));
+    resolve(acknowledgement(doc, saveRequest));
+    await failed;
+    expect(during).toEqual(element(1));
+    expect(session.document.scene.elements).toEqual(element(1));
+    session.change(element(3), {} as AppState, {});
+    await session.persistDraft();
+    expect(writeLocal).toHaveBeenLastCalledWith('trash-failure', expect.objectContaining({ elements: element(3) }));
+    vi.mocked(writeBoard).mockImplementationOnce(async (_, req) => acknowledgement(session.document, req));
+    await session.flush();
+    expect(session.state.status).toBe('saved');
+    expect(session.document.scene.elements).toEqual(element(3));
+  });
+
+  it('restores editing without deleting a draft when the pre-trash save fails', async () => {
+    const session = new BoardSession(document(), {}, 'trash-save-failure');
+    session.change(element(1), {} as AppState, {});
+    vi.mocked(writeBoard).mockRejectedValueOnce(new Error('save unavailable'));
+    await expect(session.trash(true)).rejects.toThrow('저장 또는 충돌 해결');
+    expect(writeBoard).toHaveBeenCalledTimes(1);
+    expect(clearDraft).not.toHaveBeenCalled();
+    session.change(element(2), {} as AppState, {});
+    expect(session.elements).toEqual(element(2));
   });
 
   it('does not mark a newer edit saved when an older acknowledgement arrives', async () => {

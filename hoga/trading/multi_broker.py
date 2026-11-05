@@ -285,18 +285,11 @@ class BrokerTradingService:
                     raise TradingError(
                         409, "unresolved-order-exists", "이 계좌·종목의 불명확한 요청을 먼저 확인하세요."
                     )
-                route = (
-                    command.route
-                    if action == "create"
-                    else self.registry.resolve_order(order_ref, command.account_ref)[2]
-                )
-                if route not in account.routes:
-                    raise TradingError(
-                        409,
-                        "kiwoom-orders-disabled",
-                        account.blocked_reason or "이 계좌에서 지원하지 않는 주문 거래소입니다.",
-                    )
                 if action == "create":
+                    route = command.route
+                    if route not in account.routes:
+                        raise TradingError(409, "kiwoom-orders-disabled",
+                                           account.blocked_reason or "이 계좌에서 지원하지 않는 주문 거래소입니다.")
                     if not isinstance(command, CreateBrokerOrder):
                         raise TradingError(422, "invalid-command", "신규 주문 조건을 확인하세요.")
                     if command.order_type == "PREOPEN_CLOSE":
@@ -335,7 +328,7 @@ class BrokerTradingService:
 
                     date = datetime.now(KST).strftime("%Y%m%d")
                 else:
-                    native, date, route = self.registry.resolve_order(order_ref, command.account_ref)
+                    native, date = self.registry.resolve_identity(order_ref, command.account_ref)
                     from datetime import datetime  # noqa: PLC0415
 
                     from hoga.util.timeenc import KST  # noqa: PLC0415
@@ -348,6 +341,10 @@ class BrokerTradingService:
                         raise TradingError(
                             409, "order-not-editable", "주문 잔량과 정정·취소 상태를 다시 확인하세요."
                         )
+                    route = self.registry.resolve_order(order_ref, command.account_ref)[2]
+                    if route not in account.routes:
+                        raise TradingError(409, "kiwoom-orders-disabled",
+                                           account.blocked_reason or "이 계좌에서 지원하지 않는 주문 거래소입니다.")
                     target = order
                     adapter.validate_current(order)
                     for _, payload, state, prior in self.journal.scoped(command.account_ref, command.code):

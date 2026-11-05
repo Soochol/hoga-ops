@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import sqlite3
 from datetime import datetime, timedelta
@@ -199,6 +200,78 @@ def create(ref, cid="create-1", **extra):
     return CreateBrokerOrder(
         account_ref=ref, command_id=cid, code="005930", side="BUY", quantity=10, price=67200, route="KRX", **extra
     )
+
+
+def legacy_registry(path, account_ref, date, *, acknowledged=None):
+    raw = json.dumps([account_ref, date, "0000001"], separators=(",", ":")).encode()
+    ref = "ord_" + hashlib.sha256(raw).hexdigest()[:40]
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE orders (ref TEXT PRIMARY KEY, account_ref TEXT NOT NULL, "
+                   "native_id TEXT NOT NULL, trading_date TEXT NOT NULL, route TEXT NOT NULL)")
+        db.execute("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", (ref, account_ref, "0000001", date, "KRX"))
+        if acknowledged == "terms":
+            db.execute("CREATE TABLE order_terms (ref TEXT PRIMARY KEY, order_type TEXT NOT NULL, price TEXT)")
+            db.execute("INSERT INTO order_terms VALUES (?, 'LIMIT', '67200')", (ref,))
+        elif acknowledged == "lineage":
+            db.execute("CREATE TABLE lineage (ref TEXT PRIMARY KEY, parent_ref TEXT, root_native TEXT NOT NULL, "
+                       "action TEXT NOT NULL)")
+            db.execute("INSERT INTO lineage VALUES (?, NULL, '0000001', 'create')", (ref,))
+    return AccountRegistry(path), ref
+
+
+@pytest.mark.parametrize("action", ["modify", "cancel"])
+async def test_legacy_execution_route_is_reverified_before_direct_command(setup, tmp_path, action):
+    broker, _, adapter, service, _ = setup
+    date = datetime.now(KST).strftime("%Y%m%d")
+    registry, ref = legacy_registry(tmp_path / "legacy.sqlite3", adapter.account_ref, date)
+    adapter.registry = service.registry = registry
+    broker.opens = [open_order(route="SOR")]
+    command = (
+        ModifyBrokerOrder(account_ref=adapter.account_ref, code="005930", command_id="repair", price=67100)
+        if action == "modify"
+        else BrokerCommand(account_ref=adapter.account_ref, code="005930", command_id="repair")
+    )
+    await service.execute(command, action, ref)
+    assert len(broker.writes) == 1
+    assert json.loads(broker.writes[0].content)["dmst_stex_tp"] == "SOR"
+    restarted = AccountRegistry(registry.path)
+    assert restarted.resolve_order(ref, adapter.account_ref) == ("0000001", date, "SOR")
+    with pytest.raises(TradingError) as conflict:
+        restarted.order_ref(adapter.account_ref, "0000001", date, "KRX")
+    assert conflict.value.code == "order-route-conflict"
+    assert restarted.resolve_order(ref, adapter.account_ref)[2] == "SOR"
+
+
+@pytest.mark.parametrize("acknowledged", ["terms", "lineage"])
+async def test_legacy_acknowledged_route_still_rejects_conflicting_snapshot(setup, tmp_path, acknowledged):
+    broker, _, adapter, service, _ = setup
+    date = datetime.now(KST).strftime("%Y%m%d")
+    registry, ref = legacy_registry(
+        tmp_path / "acknowledged.sqlite3", adapter.account_ref, date, acknowledged=acknowledged
+    )
+    adapter.registry = service.registry = registry
+    broker.opens = [open_order(route="SOR")]
+    with pytest.raises(TradingError) as conflict:
+        await service.execute(
+            BrokerCommand(account_ref=adapter.account_ref, code="005930", command_id="conflict"), "cancel", ref
+        )
+    assert conflict.value.code == "order-route-conflict"
+    assert not broker.writes
+    assert registry.resolve_order(ref, adapter.account_ref)[2] == "KRX"
+    with pytest.raises(TradingError) as restarted_conflict:
+        AccountRegistry(registry.path).order_ref(adapter.account_ref, "0000001", date, "SOR")
+    assert restarted_conflict.value.code == "order-route-conflict"
+
+
+def test_legacy_route_is_unusable_until_a_canonical_order_is_observed(tmp_path):
+    registry, ref = legacy_registry(tmp_path / "unverified.sqlite3", "acc_fixture", "20261105")
+    assert registry.resolve_identity(ref, "acc_fixture") == ("0000001", "20261105")
+    with pytest.raises(TradingError) as unverified:
+        registry.resolve_order(ref, "acc_fixture")
+    assert unverified.value.code == "order-route-unverified"
+    with pytest.raises(TradingError) as foreign:
+        registry.resolve_identity(ref, "acc_foreign")
+    assert foreign.value.code == "order-context-mismatch"
 
 
 async def test_create_routes_exact_fields_with_durable_dedup_and_restart(setup):

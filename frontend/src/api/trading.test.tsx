@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { normalizeBrokerOrder, tradingCommand, useTradingAccounts, useTradingAccountList, useTradingState } from './trading';
 import { pauseTradingRefresh, scheduleTradingRefresh } from './tradingRefresh';
+import type { OrderStateResponse, TossOrder } from './trading';
 
 const mock = vi.hoisted(() => ({ call: vi.fn(), listeners: new Set<(event: { type: string; mode?: string }) => void>() }));
 vi.mock('./client', () => ({ apiCall: (...args: unknown[]) => mock.call(...args) }));
@@ -78,6 +79,38 @@ describe('broker-independent trading', () => {
 });
 
 describe('independent trading reads and refresh coordination', () => {
+  it.each(['symbol', 'account'])('remembers REST-only completion after it leaves the %s recent page', async surface => {
+    const original: TossOrder = { orderId: 'rest-completed', symbol: '005930', side: 'BUY', orderType: 'LIMIT', timeInForce: 'DAY',
+      status: 'PENDING', price: '67200', quantity: '100', orderAmount: null, currency: 'KRW', orderedAt: '', canceledAt: null,
+      execution: { filledQuantity: '0', filledAt: null, averageFilledPrice: null, filledAmount: null, commission: null, tax: null, settlementDate: null } };
+    let snapshot: OrderStateResponse = { ...orders, revision: 1, orders: [original] };
+    mock.call.mockImplementation((path: string) => Promise.resolve(path.includes('part=balances') ? balances : snapshot));
+    const { result } = renderHook(() => surface === 'symbol'
+      ? useTradingState(1, '005930', 'live') : useTradingAccountList(1, 'orders').orders, { wrapper });
+    await advance();
+    act(() => mock.listeners.forEach(listener => listener({ type: 'trading_order', mode: 'live', account_seq: 1,
+      revision: 2, order: original } as { type: string })));
+    await advance();
+    expect(result.current.data?.orders).toHaveLength(1);
+    const refresh = async () => {
+      await act(async () => { await client.invalidateQueries({ queryKey: ['trading', 'live', 'state', 1, 'orders'] }); });
+      await advance();
+    };
+    snapshot = { ...snapshot, revision: 3, orders: [], recent_orders: [{ ...original, status: 'CANCELED' }] };
+    await refresh();
+    expect(result.current.data?.orders).toHaveLength(0);
+    snapshot = { ...snapshot, revision: 4, recent_orders: [] };
+    await refresh();
+    expect(result.current.data?.orders).toHaveLength(0);
+    snapshot = { ...snapshot, revision: 1, orders: [original] };
+    await refresh();
+    expect(result.current.data?.orders).toHaveLength(0);
+    act(() => mock.listeners.forEach(listener => listener({ type: 'trading_order', mode: 'live', account_seq: 1,
+      revision: 5, order: original } as { type: string })));
+    await advance();
+    expect(result.current.data?.orders).toHaveLength(0);
+  });
+
   it('continues event display updates in all windows without REST reads during a write', async () => {
     const original = { orderId: 'a', symbol: '005930', side: 'BUY' as const, orderType: 'LIMIT', timeInForce: 'DAY',
       status: 'PARTIAL_FILLED', price: '67200', quantity: '100', orderAmount: null, currency: 'KRW', orderedAt: '', canceledAt: null,

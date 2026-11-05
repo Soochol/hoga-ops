@@ -22,7 +22,8 @@ class AccountRegistry:
             db.execute("CREATE TABLE IF NOT EXISTS bindings (credential TEXT PRIMARY KEY, account_ref TEXT NOT NULL)")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS orders (ref TEXT PRIMARY KEY, account_ref TEXT NOT NULL, "
-                "native_id TEXT NOT NULL, trading_date TEXT NOT NULL, route TEXT NOT NULL)"
+                "native_id TEXT NOT NULL, trading_date TEXT NOT NULL, route TEXT NOT NULL, "
+                "route_verified INTEGER NOT NULL DEFAULT 0)"
             )
             db.execute(
                 "CREATE TABLE IF NOT EXISTS lineage (ref TEXT PRIMARY KEY, parent_ref TEXT, "
@@ -31,6 +32,14 @@ class AccountRegistry:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS order_terms (ref TEXT PRIMARY KEY, order_type TEXT NOT NULL, price TEXT)"
             )
+            if "route_verified" not in {column[1] for column in db.execute("PRAGMA table_info(orders)")}:
+                db.execute("BEGIN IMMEDIATE")
+                if "route_verified" not in {column[1] for column in db.execute("PRAGMA table_info(orders)")}:
+                    db.execute("ALTER TABLE orders ADD COLUMN route_verified INTEGER NOT NULL DEFAULT 0")
+                    # Old rows have no writer provenance. Command ACK metadata is authoritative.
+                    db.execute("UPDATE orders SET route_verified=1 WHERE ref IN "
+                               "(SELECT ref FROM lineage UNION SELECT ref FROM order_terms)")
+                db.commit()
             yield db
 
     def remember_terms(self, ref: str, order_type: str, price: str | None) -> None:
@@ -53,26 +62,41 @@ class AccountRegistry:
             db.execute("INSERT OR IGNORE INTO bindings VALUES (?, ?)", (credential, account_ref))
         return account_ref
 
-    def order_ref(self, account_ref: str, native_id: str, trading_date: str, route: str) -> str:
+    @staticmethod
+    def order_identity(account_ref: str, native_id: str, trading_date: str) -> str:
         raw = json.dumps([account_ref, trading_date, native_id], separators=(",", ":"))
-        ref = "ord_" + hashlib.sha256(raw.encode()).hexdigest()[:40]
+        return "ord_" + hashlib.sha256(raw.encode()).hexdigest()[:40]
+
+    def order_ref(self, account_ref: str, native_id: str, trading_date: str, route: str) -> str:
+        ref = self.order_identity(account_ref, native_id, trading_date)
         with self.connect() as db:
             db.execute(
-                "INSERT OR IGNORE INTO orders VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO orders (ref, account_ref, native_id, trading_date, route, route_verified) "
+                "VALUES (?, ?, ?, ?, ?, 1)",
                 (ref, account_ref, native_id, trading_date, route),
             )
+            db.execute("UPDATE orders SET route=?, route_verified=1 WHERE ref=? AND route_verified=0", (route, ref))
             row = db.execute("SELECT route FROM orders WHERE ref=?", (ref,)).fetchone()
             if row and row[0] != route:
                 raise TradingError(409, "order-route-conflict", "주문 거래소 정보를 동기화 중입니다.")
         return ref
 
+    def resolve_identity(self, ref: str, account_ref: str) -> tuple[str, str]:
+        with self.connect() as db:
+            row = db.execute("SELECT account_ref, native_id, trading_date FROM orders WHERE ref=?", (ref,)).fetchone()
+        if not row or row[0] != account_ref:
+            raise TradingError(409, "order-context-mismatch", "선택 계좌의 주문만 변경할 수 있습니다.")
+        return row[1], row[2]
+
     def resolve_order(self, ref: str, account_ref: str) -> tuple[str, str, str]:
         with self.connect() as db:
             row = db.execute(
-                "SELECT account_ref, native_id, trading_date, route FROM orders WHERE ref=?", (ref,)
+                "SELECT account_ref, native_id, trading_date, route, route_verified FROM orders WHERE ref=?", (ref,)
             ).fetchone()
         if not row or row[0] != account_ref:
             raise TradingError(409, "order-context-mismatch", "선택 계좌의 주문만 변경할 수 있습니다.")
+        if not row[4]:
+            raise TradingError(409, "order-route-unverified", "주문 거래소 정보를 다시 조회해 주세요.")
         return row[1], row[2], row[3]
 
     def remember_lineage(self, ref: str, parent_ref: str | None, root_native: str, action: str) -> None:

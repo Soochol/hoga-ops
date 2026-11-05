@@ -15,6 +15,7 @@ from hoga.trading.chart_executions import ExecutionHistory, parse_execution
 from hoga.trading.kiwoom import KiwoomAccountGateway, KiwoomTradingAdapter
 from hoga.trading.multi_broker import BrokerTradingService
 from hoga.trading.service import TradingService
+from hoga.trading.toss import TradingError
 from hoga.util.timeenc import KST
 
 
@@ -96,6 +97,33 @@ async def test_http_preserves_individual_fills_and_cursor_scope_and_restart(hist
     restored = await api.get("/api/trading/v2/executions", params=params)
     assert len(restored.json()["rows"]) == 3
     assert restored.json()["next_cursor"] is None
+
+
+@pytest.mark.parametrize(("route", "venue"), [("SOR", "KRX"), ("SOR", "NXT"), ("KRX", ""), ("NXT", "")])
+@pytest.mark.parametrize("execution_first", [False, True])
+async def test_execution_venue_never_registers_or_changes_order_routing(history, route, venue, execution_first):
+    api, adapter, _, _, pages = history
+    pages[""] = ([fill(dmst_stex_tp=venue)], None)
+    raw_order = {"ord_no": "0000050", "stk_cd": "005930", "ord_qty": "100", "oso_qty": "90",
+                 "ord_pric": "72300", "ord_stt": "체결", "cntr_qty": "10", "io_tp_nm": "매수",
+                 "stex_tp_txt": route, "sor_yn": "Y" if route == "SOR" else "N"}
+    if not execution_first:
+        order = adapter.parse_order(raw_order, "20261019")
+    response = await api.get("/api/trading/v2/executions", params={
+        "account_ref": adapter.account_ref, "code": "005930", "date": "20261019"})
+    assert response.status_code == 200, response.text
+    execution = response.json()["rows"][0]
+    if execution_first:
+        with adapter.registry.connect() as db:
+            assert db.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 0
+        order = adapter.parse_order(raw_order, "20261019")
+    assert execution["order_ref"] == order.order_ref
+    assert execution["venue"] == (venue or None)
+    assert adapter.registry.resolve_order(order.order_ref, adapter.account_ref)[2] == route
+    with pytest.raises(TradingError) as conflict:
+        adapter.registry.order_ref(adapter.account_ref, "0000050", "20261019", "NXT" if route != "NXT" else "KRX")
+    assert conflict.value.code == "order-route-conflict"
+    assert adapter.registry.resolve_order(order.order_ref, adapter.account_ref)[2] == route
 
 
 @pytest.mark.parametrize("patch", [

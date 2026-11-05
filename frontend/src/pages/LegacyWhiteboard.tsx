@@ -302,7 +302,7 @@ export default function Whiteboard() {
                   className="wb-name"
                   value={save.name}
                   maxLength={120}
-                  disabled={isDeleted || busy}
+                  disabled={isDeleted || busy || save.lifecycle !== 'active'}
                   onChange={(event) => session.rename(event.target.value)}
                   onBlur={() => session.rename(save.name.trim() || '새 보드')}
                 />
@@ -474,6 +474,7 @@ export default function Whiteboard() {
                 <BoardEditor
                   key={session.document.id}
                   session={session}
+                  viewOnly={save?.lifecycle !== 'active'}
                   onReady={(handle) => {
                     editor.current = handle;
                     const token = params.get('transfer');
