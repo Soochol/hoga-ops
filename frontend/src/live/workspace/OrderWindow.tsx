@@ -53,7 +53,6 @@ import { WindowSettingsPopover } from './WindowSettingsPopover';
 import { useOrderQuantity } from './useOrderQuantity';
 import { useCreateOrders, type CreateOrderRecord } from './useCreateOrders';
 import { orderPriceRange } from './orderPriceRange';
-import { orderDisplayRows } from './orderDisplayRows';
 import { useOrderPriceExplorer } from './useOrderPriceExplorer';
 import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
 import { OrderStatusBar, type OrderReceipt } from './OrderStatusBar';
@@ -66,7 +65,6 @@ import { BookTradeList } from './BookTradeList';
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
 const accountDisplayLabel = (label?: string) => label?.replace(' · 실전 ·', ' ·') ?? '계좌 연결 대기';
 const EMPTY_ORDERS: TossOrder[] = [];
-const TERMINAL_ORDER_STATUSES = new Set(['FILLED', 'CANCELED', 'REPLACED', 'REJECTED', 'EXPIRED', 'CANCEL_REJECTED', 'REPLACE_REJECTED']);
 const UNRESOLVED_NOTICE: OrderNotice = {
   title: '주문 결과 확인 필요', message: '결과가 불명확한 요청이 있습니다. 해당 증권사의 주문·체결 내역을 확인하세요.',
   tone: 'error', persistent: true,
@@ -206,7 +204,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number; preopen?: boolean; source?: boolean } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number; preopen?: boolean } | null>(null);
   const closeMenu = useCallback(() => setContextMenu(null), []);
   const [noticeState, setNoticeState] = useState<(OrderNotice & { account: TradingAccountId }) | null>(null);
   const [cancelFailures, setCancelFailures] = useState<CancelFailure[]>([]);
@@ -323,19 +321,13 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const latestOrders = useRef(orders);
   useLayoutEffect(() => { latestOrders.current = orders; }, [orders]);
   const groups = useMemo(() => groupPriceOrders(orders), [orders]);
-  const sourceOrders = useMemo(() => orders.filter(order => {
-    const price = Number(order.price), remainder = orderRemainder(order);
-    return order.symbol === code && order.orderType === 'LIMIT' && !TERMINAL_ORDER_STATUSES.has(order.status)
-      && Number.isSafeInteger(price) && price > 0 && Number.isSafeInteger(remainder) && remainder > 0;
-  }), [orders, code]);
-  const sourceGroups = useMemo(() => groupPriceOrders(sourceOrders), [sourceOrders]);
   const sideOrders = useMemo(() => {
     const active = orders.filter(order => order.symbol === code && orderRemainder(order) > 0);
     return { SELL: active.filter(order => order.side === 'SELL'), BUY: active.filter(order => order.side === 'BUY') };
   }, [orders, code]);
   const contextOrders = contextMenu?.side
     ? contextMenu.preopen ? allOrders.filter(order => order.orderType === 'PREOPEN_CLOSE' && order.side === contextMenu.side)
-    : contextMenu.price == null ? sideOrders[contextMenu.side] : (contextMenu.source ? sourceGroups : groups).get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
+    : contextMenu.price == null ? sideOrders[contextMenu.side] : groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
     : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = !restBook && bookFresh;
@@ -359,11 +351,11 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const preopenCreationIssue = newOrderIssue(preopenAvailability);
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
   const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
-  const { askSlots, bidSlots } = orderDisplayRows({ asks, bids,
-    ownPrices: sourceOrders.map(order => ({ price: Number(order.price), side: order.side })) });
+  const askSlots = [...Array<null>(10 - asks.length).fill(null), ...asks];
+  const bidSlots = [...bids, ...Array<null>(10 - bids.length).fill(null)];
   const displayRows = [...askSlots, ...bidSlots];
   const displayedPrices = displayRows.flatMap(row => row ? [{ price: row.price }] : []);
-  const displaySignature = displayRows.map(row => row ? `${row.kind}:${row.price}` : '_').join('|');
+  const displaySignature = displayRows.map(row => row ? `${row.price}` : '_').join('|');
   const masterSymbol = symbols.data?.symbols.find(symbol => symbol.code === code);
   const securityType = masterSymbol?.security_type ?? 'stock';
   const currentLimits = limits.data?.code === code && realMsToYyyymmdd(limits.data.fetched_at_ms) === todayKst;
@@ -408,7 +400,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     ? fmt(Math.ceil(averagePrice)) : '';
   const averageMarker = preferences.showAveragePrice
     ? holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen, securityType) : { price: null, outside: false };
-  const averageMarkerSlot = displayRows.findIndex(row => row?.kind === 'market' && row.price === averageMarker.price);
+  const averageMarkerSlot = displayRows.findIndex(row => row?.price === averageMarker.price);
   const [averageWhole, averageFraction] = (state.data?.average_purchase_price ?? '').split('.');
   const averagePriceText = averageWhole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (averageFraction ? `.${averageFraction}` : '');
   const averageMarkerLabel = averageMarker.price == null ? '' : `내 평단가 ${averagePriceText}원${
@@ -748,17 +740,16 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       quantity: targets.reduce((sum, order) => sum + orderRemainder(order), 0), batch: targets.map(order => ({ order, base: base() })), keepOrderList });
   }
 
-  function orderCell(side: TradingSide, price: number, rowKey: string, source = false) {
-    const group = (source ? sourceGroups : groups).get(`${side}:${price}`) ?? [];
-    if (source && !group.length) return <div />;
+  function orderCell(side: TradingSide, price: number, rowKey: string) {
+    const group = groups.get(`${side}:${price}`) ?? [];
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
     const canCreate = !exclusiveBusy && !cancelling.size && !creationIssue && price > 0;
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
-      data-order-side={source ? undefined : side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 ${source ? '미체결 주문' : `주문 추가 ${rowKey}`}`}
-      aria-disabled={source ? !canDrag : !canCreate && !canDrag}
-      onDoubleClick={source ? undefined : () => { if (!suppressClick.current) create(side, price); }}
-      onKeyDown={source ? undefined : event => {
+      data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
+      aria-disabled={!canCreate && !canDrag}
+      onDoubleClick={() => { if (!suppressClick.current) create(side, price); }}
+      onKeyDown={event => {
         if (creationIssue && !event.repeat && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault(); create(side, price);
         }
@@ -767,7 +758,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       onContextMenu={e => {
         if (!group.length) return;
         e.preventDefault(); e.stopPropagation();
-        if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY, side, price, source });
+        if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY, side, price });
       }}>
       {group.length > 0 && <span className={`order-quantity ${!canDrag ? 'order-quantity-blocked' : ''} ${draggingOrders.some(order => group.some(item => item.orderId === order.orderId)) ? 'order-chip-dragging' : ''}`}
         aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문${group.length > 1 ? ' 합계' : ''}`}
@@ -1025,15 +1016,15 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           </div>;
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
           return <div className={`order-row ${firstBid ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}>
-            {orderCell('SELL', level.price, key, level.kind === 'source')}
-            {isAsk ? level.kind === 'market' ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div> : <div />
+            {orderCell('SELL', level.price, key)}
+            {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div>
               : info}
             <div className={`order-price book-price-line ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value book-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
               {slot === averageMarkerSlot && <TextTooltip text={averageMarkerLabel}><span className="order-average-marker" role="img" aria-label={averageMarkerLabel} /></TextTooltip>}
-              {level.kind === 'market' ? <BookPriceAmount price={level.price} qty={level.qty} /> : fmt(level.price)}</span>{preferences.showPriceChangePercent && <small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small>}</div>
+              <BookPriceAmount price={level.price} qty={level.qty} /></span>{preferences.showPriceChangePercent && <small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small>}</div>
             {isAsk ? <div className="order-summary-slot" />
-              : level.kind === 'market' ? <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div> : <div />}
-            {orderCell('BUY', level.price, key, level.kind === 'source')}
+              : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><BookAmountTooltip price={level.price} qty={level.qty} className="order-depth-qty">{fmt(level.qty)}</BookAmountTooltip></span></div>}
+            {orderCell('BUY', level.price, key)}
           </div>;
         })}
         {showInlineSummary && displayedPrices.length > 0 && <div ref={setSummaryProbe} className="order-summary-layer">{renderSummary(240)}</div>}
