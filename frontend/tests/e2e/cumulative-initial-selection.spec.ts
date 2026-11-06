@@ -23,6 +23,15 @@ async function state(page: Page) {
     })), range: chart.timeScale().getVisibleLogicalRange() };
   });
 }
+async function waitForCumulative(page: Page, institutionStep: number) {
+  await expect.poll(async () => {
+    const snapshot = await state(page);
+    const count = snapshot.series.find(s => s.type === 'Candlestick')?.count ?? 0;
+    const lines = snapshot.series.filter(s => s.type === 'Line').map(s => s.values);
+    return count > 100 && [institutionStep, -50].every(step => lines.some(values => values.length === count
+      && values.every((value, index) => value === index * step)));
+  }).toBe(true);
+}
 
 test('watchlist selection completes cumulative history without a candle prepend, then restores A-B-A', async ({ page }, info) => {
   await page.setViewportSize({ width: 1600, height: 1100 });
@@ -71,15 +80,17 @@ test('watchlist selection completes cumulative history without a candle prepend,
   await add(page, '외국인 누적 순매수');
   const institution = page.getByTestId('pane-legend-rows-institution-cumulative');
   const foreign = page.getByTestId('pane-legend-rows-foreign-cumulative');
-  await expect(institution).toContainText('조회 완료');
+  await waitForCumulative(page, 200);
   const a = await state(page);
   const panel = page.getByTestId('watchlist-panel');
   if (!await panel.isVisible()) await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
   await panel.getByTestId('watchlist-row-000660').click();
   await expect.poll(() => requests.filter(r => r.kind === 'investor-daily-flow' && r.code === '000660').length).toBeGreaterThan(0);
   await page.screenshot({ path: info.outputPath('initial-selection.png') });
-  await expect(institution).toContainText('조회 완료');
-  await expect(foreign).toContainText('조회 완료');
+  await waitForCumulative(page, 100);
+  await expect(institution.getByRole('status')).toHaveCount(0);
+  await expect(foreign.getByRole('status')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '누적 자료 계속 조회·재시도' })).toHaveCount(0);
   await expect(institution).not.toContainText('누적 기준');
   await expect(foreign).not.toContainText('누적 기준');
   await expect(institution).not.toContainText('실제 보유잔고');
@@ -94,19 +105,18 @@ test('watchlist selection completes cumulative history without a candle prepend,
   expect(new Set(requests.filter(r => r.kind === 'investor-daily-flow' && r.code === '000660').map(r => r.from)).size).toBe(1);
   expect(requests.filter(r => r.kind === 'past-daily-candles' && r.code === '000660')).toHaveLength(1);
   await panel.getByTestId('watchlist-row-098460').click();
-  await expect(institution).toContainText('조회 완료');
+  await waitForCumulative(page, 200);
   await expect.poll(async () => (await state(page)).series.filter(s => s.type === 'Line').map(s => s.values)).toEqual(a.series.filter(s => s.type === 'Line').map(s => s.values));
   await panel.getByTestId('watchlist-row-005930').click();
   await expect.poll(() => lateStarted).toBe(true);
   await panel.getByTestId('watchlist-row-098460').click();
-  await expect(institution).toContainText('조회 완료');
+  await waitForCumulative(page, 200);
   releaseLate();
   await expect.poll(() => lateFinished).toBe(true);
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect.poll(async () => (await state(page)).series.filter(s => s.type === 'Line').map(s => s.values)).toEqual(a.series.filter(s => s.type === 'Line').map(s => s.values));
   await page.reload();
-  await expect(institution).toContainText('조회 완료');
-  await expect(foreign).toContainText('조회 완료');
+  await waitForCumulative(page, 200);
   await page.screenshot({ path: info.outputPath('restored.png') });
   await info.attach('requests-and-series', { body: JSON.stringify({ a, b, restored: await state(page), requests }), contentType: 'application/json' });
 });

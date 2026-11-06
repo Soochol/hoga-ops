@@ -1504,7 +1504,7 @@ function PaneLegendOverlay({
                       // MA 계열만 가로 축약 대상 — 칩이 최대 8개까지 늘어나는 유일한
                       // 행이다(global.css `.legend-row-ma`).
                       className={row.kind === 'ma' || row.kind === 'daily-ma' ? 'legend-row-ma' : undefined}
-                      style={row.paneId === 'investor-holdings' || (row.paneId === 'institution-cumulative' || row.paneId === 'foreign-cumulative') ? { ...boxStyle, flexWrap: 'wrap', whiteSpace: 'normal' } : boxStyle}
+                      style={row.paneId === 'investor-holdings' ? { ...boxStyle, flexWrap: 'wrap', whiteSpace: 'normal' } : boxStyle}
                     >
                       {row.kind === 'ohlc' ? (
                         <OhlcLegendRow row={row} code={code} />
@@ -1517,11 +1517,11 @@ function PaneLegendOverlay({
                       ) : (
                         <CellsLegendRow nameLabel={paneDisplayName(row.paneId)} row={row} timeframe={timeframe} nameControl={nameControl} />
                       )}
-                      {(row.paneId === 'investor-holdings' || (row.paneId === 'institution-cumulative' || row.paneId === 'foreign-cumulative')) && <div className="flex basis-full flex-wrap items-center gap-1 text-xs text-fg-dim">
+                      {row.paneId === 'investor-holdings' && <div className="flex basis-full flex-wrap items-center gap-1 text-xs text-fg-dim">
                         <span role="status">{legendPanes.get(row.paneId)?.[0]?.meta.notice}</span>
-                        <button type="button" aria-label={(row.paneId === 'institution-cumulative' || row.paneId === 'foreign-cumulative') ? '누적 자료 계속 조회·재시도' : '보유 자료 다시 조회'} className="shrink-0 rounded border border-border px-1 text-xs text-fg-dim"
+                        <button type="button" aria-label="보유 자료 다시 조회" className="shrink-0 rounded border border-border px-1 text-xs text-fg-dim"
                           style={{ pointerEvents: 'auto' }} disabled={!legendPanes.get(row.paneId)?.[0]?.meta.retry}
-                          onClick={() => legendPanes.get(row.paneId)?.[0]?.meta.retry?.()}>{(row.paneId === 'institution-cumulative' || row.paneId === 'foreign-cumulative') ? '계속 조회·재시도' : '다시 조회'}</button>
+                          onClick={() => legendPanes.get(row.paneId)?.[0]?.meta.retry?.()}>다시 조회</button>
                       </div>}
                       {row.paneId === 'program-daily' && (dailyProgramStatus === 'error' || dailyProgramStatus === 'partial') && (
                         <button type="button" aria-label="프로그램매매 오류 상세" className="ml-2 rounded border border-border px-1 text-xs text-warn"
