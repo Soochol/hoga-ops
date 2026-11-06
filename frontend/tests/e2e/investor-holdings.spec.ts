@@ -7,8 +7,9 @@ import { apiExact } from './helpers/apiRoutes';
 import { hoverSyncChart, installSyncWorkspace, loadSyncDriver, syncBus, verifySyncChart, type SyncFixtures, type SyncWindow } from './helpers/tooltipCrosshair';
 import { formatKoreanK } from '../../src/util/koreanNumber';
 
+type HoldingsMode = 'normal' | 'error' | 'wrong-code' | 'soft-empty' | 'soft-unavailable' | 'complete-empty' | 'explicit-null';
 type ChartWindow = Window & { __liveCharts: Map<string, IChartApi> };
-const label = '외국인·기관 보유';
+const label = '외국인 보유';
 const preview = resolve(process.cwd(), '../.audit/preview');
 const days = Array.from({ length: 80 }, (_, i) => Date.UTC(2026, 1, 5 + i)).filter(t => ![0, 6].includes(new Date(t).getUTCDay()));
 const candles = days.map((t_ms, i) => ({ t_ms, open: 35000 + i * 25, high: 35300 + i * 25,
@@ -50,7 +51,7 @@ async function hoverVisibleHolding(page: Page) {
   await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
   return index;
 }
-async function setup(page: Page, requests: string[], mode: { value: 'normal' | 'error' | 'wrong-code' }) {
+async function setup(page: Page, requests: string[], mode: { value: HoldingsMode }) {
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.clock.setFixedTime(new Date('2026-05-28T17:00:00+09:00'));
   await installLiveMocks(page);
@@ -65,10 +66,11 @@ async function setup(page: Page, requests: string[], mode: { value: 'normal' | '
     if (mode.value === 'error') return r.fulfill({ status: 503, json: { detail: 'synthetic unavailable' } });
     const p = new URL(r.request().url()).searchParams;
     return r.fulfill({ json: { code: mode.value === 'wrong-code' ? '005930' : p.get('code'), from: p.get('from'), to: p.get('to'),
-      source: 'kiwoom_ka10008', provider_scope: 'KRX', institution_supported: false, observations,
+      source: 'kiwoom_ka10008', provider_scope: 'KRX', institution_supported: false,
+      observations: mode.value.startsWith('soft-') || mode.value === 'complete-empty' ? [] : mode.value === 'explicit-null' ? observations.map(point => ({ ...point, quantity_shares: null, ratio_pct: null })) : observations,
       oldest_observed_date: observations[0].date, latest_observed_date: observations.at(-1)!.date,
-      pages_observed: 2, pagination_complete: false, exhausted: false, partial: true,
-      data_warnings: [{ reason: 'page_budget', message: '합성 경계 자료 · 조회 범위 일부' }] } });
+      pages_observed: 2, pagination_complete: mode.value === 'complete-empty', exhausted: mode.value === 'complete-empty', partial: mode.value !== 'complete-empty',
+      data_warnings: mode.value === 'complete-empty' ? [] : mode.value.startsWith('soft-') ? [{ reason: mode.value === 'soft-unavailable' ? 'unavailable' : 'api_error', message: '합성 응답 · 자료 조회 미완료' }] : [{ reason: 'page_budget', message: '합성 경계 자료 · 조회 범위 일부' }] } });
   });
   await page.goto('/live?code=098460');
   await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
@@ -87,7 +89,7 @@ test('actual holdings units, gaps, independent instances, styles and saved setti
   page.on('pageerror', error => errors.push(error.message));
   await setup(page, requests, { value: 'normal' });
   const panel = page.getByTestId('indicator-panel-shell');
-  await expect(panel.getByRole('switch', { name: '보유 기관 표시 · 미지원' })).toBeDisabled();
+  await expect(panel.getByRole('switch', { name: '보유 기관 표시 · 미지원' })).toHaveCount(0);
   await panel.getByRole('button', { name: '설정대로 추가', exact: true }).click();
   await panel.getByRole('combobox', { name: '보유 공통 선 두께' }).selectOption('3');
   await panel.getByRole('button', { name: '보유 외국인 선택' }).click();
@@ -198,7 +200,7 @@ test('actual holdings units, gaps, independent instances, styles and saved setti
 
 test('failed or mismatched responses never borrow holdings, unsupported assets never query', async ({ page }) => {
   const requests: string[] = [];
-  const mode: { value: 'normal' | 'error' | 'wrong-code' } = { value: 'wrong-code' };
+  const mode: { value: HoldingsMode } = { value: 'wrong-code' };
   await setup(page, requests, mode);
   const panel = page.getByTestId('indicator-panel-shell');
   await panel.getByRole('button', { name: '설정대로 추가', exact: true }).click();
@@ -261,12 +263,12 @@ test('holdings exact-date legends sync between independent units and survive res
   const valid = observations.find(point => point.t_ms === candles[validIndex].t_ms)!;
   for (const resized of [false, true]) {
     if (resized) await page.setViewportSize({ width: 1600, height: 1000 });
-    await hoverSyncChart(page, windows[0], 0, false, candles[validIndex].t_ms);
+    await expect.poll(async () => { await hoverSyncChart(page, windows[0], 0, false, candles[validIndex].t_ms); return (await syncBus(page)).ms; }).toBe(candles[validIndex].t_ms);
     await expect.poll(async () => (await syncBus(page)).origin?.windowId).toBe('s');
     expect((await syncBus(page)).origin).toMatchObject({ group: 1, code: '098460', timeframe: 'D' });
     await expect(source).toContainText(`외국인(주)${formatKoreanK(valid.quantity_shares)}주`);
     await expect(target).toContainText(`외국인(%)${valid.ratio_pct.toFixed(2)}%`);
-    await hoverSyncChart(page, windows[0], 0, false, candles[35].t_ms);
+    await expect.poll(async () => { await hoverSyncChart(page, windows[0], 0, false, candles[35].t_ms); return (await syncBus(page)).ms; }).toBe(candles[35].t_ms);
     await expect(source).toContainText('외국인(주)—');
     await expect(target).toContainText('외국인(%)—');
   }
@@ -275,8 +277,40 @@ test('holdings exact-date legends sync between independent units and survive res
   for (const win of windows) await verifySyncChart(page, win);
   await expect(source).toContainText('외국인(주)');
   await expect(target).toContainText('외국인(%)');
-  await hoverSyncChart(page, windows[0], 0, false, candles[validIndex].t_ms);
+  await expect.poll(async () => { await hoverSyncChart(page, windows[0], 0, false, candles[validIndex].t_ms); return (await syncBus(page)).ms; }).toBe(candles[validIndex].t_ms);
   await expect.poll(async () => (await syncBus(page)).origin?.windowId).toBe('s');
   await expect(source).toContainText(`외국인(주)${formatKoreanK(valid.quantity_shares)}주`);
   await expect(target).toContainText(`외국인(%)${valid.ratio_pct.toFixed(2)}%`);
+});
+
+
+test('soft empty responses retain known holdings, complete empty and dated nulls replace them', async ({ page }) => {
+  const requests: string[] = [];
+  const mode: { value: HoldingsMode } = { value: 'normal' };
+  await setup(page, requests, mode);
+  const panel = page.getByTestId('indicator-panel-shell');
+  await panel.getByRole('button', { name: '설정대로 추가', exact: true }).click();
+  await panel.getByRole('button', { name: '닫기', exact: true }).click();
+  const legend = page.getByTestId('pane-legend-rows-investor-holdings');
+  await expect.poll(async () => (await holdingsLines(page))[0].data.filter(point => 'value' in point).length).toBe(observations.length);
+  const values = async () => (await holdingsLines(page))[0].data.filter(point => 'value' in point).map(point => 'value' in point ? point.value : null);
+  const known = await values();
+  for (const value of ['soft-empty', 'soft-unavailable'] as const) {
+    mode.value = value;
+    await legend.getByRole('button', { name: '보유 자료 다시 조회' }).click();
+    await expect(legend).toContainText('합성 응답 · 자료 조회 미완료');
+    await expect(legend).toContainText('확인된 자료 유지');
+    await expect(legend).not.toContainText('해당 구간 자료 없음');
+    expect(await values()).toEqual(known);
+  }
+  mode.value = 'explicit-null';
+  await legend.getByRole('button', { name: '보유 자료 다시 조회' }).click();
+  await expect.poll(values).toEqual([]);
+  mode.value = 'normal';
+  await legend.getByRole('button', { name: '보유 자료 다시 조회' }).click();
+  await expect.poll(values).toEqual(known);
+  mode.value = 'complete-empty';
+  await legend.getByRole('button', { name: '보유 자료 다시 조회' }).click();
+  await expect(legend).toContainText('해당 구간 자료 없음');
+  await expect.poll(values).toEqual([]);
 });

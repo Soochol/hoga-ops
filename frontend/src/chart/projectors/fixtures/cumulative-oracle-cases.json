@@ -1,0 +1,119 @@
+{
+  "convention": "first valid loaded observation zero; no automatic restart after a gap",
+  "cases": [
+    {
+      "name": "initial",
+      "dates": [
+        "20260105",
+        "20260106",
+        "20260107"
+      ],
+      "observed": [
+        100,
+        20,
+        -5
+      ],
+      "expected": [
+        0,
+        20,
+        15
+      ]
+    },
+    {
+      "name": "prepend",
+      "dates": [
+        "20260102",
+        "20260105",
+        "20260106",
+        "20260107"
+      ],
+      "observed": [
+        -10,
+        100,
+        20,
+        -5
+      ],
+      "expected": [
+        0,
+        100,
+        120,
+        115
+      ]
+    },
+    {
+      "name": "explicit-zero",
+      "dates": [
+        "20260105",
+        "20260106",
+        "20260107"
+      ],
+      "observed": [
+        300,
+        0,
+        -25
+      ],
+      "expected": [
+        0,
+        0,
+        -25
+      ]
+    },
+    {
+      "name": "gap-taints-suffix",
+      "dates": [
+        "20260105",
+        "20260106",
+        "20260107",
+        "20260108"
+      ],
+      "observed": [
+        100,
+        20,
+        null,
+        50
+      ],
+      "expected": [
+        0,
+        20,
+        null,
+        null
+      ]
+    },
+    {
+      "name": "oldest-invalid",
+      "dates": [
+        "20260105",
+        "20260106",
+        "20260107"
+      ],
+      "observed": [
+        null,
+        20,
+        -5
+      ],
+      "expected": [
+        null,
+        0,
+        -5
+      ]
+    },
+    {
+      "name": "correction-replaces",
+      "dates": [
+        "20260105",
+        "20260106",
+        "20260107"
+      ],
+      "observed": [
+        100,
+        30,
+        -5
+      ],
+      "expected": [
+        0,
+        30,
+        25
+      ]
+    }
+  ]
+}

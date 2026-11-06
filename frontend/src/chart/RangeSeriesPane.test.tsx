@@ -603,3 +603,30 @@ describe('RangeSeriesPane — 재생성 후 데이터 재푸시', () => {
     expect(everySeriesHasData(panes)).toBe(true);
   });
 });
+
+it('publishes current pane metadata after data, replaces callbacks without recreating series, and stops after teardown', () => {
+  const { chart, created, addSeries, removeSeries } = makeChart();
+  const spec: PaneSpec = { ...SPEC, name: 'institution-cumulative', series: SPEC.series.map(series => ({ ...series, legend: { label: '기관 누적 순매수(주)' } })) };
+  const first = vi.fn((name: string) => {
+    expect(name).toBe('institution-cumulative');
+    expect(created[0].setData).toHaveBeenCalledTimes(1);
+  });
+  const second = vi.fn();
+  const gone = vi.fn();
+  const { rerender, unmount } = render(<RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} precedingPaneKey="candle" spec={spec} onDataCommitted={first} onLegendGone={gone} />);
+  expect(first).toHaveBeenCalledTimes(1);
+  rerender(<RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} precedingPaneKey="candle" spec={spec} onDataCommitted={second} onLegendGone={gone} />);
+  expect(first).toHaveBeenCalledTimes(1);
+  expect(second).toHaveBeenCalledTimes(1);
+  expect(second.mock.calls[0][0]).toBe('institution-cumulative');
+  expect(addSeries).toHaveBeenCalledTimes(1);
+  const other = { ...spec, name: 'foreign-cumulative' };
+  rerender(<RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} precedingPaneKey="candle" spec={other} onDataCommitted={second} onLegendGone={gone} />);
+  expect(second.mock.calls.at(-1)?.[0]).toBe('foreign-cumulative');
+  expect(gone).toHaveBeenCalledWith('institution-cumulative');
+  const calls = second.mock.calls.length;
+  unmount();
+  expect(removeSeries).toHaveBeenCalledTimes(2);
+  expect(gone).toHaveBeenLastCalledWith('foreign-cumulative');
+  expect(second).toHaveBeenCalledTimes(calls);
+});

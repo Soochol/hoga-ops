@@ -5,8 +5,8 @@ import {
 } from './presetFlags';
 
 describe('PRESET_INDICATOR_FLAG_KEYS', () => {
-  it('covers the 11 overlay enables + 10 pane toggles (21 enable keys)', () => {
-    expect(PRESET_INDICATOR_FLAG_KEYS).toHaveLength(21);
+  it('covers the 11 overlay enables + 12 pane toggles (23 enable keys)', () => {
+    expect(PRESET_INDICATOR_FLAG_KEYS).toHaveLength(23);
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('movingAverageEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('depthHeatmapEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('envelopeEnabled');

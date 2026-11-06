@@ -103,6 +103,8 @@ const ALL_ON: PaneToggles = {
   dailyProgramEnabled: true,
   foreignNet: true,
   investorNetLineEnabled: true,
+  foreignCumulativeEnabled: true,
+  institutionCumulativeEnabled: true,
   investorHoldingsEnabled: true,
   institutionNet: true,
   peakWallPaneEnabled: true,

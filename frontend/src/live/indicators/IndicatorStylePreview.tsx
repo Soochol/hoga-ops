@@ -69,6 +69,8 @@ function previewLines(category: CategoryId, s: IndicatorSettings, cumulative: bo
       width: s.supertrendLineWidth, values: points.map(p => p?.direction === direction ? p.value : null),
     })).filter((_, i) => lineVisible(s.indicatorLineVisibility, i ? 'supertrendDown' : 'supertrendUp'));
   }
+  if (category === 'foreign-cumulative') return [{ label: '외국인 누적 순매수(주)', color: s.foreignCumulativeColor, width: s.foreignCumulativeWidth, values: DISPLAY.map((_, i) => Math.sin(i * .15) * 12) }].filter(() => lineVisible(s.indicatorLineVisibility, 'foreignCumulative'));
+  if (category === 'institution-cumulative') return [{ label: '기관 누적 순매수(주)', color: s.institutionCumulativeColor, width: s.institutionCumulativeWidth, values: DISPLAY.map((_, i) => Math.sin(i * .15) * 12) }].filter(() => lineVisible(s.indicatorLineVisibility, 'institutionCumulative'));
   if (category === 'investor-holdings') return [{ label: '외국인', color: s.investorHoldingsForeignColor, width: s.investorHoldingsWidth, values: DISPLAY.map((_, i) => 100 + Math.sin(i * .3) * 12) }].filter(() => lineVisible(s.indicatorLineVisibility, 'investorHoldingsForeign'));
   if (category === 'investor-net-line') return [
     { key: 'investorNetLineForeign', label: '외국인', color: s.investorNetLineForeignColor, width: s.investorNetLineWidth, values: DISPLAY.map((_, i) => 100 + Math.sin(i * .3) * 12) },

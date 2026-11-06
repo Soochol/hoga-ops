@@ -68,6 +68,12 @@ describe('mergeLiveIndicatorPrefs', () => {
       foreignTradeSide: 'net',
       institutionTradeSide: 'net',
       institutionNetEnabled: false,
+      foreignCumulativeEnabled: false,
+      institutionCumulativeEnabled: false,
+      foreignCumulativeColor: '#22D3EE',
+      institutionCumulativeColor: '#EC4899',
+      foreignCumulativeWidth: 2,
+      institutionCumulativeWidth: 2,
       investorHoldingsEnabled: false,
       investorHoldingsMetric: 'quantity',
       investorHoldingsForeignColor: '#EC4899',
@@ -162,7 +168,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       panePrefsByTimeframe: {},
       paneOrder: [
         'candle', 'volume', 'trade-value', 'quote-totals', 'peak-wall', 'ratio',
-        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
+        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings', 'foreign-cumulative', 'institution-cumulative',
       ],
       paneStretch: {},
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
@@ -328,7 +334,7 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
   it('defaults paneOrder to the canonical order with candle first', () => {
     expect(mergeLiveIndicatorPrefs(undefined).paneOrder).toEqual([
       'candle', 'volume', 'trade-value', 'quote-totals', 'peak-wall', 'ratio',
-      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
+      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings', 'foreign-cumulative', 'institution-cumulative',
     ]);
   });
 
@@ -336,7 +342,7 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
     const m = mergeLiveIndicatorPrefs({ paneOrder: ['ratio', 'bogus', 'candle', 'volume'] } as never);
     expect(m.paneOrder).toEqual([
       'candle', 'ratio', 'volume',
-      'trade-value', 'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
+      'trade-value', 'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings', 'foreign-cumulative', 'institution-cumulative',
     ]);
   });
 });

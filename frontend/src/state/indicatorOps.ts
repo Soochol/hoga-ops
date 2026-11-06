@@ -521,6 +521,18 @@ export const INDICATOR_OPS = {
     if (next.envelopeLineWidth !== undefined && ![1, 2, 3, 4].includes(next.envelopeLineWidth)) return null;
     return next;
   },
+  setForeignCumulativeSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
+    'foreignCumulativeColor' | 'foreignCumulativeWidth'>>): Patch => {
+    if (patch.foreignCumulativeColor !== undefined && !/^#[0-9a-f]{6}$/i.test(patch.foreignCumulativeColor)) return null;
+    if (patch.foreignCumulativeWidth !== undefined && ![1, 2, 3, 4].includes(patch.foreignCumulativeWidth)) return null;
+    return { ...patch };
+  },
+  setInstitutionCumulativeSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
+    'institutionCumulativeColor' | 'institutionCumulativeWidth'>>): Patch => {
+    if (patch.institutionCumulativeColor !== undefined && !/^#[0-9a-f]{6}$/i.test(patch.institutionCumulativeColor)) return null;
+    if (patch.institutionCumulativeWidth !== undefined && ![1, 2, 3, 4].includes(patch.institutionCumulativeWidth)) return null;
+    return { ...patch };
+  },
   setInvestorHoldingsSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
     'investorHoldingsMetric' | 'investorHoldingsForeignColor' | 'investorHoldingsWidth'>>): Patch => {
     if (patch.investorHoldingsMetric !== undefined && !['quantity', 'ratio'].includes(patch.investorHoldingsMetric)) return null;

@@ -254,7 +254,7 @@ export default function IndicatorPanel({
   }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
-    if (c.id === 'investor-holdings') return true;
+    if ((c.id === 'investor-holdings' || c.id === 'institution-cumulative' || c.id === 'foreign-cumulative')) return true;
     if (c.id === 'investor-net-line') return timeframe === 'D' && capabilities.investorNet === 'stock';
     if (c.id === 'new-high-bearish') return timeframe === 'D' && (capabilities.investorNet === 'stock' || capabilities.dailyPriceSignals === true);
     if (isSecondTimeframe(timeframe)) return ['moving-average', 'ichimoku', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(c.id);
@@ -435,7 +435,7 @@ export default function IndicatorPanel({
         footer={draft ? '추가 전' : '즉시 반영'}
         statusIcon={draft ? null : undefined}
         footerAction={mode === 'catalog' && !emptyCatalog && (draft || selectedAdded) ? (draft
-          ? <CatalogAddButton supported={selectedId !== 'investor-holdings' || (timeframe === 'D' && capabilities.investorNet === 'stock')} count={ind.indicatorInstances?.length ?? 0} draft={draft} category={selectedId} onAdd={() => addFor(selectedId)} />
+          ? <CatalogAddButton supported={!['investor-holdings', 'institution-cumulative', 'foreign-cumulative'].includes(selectedId) || (timeframe === 'D' && capabilities.investorNet === 'stock')} count={ind.indicatorInstances?.length ?? 0} draft={draft} category={selectedId} onAdd={() => addFor(selectedId)} />
           : <><button type="button" onClick={copyInstance} className="indicator-catalog-add">하나 더 추가</button><button type="button" className="indicator-catalog-add" disabled>추가됨</button></>) : undefined}
         sidebar={
       <div className="flex min-h-0 flex-1 flex-col">

@@ -70,6 +70,8 @@ export type BasePaneId =
   | 'program-trade'
   | 'investor-foreign'
   | 'investor-institution'
+  | 'foreign-cumulative'
+  | 'institution-cumulative'
   | 'investor-holdings'
   | 'investor-net-line'
   | 'program-daily'

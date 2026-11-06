@@ -184,6 +184,8 @@ type Props<Ctx> = {
     paneName: string,
     entries: { series: ISeriesApi<SeriesType>; meta: SeriesLegendMeta }[],
   ) => void;
+  /** Publishes source metadata only after all projected series have been applied. */
+  onDataCommitted?: (paneName: string, entries: { series: ISeriesApi<SeriesType>; meta: SeriesLegendMeta }[]) => void;
   /** Fired before legend series teardown (unmount / spec change). */
   onLegendGone?: (paneName: string) => void;
   /** Force full replacement instead of tail update. Used where lightweight-
@@ -257,6 +259,7 @@ function RangeSeriesPaneInner<Ctx>({
   onPrimarySeriesGone,
   onLegendReady,
   onLegendGone,
+  onDataCommitted,
   forceSetData = false,
   candleAlwaysOnTop = false,
   groupPaneIds,
@@ -442,7 +445,8 @@ function RangeSeriesPaneInner<Ctx>({
       if (s.markers) markersRef.current[i]?.setMarkers(s.markers(bundle, axis, ctx));
       if (s.labelMarkers) labelMarkersRef.current[i]?.setMarkers(s.labelMarkers(bundle, axis, ctx));
     });
-  }, [chart, bundle, axis, ctx, spec, paneIndex, precedingPaneKey, candleAlwaysOnTop, groupPaneIds, groupAxisMode, forceSetData]);
+    onDataCommitted?.(spec.name, spec.series.flatMap((s, i) => s.legend ? [{ series: seriesList[i], meta: s.legend }] : []));
+  }, [chart, bundle, axis, ctx, spec, paneIndex, precedingPaneKey, candleAlwaysOnTop, groupPaneIds, groupAxisMode, forceSetData, onDataCommitted]);
   return null;
 }
 

@@ -1,3 +1,4 @@
+import { CUMULATIVE_SPECS } from '../chart/projectors/investorCumulative';
 import { INVESTOR_HOLDINGS_SPEC } from '../chart/projectors/investorHoldings';
 import { bindPaneSpec } from '../chart/paneSpecs';
 import { type LiveTimeframe, isCalendarTimeframe, isMinuteTimeframe, isSecondTimeframe } from '../state/livePage';
@@ -21,6 +22,8 @@ export type PaneToggles = {
   volumeEnabled?: boolean;
   tradeValueEnabled?: boolean;
   investorNetLineEnabled?: boolean;
+  foreignCumulativeEnabled?: boolean;
+  institutionCumulativeEnabled?: boolean;
   investorHoldingsEnabled?: boolean;
   quoteTotalsEnabled?: boolean;
   ratioEnabled?: boolean;
@@ -84,6 +87,8 @@ const GATED: ReadonlyArray<{ spec: BoundPaneSpec; gate: PaneGate }> = [
   { spec: bindPaneSpec(DAILY_PROGRAM_TRADE_SPEC), gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.dailyProgramEnabled === true },
   { spec: bindPaneSpec(INVESTOR_FOREIGN_SPEC), gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
   { spec: bindPaneSpec(INVESTOR_INSTITUTION_SPEC), gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
+  { spec: bindPaneSpec(CUMULATIVE_SPECS.foreign), gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.foreignCumulativeEnabled === true },
+  { spec: bindPaneSpec(CUMULATIVE_SPECS.institution), gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.institutionCumulativeEnabled === true },
   { spec: bindPaneSpec(INVESTOR_HOLDINGS_SPEC), gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.investorHoldingsEnabled === true },
   { spec: bindPaneSpec(INVESTOR_NET_LINE_SPEC), gate: (tf, t) => tf === 'D' && t.investorNetLineEnabled === true },
   // 최대벽 강도 pane — `PANE_SPECS` 가 아니라 여기 append 하는 이유는 spec 파일

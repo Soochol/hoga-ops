@@ -1974,6 +1974,8 @@ export function LiveChartRoot({
   const prefFillStrengthEnabled = useWindowIndicator((s) => s.fillStrengthEnabled);
   const prefDailyProgramEnabled = useWindowIndicator((s) => s.dailyProgramEnabled);
   const prefProgramTradeEnabled = useWindowIndicator((s) => s.programTradeEnabled);
+  const prefForeignCumulativeEnabled = useWindowIndicator(s => s.foreignCumulativeEnabled);
+  const prefInstitutionCumulativeEnabled = useWindowIndicator(s => s.institutionCumulativeEnabled);
   const prefInvestorHoldingsEnabled = useWindowIndicator(s => s.investorHoldingsEnabled);
   const prefInvestorNetLineEnabled = useWindowIndicator(s => s.investorNetLineEnabled);
   const prefForeignNetEnabled = useWindowIndicator((s) => s.foreignNetEnabled);
@@ -1997,6 +1999,8 @@ export function LiveChartRoot({
       dailyProgramEnabled: prefDailyProgramEnabled,
       foreignNetEnabled: prefForeignNetEnabled,
       investorNetLineEnabled: prefInvestorNetLineEnabled,
+      foreignCumulativeEnabled: prefForeignCumulativeEnabled,
+      institutionCumulativeEnabled: prefInstitutionCumulativeEnabled,
       investorHoldingsEnabled: prefInvestorHoldingsEnabled,
       institutionNetEnabled: prefInstitutionNetEnabled,
       peakWallPaneEnabled: prefPeakWallPaneEnabled,
@@ -2004,7 +2008,7 @@ export function LiveChartRoot({
     [prefMovingAverages,
       prefVolumeEnabled, prefTradeValueEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
       prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled, prefDailyProgramEnabled,
-      prefInstitutionNetEnabled, prefPeakWallPaneEnabled, prefInvestorNetLineEnabled, prefInvestorHoldingsEnabled],
+      prefInstitutionNetEnabled, prefPeakWallPaneEnabled, prefInvestorNetLineEnabled, prefInvestorHoldingsEnabled, prefInstitutionCumulativeEnabled, prefForeignCumulativeEnabled],
   );
   // 사용자 소유 pane 레이아웃(ADR-0114 §3 + 병합 그룹) — 그룹이 원본이고 순서는
   // 그 평탄화다(`chart/paneGroups.ts`).
@@ -2068,8 +2072,8 @@ export function LiveChartRoot({
       forceHogaPanes,
       hogaPanes: paneTogglesOverride?.hogaPanes,
       override: {
-        ...(paneTogglesOverride?.hogaPanes === false ? { investorNetLineEnabled: false, investorHoldingsEnabled: false } : {}),
-        ...(isUsWorkareaCode(code) ? { foreignNet: false, institutionNet: false, investorNetLineEnabled: false, investorHoldingsEnabled: false, dailyProgramEnabled: false, peakWallPaneEnabled: false } : {}),
+        ...(paneTogglesOverride?.hogaPanes === false ? { investorNetLineEnabled: false, investorHoldingsEnabled: false, institutionCumulativeEnabled: false, foreignCumulativeEnabled: false } : {}),
+        ...(isUsWorkareaCode(code) ? { foreignNet: false, institutionNet: false, investorNetLineEnabled: false, investorHoldingsEnabled: false, institutionCumulativeEnabled: false, foreignCumulativeEnabled: false, dailyProgramEnabled: false, peakWallPaneEnabled: false } : {}),
         ...(paneTogglesOverride?.tradeValueEnabled !== undefined
           ? { tradeValueEnabled: paneTogglesOverride.tradeValueEnabled }
           : {}),

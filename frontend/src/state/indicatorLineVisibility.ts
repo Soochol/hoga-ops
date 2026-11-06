@@ -8,6 +8,8 @@ export const INDICATOR_LINE_KEYS = [
   'quoteTotalsBidLevel', 'quoteTotalsAskLevel',
   'quoteTotalsDayMaxBid', 'quoteTotalsDayMaxAsk',
   'fillStrengthBuy', 'fillStrengthSell',
+  'foreignCumulative',
+  'institutionCumulative',
   'investorHoldingsForeign',
   'investorNetLineForeign', 'investorNetLineInstitution',
 ] as const;

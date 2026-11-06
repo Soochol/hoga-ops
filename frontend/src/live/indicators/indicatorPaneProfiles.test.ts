@@ -10,6 +10,8 @@ const RESOLVED_PREFS = {
   volumeEnabled: true,
   tradeValueEnabled: false,
   investorNetLineEnabled: false,
+  foreignCumulativeEnabled: false,
+  institutionCumulativeEnabled: false,
   investorHoldingsEnabled: false,
   quoteTotalsEnabled: false,
   ratioEnabled: false,

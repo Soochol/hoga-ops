@@ -21,6 +21,8 @@ const PREFIXES: Record<CategoryId, readonly string[]> = {
   'trade-value': ['tradeValue'], 'quote-totals': ['quoteTotals', 'surge'], ratio: ['ratio'],
   'fill-strength': ['fillStrength'], 'program-trade': ['programTrade'],
   'program-daily': ['dailyProgram'], 'foreign-net': ['foreignNet', 'foreignTradeSide'],
+  'foreign-cumulative': ['foreignCumulative'],
+  'institution-cumulative': ['institutionCumulative'],
   'investor-holdings': ['investorHoldings'],
   'investor-net-line': ['investorNetLine'],
   'institution-net': ['institutionNet', 'institutionTradeSide'], 'peak-walls': ['askPeak', 'bidPeak', 'peakWall'],
@@ -28,6 +30,8 @@ const PREFIXES: Record<CategoryId, readonly string[]> = {
   'volume-distribution': ['volumeDistribution'], 'broker-late-entry': ['brokerLateEntries'],
 };
 const LINE_PREFIX: Partial<Record<CategoryId, string>> = {
+  'foreign-cumulative': 'foreignCumulative',
+  'institution-cumulative': 'institutionCumulative',
   'investor-holdings': 'investorHoldings',
   'investor-net-line': 'investorNetLine', ichimoku: 'ichimoku', envelope: 'envelope', bollinger: 'bollinger', supertrend: 'supertrend', 'quote-totals': 'quoteTotals', 'fill-strength': 'fillStrength',
 };
@@ -89,6 +93,8 @@ export function indicatorInstanceSummary(category: CategoryId, settings: Indicat
     case 'depth-heatmap': return `최대 ${Math.round(settings.depthHeatmapMaxOpacity * 100)}%`;
     case 'volume': return settings.volumeColorMode === 'previous-volume' ? '이전 거래량과 비교' : '캔들 색상과 동일';
     case 'investor-holdings': return settings.investorHoldingsMetric === 'ratio' ? '외국인 보유비중 · %' : '외국인 보유수량 · 주';
+    case 'foreign-cumulative': return '조회자료 첫날 0 · 주';
+    case 'institution-cumulative': return '조회자료 첫날 0 · 주';
     case 'investor-net-line': return '일별 순매수 · 주';
     case 'program-trade': return '누적 순매수';
     case 'volume-distribution': return `${settings.volumeDistributionRangeCount}구간`;
@@ -125,7 +131,7 @@ export function indicatorDemandSettings(base: IndicatorSettings): IndicatorSetti
   const out = { ...base };
   for (const instance of base.indicatorInstances) {
     // These instances own parameter-keyed queries in their pane/card; no unused primary query is needed.
-    if (['foreign-net', 'institution-net', 'investor-net-line', 'investor-holdings', 'program-daily', 'volume-distribution'].includes(instance.category)) continue;
+    if (['foreign-net', 'institution-net', 'investor-net-line', 'investor-holdings', 'foreign-cumulative', 'institution-cumulative', 'program-daily', 'volume-distribution'].includes(instance.category)) continue;
     for (const [key, value] of Object.entries(instance.settings)) {
       if (key.endsWith('Enabled') && value === true) (out as Record<string, unknown>)[key] = true;
     }

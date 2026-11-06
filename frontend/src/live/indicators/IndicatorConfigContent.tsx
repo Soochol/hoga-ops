@@ -1,3 +1,4 @@
+import InvestorCumulativeConfig from './InvestorCumulativeConfig';
 import InvestorHoldingsConfig from './InvestorHoldingsConfig';
 import MovingAverageConfig from './MovingAverageConfig';
 import IchimokuConfig from './IchimokuConfig';
@@ -36,6 +37,8 @@ export default function IndicatorConfigContent({ category, capabilities }: { cat
     {category === 'envelope' && <EnvelopeConfig />}
     {category === 'moving-average' && <MovingAverageConfig />}
     {category === 'daily-moving-average' && <DailyMovingAverageConfig />}
+    {category === 'institution-cumulative' && <InvestorCumulativeConfig subject="institution" />}
+    {category === 'foreign-cumulative' && <InvestorCumulativeConfig subject="foreign" />}
     {category === 'investor-holdings' && <InvestorHoldingsConfig />}
     {category === 'investor-net-line' && <InvestorNetLineConfig />}
     {category === 'volume' && <VolumeConfig />}
