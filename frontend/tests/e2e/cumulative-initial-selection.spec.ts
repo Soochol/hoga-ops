@@ -30,10 +30,14 @@ test('watchlist selection completes cumulative history without a candle prepend,
   await installLiveMocks(page);
   await page.routeWebSocket(/\/api\/ws/, () => {});
   await page.route(apiExact('watchlist'), r => r.fulfill({ json: { folders: [], memos: [], next_run_at_ms: 0,
-    entries: ['098460', '000660'].map((code, order) => ({ code, name: code === '098460' ? '고영' : 'SK하이닉스',
+    entries: ['098460', '000660', '005930'].map((code, order) => ({ code, name: code === '098460' ? '고영' : code === '000660' ? 'SK하이닉스' : '삼성전자',
       folder_id: null, order, registered_at_kst_date: '20260527', last_success_date: null })) } }));
   const requests: { code: string | null; from: string | null; to: string | null; kind: string }[] = [];
   const progress = new Map<string, number>();
+  let releaseLate: () => void = () => {};
+  const late = new Promise<void>(resolve => { releaseLate = resolve; });
+  let lateStarted = false;
+  let lateFinished = false;
   for (const kind of ['past-daily-candles', 'investor-daily-flow']) {
     await page.route(apiExact(`live/${kind}`), async route => {
       const p = new URL(route.request().url()).searchParams;
@@ -47,13 +51,18 @@ test('watchlist selection completes cumulative history without a candle prepend,
       const key = `${code}/${to}`;
       const n = (progress.get(key) ?? 0) + 1;
       progress.set(key, n);
-      const partial = code === '000660' && n === 1;
+      const partial = code !== '098460' && n === 1;
+      if (code === '005930' && n === 2) {
+        lateStarted = true;
+        await late;
+      }
       await route.fulfill({ json: { code, from, to, source: 'kiwoom_ka10059', provider_scope: 'KRX',
         unit: 'qty_shares', trade_side: 'net', observations: dates.map(t_ms => ({ date: ymd(t_ms), t_ms,
           institution_net_shares: code === '000660' ? 100 : 200, foreign_net_shares: -50 })),
         pagination: partial ? 'incomplete' : 'covered', unlocated_defect: false, pages_observed: partial ? 6 : 7,
         can_continue: partial, data_warnings: partial ? [{ reason: 'page_budget', date: null, subject: null,
           message: '합성 공급자 페이지 한도' }] : [] } });
+      if (code === '005930' && n === 2) lateFinished = true;
     });
   }
   await page.goto('/live?code=098460');
@@ -72,11 +81,24 @@ test('watchlist selection completes cumulative history without a candle prepend,
   await expect(institution).toContainText('조회 완료');
   await expect(foreign).toContainText('조회 완료');
   const b = await state(page);
-  expect(b.series.filter(s => s.type === 'Line' && s.values.length > 100).length).toBeGreaterThanOrEqual(2);
+  const count = b.series.find(s => s.type === 'Candlestick')!.count;
+  const lineValues = b.series.filter(s => s.type === 'Line').map(s => s.values);
+  expect(count).toBeGreaterThan(100);
+  expect(lineValues).toContainEqual(Array.from({ length: count }, (_, i) => i * 100));
+  expect(lineValues).toContainEqual(Array.from({ length: count }, (_, i) => i === 0 ? 0 : i * -50));
+  await page.screenshot({ path: info.outputPath('completed-selection.png') });
   expect(new Set(requests.filter(r => r.kind === 'investor-daily-flow' && r.code === '000660').map(r => r.from)).size).toBe(1);
   expect(requests.filter(r => r.kind === 'past-daily-candles' && r.code === '000660')).toHaveLength(1);
   await panel.getByTestId('watchlist-row-098460').click();
   await expect(institution).toContainText('조회 완료');
+  await expect.poll(async () => (await state(page)).series.filter(s => s.type === 'Line').map(s => s.values)).toEqual(a.series.filter(s => s.type === 'Line').map(s => s.values));
+  await panel.getByTestId('watchlist-row-005930').click();
+  await expect.poll(() => lateStarted).toBe(true);
+  await panel.getByTestId('watchlist-row-098460').click();
+  await expect(institution).toContainText('조회 완료');
+  releaseLate();
+  await expect.poll(() => lateFinished).toBe(true);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect.poll(async () => (await state(page)).series.filter(s => s.type === 'Line').map(s => s.values)).toEqual(a.series.filter(s => s.type === 'Line').map(s => s.values));
   await page.reload();
   await expect(institution).toContainText('조회 완료');

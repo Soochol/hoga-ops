@@ -100,3 +100,18 @@ it('does not continue a provider page limit that cannot be advanced', async () =
   expect(fetch).toHaveBeenCalledTimes(1);
   unmount();
 });
+it('cancels an abandoned scope before another continuation even if transport ignores abort', async () => {
+  let release: (value: InvestorDailyFlowResponse) => void = () => {};
+  const pending = new Promise<InvestorDailyFlowResponse>(resolve => { release = resolve; });
+  const fetch = vi.spyOn(client, 'apiCall').mockImplementation(async path => path.includes('005930')
+    ? pending : response({ ...scope, code: '000660' }));
+  const { result, rerender, unmount } = setup(scope);
+  const signal = fetch.mock.calls[0][1]?.signal;
+  rerender({ request: { ...scope, code: '000660' } });
+  await waitFor(() => expect(result.current.first.data?.code).toBe('000660'));
+  expect(signal?.aborted).toBe(true);
+  await act(async () => { release(partial(6)); await pending; });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(result.current.first.data?.code).toBe('000660');
+  unmount();
+});
