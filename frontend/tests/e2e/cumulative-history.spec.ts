@@ -53,6 +53,13 @@ async function drag(page: Page, dx: number) {
     await page.mouse.up();
 }
 async function probe(page: Page) {
+    await expect.poll(() => page.evaluate(() => {
+        const chart = [...(window as unknown as ProbeWindow).__liveCharts.values()][0];
+        return ['#EC4899', '#F97316', '#22D3EE'].every(color => chart.panes().flatMap(p => p.getSeries()).some(s => {
+            const options = s.options();
+            return s.seriesType() === 'Line' && 'color' in options && options.color === color && s.data().filter(point => 'value' in point).length > 200;
+        }));
+    })).toBe(true);
     await page.evaluate(() => {
         const w = window as unknown as ProbeWindow;
         const [chartId, chart] = [...w.__liveCharts.entries()][0];
@@ -124,7 +131,6 @@ for (const failure of [false, true])
             await add(page, '외국인 보유');
             await add(page, '기관 누적 순매수');
             await add(page, '외국인 누적 순매수');
-            await expect(page.getByTestId('pane-legend-rows-institution-cumulative')).toContainText('조회 완료');
             await probe(page);
             const before = await page.evaluate(() => (window as unknown as ProbeWindow).__flowProbe.read());
             expect(before.holdingValues).toBeGreaterThan(200);
@@ -144,6 +150,8 @@ for (const failure of [false, true])
             const pending = await page.evaluate(() => (window as unknown as ProbeWindow).__flowProbe.read());
             expect(pending.holdingSame).toBe(true);
             expect(pending.holdingValues).toBe(before.holdingValues);
+            expect(pending.institutionValues).toBe(before.institutionValues);
+            expect(pending.foreignValues).toBe(before.foreignValues);
             mkdirSync(output, { recursive: true });
             await page.screenshot({ path: resolve(output, `history-${failure ? 'failure' : 'success'}-pending.png`) });
             hold = false;
@@ -155,14 +163,14 @@ for (const failure of [false, true])
                 await page.getByRole('button', { name: '보유 자료 다시 조회' }).click();
             }
             await expect.poll(async () => await page.evaluate(() => (window as unknown as ProbeWindow).__flowProbe.read().holdingValues)).toBeGreaterThan(before.holdingValues);
-            await expect(page.getByTestId('pane-legend-rows-institution-cumulative')).toContainText('조회 완료');
+            await expect.poll(() => page.evaluate(() => (window as unknown as ProbeWindow).__flowProbe.read().institutionValues)).toBeGreaterThan(before.institutionValues);
             const after = await page.evaluate(() => (window as unknown as ProbeWindow).__flowProbe.read());
             expect(after.holdingSame).toBe(true);
             expect(after.institutionFirst).toBe(0);
             expect(after.institutionLast).toBe((after.institutionValues - 1) * 100);
             expect(after.institutionValues).toBeGreaterThan(before.institutionValues);
-            expect(after.institutionNotice).toBe('조회 완료');
-            expect(after.foreignNotice).toBe('조회 완료');
+            expect(after.institutionNotice).toBe('');
+            expect(after.foreignNotice).toBe('');
             const frames = await page.evaluate(() => { const p = (window as unknown as ProbeWindow).__flowProbe; p.active = false; return p.frames; });
             expect(frames.every(frame => frame.holdingSame && frame.holdingValues >= before.holdingValues)).toBe(true);
             for (const frame of frames) {
@@ -170,14 +178,14 @@ for (const failure of [false, true])
                 if (frame.institutionValues > 0) {
                     expect(frame.institutionFirst).toBe(0);
                     expect(frame.institutionLast).toBe((frame.institutionValues - 1) * 100);
-                    expect(frame.institutionNotice).toBe('조회 완료');
+                    expect(frame.institutionNotice).toBe('');
                 }
                 else
                     expect(frame.institutionNotice).not.toContain('누적 기준');
                 if (frame.foreignValues > 0) {
                     expect(frame.foreignFirst).toBe(0);
                     expect(frame.foreignLast).toBe((frame.foreignValues - 1) * -50);
-                    expect(frame.foreignNotice).toBe('조회 완료');
+                    expect(frame.foreignNotice).toBe('');
                 }
                 else
                     expect(frame.foreignNotice).not.toContain('누적 기준');
