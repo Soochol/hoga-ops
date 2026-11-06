@@ -386,14 +386,20 @@ it('커서 행을 sticky 헤더·합계 사이로 이동하고 같은 날짜와 
   expect(scroller.scrollTop).toBe(50);
 });
 
-it('고정 기간 밖 날짜는 기간을 바꾸지 않고 안내하며 따라가기를 끄면 조회하지 않는다', async () => {
-  mockPoints([point('20260803')]);
-  render(<InvestorDailyWindow code="005930" cursorDate="20240102" />);
-  await screen.findByText('커서 날짜가 표시 기간 밖에 있습니다 · 전체에서 따라가기');
-  expect(useInvestorDailySpanStore.getState().span).toBe(20);
-  expect(historyMock.mock.results.at(-1)?.value.fetchNextPage).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: '커서 따라가기' }));
-  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+it('고정 기간 밖 날짜는 라벨 없이 기간을 유지하며 따라가기를 끄면 조회하지 않는다', () => {
+  vi.useFakeTimers();
+  try {
+    mockPoints([point('20260803')]);
+    render(<InvestorDailyWindow code="005930" cursorDate="20240102" />);
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(useInvestorDailySpanStore.getState().span).toBe(20);
+    expect(historyMock.mock.results.at(-1)?.value.fetchNextPage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '커서 따라가기' }));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('전체에서 아직 렌더하지 않은 캐시 행을 펼쳐 커서 날짜를 찾는다', async () => {
