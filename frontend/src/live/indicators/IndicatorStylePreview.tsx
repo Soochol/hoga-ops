@@ -60,6 +60,10 @@ function previewLines(category: CategoryId, s: IndicatorSettings, cumulative: bo
       width: s.supertrendLineWidth, values: points.map(p => p?.direction === direction ? p.value : null),
     })).filter((_, i) => lineVisible(s.indicatorLineVisibility, i ? 'supertrendDown' : 'supertrendUp'));
   }
+  if (category === 'investor-net-line') return [
+    { key: 'investorNetLineForeign', label: '외국인', color: s.investorNetLineForeignColor, width: s.investorNetLineWidth, values: DISPLAY.map((_, i) => 100 + Math.sin(i * .3) * 12) },
+    { key: 'investorNetLineInstitution', label: '기관', color: s.investorNetLineInstitutionColor, width: s.investorNetLineWidth, values: DISPLAY.map((_, i) => 100 + Math.cos(i * .25) * 9) },
+  ].filter(line => lineVisible(s.indicatorLineVisibility, line.key as import('../../state/indicatorLineVisibility').IndicatorLineKey));
   if (category === 'quote-totals') return [
     { key: 'quoteTotalsBid', label: '매수 총잔량', color: 'var(--price-up)', width: 3, values: DISPLAY.map((_, i) => 92 + Math.sin(i * .2) * 5) },
     { key: 'quoteTotalsAsk', label: '매도 총잔량', color: 'var(--price-down)', width: 3, values: DISPLAY.map((_, i) => 107 + Math.cos(i * .2) * 5) },

@@ -12,6 +12,7 @@ export type CategoryId =
   | 'trade-value'
   | 'foreign-net'
   | 'institution-net'
+  | 'investor-net-line'
   | 'peak-walls'
   | 'trade-volume-poc'
   | 'depth-heatmap'
@@ -87,6 +88,9 @@ export const CATEGORIES: ReadonlyArray<{
     description: '외국인의 일별 순매수·총매수·총매도 수량을 표시합니다.' },
   { id: 'institution-net', label: '기관 순매수량',    group: 'broker',  placement: 'pane',
     description: '기관의 일별 순매수·총매수·총매도 수량을 표시합니다.' },
+  { id: 'investor-net-line', label: '외국인·기관 순매수 라인', group: 'broker', placement: 'pane',
+    notice: '국내 종목 일봉 전용 · 수량(주) · 당일 값은 잠정',
+    description: '외국인과 기관의 일별 순매수 수량을 두 선으로 연결합니다. 기간 누적이 아니며, 자료가 없는 거래일은 연결하지 않습니다.' },
   { id: 'broker-late-entry', label: '신규 거래원 등장', group: 'broker', placement: 'overlay',
     description: '기준 시각 이후 처음 등장한 거래원을 표시합니다. 세트별로 시각을 나눌 수 있습니다.' },
   { id: 'program-daily', label: '프로그램 순매수량', group: 'program', placement: 'pane',

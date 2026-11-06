@@ -12,7 +12,7 @@ import type { CategoryId } from './IndicatorPanelHelpers';
 export const CATEGORY_PANE: Partial<Record<CategoryId, BasePaneId>> = {
   volume: 'volume', 'trade-value': 'trade-value', 'quote-totals': 'quote-totals', ratio: 'ratio',
   'fill-strength': 'fill-strength', 'program-trade': 'program-trade', 'program-daily': 'program-daily',
-  'foreign-net': 'investor-foreign', 'institution-net': 'investor-institution',
+  'investor-net-line': 'investor-net-line', 'foreign-net': 'investor-foreign', 'institution-net': 'investor-institution',
   'broker-late-entry': 'ratio', 'peak-walls': 'peak-wall',
 };
 export function instancePaneId(id: string, pane: BasePaneId): PaneId { return `indicator:${id}:${pane}`; }
@@ -50,6 +50,7 @@ export function filterPrimaryPaneGroups(groups: readonly (readonly BoundPaneSpec
   }).filter(group => group.length > 0);
 }
 export function indicatorInstanceApplicable(category: CategoryId, tf: LiveTimeframe, hogaPanes: boolean, priceOnly = false): boolean {
+  if (category === 'investor-net-line') return tf === 'D' && !priceOnly && hogaPanes;
   if (category === 'new-high-bearish') return tf === 'D';
   if (priceOnly) return category === 'daily-moving-average' ? tf.endsWith('m') : ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume'].includes(category);
   if (tf.endsWith('s')) return ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(category);

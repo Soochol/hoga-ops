@@ -254,6 +254,7 @@ export default function IndicatorPanel({
   }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
+    if (c.id === 'investor-net-line') return timeframe === 'D' && capabilities.investorNet === 'stock';
     if (c.id === 'new-high-bearish') return timeframe === 'D' && (capabilities.investorNet === 'stock' || capabilities.dailyPriceSignals === true);
     if (isSecondTimeframe(timeframe)) return ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(c.id);
     if (c.id === 'volume' && capabilities.volume === false) return false;

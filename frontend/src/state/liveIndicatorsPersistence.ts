@@ -222,6 +222,10 @@ export type PersistedIndicators = {
   institutionTradeSide: import('../api/types').InvestorTradeSide;
   /** ADR-0055: institution net-buy bar pane. Opt-in (default false). */
   institutionNetEnabled: boolean;
+  investorNetLineEnabled: boolean;
+  investorNetLineForeignColor: string;
+  investorNetLineInstitutionColor: string;
+  investorNetLineWidth: 1 | 2 | 3 | 4;
   /** Pane Legend: volume pane on/off. Default TRUE (kept for legacy stores). */
   volumeEnabled: boolean;
   volumeColorMode: VolumeColorMode;
@@ -774,6 +778,13 @@ export function mergeLiveIndicatorPrefs(
     foreignTradeSide: normalizeInvestorTradeSide(obj?.foreignTradeSide ?? obj?.investorTradeSide),
     institutionTradeSide: normalizeInvestorTradeSide(obj?.institutionTradeSide ?? obj?.investorTradeSide),
     institutionNetEnabled: iNet,
+    investorNetLineEnabled: obj?.investorNetLineEnabled === true,
+    investorNetLineForeignColor: typeof obj?.investorNetLineForeignColor === 'string' && HEX_COLOR.test(obj.investorNetLineForeignColor)
+      ? obj.investorNetLineForeignColor : '#EC4899',
+    investorNetLineInstitutionColor: typeof obj?.investorNetLineInstitutionColor === 'string' && HEX_COLOR.test(obj.investorNetLineInstitutionColor)
+      ? obj.investorNetLineInstitutionColor : '#3B82F6',
+    investorNetLineWidth: typeof obj?.investorNetLineWidth === 'number' && VALID_LINE_WIDTHS.has(obj.investorNetLineWidth)
+      ? obj.investorNetLineWidth as 1 | 2 | 3 | 4 : 2,
     volumeEnabled: vol,
     volumeColorMode: obj?.volumeColorMode === 'previous-volume' ? 'previous-volume' : 'candle',
     tradeValueEnabled: obj?.tradeValueEnabled === true,

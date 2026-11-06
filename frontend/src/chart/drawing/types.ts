@@ -70,6 +70,7 @@ export type BasePaneId =
   | 'program-trade'
   | 'investor-foreign'
   | 'investor-institution'
+  | 'investor-net-line'
   | 'program-daily'
   | 'peak-wall';
 

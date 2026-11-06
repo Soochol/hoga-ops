@@ -1973,6 +1973,7 @@ export function LiveChartRoot({
   const prefFillStrengthEnabled = useWindowIndicator((s) => s.fillStrengthEnabled);
   const prefDailyProgramEnabled = useWindowIndicator((s) => s.dailyProgramEnabled);
   const prefProgramTradeEnabled = useWindowIndicator((s) => s.programTradeEnabled);
+  const prefInvestorNetLineEnabled = useWindowIndicator(s => s.investorNetLineEnabled);
   const prefForeignNetEnabled = useWindowIndicator((s) => s.foreignNetEnabled);
   const prefPeakWallPaneEnabled = useWindowIndicator((s) => s.peakWallPaneEnabled);
   const prefPeakWallPaneMode = useWindowIndicator((s) => s.peakWallPaneMode);
@@ -1993,13 +1994,14 @@ export function LiveChartRoot({
       programTradeEnabled: prefProgramTradeEnabled,
       dailyProgramEnabled: prefDailyProgramEnabled,
       foreignNetEnabled: prefForeignNetEnabled,
+      investorNetLineEnabled: prefInvestorNetLineEnabled,
       institutionNetEnabled: prefInstitutionNetEnabled,
       peakWallPaneEnabled: prefPeakWallPaneEnabled,
     }),
     [prefMovingAverages,
       prefVolumeEnabled, prefTradeValueEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
       prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled, prefDailyProgramEnabled,
-      prefInstitutionNetEnabled, prefPeakWallPaneEnabled],
+      prefInstitutionNetEnabled, prefPeakWallPaneEnabled, prefInvestorNetLineEnabled],
   );
   // 사용자 소유 pane 레이아웃(ADR-0114 §3 + 병합 그룹) — 그룹이 원본이고 순서는
   // 그 평탄화다(`chart/paneGroups.ts`).
@@ -2063,7 +2065,8 @@ export function LiveChartRoot({
       forceHogaPanes,
       hogaPanes: paneTogglesOverride?.hogaPanes,
       override: {
-        ...(isUsWorkareaCode(code) ? { foreignNet: false, institutionNet: false, dailyProgramEnabled: false, peakWallPaneEnabled: false } : {}),
+        ...(paneTogglesOverride?.hogaPanes === false ? { investorNetLineEnabled: false } : {}),
+        ...(isUsWorkareaCode(code) ? { foreignNet: false, institutionNet: false, investorNetLineEnabled: false, dailyProgramEnabled: false, peakWallPaneEnabled: false } : {}),
         ...(paneTogglesOverride?.tradeValueEnabled !== undefined
           ? { tradeValueEnabled: paneTogglesOverride.tradeValueEnabled }
           : {}),

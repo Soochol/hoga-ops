@@ -16,6 +16,7 @@ export type IndicatorPaneProfileKey = 'seconds' | 'minute' | 'D' | 'W' | 'M';
 export type IndicatorPanePrefs = {
   volumeEnabled: boolean;
   tradeValueEnabled?: boolean;
+  investorNetLineEnabled?: boolean;
   quoteTotalsEnabled: boolean;
   ratioEnabled: boolean;
   fillStrengthEnabled: boolean;
@@ -30,8 +31,8 @@ export type PanePrefKey = keyof IndicatorPanePrefs;
 
 /** 소비자가 store 에서 골라오는, 이미 resolve 된 pane 토글 7종. */
 export type PanePrefsIndicatorSource = Pick<
-  PersistedIndicators, Exclude<PanePrefKey, 'dailyProgramEnabled' | 'tradeValueEnabled'>
-> & { dailyProgramEnabled?: boolean; tradeValueEnabled?: boolean };
+  PersistedIndicators, Exclude<PanePrefKey, 'dailyProgramEnabled' | 'tradeValueEnabled' | 'investorNetLineEnabled'>
+> & { dailyProgramEnabled?: boolean; tradeValueEnabled?: boolean; investorNetLineEnabled?: boolean };
 
 export type PersistedPanePrefsByTimeframe =
   Partial<Record<IndicatorPaneProfileKey, Partial<IndicatorPanePrefs>>>;
@@ -42,6 +43,7 @@ export const INDICATOR_PANE_PROFILE_KEYS: readonly IndicatorPaneProfileKey[] =
 export const INDICATOR_PANE_PREF_KEYS: readonly PanePrefKey[] = [
   'volumeEnabled',
   'tradeValueEnabled',
+  'investorNetLineEnabled',
   'quoteTotalsEnabled',
   'ratioEnabled',
   'fillStrengthEnabled',
@@ -94,6 +96,7 @@ export function pickPanePrefs(indicators: PanePrefsIndicatorSource): IndicatorPa
   return {
     volumeEnabled: indicators.volumeEnabled,
     tradeValueEnabled: indicators.tradeValueEnabled === true,
+    investorNetLineEnabled: indicators.investorNetLineEnabled === true,
     quoteTotalsEnabled: indicators.quoteTotalsEnabled,
     ratioEnabled: indicators.ratioEnabled,
     fillStrengthEnabled: indicators.fillStrengthEnabled,
@@ -130,6 +133,7 @@ export function resolvePaneToggles(input: {
     institutionNet: prefs.institutionNetEnabled,
     volumeEnabled: prefs.volumeEnabled,
     tradeValueEnabled: prefs.tradeValueEnabled,
+    investorNetLineEnabled: prefs.investorNetLineEnabled,
     quoteTotalsEnabled: prefs.quoteTotalsEnabled,
     ratioEnabled: prefs.ratioEnabled,
     fillStrengthEnabled: prefs.fillStrengthEnabled,

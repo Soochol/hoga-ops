@@ -150,6 +150,7 @@ export type PaneCellInput = {
     label: string;
     color?: string;
     value: number | null;
+    keepEmpty?: boolean;
     format?: (v: number) => string;
   }>;
 };
@@ -222,12 +223,12 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
   for (const pane of input.paneCells) {
     const cells: LegendCell[] = [];
     for (const c of pane.cells) {
-      if (c.value === null) continue;
+      if (c.value === null && !c.keepEmpty) continue;
       cells.push({
         key: c.key,
         color: c.color,
         label: c.label,
-        formatted: (c.format ?? formatKoreanInt)(c.value),
+        formatted: c.value === null ? '—' : (c.format ?? formatKoreanInt)(c.value),
       });
     }
     if (cells.length > 0) {

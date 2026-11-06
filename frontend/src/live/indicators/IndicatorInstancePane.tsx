@@ -4,6 +4,7 @@ import RangeSeriesPane from '../../chart/RangeSeriesPane';
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
 import { useLiveDailyProgramTrade } from '../../api/liveDailyProgramTrade';
 import { useWindowIndicator } from '../workspace/windowView';
+import { InvestorNetLinePane } from './InvestorNetLinePane';
 import { basePaneId } from '../../chart/paneOrder';
 
 /** Daily sources are keyed by their requested trade side, so sibling modes never reuse the wrong response. */
@@ -25,12 +26,13 @@ export function IndicatorInstancePane({ code, ...props }: ComponentProps<typeof 
       ? { ...props.bundle, institutionInvestorPoints: points, institutionInvestorTradeSide: side }
       : { ...props.bundle, investorPoints: points, investorTradeSide: side };
   }, [pane, props.bundle, investor, stock, query.data, dailyProgram.data, side, program]);
-  return <RangeSeriesPane {...props} bundle={bundle} />;
+  return pane === 'investor-net-line' ? <InvestorNetLinePane code={code} {...props} /> : <RangeSeriesPane {...props} bundle={bundle} />;
 }
 
 /** One stable chart child for both the original and additional pane instances. */
 export function ScopedIndicatorPane({ code, ...props }: ComponentProps<typeof RangeSeriesPane> & { code: string | null }) {
   return props.spec.name.startsWith('indicator:')
     ? <IndicatorInstanceProvider id={props.spec.name.split(':')[1]}><IndicatorInstancePane code={code} {...props} /></IndicatorInstanceProvider>
-    : <RangeSeriesPane {...props} />;
+    : basePaneId(props.spec.name as import('../../chart/drawing/types').PaneId) === 'investor-net-line'
+      ? <InvestorNetLinePane code={code} {...props} /> : <RangeSeriesPane {...props} />;
 }

@@ -7,6 +7,7 @@ export const INDICATOR_LINE_KEYS = [
   'quoteTotalsBidLevel', 'quoteTotalsAskLevel',
   'quoteTotalsDayMaxBid', 'quoteTotalsDayMaxAsk',
   'fillStrengthBuy', 'fillStrengthSell',
+  'investorNetLineForeign', 'investorNetLineInstitution',
 ] as const;
 export type IndicatorLineKey = typeof INDICATOR_LINE_KEYS[number];
 export type IndicatorLineVisibility = Partial<Record<IndicatorLineKey, boolean>>;

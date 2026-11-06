@@ -146,6 +146,7 @@ const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
   'candle', // Only the volume overlay registers legend series on this pane.
   'volume',
   'trade-value',
+  'investor-net-line',
   'quote-totals',
   'program-trade',
   // 최대벽 강도 pane — 계단의 현재 높이가 곧 「오늘 최대」라 커서 없이도 읽을 값이
@@ -1026,6 +1027,22 @@ function PaneLegendOverlay({
 
   // ── runtime pane groups — drives both cell metadata and Y placement ──
   const groups = visibleGroups ?? paneGroupSpecsForTimeframe(timeframe, paneToggles, paneGroups);
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return;
+    let raf = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => tick());
+    });
+    for (const pane of chart.panes()) {
+      const element = pane.getHTMLElement?.();
+      if (element) observer.observe(element);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [chart, groups, legendPanes]);
   const specByPaneId = new Map<string, PaneSpecGroup[number]>();
   groups.forEach((g) => g.forEach((s) => {
     specByPaneId.set(s.name, s);
@@ -1094,6 +1111,7 @@ function PaneLegendOverlay({
   const dailyMaValues = new Map<string, number>();
   const paneCells: PaneCellInput[] = [];
   const lineKeysByPane: Partial<Record<PaneId, readonly IndicatorLineKey[]>> = {
+    'investor-net-line': ['investorNetLineForeign', 'investorNetLineInstitution'],
     'quote-totals': ['quoteTotalsBid', 'quoteTotalsAsk'],
     'fill-strength': ['fillStrengthBuy', 'fillStrengthSell'],
   };
@@ -1102,7 +1120,7 @@ function PaneLegendOverlay({
   const exactTimeSec = (typeof paramRef.current?.time === 'number' ? paramRef.current.time : null)
     ?? syncValueTimeSec
     ?? (latestCandle && axis ? axis.toVirtual(latestCandle.ts_ms) / 1000 : null);
-  const exactLogicalIndex = exactTimeSec === null || !indicatorLegendsVisible || (!hasMissingVolume && !legendPanes.has('peak-wall')) ? null
+  const exactLogicalIndex = exactTimeSec === null || !indicatorLegendsVisible || (!hasMissingVolume && !legendPanes.has('peak-wall') && !legendPanes.has('investor-net-line')) ? null
     : chart.timeScale().timeToIndex?.(exactTimeSec as Time) ?? null;
   for (const [paneId, entries] of legendPanes) {
     if (!indicatorLegendsVisible || !LEGEND_CELL_PANES.has(paneId)) continue;
@@ -1115,8 +1133,9 @@ function PaneLegendOverlay({
         key: `${paneId}:${i}`,
         label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,
         color: entry.meta.color?.(),
+        keepEmpty: paneId === 'investor-net-line' && lineVisible(lineVisibility, i === 0 ? 'investorNetLineForeign' : 'investorNetLineInstitution'),
         value: lineKeysByPane[paneId]?.[i] && !lineVisible(lineVisibility, lineKeysByPane[paneId]![i]) ? null
-          : paneId === 'peak-wall' || (hasMissingVolume && (paneId === 'volume' || paneId === 'candle'))
+          : paneId === 'peak-wall' || paneId === 'investor-net-line' || (hasMissingVolume && (paneId === 'volume' || paneId === 'candle'))
           ? readSeriesValueAtTime(entry.series, exactTimeSec, exactLogicalIndex)
           : readSeriesValue(entry.series, seriesData, syncValueTimeSec, syncLogicalIndex),
         format: entry.meta.format,

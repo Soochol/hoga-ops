@@ -6,6 +6,7 @@ import SupertrendConfig from './SupertrendConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import TradeValueConfig from './TradeValueConfig';
+import InvestorNetLineConfig from './InvestorNetLineConfig';
 import InvestorNetConfig from './InvestorNetConfig';
 import PeakWallsConfig from './PeakWallsConfig';
 import TradeVolumePocConfig from './TradeVolumePocConfig';
@@ -32,6 +33,7 @@ export default function IndicatorConfigContent({ category, capabilities }: { cat
     {category === 'envelope' && <EnvelopeConfig />}
     {category === 'moving-average' && <MovingAverageConfig />}
     {category === 'daily-moving-average' && <DailyMovingAverageConfig />}
+    {category === 'investor-net-line' && <InvestorNetLineConfig />}
     {category === 'volume' && <VolumeConfig />}
     {category === 'trade-value' && <TradeValueConfig />}
     {(category === 'foreign-net' || category === 'institution-net') && <InvestorNetConfig which={category === 'foreign-net' ? 'foreign' : 'institution'} grossSupported={capabilities.investorNet === 'stock'} />}

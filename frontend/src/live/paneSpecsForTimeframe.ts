@@ -8,6 +8,7 @@ import {
 } from '../chart/projectors/investorNet';
 import { DAILY_PROGRAM_TRADE_SPEC } from '../chart/projectors/dailyProgramTrade';
 import { PEAK_WALL_SPEC } from './indicators/peakWallPaneSpec';
+import { INVESTOR_NET_LINE_SPEC } from '../chart/projectors/investorNetLine';
 import { TRADE_VALUE_SPEC } from '../chart/projectors/tradeValue';
 
 /** Indicator toggles that gate which panes mount. The two investor flags are
@@ -18,6 +19,7 @@ export type PaneToggles = {
   institutionNet: boolean;
   volumeEnabled?: boolean;
   tradeValueEnabled?: boolean;
+  investorNetLineEnabled?: boolean;
   quoteTotalsEnabled?: boolean;
   ratioEnabled?: boolean;
   fillStrengthEnabled?: boolean;
@@ -80,6 +82,7 @@ const GATED: ReadonlyArray<{ spec: BoundPaneSpec; gate: PaneGate }> = [
   { spec: bindPaneSpec(DAILY_PROGRAM_TRADE_SPEC), gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.dailyProgramEnabled === true },
   { spec: bindPaneSpec(INVESTOR_FOREIGN_SPEC), gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
   { spec: bindPaneSpec(INVESTOR_INSTITUTION_SPEC), gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
+  { spec: bindPaneSpec(INVESTOR_NET_LINE_SPEC), gate: (tf, t) => tf === 'D' && t.investorNetLineEnabled === true },
   // 최대벽 강도 pane — `PANE_SPECS` 가 아니라 여기 append 하는 이유는 spec 파일
   // (`peakWallPaneSpec`) 머리말 참조: chart/→live/ 계층 규칙 + all-base identity.
   // 호가 파생 지표라 hogaAllowed 를 탄다(분봉 전용 · 인덱스 차트의 hogaPanes:false 존중).
