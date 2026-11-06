@@ -500,6 +500,14 @@ export const INDICATOR_OPS = {
     if (next.envelopeLineWidth !== undefined && ![1, 2, 3, 4].includes(next.envelopeLineWidth)) return null;
     return next;
   },
+  setInvestorNetLineSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
+    'investorNetLineForeignColor' | 'investorNetLineInstitutionColor' | 'investorNetLineWidth'>>): Patch => {
+    for (const key of ['investorNetLineForeignColor', 'investorNetLineInstitutionColor'] as const) {
+      if (patch[key] !== undefined && !/^#[0-9a-f]{6}$/i.test(patch[key])) return null;
+    }
+    if (patch.investorNetLineWidth !== undefined && ![1, 2, 3, 4].includes(patch.investorNetLineWidth)) return null;
+    return { ...patch };
+  },
   setMovingAverage: (cur: IndicatorSettings, id: string, patch: Partial<LiveMAConfig>): Patch => {
     const next = patchMaSlot(cur.movingAverages, id, patch);
     return next ? { movingAverages: next } : null;

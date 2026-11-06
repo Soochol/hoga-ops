@@ -1,5 +1,6 @@
 import { AppIcon } from '../../ui/AppIcon';
 import type { MouseEventParams, Time } from 'lightweight-charts';
+import { lineVisible } from '../../state/indicatorLineVisibility';
 import { resolveMaColor } from '../../util/maColor';
 import { useThemePrefsStore } from '../../state/themePrefs';
 import { useLivePageStore } from '../../state/livePage';
@@ -45,6 +46,11 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData, 
     : row.category === 'peak-walls' ? (['ask-peak', 'bid-peak'] as const).flatMap(type => readFlagLegendValues(registryScope, type, 'main', cursorTimeSec))
     : flagType ? readFlagLegendValues(registryScope, flagType, 'main', cursorTimeSec) : [];
   const paneValues = [...panes.entries()].filter(([name]) => name.startsWith(`indicator:${id}:`)).flatMap(([, entries]) => entries.flatMap(entry => {
+    if (row.category === 'investor-net-line') {
+      if (!entry.series.options().visible) return [];
+      const value = readSeriesValueAtTime(entry.series, cursorTimeSec ?? latestTimeSec);
+      return [`${entry.meta.label} ${value === null ? '—' : entry.meta.format?.(value) ?? entry.series.priceFormatter().format(value)}`];
+    }
     const value = row.category === 'volume' && strictVolume ? readSeriesValueAtTime(entry.series, cursorTimeSec ?? latestTimeSec) : readSeriesValue(entry.series, seriesData ?? null, cursorTimeSec);
     return value === null ? [] : [`${entry.meta.label} ${entry.meta.format?.(value) ?? entry.series.priceFormatter().format(value)}`];
   }));
@@ -62,6 +68,7 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData, 
     if (remove) s.setIndicatorUndoToast({ label: `${category.label} 삭제됨`, scope, timeframe, patch: {}, removedInstance: { row: current.find(item => item.id === id)!, index: current.findIndex(item => item.id === id) } });
   };
   return <div className="indicator-instance-legend" data-testid={`indicator-instance-legend-${id}`}>
+    {!hidden && row.category === 'investor-net-line' && [settings.investorNetLineForeignColor, settings.investorNetLineInstitutionColor].filter((_, i) => lineVisible(settings.indicatorLineVisibility, i === 0 ? 'investorNetLineForeign' : 'investorNetLineInstitution')).map((color, i) => <span key={i} aria-hidden="true" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: color }} />)}
     {!hidden && maSlots.filter(m => m.enabled && !m.hidden).map(m => <span key={m.id}
       aria-label={`${m.period} ${row.category === 'daily-moving-average' ? '일봉' : '현재봉'} 이평선 색상`}
       style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: resolveMaColor(m, theme) }} />)}

@@ -102,6 +102,7 @@ const ALL_ON: PaneToggles = {
   tradeValueEnabled: true,
   dailyProgramEnabled: true,
   foreignNet: true,
+  investorNetLineEnabled: true,
   institutionNet: true,
   peakWallPaneEnabled: true,
 };

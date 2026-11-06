@@ -15,7 +15,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 it.each(CATEGORIES)('$label has reset immediately after copy and retains its presence', async category => {
-  const tf = ['trade-value', 'new-high-bearish'].includes(category.id) ? 'D' : '1m';
+  const tf = ['trade-value', 'new-high-bearish', 'investor-net-line'].includes(category.id) ? 'D' : '1m';
   const state = createCatalogDraft(category.id, factory, DEFAULT_PREFS).store.getState().settings;
   useLivePageStore.setState({ ...state, indicatorTimeframe: tf });
   render(<IndicatorPanel timeframe={tf} onClose={() => {}} />);

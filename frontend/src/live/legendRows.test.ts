@@ -365,3 +365,17 @@ it('resolves automatic colors consistently in current and daily MA legend models
     }
   }
 });
+
+
+it('keeps explicitly requested empty investor cells as dashes without changing legacy empty filtering', () => {
+  const rows = buildLegendRows({ ...base, paneCells: [{ paneId: 'investor-net-line', cells: [
+    { key: 'foreign', label: '外', color: '#EC4899', value: null, keepEmpty: true },
+    { key: 'hidden', label: 'hidden', value: null },
+    { key: 'institution', label: '機', value: 0, keepEmpty: true },
+  ] }] });
+  expect(rows).toHaveLength(1);
+  expect(rows[0].kind === 'cells' && rows[0].cells).toEqual([
+    { key: 'foreign', label: '外', color: '#EC4899', formatted: '—' },
+    { key: 'institution', label: '機', color: undefined, formatted: '0' },
+  ]);
+});

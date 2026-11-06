@@ -32,6 +32,7 @@ export const PRESET_INDICATOR_FLAG_KEYS = [
   'fillStrengthEnabled',
   'programTradeEnabled',
   'foreignNetEnabled',
+  'investorNetLineEnabled',
   'institutionNetEnabled',
   'peakWallPaneEnabled',
 ] as const;
