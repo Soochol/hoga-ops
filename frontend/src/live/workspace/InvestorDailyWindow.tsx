@@ -258,7 +258,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
       return;
     }
     if (span !== 0) {
-      setCursorNotice('커서 날짜가 표시 기간 밖에 있습니다 · 전체에서 따라가기');
+      setCursorNotice(null);
       return;
     }
     if (cursorTarget.date >= historyFrom || (historyLoaded && hasNextPage === false)) {
