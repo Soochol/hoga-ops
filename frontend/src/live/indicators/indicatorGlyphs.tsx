@@ -197,6 +197,7 @@ export const INDICATOR_GLYPH: Record<CategoryId, ReactNode> = {
       <rect x="11.6" y="10.6" width="2.4" height="1.65" fill="currentColor" />
     </>,
   ),
+  'investor-holdings': svg(<>{PANE_FRAME}<path d="M2 13L6 12L10 8L14 9" stroke="currentColor" strokeWidth="1.2" /></>),
   'investor-net-line': svg(<>{PANE_FRAME}{ZERO_LINE}<path d="M2 11L6 14L10 10L14 12M2 14L6 10L10 13L14 10" stroke="currentColor" strokeWidth="1.2" /></>),
   'institution-net': svg(
     <>

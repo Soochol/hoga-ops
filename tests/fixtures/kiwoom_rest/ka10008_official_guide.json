@@ -1,0 +1,71 @@
+{
+  "stk_frgnr": [
+    {
+      "dt": "20241105",
+      "close_pric": "135300",
+      "pred_pre": "0",
+      "trde_qty": "0",
+      "chg_qty": "0",
+      "poss_stkcnt": "6663509",
+      "wght": "+26.10",
+      "gain_pos_stkcnt": "18863197",
+      "frgnr_limit": "25526706",
+      "frgnr_limit_irds": "0",
+      "limit_exh_rt": "+26.10"
+    },
+    {
+      "dt": "20241101",
+      "close_pric": "65100",
+      "pred_pre": "0",
+      "trde_qty": "0",
+      "chg_qty": "-3441",
+      "poss_stkcnt": "6642402",
+      "wght": "+26.02",
+      "gain_pos_stkcnt": "18884304",
+      "frgnr_limit": "25526706",
+      "frgnr_limit_irds": "0",
+      "limit_exh_rt": "+26.02"
+    },
+    {
+      "dt": "20241031",
+      "close_pric": "65100",
+      "pred_pre": "0",
+      "trde_qty": "0",
+      "chg_qty": "4627",
+      "poss_stkcnt": "6645843",
+      "wght": "+26.03",
+      "gain_pos_stkcnt": "18880863",
+      "frgnr_limit": "25526706",
+      "frgnr_limit_irds": "0",
+      "limit_exh_rt": "+26.03"
+    },
+    {
+      "dt": "20241030",
+      "close_pric": "+65100",
+      "pred_pre": "+100",
+      "trde_qty": "1",
+      "chg_qty": "-10245",
+      "poss_stkcnt": "6641216",
+      "wght": "+26.02",
+      "gain_pos_stkcnt": "18885490",
+      "frgnr_limit": "25526706",
+      "frgnr_limit_irds": "0",
+      "limit_exh_rt": "+26.02"
+    },
+    {
+      "dt": "20241029",
+      "close_pric": "-65000",
+      "pred_pre": "-27300",
+      "trde_qty": "4",
+      "chg_qty": "249",
+      "poss_stkcnt": "6651461",
+      "wght": "+26.06",
+      "gain_pos_stkcnt": "18875245",
+      "frgnr_limit": "25526706",
+      "frgnr_limit_irds": "0",
+      "limit_exh_rt": "+26.06"
+    }
+  ],
+  "return_code": 0,
+  "return_msg": "정상적으로 처리되었습니다"
+}

@@ -9,6 +9,7 @@ import type { PanePrefKey } from './indicatorPaneProfiles';
 import { VOLUME_OVERLAY_PREF_KEYS, type VolumeOverlayPrefs } from '../../state/chartDisplayPrefs';
 
 export const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
+  'investor-holdings': 'investorHoldingsEnabled',
   'investor-net-line': 'investorNetLineEnabled', volume: 'volumeEnabled', 'trade-value': 'tradeValueEnabled', 'quote-totals': 'quoteTotalsEnabled',
   ratio: 'ratioEnabled', 'fill-strength': 'fillStrengthEnabled', 'program-trade': 'programTradeEnabled',
   'program-daily': 'dailyProgramEnabled', 'foreign-net': 'foreignNetEnabled', 'institution-net': 'institutionNetEnabled',

@@ -1275,7 +1275,7 @@ describe('PaneLegendOverlay — 왼쪽 이름으로 pane 이동', () => {
     render(<PaneLegendOverlay
       chart={makeChart(CANONICAL_PANE_ORDER.map(() => 100))}
       timeframe="D"
-      paneToggles={{ foreignNet: true, institutionNet: true, forceHogaPanes: true, peakWallPaneEnabled: true, dailyProgramEnabled: true, tradeValueEnabled: true, investorNetLineEnabled: true }}
+      paneToggles={{ foreignNet: true, institutionNet: true, forceHogaPanes: true, peakWallPaneEnabled: true, dailyProgramEnabled: true, tradeValueEnabled: true, investorNetLineEnabled: true, investorHoldingsEnabled: true }}
     />);
     for (const pane of CANONICAL_PANE_ORDER.filter((id) => id !== 'candle')) {
       openMenu(PANE_DISPLAY_NAME[pane]);
@@ -1324,7 +1324,7 @@ describe('PaneLegendOverlay — 왼쪽 이름으로 pane 이동', () => {
     fireEvent.click(screen.getByTestId('pane-menu-move-up'));
     const order = useLivePageStore.getState().paneOrder;
     expect(order.indexOf('ratio')).toBeLessThan(order.indexOf('quote-totals'));
-    expect(order.slice(-4)).toEqual(['investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line']);
+    expect(order.slice(-5)).toEqual(['investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings']);
     expect(screen.queryByTestId('pane-chip-menu')).toBeNull();
   });
 

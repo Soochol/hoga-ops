@@ -1,3 +1,4 @@
+import { InvestorHoldingsPane } from './InvestorHoldingsPane';
 import { useMemo, type ComponentProps } from 'react';
 import { IndicatorInstanceProvider } from './IndicatorInstanceProvider';
 import RangeSeriesPane from '../../chart/RangeSeriesPane';
@@ -26,11 +27,13 @@ export function IndicatorInstancePane({ code, ...props }: ComponentProps<typeof 
       ? { ...props.bundle, institutionInvestorPoints: points, institutionInvestorTradeSide: side }
       : { ...props.bundle, investorPoints: points, investorTradeSide: side };
   }, [pane, props.bundle, investor, stock, query.data, dailyProgram.data, side, program]);
+  if (pane === 'investor-holdings') return <InvestorHoldingsPane code={code} {...props} />;
   return pane === 'investor-net-line' ? <InvestorNetLinePane code={code} {...props} /> : <RangeSeriesPane {...props} bundle={bundle} />;
 }
 
 /** One stable chart child for both the original and additional pane instances. */
 export function ScopedIndicatorPane({ code, ...props }: ComponentProps<typeof RangeSeriesPane> & { code: string | null }) {
+  if (basePaneId(props.spec.name as import('../../chart/drawing/types').PaneId) === 'investor-holdings' && !props.spec.name.startsWith('indicator:')) return <InvestorHoldingsPane code={code} {...props} />;
   return props.spec.name.startsWith('indicator:')
     ? <IndicatorInstanceProvider id={props.spec.name.split(':')[1]}><IndicatorInstancePane code={code} {...props} /></IndicatorInstanceProvider>
     : basePaneId(props.spec.name as import('../../chart/drawing/types').PaneId) === 'investor-net-line'

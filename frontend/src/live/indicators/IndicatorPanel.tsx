@@ -254,6 +254,7 @@ export default function IndicatorPanel({
   }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
+    if (c.id === 'investor-holdings') return true;
     if (c.id === 'investor-net-line') return timeframe === 'D' && capabilities.investorNet === 'stock';
     if (c.id === 'new-high-bearish') return timeframe === 'D' && (capabilities.investorNet === 'stock' || capabilities.dailyPriceSignals === true);
     if (isSecondTimeframe(timeframe)) return ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(c.id);
@@ -433,7 +434,7 @@ export default function IndicatorPanel({
         footer={draft ? '추가 전' : '즉시 반영'}
         statusIcon={draft ? null : undefined}
         footerAction={mode === 'catalog' && !emptyCatalog && (draft || selectedAdded) ? (draft
-          ? <CatalogAddButton count={ind.indicatorInstances?.length ?? 0} draft={draft} category={selectedId} onAdd={() => addFor(selectedId)} />
+          ? <CatalogAddButton supported={selectedId !== 'investor-holdings' || (timeframe === 'D' && capabilities.investorNet === 'stock')} count={ind.indicatorInstances?.length ?? 0} draft={draft} category={selectedId} onAdd={() => addFor(selectedId)} />
           : <><button type="button" onClick={copyInstance} className="indicator-catalog-add">하나 더 추가</button><button type="button" className="indicator-catalog-add" disabled>추가됨</button></>) : undefined}
         sidebar={
       <div className="flex min-h-0 flex-1 flex-col">
@@ -567,7 +568,7 @@ export default function IndicatorPanel({
 }
 
 /** The footer follows the same draft store as the form, including zero-slot validation. */
-function CatalogAddButton({ draft, category, onAdd, count }: { count: number; draft: CatalogDraft; category: CategoryId; onAdd: () => void }) {
+function CatalogAddButton({ draft, category, onAdd, count, supported = true }: { supported?: boolean; count: number; draft: CatalogDraft; category: CategoryId; onAdd: () => void }) {
   const canAdd = useStore(draft.store, s => indicatorIsPresent(category, s.settings));
-  return <button type="button" className="indicator-catalog-add" aria-label="설정대로 추가" onClick={onAdd} disabled={!canAdd || count >= MAX_INDICATOR_INSTANCES} data-tooltip={count >= MAX_INDICATOR_INSTANCES ? '추가한 지표가 128개입니다' : undefined}>추가</button>;
+  return <button type="button" className="indicator-catalog-add" aria-label="설정대로 추가" onClick={onAdd} disabled={!supported || !canAdd || count >= MAX_INDICATOR_INSTANCES} data-tooltip={count >= MAX_INDICATOR_INSTANCES ? '추가한 지표가 128개입니다' : undefined}>추가</button>;
 }

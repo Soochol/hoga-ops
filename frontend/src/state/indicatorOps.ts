@@ -500,6 +500,13 @@ export const INDICATOR_OPS = {
     if (next.envelopeLineWidth !== undefined && ![1, 2, 3, 4].includes(next.envelopeLineWidth)) return null;
     return next;
   },
+  setInvestorHoldingsSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
+    'investorHoldingsMetric' | 'investorHoldingsForeignColor' | 'investorHoldingsWidth'>>): Patch => {
+    if (patch.investorHoldingsMetric !== undefined && !['quantity', 'ratio'].includes(patch.investorHoldingsMetric)) return null;
+    if (patch.investorHoldingsForeignColor !== undefined && !/^#[0-9a-f]{6}$/i.test(patch.investorHoldingsForeignColor)) return null;
+    if (patch.investorHoldingsWidth !== undefined && ![1, 2, 3, 4].includes(patch.investorHoldingsWidth)) return null;
+    return { ...patch };
+  },
   setInvestorNetLineSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
     'investorNetLineForeignColor' | 'investorNetLineInstitutionColor' | 'investorNetLineWidth'>>): Patch => {
     for (const key of ['investorNetLineForeignColor', 'investorNetLineInstitutionColor'] as const) {

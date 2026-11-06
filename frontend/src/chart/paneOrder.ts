@@ -28,6 +28,7 @@ export const CANONICAL_PANE_ORDER = [
   'investor-institution',
   'program-daily',
   'investor-net-line',
+  'investor-holdings',
 ] as const satisfies readonly PaneId[];
 
 // PaneId 유니온이 늘어나면 이 할당이 실패한다(위 배열에 새 pane 추가를 강제).
@@ -116,6 +117,7 @@ export function movePaneBeside(
  */
 export const PANE_DISPLAY_NAME: Record<BasePaneId, string> = {
   'investor-net-line': '외국인·기관 순매수 라인',
+  'investor-holdings': '외국인·기관 보유',
   'program-daily': '프로그램 순매수량',
   candle: '캔들',
   volume: '거래량',

@@ -1,3 +1,4 @@
+import { INVESTOR_HOLDINGS_SPEC } from '../chart/projectors/investorHoldings';
 import { bindPaneSpec } from '../chart/paneSpecs';
 import { type LiveTimeframe, isCalendarTimeframe, isMinuteTimeframe, isSecondTimeframe } from '../state/livePage';
 import { PANE_SPECS, type BoundPaneSpec } from '../chart/paneSpecs';
@@ -20,6 +21,7 @@ export type PaneToggles = {
   volumeEnabled?: boolean;
   tradeValueEnabled?: boolean;
   investorNetLineEnabled?: boolean;
+  investorHoldingsEnabled?: boolean;
   quoteTotalsEnabled?: boolean;
   ratioEnabled?: boolean;
   fillStrengthEnabled?: boolean;
@@ -82,6 +84,7 @@ const GATED: ReadonlyArray<{ spec: BoundPaneSpec; gate: PaneGate }> = [
   { spec: bindPaneSpec(DAILY_PROGRAM_TRADE_SPEC), gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.dailyProgramEnabled === true },
   { spec: bindPaneSpec(INVESTOR_FOREIGN_SPEC), gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
   { spec: bindPaneSpec(INVESTOR_INSTITUTION_SPEC), gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
+  { spec: bindPaneSpec(INVESTOR_HOLDINGS_SPEC), gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.investorHoldingsEnabled === true },
   { spec: bindPaneSpec(INVESTOR_NET_LINE_SPEC), gate: (tf, t) => tf === 'D' && t.investorNetLineEnabled === true },
   // 최대벽 강도 pane — `PANE_SPECS` 가 아니라 여기 append 하는 이유는 spec 파일
   // (`peakWallPaneSpec`) 머리말 참조: chart/→live/ 계층 규칙 + all-base identity.

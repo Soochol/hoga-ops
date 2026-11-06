@@ -78,6 +78,13 @@ from hoga.live.error_policy import LiveErrorKind
 from hoga.live.index_header_quote import IndexHeaderQuoteResponse, IndexQuoteRefresh, IndexQuoteSession
 from hoga.live.index_registry import LiveIndexId
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
+from hoga.live.investor_holdings import (
+    HoldingsObservation,
+    HoldingsSource,
+    HoldingsWarning,
+    HoldingsWarningReason,
+    InvestorHoldingsResponse,
+)
 from hoga.live.kiwoom_calendar_candles import CalendarTimeframe
 from hoga.live.krx_close import KrxCloseResponse
 from hoga.live.krx_previous_close import KrxPreviousCloseResponse
@@ -438,6 +445,11 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    HoldingsObservation: frozenset({"date", "t_ms", "quantity_shares", "ratio_pct"}),
+    HoldingsWarning: frozenset({"reason", "message"}),
+    InvestorHoldingsResponse: frozenset({"code", "from_", "to", "source", "provider_scope", "institution_supported",
+        "observations", "oldest_observed_date", "latest_observed_date", "pages_observed", "pagination_complete",
+        "exhausted", "partial", "data_warnings"}),
     LivePastCalendarCandlesResponse: frozenset({
         "code", "from_", "to", "venue", "timeframe", "candles",
         "cached_batches", "fresh_batches", "data_warnings",
@@ -671,6 +683,8 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "HoldingsSource": (frozenset(get_args(HoldingsSource)), "frontend/src/api/investorHoldings.ts"),
+    "HoldingsWarningReason": (frozenset(get_args(HoldingsWarningReason)), "frontend/src/api/investorHoldings.ts"),
     "CalendarTimeframe": (frozenset(get_args(CalendarTimeframe)), "frontend/src/api/livePastDailyCandles.ts"),
     "ScreenerRankDirection": (frozenset(get_args(m.ScreenerRankDirection)), "frontend/src/api/screener.ts"),
     "MarketRankKind": (frozenset(get_args(m.MarketRankKind)), "frontend/src/api/screener.ts"),

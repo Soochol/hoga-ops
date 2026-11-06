@@ -29,6 +29,9 @@ import type { PanePrefKey } from '../live/indicators/indicatorPaneProfiles';
  * the indicator definition, so adding a pane needs no edit to the legend model.
  */
 export type SeriesLegendMeta = {
+  /** Source/availability note supplied by a dedicated data pane. */
+  notice?: string;
+  retry?: () => void;
   /** Cell label, e.g. '매수', '누적'. */
   label: string;
   /** Swatch color thunk (theme-resolved lazily via `resolveTokensThemed` so it

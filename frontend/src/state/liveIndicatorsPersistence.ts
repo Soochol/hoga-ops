@@ -222,6 +222,10 @@ export type PersistedIndicators = {
   institutionTradeSide: import('../api/types').InvestorTradeSide;
   /** ADR-0055: institution net-buy bar pane. Opt-in (default false). */
   institutionNetEnabled: boolean;
+  investorHoldingsEnabled: boolean;
+  investorHoldingsMetric: import('../chart/projectors/investorHoldings').HoldingsMetric;
+  investorHoldingsForeignColor: string;
+  investorHoldingsWidth: 1 | 2 | 3 | 4;
   investorNetLineEnabled: boolean;
   investorNetLineForeignColor: string;
   investorNetLineInstitutionColor: string;
@@ -778,6 +782,10 @@ export function mergeLiveIndicatorPrefs(
     foreignTradeSide: normalizeInvestorTradeSide(obj?.foreignTradeSide ?? obj?.investorTradeSide),
     institutionTradeSide: normalizeInvestorTradeSide(obj?.institutionTradeSide ?? obj?.investorTradeSide),
     institutionNetEnabled: iNet,
+    investorHoldingsEnabled: obj?.investorHoldingsEnabled === true,
+    investorHoldingsMetric: obj?.investorHoldingsMetric === 'ratio' ? 'ratio' : 'quantity',
+    investorHoldingsForeignColor: typeof obj?.investorHoldingsForeignColor === 'string' && HEX_COLOR.test(obj.investorHoldingsForeignColor) ? obj.investorHoldingsForeignColor : '#EC4899',
+    investorHoldingsWidth: obj?.investorHoldingsWidth === 1 || obj?.investorHoldingsWidth === 3 || obj?.investorHoldingsWidth === 4 ? obj.investorHoldingsWidth : 2,
     investorNetLineEnabled: obj?.investorNetLineEnabled === true,
     investorNetLineForeignColor: typeof obj?.investorNetLineForeignColor === 'string' && HEX_COLOR.test(obj.investorNetLineForeignColor)
       ? obj.investorNetLineForeignColor : '#EC4899',

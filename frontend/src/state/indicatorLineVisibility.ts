@@ -7,6 +7,7 @@ export const INDICATOR_LINE_KEYS = [
   'quoteTotalsBidLevel', 'quoteTotalsAskLevel',
   'quoteTotalsDayMaxBid', 'quoteTotalsDayMaxAsk',
   'fillStrengthBuy', 'fillStrengthSell',
+  'investorHoldingsForeign',
   'investorNetLineForeign', 'investorNetLineInstitution',
 ] as const;
 export type IndicatorLineKey = typeof INDICATOR_LINE_KEYS[number];

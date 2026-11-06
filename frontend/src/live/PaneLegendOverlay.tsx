@@ -149,6 +149,7 @@ const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
   'volume',
   'trade-value',
   'investor-net-line',
+  'investor-holdings',
   'quote-totals',
   'program-trade',
   // 최대벽 강도 pane — 계단의 현재 높이가 곧 「오늘 최대」라 커서 없이도 읽을 값이
@@ -1122,6 +1123,7 @@ function PaneLegendOverlay({
   const paneCells: PaneCellInput[] = [];
   const lineKeysByPane: Partial<Record<PaneId, readonly IndicatorLineKey[]>> = {
     'investor-net-line': ['investorNetLineForeign', 'investorNetLineInstitution'],
+    'investor-holdings': ['investorHoldingsForeign'],
     'quote-totals': ['quoteTotalsBid', 'quoteTotalsAsk'],
     'fill-strength': ['fillStrengthBuy', 'fillStrengthSell'],
   };
@@ -1130,7 +1132,7 @@ function PaneLegendOverlay({
   const exactTimeSec = (typeof paramRef.current?.time === 'number' ? paramRef.current.time : null)
     ?? syncValueTimeSec
     ?? (latestCandle && axis ? axis.toVirtual(latestCandle.ts_ms) / 1000 : null);
-  const exactLogicalIndex = exactTimeSec === null || !indicatorLegendsVisible || (!hasMissingVolume && !legendPanes.has('peak-wall') && !legendPanes.has('investor-net-line')) ? null
+  const exactLogicalIndex = exactTimeSec === null || !indicatorLegendsVisible || (!hasMissingVolume && !legendPanes.has('peak-wall') && !legendPanes.has('investor-net-line') && !legendPanes.has('investor-holdings')) ? null
     : chart.timeScale().timeToIndex?.(exactTimeSec as Time) ?? null;
   for (const [paneId, entries] of legendPanes) {
     if (!indicatorLegendsVisible || !LEGEND_CELL_PANES.has(paneId)) continue;
@@ -1143,9 +1145,9 @@ function PaneLegendOverlay({
         key: `${paneId}:${i}`,
         label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,
         color: entry.meta.color?.(),
-        keepEmpty: paneId === 'investor-net-line' && lineVisible(lineVisibility, i === 0 ? 'investorNetLineForeign' : 'investorNetLineInstitution'),
+        keepEmpty: paneId === 'investor-holdings' ? lineVisible(lineVisibility, 'investorHoldingsForeign') : paneId === 'investor-net-line' && lineVisible(lineVisibility, i === 0 ? 'investorNetLineForeign' : 'investorNetLineInstitution'),
         value: lineKeysByPane[paneId]?.[i] && !lineVisible(lineVisibility, lineKeysByPane[paneId]![i]) ? null
-          : paneId === 'peak-wall' || paneId === 'investor-net-line' || (hasMissingVolume && (paneId === 'volume' || paneId === 'candle'))
+          : paneId === 'peak-wall' || paneId === 'investor-net-line' || paneId === 'investor-holdings' || (hasMissingVolume && (paneId === 'volume' || paneId === 'candle'))
           ? readSeriesValueAtTime(entry.series, exactTimeSec, exactLogicalIndex)
           : readSeriesValue(entry.series, seriesData, syncValueTimeSec, syncLogicalIndex),
         format: entry.meta.format,
@@ -1475,7 +1477,7 @@ function PaneLegendOverlay({
                       // MA 계열만 가로 축약 대상 — 칩이 최대 8개까지 늘어나는 유일한
                       // 행이다(global.css `.legend-row-ma`).
                       className={row.kind === 'ma' || row.kind === 'daily-ma' ? 'legend-row-ma' : undefined}
-                      style={boxStyle}
+                      style={row.paneId === 'investor-holdings' ? { ...boxStyle, flexWrap: 'wrap', whiteSpace: 'normal' } : boxStyle}
                     >
                       {row.kind === 'ohlc' ? (
                         <OhlcLegendRow row={row} code={code} />
@@ -1488,6 +1490,12 @@ function PaneLegendOverlay({
                       ) : (
                         <CellsLegendRow nameLabel={paneDisplayName(row.paneId)} row={row} timeframe={timeframe} nameControl={nameControl} />
                       )}
+                      {row.paneId === 'investor-holdings' && <div className="flex basis-full flex-wrap items-center gap-1 text-xs text-fg-dim">
+                        <span role="status">{legendPanes.get(row.paneId)?.[0]?.meta.notice}</span>
+                        <button type="button" aria-label="보유 자료 다시 조회" className="shrink-0 rounded border border-border px-1 text-xs text-fg-dim"
+                          style={{ pointerEvents: 'auto' }} disabled={!legendPanes.get(row.paneId)?.[0]?.meta.retry}
+                          onClick={() => legendPanes.get(row.paneId)?.[0]?.meta.retry?.()}>다시 조회</button>
+                      </div>}
                       {row.paneId === 'program-daily' && (dailyProgramStatus === 'error' || dailyProgramStatus === 'partial') && (
                         <button type="button" aria-label="프로그램매매 오류 상세" className="ml-2 rounded border border-border px-1 text-xs text-warn"
                           style={{ pointerEvents: 'auto' }} onClick={() => useServiceStatusPanel.getState().show('ka90013')}>

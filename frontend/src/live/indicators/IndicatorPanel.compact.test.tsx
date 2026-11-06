@@ -15,7 +15,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 it.each(CATEGORIES)('$label uses shared compact switches and opt-in help', category => {
-  const timeframe = ['new-high-bearish', 'trade-value', 'investor-net-line'].includes(category.id) ? 'D' : '1m';
+  const timeframe = ['new-high-bearish', 'trade-value', 'investor-net-line', 'investor-holdings'].includes(category.id) ? 'D' : '1m';
   const settings = createCatalogDraft(category.id, factory, DEFAULT_PREFS).store.getState().settings;
   useLivePageStore.setState({ ...settings, indicatorTimeframe: timeframe });
   render(<IndicatorPanel timeframe={timeframe} onClose={vi.fn()} />);
