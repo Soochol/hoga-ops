@@ -225,6 +225,7 @@ class Page:
     cont: bool
     next_key: str
     raw: dict[str, Any] = field(repr=False, default_factory=dict)
+    raw_cont_yn: str | None = None
 
 
 PageFetch = Callable[["KiwoomRestClient"], Awaitable[Page]]
@@ -372,6 +373,8 @@ class KiwoomRestClient:
             payload = resp.json()
         except ValueError as exc:
             raise KiwoomApiError(code=f"HTTP/{resp.status_code}", msg=resp.text[:200]) from exc
+        if not isinstance(payload, dict):
+            raise KiwoomApiError(code="invalid_response", msg="Expected a JSON object")
         _raise_for_body(spec, resp.status_code, payload)
 
         return Page(
@@ -379,6 +382,7 @@ class KiwoomRestClient:
             cont=resp.headers.get("cont-yn") == "Y",
             next_key=resp.headers.get("next-key", ""),
             raw=payload,
+            raw_cont_yn=resp.headers.get("cont-yn"),
         )
 
     async def walk(
