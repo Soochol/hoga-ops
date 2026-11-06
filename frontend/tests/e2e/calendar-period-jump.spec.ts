@@ -194,35 +194,42 @@ test('dev geometry proves native OHLCV and captured span with live and historica
   await page.locator('[data-win="source"]').getByTestId('live-jump-to-minute-button').click();
   fixture.release();
   await expect(page.locator('[data-win="target"]').getByTestId('live-calendar-jump-chip')).toHaveText('점프 04-03');
+  const expected = before.rows.find(c => 'close' in c && c.close === 30821);
+  expect(expected).toBeDefined();
+  const readPlacement = (padding: number) => page.evaluate(({ expected, padding }) => {
+    const chart = window.__liveCharts?.get('target');
+    if (!chart || !expected || !('close' in expected)) throw new Error('missing expected native candle');
+    const series = chart.panes()[0]?.getSeries().find(s => s.seriesType() === 'Candlestick');
+    const candle = series?.data().find(c => 'close' in c && c.close === expected.close
+      && c.open === expected.open && c.high === expected.high && c.low === expected.low);
+    const index = candle ? chart.timeScale().timeToIndex(candle.time, false) : null;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    return { to: range?.to, expectedTo: index === null ? null : index + 1 + padding };
+  }, { expected, padding });
+  await expect.poll(async () => {
+    const placement = await readPlacement(before.padding);
+    return (placement.to ?? NaN) - (placement.expectedTo ?? NaN);
+  }).toBeCloseTo(0, 5);
+  const placement = await readPlacement(before.padding);
   const after = await snapshot(page, 'target');
   expect(after.rows).toEqual(before.rows);
   expect(after.span).toBeCloseTo(before.span, 5);
-  const expected = before.rows.find(c => 'close' in c && c.close === 30821);
-  expect(expected).toBeDefined();
-  const placement = await page.evaluate(({ expected, padding }) => {
-    const chart = window.__liveCharts?.get('target');
-    if (!chart || !expected) throw new Error('missing expected native candle');
-    const index = chart.timeScale().timeToIndex(expected.time, false);
-    const range = chart.timeScale().getVisibleLogicalRange();
-    return { to: range?.to, expectedTo: index === null ? null : index + 1 + padding };
-  }, { expected, padding: before.padding });
   expect(placement.to).toBeCloseTo(placement.expectedTo ?? NaN, 5);
   await pan(page, 'target');
   const panned = await snapshot(page, 'target');
   expect(Math.abs(panned.range.from - after.range.from)).toBeGreaterThan(1);
   await page.locator('[data-win="source"]').getByTestId('live-jump-to-minute-button').click();
   await expect(page.locator('[data-win="target"]').getByTestId('live-calendar-jump-chip')).toHaveText('점프 04-03');
+  expect(panned.padding).toBe(0);
+  await expect.poll(async () => {
+    const placement = await readPlacement(0);
+    return (placement.to ?? NaN) - (placement.expectedTo ?? NaN);
+  }).toBeCloseTo(0, 5);
+  const historicalPlacement = await readPlacement(0);
   const repeated = await snapshot(page, 'target');
   expect(repeated.span).toBeCloseTo(panned.span, 5);
-  expect(panned.padding).toBe(0);
-  const historicalTo = await page.evaluate(expected => {
-    const chart = window.__liveCharts?.get('target');
-    if (!chart || !expected) throw new Error('missing native target');
-    const index = chart.timeScale().timeToIndex(expected.time, false);
-    return index === null ? NaN : index + 1;
-  }, expected);
-  expect(repeated.range.to).toBeCloseTo(historicalTo, 5);
-  await info.attach('geometry', { body: JSON.stringify({ before, after, placement, panned, repeated }), contentType: 'application/json' });
+  expect(historicalPlacement.to).toBeCloseTo(historicalPlacement.expectedTo ?? NaN, 5);
+  await info.attach('geometry', { body: JSON.stringify({ before, after, placement, panned, historicalPlacement, repeated }), contentType: 'application/json' });
   await page.screenshot({ path: info.outputPath('calendar-geometry.png') });
 });
 
