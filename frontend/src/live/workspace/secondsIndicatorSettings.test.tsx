@@ -72,6 +72,6 @@ it('resetting seconds preserves minute settings and seconds pane layout', () => 
 it('allows price and volume instances on seconds without admitting minute-resolution sources', () => {
   for (const category of ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'] as const)
     expect(indicatorInstanceApplicable(category, '1s', true)).toBe(true);
-  for (const category of ['ratio', 'program-trade', 'daily-moving-average', 'peak-walls', 'foreign-net'] as const)
+  for (const category of ['ratio', 'program-trade', 'daily-moving-average', 'peak-walls', 'foreign-net', 'investor-holdings'] as const)
     expect(indicatorInstanceApplicable(category, '1s', true)).toBe(false);
 });

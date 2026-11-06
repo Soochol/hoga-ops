@@ -210,10 +210,7 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByRole('button', { name: '거래대금 추가' })).not.toBeInTheDocument();
   });
 
-  // 목록이 두 모드로 갈리므로 "전 카테고리가 한 화면에" 라는 단언은 성립하지 않는다.
-  // 대신 **합집합이 18종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
-  // 그게 이 목록이 지켜야 할 총계다.
-  it('내 지표 + 카탈로그의 합집합이 18종이다 (어디에도 안 뜨는 지표는 없다)', () => {
+  it('내 지표 + 카탈로그의 합집합이 19종이다 (어디에도 안 뜨는 지표는 없다)', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -233,7 +230,7 @@ describe('IndicatorPanel', () => {
     openCatalog();
     const addable = within(screen.getByRole('navigation')).getAllByRole('button').filter(b => b.parentElement?.classList.contains('indicator-nav-row') && b.parentElement.firstElementChild === b).map(b => b.getAttribute('aria-label'));
 
-    expect(new Set([...mine, ...addable]).size).toBe(18);
+    expect(new Set([...mine, ...addable]).size).toBe(19);
     // 켜 둔 것은 전부 "내 지표" 쪽이다.
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       expect(mine).toContain(name);

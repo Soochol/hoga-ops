@@ -170,6 +170,7 @@ TR: dict[str, TrSpec] = {
     "ka10100": TrSpec("ka10100", PATH_STKINFO, None, shape="flat", required=("stk_cd",)),
     "ka10003": TrSpec("ka10003", PATH_STKINFO, "cntr_infr", cursor=True, required=("stk_cd",)),
     "ka10095": TrSpec("ka10095", PATH_STKINFO, "atn_stk_infr", required=("stk_cd",)),
+    "ka10008": TrSpec("ka10008", PATH_FRGNISTT, "stk_frgnr", cursor=True, required=("stk_cd",)),
     "ka10059": TrSpec("ka10059", PATH_STKINFO, "stk_invsr_orgn", cursor=True,
                       required=("stk_cd", "dt", "amt_qty_tp", "trde_tp", "unit_tp")),
     "ka90003": TrSpec("ka90003", PATH_STKINFO, "prm_netprps_upper_50", cursor=True,

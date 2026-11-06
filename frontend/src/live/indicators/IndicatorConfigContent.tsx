@@ -1,3 +1,4 @@
+import InvestorHoldingsConfig from './InvestorHoldingsConfig';
 import MovingAverageConfig from './MovingAverageConfig';
 import BollingerConfig from './BollingerConfig';
 import EnvelopeConfig from './EnvelopeConfig';
@@ -33,6 +34,7 @@ export default function IndicatorConfigContent({ category, capabilities }: { cat
     {category === 'envelope' && <EnvelopeConfig />}
     {category === 'moving-average' && <MovingAverageConfig />}
     {category === 'daily-moving-average' && <DailyMovingAverageConfig />}
+    {category === 'investor-holdings' && <InvestorHoldingsConfig />}
     {category === 'investor-net-line' && <InvestorNetLineConfig />}
     {category === 'volume' && <VolumeConfig />}
     {category === 'trade-value' && <TradeValueConfig />}

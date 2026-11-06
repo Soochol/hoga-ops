@@ -52,6 +52,10 @@ describe('mergeLiveIndicatorPrefs', () => {
       foreignTradeSide: 'net',
       institutionTradeSide: 'net',
       institutionNetEnabled: false,
+      investorHoldingsEnabled: false,
+      investorHoldingsMetric: 'quantity',
+      investorHoldingsForeignColor: '#EC4899',
+      investorHoldingsWidth: 2,
       investorNetLineEnabled: false,
       investorNetLineForeignColor: '#EC4899',
       investorNetLineInstitutionColor: '#3B82F6',
@@ -142,7 +146,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       panePrefsByTimeframe: {},
       paneOrder: [
         'candle', 'volume', 'trade-value', 'quote-totals', 'peak-wall', 'ratio',
-        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line',
+        'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
       ],
       paneStretch: {},
       dailyMovingAverages: DEFAULT_DAILY_MAS.map((m) => ({ ...m })),
@@ -308,7 +312,7 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
   it('defaults paneOrder to the canonical order with candle first', () => {
     expect(mergeLiveIndicatorPrefs(undefined).paneOrder).toEqual([
       'candle', 'volume', 'trade-value', 'quote-totals', 'peak-wall', 'ratio',
-      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line',
+      'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
     ]);
   });
 
@@ -316,7 +320,7 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
     const m = mergeLiveIndicatorPrefs({ paneOrder: ['ratio', 'bogus', 'candle', 'volume'] } as never);
     expect(m.paneOrder).toEqual([
       'candle', 'ratio', 'volume',
-      'trade-value', 'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line',
+      'trade-value', 'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
     ]);
   });
 });

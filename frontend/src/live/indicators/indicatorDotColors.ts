@@ -29,6 +29,7 @@ export function dotColorsFor(id: CategoryId, ind: IndicatorSettings, theme?: str
   const capped = (colors: string[]) => colors.slice(0, INDICATOR_DOT_LIMIT);
 
   switch (id) {
+    case 'investor-holdings': return lineVisible(ind.indicatorLineVisibility, 'investorHoldingsForeign') ? [ind.investorHoldingsForeignColor] : [];
     case 'investor-net-line': return [
       ...(lineVisible(ind.indicatorLineVisibility, 'investorNetLineForeign') ? [ind.investorNetLineForeignColor] : []),
       ...(lineVisible(ind.indicatorLineVisibility, 'investorNetLineInstitution') ? [ind.investorNetLineInstitutionColor] : []),
