@@ -12,6 +12,7 @@ import { useWindowIndicator, useWindowScopeId } from '../workspace/windowView';
 import type { CategoryId } from './IndicatorPanelHelpers';
 import MovingAverageOverlay from './MovingAverageOverlay';
 import DailyMovingAverageOverlay from './DailyMovingAverageOverlay';
+import IchimokuOverlay from './IchimokuOverlay';
 import BollingerOverlay from './BollingerOverlay';
 import EnvelopeOverlay from './EnvelopeOverlay';
 import NewHighBearishOverlay from './NewHighBearishOverlay';
@@ -43,6 +44,7 @@ export function IndicatorInstanceOverlays(props: InstanceOverlayProps) {
   const { category, chart, bundle, axis } = props;
   const behindSeries = useActivePrefs(s => s.candleAlwaysOnTop);
   if (category === 'moving-average') return <MovingAverageOverlay chart={chart} bundle={bundle} axis={axis} />;
+  if (category === 'ichimoku') return <IchimokuOverlay bundle={bundle} axis={axis} paneSeries={props.paneSeries} />;
   if (category === 'bollinger') return <BollingerOverlay chart={chart} bundle={bundle} axis={axis} />;
   if (category === 'envelope') return <EnvelopeOverlay chart={chart} bundle={bundle} axis={axis} />;
   if (category === 'new-high-bearish') return <NewHighBearishOverlay bundle={bundle} axis={axis} paneSeries={props.paneSeries} timeframe={props.timeframe} venue={props.candleVenue ?? props.venue} code={props.code} />;

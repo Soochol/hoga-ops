@@ -4,6 +4,7 @@
 export type CategoryId =
   | 'supertrend'
   | 'new-high-bearish'
+  | 'ichimoku'
   | 'bollinger'
   | 'envelope'
   | 'moving-average'
@@ -56,6 +57,8 @@ export const CATEGORIES: ReadonlyArray<{
     description: 'N거래일 신고가 이후 조건 음봉의 시가를 오른쪽으로 확장합니다. 일봉 전용입니다. 해외는 뉴욕 날짜 기준 당일 봉을 제외합니다.' },
   { id: 'supertrend', label: '슈퍼트렌드', group: 'top', placement: 'overlay',
     description: 'ATR 변동성을 바탕으로 상승·하락 추세를 표시합니다.' },
+  { id: 'ichimoku', label: '일목균형표', group: 'top', placement: 'overlay',
+    description: '전환·기준·선행 A/B·후행선과 선행 구름을 표시합니다.', notice: '선행·후행은 설정한 봉 수만큼 이동 · 미래 관측값이 아닙니다.' },
   { id: 'bollinger', label: '볼린저 밴드', group: 'top', placement: 'overlay',
     description: '이동평균선 위아래에 가격 변동폭을 표시합니다.' },
   { id: 'envelope', label: '엔벨로프', group: 'top', placement: 'overlay',

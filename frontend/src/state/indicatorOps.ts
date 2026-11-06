@@ -246,6 +246,7 @@ export const FLAG_INDICATOR_TYPES = [
   'bid-peak',
   'trade-volume-poc',
   'depth-heatmap',
+  'ichimoku',
   'bollinger',
   'envelope',
   'supertrend',
@@ -261,6 +262,7 @@ export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
   'bid-peak': '당일 매수 최대벽',
   'trade-volume-poc': '당일 최대 매물대',
   'depth-heatmap': '호가 잔량 히트맵',
+  ichimoku: '일목균형표',
   bollinger: '볼린저 밴드',
   envelope: '엔벨로프',
   supertrend: '슈퍼트렌드',
@@ -317,6 +319,7 @@ export const FLAG_INDICATOR_FIELDS: Record<
     'supertrendEnabled', 'supertrendHidden', 'supertrendPeriod', 'supertrendMultiplier',
     'supertrendUpColor', 'supertrendDownColor', 'supertrendLineWidth',
   ],
+  ichimoku: ['ichimokuEnabled', 'ichimokuHidden', 'ichimokuConversionPeriod', 'ichimokuBasePeriod', 'ichimokuLeadingBPeriod', 'ichimokuDisplacement', 'ichimokuConversionColor', 'ichimokuBaseColor', 'ichimokuLeadingAColor', 'ichimokuLeadingBColor', 'ichimokuLaggingColor', 'ichimokuLineWidth', 'ichimokuCloudVisible', 'ichimokuCloudPositiveColor', 'ichimokuCloudNegativeColor', 'ichimokuCloudOpacity'],
   bollinger: [
     'bollingerEnabled', 'bollingerHidden', 'bollingerPeriod', 'bollingerMultiplier',
     'bollingerSource', 'bollingerUpperColor', 'bollingerMiddleColor', 'bollingerLowerColor',
@@ -452,6 +455,24 @@ export const INDICATOR_OPS = {
       if (next[key] !== undefined && !/^#[0-9a-f]{6}$/i.test(next[key])) return null;
     }
     if (next.supertrendLineWidth !== undefined && ![1, 2, 3, 4].includes(next.supertrendLineWidth)) return null;
+    return next;
+  },
+  setIchimokuEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch => enabled ? { ichimokuEnabled: true, ichimokuHidden: false } : { ichimokuEnabled: false },
+  setIchimokuHidden: (_cur: IndicatorSettings, hidden: boolean): Patch => ({ ichimokuHidden: hidden }),
+  setIchimokuSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings, 'ichimokuConversionPeriod' | 'ichimokuBasePeriod' | 'ichimokuLeadingBPeriod' | 'ichimokuDisplacement' | 'ichimokuConversionColor' | 'ichimokuBaseColor' | 'ichimokuLeadingAColor' | 'ichimokuLeadingBColor' | 'ichimokuLaggingColor' | 'ichimokuLineWidth' | 'ichimokuCloudVisible' | 'ichimokuCloudPositiveColor' | 'ichimokuCloudNegativeColor' | 'ichimokuCloudOpacity'>>): Patch => {
+    const next = { ...patch };
+    for (const key of ['ichimokuConversionPeriod', 'ichimokuBasePeriod', 'ichimokuLeadingBPeriod', 'ichimokuDisplacement'] as const) {
+      if (next[key] === undefined) continue;
+      if (!Number.isFinite(next[key])) return null;
+      next[key] = clamp(Math.floor(next[key]!), key === 'ichimokuDisplacement' ? 0 : 1, key === 'ichimokuDisplacement' ? 500 : 2000);
+    }
+    for (const key of ['ichimokuConversionColor', 'ichimokuBaseColor', 'ichimokuLeadingAColor', 'ichimokuLeadingBColor', 'ichimokuLaggingColor', 'ichimokuCloudPositiveColor', 'ichimokuCloudNegativeColor'] as const)
+      if (next[key] !== undefined && !/^#[0-9a-fA-F]{6}$/.test(next[key]!)) return null;
+    if (next.ichimokuLineWidth !== undefined && ![1, 2, 3, 4].includes(next.ichimokuLineWidth)) return null;
+    if (next.ichimokuCloudOpacity !== undefined) {
+      if (!Number.isFinite(next.ichimokuCloudOpacity)) return null;
+      next.ichimokuCloudOpacity = clamp(next.ichimokuCloudOpacity, 0, 1);
+    }
     return next;
   },
   setBollingerEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>

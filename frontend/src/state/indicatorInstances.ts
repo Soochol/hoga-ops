@@ -17,7 +17,7 @@ export interface IndicatorInstance {
 const PREFIXES: Record<CategoryId, readonly string[]> = {
   'moving-average': ['movingAverages'], 'daily-moving-average': ['dailyMovingAverages'],
   'new-high-bearish': ['newHighBearish'],
-  envelope: ['envelope'], bollinger: ['bollinger'], supertrend: ['supertrend'], volume: ['volume'],
+  ichimoku: ['ichimoku'], envelope: ['envelope'], bollinger: ['bollinger'], supertrend: ['supertrend'], volume: ['volume'],
   'trade-value': ['tradeValue'], 'quote-totals': ['quoteTotals', 'surge'], ratio: ['ratio'],
   'fill-strength': ['fillStrength'], 'program-trade': ['programTrade'],
   'program-daily': ['dailyProgram'], 'foreign-net': ['foreignNet', 'foreignTradeSide'],
@@ -29,7 +29,7 @@ const PREFIXES: Record<CategoryId, readonly string[]> = {
 };
 const LINE_PREFIX: Partial<Record<CategoryId, string>> = {
   'investor-holdings': 'investorHoldings',
-  'investor-net-line': 'investorNetLine', envelope: 'envelope', bollinger: 'bollinger', supertrend: 'supertrend', 'quote-totals': 'quoteTotals', 'fill-strength': 'fillStrength',
+  'investor-net-line': 'investorNetLine', ichimoku: 'ichimoku', envelope: 'envelope', bollinger: 'bollinger', supertrend: 'supertrend', 'quote-totals': 'quoteTotals', 'fill-strength': 'fillStrength',
 };
 export const INDICATOR_CATEGORIES = Object.keys(PREFIXES) as CategoryId[];
 export function ownsIndicatorKey(category: CategoryId, key: string): boolean {
@@ -74,6 +74,7 @@ export function normalizeIndicatorInstances(raw: unknown, normalize: (raw: unkno
 }
 export function indicatorInstanceSummary(category: CategoryId, settings: IndicatorSettings): string {
   switch (category) {
+    case 'ichimoku': return `${settings.ichimokuConversionPeriod}/${settings.ichimokuBasePeriod}/${settings.ichimokuLeadingBPeriod} · 이동 ${settings.ichimokuDisplacement}봉`;
     case 'envelope': return `${settings.envelopePeriod}봉 · ±${settings.envelopePercent}%`;
     case 'bollinger': return `${settings.bollingerPeriod}봉 · ${settings.bollingerMultiplier}배`;
     case 'new-high-bearish': return `${settings.newHighBearishLookback}일 · -${settings.newHighBearishDropPct}% · ${settings.newHighBearishMaxCount}개 · ${settings.newHighBearishMonths}개월`;

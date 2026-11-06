@@ -5,7 +5,7 @@ import { buildChartBundle } from '../live/buildLiveBundle';
 import { regularSessionOpenMs } from '../live/liveDateTime';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectCandle } from './projectors/candle';
-import { maskIntradayLineGaps, withIntradayWhitespace } from './intradayWhitespace';
+import { intradayCaptureBreaks, maskIntradayLineGaps, withIntradayWhitespace } from './intradayWhitespace';
 import { TRANSPARENT } from './util/auctionHide';
 
 const minute = 60_000;
@@ -53,6 +53,19 @@ describe('disk intraday whitespace', () => {
     expect(masked[0].color).toBe(TRANSPARENT);
     expect(masked[1].color).toBeUndefined();
     expect(data[0].color).toBeUndefined(); // immutable cached projection
+  });
+
+  it.each([1, 3])('connects fully observed sessions without bridging missing %i-minute buckets', bucket => {
+    const complete = sessions.flatMap(session => Array.from({ length: Math.floor(4 / bucket) + 1 }, (_, i) => candle(session.session_open_ms + i * bucket * minute)));
+    const bundle = rangeBundleFixture({ bucket_ms: bucket * minute, timeline_sessions: sessions, candles: complete });
+    const times = complete.map(c => axis.toVirtual(c.ts_ms) / 1000);
+    expect(intradayCaptureBreaks(times, bundle, axis)).toEqual(times.map(() => false));
+    const missingSession = complete.filter(c => c.ts_ms < sessions[1].session_open_ms || c.ts_ms > sessions[1].session_close_ms);
+    const missingTimes = missingSession.map(c => axis.toVirtual(c.ts_ms) / 1000);
+    expect(intradayCaptureBreaks(missingTimes, { ...bundle, candles: missingSession }, axis).filter(Boolean)).toHaveLength(1);
+    const missingOpening = complete.filter(c => c.ts_ms !== sessions[1].session_open_ms);
+    const openingTimes = missingOpening.map(c => axis.toVirtual(c.ts_ms) / 1000);
+    expect(intradayCaptureBreaks(openingTimes, { ...bundle, candles: missingOpening }, axis).filter(Boolean)).toHaveLength(1);
   });
 
   it('keeps time-only sessions separate from real captured segments and candles', () => {

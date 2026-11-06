@@ -23,6 +23,7 @@ export function indicatorIsPresent(id: CategoryId, settings: IndicatorSettings):
     case 'daily-moving-average': return settings.dailyMovingAverages.some(m => m.enabled);
     case 'new-high-bearish': return settings.newHighBearishEnabled;
     case 'supertrend': return settings.supertrendEnabled;
+    case 'ichimoku': return settings.ichimokuEnabled;
     case 'bollinger': return settings.bollingerEnabled;
     case 'envelope': return settings.envelopeEnabled;
     case 'peak-walls': return settings.askPeakEnabled || settings.bidPeakEnabled;
@@ -53,6 +54,7 @@ export function createCatalogDraft(id: CategoryId, base: IndicatorSettings, base
       actions.setAllDailyMovingAveragesEnabled(true); break;
     case 'new-high-bearish': actions.setNewHighBearishEnabled(true); break;
     case 'supertrend': actions.setSupertrendEnabled(true); break;
+    case 'ichimoku': actions.setIchimokuEnabled(true); break;
     case 'bollinger': actions.setBollingerEnabled(true); break;
     case 'envelope': actions.setEnvelopeEnabled(true); break;
     case 'peak-walls': actions.setAskPeakEnabled(true); actions.setBidPeakEnabled(true); break;

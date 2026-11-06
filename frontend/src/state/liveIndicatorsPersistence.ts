@@ -183,6 +183,22 @@ export type PersistedIndicators = {
   supertrendUpColor: string;
   supertrendDownColor: string;
   supertrendLineWidth: 1 | 2 | 3 | 4;
+  ichimokuEnabled: boolean;
+  ichimokuHidden: boolean;
+  ichimokuConversionPeriod: number;
+  ichimokuBasePeriod: number;
+  ichimokuLeadingBPeriod: number;
+  ichimokuDisplacement: number;
+  ichimokuConversionColor: string;
+  ichimokuBaseColor: string;
+  ichimokuLeadingAColor: string;
+  ichimokuLeadingBColor: string;
+  ichimokuLaggingColor: string;
+  ichimokuLineWidth: 1 | 2 | 3 | 4;
+  ichimokuCloudVisible: boolean;
+  ichimokuCloudPositiveColor: string;
+  ichimokuCloudNegativeColor: string;
+  ichimokuCloudOpacity: number;
   bollingerEnabled: boolean;
   bollingerHidden: boolean;
   bollingerPeriod: number;
@@ -744,6 +760,22 @@ export function mergeLiveIndicatorPrefs(
       ? obj.supertrendDownColor : '#3485FA',
     supertrendLineWidth: typeof obj?.supertrendLineWidth === 'number' && VALID_LINE_WIDTHS.has(obj.supertrendLineWidth)
       ? obj.supertrendLineWidth as 1 | 2 | 3 | 4 : 2,
+    ichimokuEnabled: obj?.ichimokuEnabled === true,
+    ichimokuHidden: obj?.ichimokuHidden === true,
+    ichimokuConversionPeriod: typeof obj?.ichimokuConversionPeriod === 'number' && Number.isFinite(obj.ichimokuConversionPeriod) ? Math.max(1, Math.min(2000, Math.floor(obj.ichimokuConversionPeriod))) : 9,
+    ichimokuBasePeriod: typeof obj?.ichimokuBasePeriod === 'number' && Number.isFinite(obj.ichimokuBasePeriod) ? Math.max(1, Math.min(2000, Math.floor(obj.ichimokuBasePeriod))) : 26,
+    ichimokuLeadingBPeriod: typeof obj?.ichimokuLeadingBPeriod === 'number' && Number.isFinite(obj.ichimokuLeadingBPeriod) ? Math.max(1, Math.min(2000, Math.floor(obj.ichimokuLeadingBPeriod))) : 52,
+    ichimokuDisplacement: typeof obj?.ichimokuDisplacement === 'number' && Number.isFinite(obj.ichimokuDisplacement) ? Math.max(0, Math.min(500, Math.floor(obj.ichimokuDisplacement))) : 26,
+    ichimokuConversionColor: typeof obj?.ichimokuConversionColor === 'string' && HEX_COLOR.test(obj.ichimokuConversionColor) ? obj.ichimokuConversionColor : '#F97316',
+    ichimokuBaseColor: typeof obj?.ichimokuBaseColor === 'string' && HEX_COLOR.test(obj.ichimokuBaseColor) ? obj.ichimokuBaseColor : '#3B82F6',
+    ichimokuLeadingAColor: typeof obj?.ichimokuLeadingAColor === 'string' && HEX_COLOR.test(obj.ichimokuLeadingAColor) ? obj.ichimokuLeadingAColor : '#EF4444',
+    ichimokuLeadingBColor: typeof obj?.ichimokuLeadingBColor === 'string' && HEX_COLOR.test(obj.ichimokuLeadingBColor) ? obj.ichimokuLeadingBColor : '#8B5CF6',
+    ichimokuLaggingColor: typeof obj?.ichimokuLaggingColor === 'string' && HEX_COLOR.test(obj.ichimokuLaggingColor) ? obj.ichimokuLaggingColor : '#10B981',
+    ichimokuLineWidth: typeof obj?.ichimokuLineWidth === 'number' && VALID_LINE_WIDTHS.has(obj.ichimokuLineWidth) ? obj.ichimokuLineWidth as 1 | 2 | 3 | 4 : 1,
+    ichimokuCloudVisible: obj?.ichimokuCloudVisible !== false,
+    ichimokuCloudPositiveColor: typeof obj?.ichimokuCloudPositiveColor === 'string' && HEX_COLOR.test(obj.ichimokuCloudPositiveColor) ? obj.ichimokuCloudPositiveColor : '#EF4444',
+    ichimokuCloudNegativeColor: typeof obj?.ichimokuCloudNegativeColor === 'string' && HEX_COLOR.test(obj.ichimokuCloudNegativeColor) ? obj.ichimokuCloudNegativeColor : '#3B82F6',
+    ichimokuCloudOpacity: typeof obj?.ichimokuCloudOpacity === 'number' && Number.isFinite(obj.ichimokuCloudOpacity) ? Math.max(0, Math.min(1, obj.ichimokuCloudOpacity)) : 0.16,
     bollingerEnabled: obj?.bollingerEnabled === true,
     bollingerHidden: obj?.bollingerHidden === true,
     bollingerPeriod: typeof obj?.bollingerPeriod === 'number' && Number.isFinite(obj.bollingerPeriod)

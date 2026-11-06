@@ -257,7 +257,7 @@ export default function IndicatorPanel({
     if (c.id === 'investor-holdings') return true;
     if (c.id === 'investor-net-line') return timeframe === 'D' && capabilities.investorNet === 'stock';
     if (c.id === 'new-high-bearish') return timeframe === 'D' && (capabilities.investorNet === 'stock' || capabilities.dailyPriceSignals === true);
-    if (isSecondTimeframe(timeframe)) return ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(c.id);
+    if (isSecondTimeframe(timeframe)) return ['moving-average', 'ichimoku', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(c.id);
     if (c.id === 'volume' && capabilities.volume === false) return false;
     if (c.id === 'trade-value') return capabilities.tradeValue === true && isCalendarTimeframe(timeframe);
     if (c.id === 'broker-late-entry') return capabilities.hogaPanes;
@@ -286,6 +286,7 @@ export default function IndicatorPanel({
     switch (id) {
       case 'new-high-bearish': return () => actions.setNewHighBearishEnabled(present);
       case 'supertrend': return () => actions.setSupertrendEnabled(present);
+      case 'ichimoku': return () => actions.setIchimokuEnabled(present);
       case 'bollinger': return () => actions.setBollingerEnabled(present);
       case 'envelope': return () => actions.setEnvelopeEnabled(present);
       case 'moving-average': return () => setMaEnabled(present);

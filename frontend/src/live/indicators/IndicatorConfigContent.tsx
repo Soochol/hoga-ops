@@ -1,5 +1,6 @@
 import InvestorHoldingsConfig from './InvestorHoldingsConfig';
 import MovingAverageConfig from './MovingAverageConfig';
+import IchimokuConfig from './IchimokuConfig';
 import BollingerConfig from './BollingerConfig';
 import EnvelopeConfig from './EnvelopeConfig';
 import NewHighBearishConfig from './NewHighBearishConfig';
@@ -30,6 +31,7 @@ export default function IndicatorConfigContent({ category, capabilities }: { cat
     <IndicatorStylePreview category={category} settings={settings} />
     {category === 'new-high-bearish' && <NewHighBearishConfig />}
     {category === 'supertrend' && <SupertrendConfig />}
+    {category === 'ichimoku' && <IchimokuConfig />}
     {category === 'bollinger' && <BollingerConfig />}
     {category === 'envelope' && <EnvelopeConfig />}
     {category === 'moving-average' && <MovingAverageConfig />}

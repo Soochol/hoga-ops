@@ -1,5 +1,6 @@
 /** Missing entries are visible, preserving existing saved indicator settings. */
 export const INDICATOR_LINE_KEYS = [
+  'ichimokuConversion', 'ichimokuBase', 'ichimokuLeadingA', 'ichimokuLeadingB', 'ichimokuLagging',
   'bollingerUpper', 'bollingerMiddle', 'bollingerLower',
   'envelopeUpper', 'envelopeMiddle', 'envelopeLower',
   'supertrendUp', 'supertrendDown',

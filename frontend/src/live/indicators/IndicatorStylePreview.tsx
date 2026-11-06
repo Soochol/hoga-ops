@@ -1,3 +1,6 @@
+import { ICHIMOKU_LINES, projectIchimoku, valuesAtDisplayBar } from '../../chart/projectors/ichimoku';
+import { ichimokuCloudPolygons } from '../../chart/IchimokuPrimitive';
+import { ICHIMOKU_PRESENTATION, ichimokuPeriods, ichimokuStyle } from './ichimokuPresentation';
 import { computeEnvelope } from '../../chart/projectors/envelope';
 import type { LineStyle } from '../../chart/drawing/types';
 import { resolveMaColor } from '../../util/maColor';
@@ -27,6 +30,12 @@ function previewLines(category: CategoryId, s: IndicatorSettings, cumulative: bo
       color: resolveMaColor(m, theme), width: m.lineWidth,
       values: computeSMA(SAMPLE.map(c => selectSource(c, m.source)), m.period).slice(-40).map(value => value ?? 100),
     }));
+  }
+  if (category === 'ichimoku') {
+    const model = projectIchimoku(SAMPLE.map((bar, i) => ({ ...bar, virtualSecond: i, breakBefore: false })), ichimokuPeriods(s));
+    const style = ichimokuStyle(s);
+    return ICHIMOKU_LINES.filter(line => style.lines[line].visible).map(line => ({ label: ICHIMOKU_PRESENTATION[line].label, color: style.lines[line].color, width: style.lineWidth,
+      values: Array.from({ length: 40 }, (_, i) => valuesAtDisplayBar(model, SAMPLE.length - 30 + i)[line]) }));
   }
   if (category === 'envelope') {
     const points = computeEnvelope(SAMPLE.map(c => selectSource(c, s.envelopeSource)), s.envelopePeriod, s.envelopePercent).slice(-40);
@@ -104,11 +113,16 @@ export default function IndicatorStylePreview({ category, settings }: { category
   const theme = useThemePrefsStore(s => s.themePreference);
   const cumulative = useScopedChartPrefs().fillStrengthCumulative;
   const lines = previewLines(category, settings, cumulative, theme);
-  const controlled = ['moving-average', 'daily-moving-average', 'bollinger', 'envelope', 'supertrend', 'quote-totals', 'fill-strength'].includes(category);
+  const controlled = ['moving-average', 'daily-moving-average', 'ichimoku', 'bollinger', 'envelope', 'supertrend', 'quote-totals', 'fill-strength'].includes(category);
   const hoga = category === 'quote-totals' || category === 'fill-strength';
   const colors = dotColorsFor(category, settings, theme);
   if (!controlled && !lines.length && !colors.length) return null;
-  const allValues = [...DISPLAY.flatMap(c => [c.low, c.high]), ...lines.flatMap(line => line.values.filter((v): v is number => v !== null))];
+  const cloud = category === 'ichimoku' && settings.ichimokuCloudVisible ? (() => {
+    const model = projectIchimoku(SAMPLE.map((bar, i) => ({ ...bar, virtualSecond: i, breakBefore: false })), ichimokuPeriods(settings));
+    return Array.from({ length: 40 }, (_, i) => valuesAtDisplayBar(model, SAMPLE.length - 30 + i));
+  })() : [];
+  const candles = category === 'ichimoku' ? SAMPLE.slice(-30) : DISPLAY;
+  const allValues = [...candles.flatMap(c => [c.low, c.high]), ...lines.flatMap(line => line.values.filter((v): v is number => v !== null)), ...cloud.flatMap(v => [v.leadingA, v.leadingB].filter((n): n is number => n !== null))];
   const low = Math.min(...allValues) - 3, high = Math.max(...allValues) + 3;
   const y = (value: number) => 106 - (value - low) / (high - low) * 96;
   const x = (index: number) => 8 + index / 39 * 464;
@@ -118,7 +132,13 @@ export default function IndicatorStylePreview({ category, settings }: { category
       <defs><clipPath id={clipId}><rect width="480" height="116" /></clipPath></defs>
       <g clipPath={`url(#${clipId})`}>
         {[28, 62, 96].map(value => <line key={value} x1="0" x2="480" y1={value} y2={value} className="indicator-style-grid" />)}
-        {!hoga && DISPLAY.map((candle, index) => <g key={index} className="indicator-style-candle">
+        {cloud.slice(1).flatMap((value, i) => {
+          const prior = cloud[i];
+          if (prior.leadingA === null || prior.leadingB === null || value.leadingA === null || value.leadingB === null) return [];
+          return ichimokuCloudPolygons({ x: x(i), y: y(prior.leadingA) }, { x: x(i + 1), y: y(value.leadingA) }, { x: x(i), y: y(prior.leadingB) }, { x: x(i + 1), y: y(value.leadingB) }).map((polygon, part) =>
+            <polygon key={`${i}-${part}`} data-preview-cloud={polygon.positive ? '상승' : '하락'} points={polygon.points.map(p => `${p.x},${p.y}`).join(' ')} fill={polygon.positive ? settings.ichimokuCloudPositiveColor : settings.ichimokuCloudNegativeColor} opacity={settings.ichimokuCloudOpacity} />);
+        })}
+        {!hoga && candles.map((candle, index) => <g key={index} className="indicator-style-candle">
           <line x1={x(index)} x2={x(index)} y1={y(candle.high)} y2={y(candle.low)} />
           <rect x={x(index) - 2} y={Math.min(y(candle.open), y(candle.close))} width="4" height={Math.max(1, Math.abs(y(candle.open) - y(candle.close)))} rx="1" />
         </g>)}
@@ -129,7 +149,7 @@ export default function IndicatorStylePreview({ category, settings }: { category
             fill="none" stroke={line.color} strokeWidth={line.width} strokeDasharray={line.lineStyle === 'dashed' ? '6 4' : line.lineStyle === 'dotted' ? '2 3' : undefined} vectorEffect="non-scaling-stroke" data-preview-line={line.label} />)}
       </g>
     </svg> : <div className="indicator-style-swatches">{colors.map((color, index) => <span key={index} style={{ background: color }} aria-label={`선택 색상 ${index + 1}: ${color}`} />)}</div>}
-    {controlled && lines.length === 0 && <p className="text-xs text-fg-dim">표시 중인 선이 없습니다.</p>}
+    {controlled && lines.length === 0 && cloud.length === 0 && <p className="text-xs text-fg-dim">표시 중인 선이 없습니다.</p>}
     {lines.length > 0 && category !== 'moving-average' && category !== 'daily-moving-average' && <div className="indicator-style-legend">{lines.map((line, index) => <span key={index}><i style={{ background: line.color, height: line.width }} />{line.label}</span>)}</div>}
   </figure>;
 }

@@ -53,12 +53,12 @@ export function filterPrimaryPaneGroups(groups: readonly (readonly BoundPaneSpec
 export function indicatorInstanceApplicable(category: CategoryId, tf: LiveTimeframe, hogaPanes: boolean, priceOnly = false): boolean {
   if (category === 'investor-net-line' || category === 'investor-holdings') return tf === 'D' && !priceOnly && hogaPanes;
   if (category === 'new-high-bearish') return tf === 'D';
-  if (priceOnly) return category === 'daily-moving-average' ? tf.endsWith('m') : ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume'].includes(category);
-  if (tf.endsWith('s')) return ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(category);
+  if (priceOnly) return category === 'daily-moving-average' ? tf.endsWith('m') : ['moving-average', 'ichimoku', 'bollinger', 'envelope', 'supertrend', 'volume'].includes(category);
+  if (tf.endsWith('s')) return ['moving-average', 'ichimoku', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(category);
   if (category === 'daily-moving-average') return !['D', 'W', 'M'].includes(tf);
   if (category === 'foreign-net' || category === 'institution-net' || category === 'program-daily') return tf === 'D';
   if (category === 'trade-value') return ['D', 'W', 'M'].includes(tf);
-  if (['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume'].includes(category)) return true;
+  if (['moving-average', 'ichimoku', 'bollinger', 'envelope', 'supertrend', 'volume'].includes(category)) return true;
   return hogaPanes && !['D', 'W', 'M'].includes(tf);
 }
 
