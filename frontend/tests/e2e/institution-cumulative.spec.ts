@@ -64,7 +64,7 @@ test('catalog add, truthful partial continuation, styles and real rendered previ
   await page.getByRole('button', { name: '기관 누적 순매수 #F97316', exact: true }).click();
   await panel.getByRole('button', { name: '닫기', exact: true }).click();
   const legend = page.getByTestId('pane-legend-rows-institution-cumulative');
-  await expect(legend).toContainText('누적 기준: 조회자료 첫날 2026-02-05 · 기준일 0');
+  await expect(legend).not.toContainText('누적 기준');
   await expect(legend).toContainText('일부 자료 · 6페이지 확인 · 기준일 이후 합계 미확인');
   await expect.poll(async () => (await lines(page)).length).toBe(1);
   expect((await lines(page))[0].data.filter(point => 'value' in point).map(point => 'value' in point ? point.value : null)).toEqual([0]);
@@ -111,7 +111,7 @@ test('two distinct cumulative categories, repeated panes, persistence, hide, del
   await expect(foreignLegend).toContainText('외국인 누적 순매수(주)');
   const before = requests.length;
   await page.reload();
-  await expect(foreignLegend).toContainText('누적 기준: 조회자료 첫날 2026-02-05');
+  await expect(foreignLegend).not.toContainText('누적 기준');
   await expect.poll(async () => (await chartState(page))[0].panes.filter(p => p.series.some(s => s.type === 'Line' && 'color' in s.options && ['#EC4899','#22D3EE'].includes(String(s.options.color)))).length).toBe(3);
   expect(requests.length - before).toBe(1);
   await page.getByTestId('live-indicators-button').first().click();

@@ -15,20 +15,18 @@ export function InvestorCumulativePane({ code, subject, ...props }: ComponentPro
         snapshot: source ? buildInvestorCumulative({ source, subject, candleDates: investorCandleDates(props.bundle) }) : { kind: 'empty', scope, points: [] },
     }), [settings, source, props.bundle, scope, subject]);
     const snapshot = context.snapshot;
-    const anchor = snapshot.kind === 'anchored' ? `누적 기준: 조회자료 첫날 ${snapshot.anchorDate.slice(0, 4)}-${snapshot.anchorDate.slice(4, 6)}-${snapshot.anchorDate.slice(6)} · 기준일 0` : '누적 기준 미확인';
     const failureStatus = source ? '조회 실패 · 마지막 조회자료 유지' : '조회 실패 · 재시도 필요';
     const status = query.isError ? failureStatus : query.isFetching ? '조회 중'
         : !source ? '자료 미확인' : source.data_warnings.some(issue => issue.reason === 'unavailable') ? '공급자 사용 불가'
             : source.pagination === 'incomplete' ? `일부 자료 · ${source.pages_observed}페이지 확인 · 기준일 이후 합계 미확인`
                 : snapshot.kind === 'empty' ? '해당 구간 자료 없음' : snapshot.partial ? '일부 자료 · 누락 이후 합계 미확인' : '조회 완료';
-    const notice = `${anchor} · ${status} · 실제 보유잔고 아님 · 비중 미지원 · 당일 값 잠정`;
     const spec = useMemo(() => ({ ...CUMULATIVE_SPECS[subject], name: props.spec.name }), [props.spec.name, subject]);
     type Entries = Parameters<NonNullable<typeof props.onLegendReady>>[1];
     const publish = useCallback((name: string, entries: Entries) => {
-        props.onLegendReady?.(name, entries.map(entry => ({ ...entry, meta: { ...entry.meta, notice,
+        props.onLegendReady?.(name, entries.map(entry => ({ ...entry, meta: { ...entry.meta, notice: status,
                 retry: query.isFetching ? undefined : () => { void query.refetch(); },
                 color: () => (subject === 'institution' ? settings.institutionCumulativeColor : settings.foreignCumulativeColor),
             } })));
-    }, [props.onLegendReady, notice, query.isFetching, query.refetch, (subject === 'institution' ? settings.institutionCumulativeColor : settings.foreignCumulativeColor)]);
+    }, [props.onLegendReady, status, query.isFetching, query.refetch, (subject === 'institution' ? settings.institutionCumulativeColor : settings.foreignCumulativeColor)]);
     return <RangeSeriesPane {...props} spec={spec} contextOverride={context} onLegendReady={undefined} onDataCommitted={publish}/>;
 }
