@@ -41,6 +41,15 @@ describe('Ichimoku candle primitive', () => {
     expect(primitive.autoscaleInfo(100 as Logical, 110 as Logical)).toBeNull();
   });
 
+  it('does not scale a zero-area cloud but still scales a visible coincident outline', () => {
+    const { primitive, snapshot } = setup();
+    const model = projectIchimoku(snapshot.model.bars, { conversion: 1, base: 1, leadingB: 1, displacement: 2 });
+    primitive.setSnapshot({ ...snapshot, model });
+    expect(primitive.autoscaleInfo(106 as Logical, 107 as Logical)).toBeNull();
+    primitive.setSnapshot({ ...snapshot, model, style: { ...style, lines: { ...style.lines, leadingA: { ...style.lines.leadingA, visible: true } } } });
+    expect(primitive.autoscaleInfo(106 as Logical, 107 as Logical)?.priceRange).toEqual({ minValue: 30, maxValue: 40 });
+  });
+
   it('pulls viewport and price coordinates on every draw, clips, and releases attachment', () => {
     const { primitive, snapshot, timeScale, requestUpdate } = setup();
     const moves: number[][] = [], ctx = { save() {}, restore() {}, beginPath() {}, closePath() {}, clip: vi.fn(), rect: vi.fn(), fill: vi.fn(), stroke() {}, moveTo: (...p: number[]) => moves.push(p), lineTo: (...p: number[]) => moves.push(p), globalAlpha: 1 };

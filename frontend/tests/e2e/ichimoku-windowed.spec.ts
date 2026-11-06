@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 test('real native adapter preserves Ichimoku scale and cloud across changing nonzero window offsets', async ({ page }) => {
@@ -73,6 +73,7 @@ test('real native adapter preserves Ichimoku scale and cloud across changing non
   expect(evidence.steps[0].diagnostics.offset).not.toBe(evidence.steps[1].diagnostics.offset);
   expect(evidence.steps[2].diagnostics.offset).toBe(evidence.steps[0].diagnostics.offset);
   expect(evidence.steps[2].sample).toEqual(evidence.steps[0].sample);
+  mkdirSync(path.resolve('../.audit/preview'), { recursive: true });
   writeFileSync(path.resolve('../.audit/preview/native-window-offsets.json'), JSON.stringify(evidence, null, 2));
   await page.getByTestId('isolated-native-ichimoku-probe').screenshot({ path: path.resolve('../.audit/preview/ichimoku-native-window-offset.png') });
 });

@@ -128,6 +128,8 @@ export class IchimokuPrimitive implements ISeriesPrimitive<Time> {
         if (value == null || before == null || !ichimokuConnected(snapshot.model, i, offset)) continue;
         if (!outline && cloud && (snapshot.model.lines.leadingA.values[i - 1] == null || snapshot.model.lines.leadingA.values[i] == null
           || snapshot.model.lines.leadingB.values[i - 1] == null || snapshot.model.lines.leadingB.values[i] == null)) continue;
+        if (!outline && cloud && snapshot.model.lines.leadingA.values[i - 1] === snapshot.model.lines.leadingB.values[i - 1]
+          && snapshot.model.lines.leadingA.values[i] === snapshot.model.lines.leadingB.values[i]) continue;
         const logical = this.displayLogical(i + offset), prior = this.displayLogical(i - 1 + offset);
         if (logical === null || prior === null || prior > to || logical < from || prior === logical) continue;
         if (logical === from) { include(value); continue; }
