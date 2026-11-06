@@ -32,8 +32,9 @@ async function setup(page: Page) {
     (window as unknown as ChartWindow).__ichimokuAutoscaleCalls = [];
     const autoscale = IchimokuPrimitive.prototype.autoscaleInfo;
     IchimokuPrimitive.prototype.autoscaleInfo = function (...args: unknown[]) {
+      const result = autoscale.apply(this, args);
       (window as unknown as ChartWindow).__ichimokuAutoscaleCalls.push({ from: Number(args[0]), to: Number(args[1]) });
-      return autoscale.apply(this, args);
+      return result;
     };
     IchimokuPrimitive.prototype.attached = function (...args: unknown[]) {
       (window as unknown as ChartWindow).__ichimokuProbes.push(this); return attached.apply(this, args);
@@ -188,6 +189,14 @@ test('forward-most native viewport, strict future autoscale interval and inverte
     return { min, max, yMin: candle.priceToCoordinate(min), yMax: candle.priceToCoordinate(max), height, mode: candle.priceScale().options().mode, invert: candle.priceScale().options().invertScale };
   }, id);
   await expect.poll(async () => { const s = await scaleState(); return s.yMin !== null && s.yMax !== null && s.yMin > 0 && s.yMax > 0 && s.yMin < s.height && s.yMax < s.height; }).toBe(true);
+  const appliedFrom = request.lastActualLogical - 1;
+  const appliedTo = appliedFrom + request.requested.to - request.requested.from;
+  await expect.poll(() => page.evaluate(({ id, from, to }) => {
+    const win = window as unknown as ChartWindow;
+    const observed = win.__liveCharts.get(id)!.timeScale().getVisibleLogicalRange();
+    return observed?.from === from && observed.to === to
+      && win.__ichimokuAutoscaleCalls.some(call => call.from === from && call.to === to);
+  }, { id, from: appliedFrom, to: appliedTo })).toBe(true);
   const viewportEvidence = await page.evaluate(({ id, request }) => {
     const win = window as unknown as ChartWindow, chart = win.__liveCharts.get(id)!, ts = chart.timeScale();
     const observed = ts.getVisibleLogicalRange()!, primitive = win.__ichimokuProbes.find(p => p.snapshot)!;
