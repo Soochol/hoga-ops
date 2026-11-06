@@ -80,6 +80,10 @@ test('watchlist selection completes cumulative history without a candle prepend,
   await page.screenshot({ path: info.outputPath('initial-selection.png') });
   await expect(institution).toContainText('조회 완료');
   await expect(foreign).toContainText('조회 완료');
+  await expect(institution).not.toContainText('누적 기준');
+  await expect(foreign).not.toContainText('누적 기준');
+  await expect(institution).not.toContainText('실제 보유잔고');
+  await expect(foreign).not.toContainText('비중 미지원');
   const b = await state(page);
   const count = b.series.find(s => s.type === 'Candlestick')!.count;
   const lineValues = b.series.filter(s => s.type === 'Line').map(s => s.values);
