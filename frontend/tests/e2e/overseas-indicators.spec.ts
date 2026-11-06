@@ -114,6 +114,7 @@ for (const subject of ['stock', 'index']) {
     await expect(editor.getByRole('button', { name: '외국인 순매수량', exact: true })).toHaveCount(0);
     await expect(editor.getByRole('button', { name: '기관 순매수량', exact: true })).toHaveCount(0);
     await expect(editor.getByRole('button', { name: '총잔량', exact: true })).toHaveCount(0);
+    await expect(editor.getByRole('button', { name: '신규 거래원 등장', exact: true })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect.poll(async () => (await series(page)).flat().some(s => s.type === 'Line' && s.data.some(r => 'value' in r && Math.abs(r.value - 116.2) < 0.00001))).toBe(true);
     await page.screenshot({ path: info.outputPath(`${subject}-daily-ma-minute.png`) });
