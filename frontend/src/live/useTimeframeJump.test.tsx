@@ -361,3 +361,19 @@ describe('seq 단조성 (#1508)', () => {
 
 /** 콘솔 경고를 실패로 승격하지는 않지만, 훅이 조용히 죽는 것은 잡는다. */
 afterEach(() => vi.restoreAllMocks());
+
+it('calendar source teardown preserves the active minute date, sequence and view segment', () => {
+  mount();
+  act(() => useLiveCursorStore.getState().requestTimeframeJump(kstMs('20260803'), kstMs('20260821'),
+    { ...DAILY_ORIGIN, timeframe: 'M' }, { code: '064350', venue: 'KRX', source: 'vendor', sourceKey: 'source',
+      from: '20260801', to: '20260821', cutoffMs: kstMs('20260821') }));
+  const before = { ...latest };
+  const request = useLiveCursorStore.getState().jumpRequest;
+  if (!request) throw new Error('missing request');
+  act(() => useLiveCursorStore.getState().invalidateCalendarJumpSource(request.seq, 'source'));
+  expect(latest.asOfDate).toBe(before.asOfDate);
+  expect(latest.date).toBe(before.date);
+  expect(latest.viewSeg).toBe(before.viewSeg);
+  expect(useLiveCursorStore.getState().jumpRequest).toEqual({ fromMs: request.fromMs, toMs: request.toMs,
+    origin: request.origin, seq: request.seq });
+});

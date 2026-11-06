@@ -1,3 +1,4 @@
+import { calendarQueryStatus, type CalendarQueryStatus } from './calendarJump';
 import { useEffect, useMemo, useRef } from 'react';
 import { TRADING_TIME_MIN_HHMM } from '../util/tradingTime';
 import { useLiveDailyProgramTrade } from '../api/liveDailyProgramTrade';
@@ -334,6 +335,7 @@ export function overlayLiveTradesOnCalendarCandles(
 export type CandleSourceKey = string;
 
 export interface UseLiveBundleResult {
+  calendarQueryStatus: CalendarQueryStatus | null;
   programWindow: ProgramWindowData;
   /** Full bundle = stable chart side + live hoga overlay. Consumed by hoga
    * panes (ratio/quoteTotals/fillStrength), LiveStatusBar, LiveSidebar. New ref
@@ -1587,6 +1589,15 @@ export function useLiveBundle(
   const activeCandlesQuery = restBypassEnabled
     ? (isMinute ? minuteDiskCandles : screenerDailyCandlesQuery)
     : (isMinute ? pastCandlesQuery : pastDailyCandlesQuery);
+  const activeCalendarStatus = isMinute || !code ? null : calendarQueryStatus({
+    identity: { code, from: dailyPastFrom, to: dailyPastTo, venue: candleVenue,
+      source: restBypassEnabled ? 'disk' : 'vendor',
+      timeframe: timeframe === 'W' || timeframe === 'M' ? timeframe : 'D' },
+    data: restBypassEnabled ? screenerDailyCandlesQuery.data : pastDailyCandlesQuery.data,
+    isPlaceholderData: restBypassEnabled ? screenerDailyCandlesQuery.isPlaceholderData : pastDailyCandlesQuery.isPlaceholderData,
+    isPending: restBypassEnabled ? screenerDailyCandlesQuery.isPending : pastDailyCandlesQuery.isPending,
+    error: activeCandlesQuery.error,
+  });
   const activeCandlesError = activeCandlesQuery.error;
   const activeCandlesLoading = activeCandlesQuery.isLoading;
   // 빈 상태의 "다시 시도" — 활성 쿼리 하나만 다시 쏜다(전부 refetch 하면 벤더 유량을
@@ -1721,6 +1732,7 @@ export function useLiveBundle(
   }), [programWindowSeries, programState, closeState]);
 
   return {
+    calendarQueryStatus: activeCalendarStatus,
     programWindow,
     bundle,
     chartBundle,
