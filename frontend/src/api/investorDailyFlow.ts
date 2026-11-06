@@ -18,6 +18,7 @@ export interface InvestorDailyFlowResponse {
   data_warnings: InvestorDailyFlowIssue[];
 }
 export interface DailyFlowRequestScope { code: string; from: string; to: string }
+const AUTO_REQUEST_LIMIT = 22;
 export function isDailyFlowDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^[0-9]{8}$/.test(value)) return false;
   const date = new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6)}T00:00:00Z`);
@@ -60,7 +61,16 @@ export function useInvestorDailyFlow(scope: DailyFlowRequestScope | null) {
     enabled: Boolean(scope && isDailyFlowDate(scope.from) && isDailyFlowDate(scope.to) && scope.from <= scope.to),
     queryFn: async ({ signal }) => {
       if (!scope) throw new Error('투자자 누적 자료 조회 범위 없음');
-      return parseInvestorDailyFlow(await apiCall<unknown>(`/api/live/investor-daily-flow?code=${scope.code}&from=${scope.from}&to=${scope.to}`, { signal }), scope);
+      let previousPages = 0;
+      for (let request = 1; ; request++) {
+        signal.throwIfAborted();
+        const result = parseInvestorDailyFlow(await apiCall<unknown>(`/api/live/investor-daily-flow?code=${scope.code}&from=${scope.from}&to=${scope.to}`, { signal }), scope);
+        signal.throwIfAborted();
+        if (result.pagination !== 'incomplete' || !result.can_continue
+          || !result.data_warnings.some(issue => issue.reason === 'page_budget')
+          || result.pages_observed <= previousPages || request >= AUTO_REQUEST_LIMIT) return result;
+        previousPages = result.pages_observed;
+      }
     },
     staleTime: 60_000, refetchInterval: query => query.state.data?.pagination === 'covered' && isKrxRegularSessionNow() ? 60_000 : false, retry: false,
   });

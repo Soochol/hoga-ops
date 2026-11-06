@@ -161,8 +161,8 @@ for (const failure of [false, true])
             expect(after.institutionFirst).toBe(0);
             expect(after.institutionLast).toBe((after.institutionValues - 1) * 100);
             expect(after.institutionValues).toBeGreaterThan(before.institutionValues);
-            expect(after.institutionNotice).not.toBe(before.institutionNotice);
-            expect(after.foreignNotice).not.toBe(before.foreignNotice);
+            expect(after.institutionNotice).toBe('조회 완료');
+            expect(after.foreignNotice).toBe('조회 완료');
             const frames = await page.evaluate(() => { const p = (window as unknown as ProbeWindow).__flowProbe; p.active = false; return p.frames; });
             expect(frames.every(frame => frame.holdingSame && frame.holdingValues >= before.holdingValues)).toBe(true);
             for (const frame of frames) {
@@ -170,17 +170,17 @@ for (const failure of [false, true])
                 if (frame.institutionValues > 0) {
                     expect(frame.institutionFirst).toBe(0);
                     expect(frame.institutionLast).toBe((frame.institutionValues - 1) * 100);
-                    expect(frame.institutionNotice).toContain(frame.institutionValues === before.institutionValues ? '2025-06-12' : '2025-04-03');
+                    expect(frame.institutionNotice).toBe('조회 완료');
                 }
                 else
-                    expect(frame.institutionNotice).toContain('누적 기준 미확인');
+                    expect(frame.institutionNotice).not.toContain('누적 기준');
                 if (frame.foreignValues > 0) {
                     expect(frame.foreignFirst).toBe(0);
                     expect(frame.foreignLast).toBe((frame.foreignValues - 1) * -50);
-                    expect(frame.foreignNotice).toContain(frame.foreignValues === before.foreignValues ? '2025-06-12' : '2025-04-03');
+                    expect(frame.foreignNotice).toBe('조회 완료');
                 }
                 else
-                    expect(frame.foreignNotice).toContain('누적 기준 미확인');
+                    expect(frame.foreignNotice).not.toContain('누적 기준');
             }
             await page.screenshot({ path: resolve(output, `history-${failure ? 'failure' : 'success'}-resolved.png`) });
             writeFileSync(resolve(output, `history-${failure ? 'failure' : 'success'}.json`), JSON.stringify({ syntheticBoundary: 'external market-data APIs; real product range loading, cumulative math and series', before, ordinary, pending, after, requestCount, requests, frames }, null, 2));

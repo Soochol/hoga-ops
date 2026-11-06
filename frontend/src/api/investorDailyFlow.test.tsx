@@ -54,3 +54,64 @@ it('does not request absent or invalid loaded ranges', async () => {
   expect(fetch).not.toHaveBeenCalled();
   unmount();
 });
+
+const partial = (pages: number): InvestorDailyFlowResponse => ({ ...response(scope), pagination: 'incomplete',
+  pages_observed: pages, can_continue: true,
+  data_warnings: [{ reason: 'page_budget', date: null, subject: null, message: 'more pages' }] });
+it('completes progress-making page budgets without another user action or duplicate pane requests', async () => {
+  const fetch = vi.spyOn(client, 'apiCall')
+    .mockResolvedValueOnce(partial(6)).mockResolvedValueOnce(partial(12)).mockResolvedValueOnce(response(scope));
+  const { result, unmount } = setup(scope);
+  await waitFor(() => expect(result.current.first.data?.pagination).toBe('covered'));
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(new Set(fetch.mock.calls.map(([path]) => path)).size).toBe(1);
+  unmount();
+});
+it.each(['api_error', 'invalid_page', 'cursor_stalled', 'unavailable'] as const)('stops automatic continuation on %s', async reason => {
+  const fetch = vi.spyOn(client, 'apiCall').mockResolvedValue({ ...partial(6),
+    data_warnings: [{ reason, date: null, subject: null, message: 'cannot continue automatically' }] });
+  const { result, unmount } = setup(scope);
+  await waitFor(() => expect(result.current.first.isSuccess).toBe(true));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(result.current.first.data?.pagination).toBe('incomplete');
+  unmount();
+});
+it('stops when page progress stalls', async () => {
+  const fetch = vi.spyOn(client, 'apiCall').mockResolvedValue(partial(6));
+  const { result, unmount } = setup(scope);
+  await waitFor(() => expect(result.current.first.isSuccess).toBe(true));
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(result.current.first.data?.pagination).toBe('incomplete');
+  unmount();
+});
+it('stops at a hard automatic request budget even if the source keeps making progress', async () => {
+  let pages = 0;
+  const fetch = vi.spyOn(client, 'apiCall').mockImplementation(async () => partial(++pages));
+  const { result, unmount } = setup(scope);
+  await waitFor(() => expect(result.current.first.isSuccess).toBe(true));
+  expect(fetch).toHaveBeenCalledTimes(22);
+  expect(result.current.first.data?.pagination).toBe('incomplete');
+  unmount();
+});
+it('does not continue a provider page limit that cannot be advanced', async () => {
+  const fetch = vi.spyOn(client, 'apiCall').mockResolvedValue({ ...partial(128), can_continue: false });
+  const { result, unmount } = setup(scope);
+  await waitFor(() => expect(result.current.first.isSuccess).toBe(true));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  unmount();
+});
+it('cancels an abandoned scope before another continuation even if transport ignores abort', async () => {
+  let release: (value: InvestorDailyFlowResponse) => void = () => {};
+  const pending = new Promise<InvestorDailyFlowResponse>(resolve => { release = resolve; });
+  const fetch = vi.spyOn(client, 'apiCall').mockImplementation(async path => path.includes('005930')
+    ? pending : response({ ...scope, code: '000660' }));
+  const { result, rerender, unmount } = setup(scope);
+  const signal = fetch.mock.calls[0][1]?.signal;
+  rerender({ request: { ...scope, code: '000660' } });
+  await waitFor(() => expect(result.current.first.data?.code).toBe('000660'));
+  expect(signal?.aborted).toBe(true);
+  await act(async () => { release(partial(6)); await pending; });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(result.current.first.data?.code).toBe('000660');
+  unmount();
+});
