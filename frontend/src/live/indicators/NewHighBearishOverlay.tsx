@@ -1,3 +1,6 @@
+import { isUsWorkareaCode } from '../instrumentPriceFormat';
+import { usTradingDate } from '../usTradingDate';
+import { unixMsToKSTDate } from '../../util/time';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
@@ -15,11 +18,11 @@ type Props = { bundle: RangeBundle; axis: VirtualAxis; paneSeries: PaneSeriesMap
 
 function NewHighBearishOverlay(props: Props) {
   const enabled = useWindowIndicator(s => s.newHighBearishEnabled);
-  if (!enabled || props.timeframe !== 'D' || !props.code || !/^[0-9A-Z]{6}$/.test(props.code)) return null;
+  if (!enabled || props.timeframe !== 'D' || !props.code || (!/^[0-9A-Z]{6}$/.test(props.code) && !isUsWorkareaCode(props.code))) return null;
   return <ActiveOverlay {...props} />;
 }
 
-function ActiveOverlay({ bundle, axis, paneSeries, venue }: Props) {
+function ActiveOverlay({ bundle, axis, paneSeries, venue, code }: Props) {
   const lookback = useWindowIndicator(s => s.newHighBearishLookback);
   const dropPct = useWindowIndicator(s => s.newHighBearishDropPct);
   const months = useWindowIndicator(s => s.newHighBearishMonths);
@@ -32,7 +35,7 @@ function ActiveOverlay({ bundle, axis, paneSeries, venue }: Props) {
   const series = paneSeries.get('candle') as ISeriesApi<SeriesType> | undefined;
   const primitive = useRef<NewHighBearishRaysPrimitive | null>(null);
   const signals = useMemo(() => computeNewHighBearishOpen(bundle.candles, lookback, dropPct, maxCount,
-    c => domesticDailyCandleClosed(c.ts_ms, now, venue)), [bundle.candles, lookback, dropPct, maxCount, now, venue]);
+    c => isUsWorkareaCode(code) ? unixMsToKSTDate(c.ts_ms) < usTradingDate(now) : domesticDailyCandleClosed(c.ts_ms, now, venue)), [bundle.candles, lookback, dropPct, maxCount, now, venue, code]);
   const rays = useMemo(() => signals.filter(s => axis.contains(s.ts_ms)).map(s => {
     const end = bearishRayEndMs(s.ts_ms, months);
     let lo = 0, hi = bundle.candles.length;

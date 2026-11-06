@@ -1,3 +1,4 @@
+import { formatInstrumentPrice, isUsWorkareaCode } from '../instrumentPriceFormat';
 import { resolveMaColor } from '../../util/maColor';
 import { useThemePrefsStore } from '../../state/themePrefs';
 import { memo, useEffect, useRef } from 'react';
@@ -23,11 +24,7 @@ type Props = {
 type LineApi = ISeriesApi<'Line'>;
 const excludeFromAutoscale: AutoscaleInfoProvider = () => null;
 const includeInAutoscale: AutoscaleInfoProvider = (original) => original();
-const priceFormat = {
-  type: 'custom' as const,
-  formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'),
-  minMove: 1,
-};
+
 
 /** /live의 이동평균선 오버레이. /replay의 정적 5슬롯 MOVING_AVERAGE_SPEC과
  *  분리된 가변 슬롯 모델 (ADR-0046). 슬롯 id 기준 series Map을 유지하며
@@ -74,7 +71,7 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
-            priceFormat,
+            priceFormat: { type: 'custom', formatter: (p: number) => formatInstrumentPrice(p, bundle.code), minMove: isUsWorkareaCode(bundle.code) ? 0.01 : 1 },
             ...createScaleOptions,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);

@@ -1097,15 +1097,13 @@ function PaneLegendOverlay({
     'quote-totals': ['quoteTotalsBid', 'quoteTotalsAsk'],
     'fill-strength': ['fillStrengthBuy', 'fillStrengthSell'],
   };
-  // Peak-wall series can end on a previous day when today's walls are filtered
-  // out. Read the hovered/synchronized/latest candle exactly, without borrowing
-  // the last point of that sparse series as today's value.
+  const hasMissingVolume = drawnCandles.some(c => c.volume_available === false);
   const latestCandle = drawnCandles[drawnCandles.length - 1];
-  const peakTimeSec = (typeof paramRef.current?.time === 'number' ? paramRef.current.time : null)
+  const exactTimeSec = (typeof paramRef.current?.time === 'number' ? paramRef.current.time : null)
     ?? syncValueTimeSec
     ?? (latestCandle && axis ? axis.toVirtual(latestCandle.ts_ms) / 1000 : null);
-  const peakLogicalIndex = peakTimeSec === null || !indicatorLegendsVisible || !legendPanes.has('peak-wall') ? null
-    : chart.timeScale().timeToIndex?.(peakTimeSec as Time) ?? null;
+  const exactLogicalIndex = exactTimeSec === null || !indicatorLegendsVisible || (!hasMissingVolume && !legendPanes.has('peak-wall')) ? null
+    : chart.timeScale().timeToIndex?.(exactTimeSec as Time) ?? null;
   for (const [paneId, entries] of legendPanes) {
     if (!indicatorLegendsVisible || !LEGEND_CELL_PANES.has(paneId)) continue;
     const spec = specByPaneId.get(paneId);
@@ -1118,8 +1116,8 @@ function PaneLegendOverlay({
         label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,
         color: entry.meta.color?.(),
         value: lineKeysByPane[paneId]?.[i] && !lineVisible(lineVisibility, lineKeysByPane[paneId]![i]) ? null
-          : paneId === 'peak-wall'
-          ? readSeriesValueAtTime(entry.series, peakTimeSec, peakLogicalIndex)
+          : paneId === 'peak-wall' || (hasMissingVolume && (paneId === 'volume' || paneId === 'candle'))
+          ? readSeriesValueAtTime(entry.series, exactTimeSec, exactLogicalIndex)
           : readSeriesValue(entry.series, seriesData, syncValueTimeSec, syncLogicalIndex),
         format: entry.meta.format,
       })),
@@ -1411,7 +1409,7 @@ function PaneLegendOverlay({
               >
                 {paneRows.map((row) => {
                   const member = group.find((s) => s.name === row.paneId)!;
-                  if (row.paneId.startsWith('indicator:')) return <IndicatorInstanceLegend key={row.paneId} id={row.paneId.split(':')[1]} cursorTimeSec={cursorTimeSec} seriesData={seriesData ?? undefined} />;
+                  if (row.paneId.startsWith('indicator:')) return <IndicatorInstanceLegend key={row.paneId} id={row.paneId.split(':')[1]} cursorTimeSec={cursorTimeSec} latestTimeSec={exactTimeSec} strictVolume={hasMissingVolume} seriesData={seriesData ?? undefined} />;
                   const nameControl = idx > 0 && row.kind === 'cells' ? (
                     <PaneChip
                       paneId={member.name}
@@ -1472,7 +1470,7 @@ function PaneLegendOverlay({
                 })}
                 {idx === 0 && indicatorLegendsVisible && extraInstances.filter(row => indicatorInstanceApplicable(row.category, timeframe, paneToggles.hogaPanes !== false)).filter(row => !CATEGORY_PANE[row.category]
                   || row.category === 'peak-walls' || row.category === 'daily-moving-average').filter(row => row.category !== 'volume-distribution').map(row =>
-                  <IndicatorInstanceLegend key={row.id} id={row.id} cursorTimeSec={cursorTimeSec} seriesData={seriesData ?? undefined} />)}
+                  <IndicatorInstanceLegend key={row.id} id={row.id} cursorTimeSec={cursorTimeSec} latestTimeSec={exactTimeSec} strictVolume={hasMissingVolume} seriesData={seriesData ?? undefined} />)}
               </div>
             )}
           </div>

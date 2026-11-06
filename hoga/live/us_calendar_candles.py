@@ -47,6 +47,7 @@ def aggregate_us_calendar(
                     "low": min(b.low for b in rows),
                     "close": rows[-1].close,
                     "volume": sum(b.volume for b in rows),
+                    "volume_available": all(b.volume_available for b in rows),
                 }
             )
         )

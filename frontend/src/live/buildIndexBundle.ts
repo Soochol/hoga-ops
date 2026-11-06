@@ -35,6 +35,7 @@ export function buildPriceBundle(input: { observedSessions?: boolean; code: stri
     close: c.close,
     vol_a: c.volume,
     vol_b: 0,
+    ...(c.volume_available !== undefined ? { volume_available: c.volume_available } : {}),
     ...(c.trade_value_won != null ? { trade_value_won: c.trade_value_won } : {}),
   }));
   const dates = Array.from(new Set(input.candles.map((c) => c.trading_date ?? realMsToYyyymmdd(c.t_ms))));

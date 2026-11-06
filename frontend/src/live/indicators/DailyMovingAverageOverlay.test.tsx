@@ -134,6 +134,22 @@ describe('DailyMovingAverageOverlay', () => {
     );
   });
 
+  it('projects US daily closes on their trading-date segment and rejects a different adjustment anchor', () => {
+    const result = { candles: dailyCandles, dataWarnings: [], isLoading: false, error: null,
+      sourceByDate: new Map(), candleBasis: { price_basis: 'adjusted', adjusted_as_of: '20260612' } };
+    mockUseResolvedDaily.mockReturnValue(result);
+    const m = makeChartMock();
+    const view = renderOverlay(m, { code: 'us-stock:NASDAQ:NVDA', bundle: { candles,
+      candle_basis: { price_basis: 'adjusted', adjusted_as_of: '20260612' } } });
+    const first = Array.from(m.seriesById.values())[0];
+    expect(first.setData.mock.calls.at(-1)![0]).toHaveLength(3);
+    expect(first.setData.mock.calls.at(-1)![0][0]).toMatchObject({ value: 100 });
+    view.rerender(<DailyMovingAverageOverlay chart={m.chart as never} bundle={{ candles,
+      candle_basis: { price_basis: 'adjusted', adjusted_as_of: '20260613' } } as never}
+      axis={axis} code="us-stock:NASDAQ:NVDA" timeframe="1m" todayKst="20260613" />);
+    expect(first.setData.mock.calls.at(-1)![0].every((r: object) => !('value' in r))).toBe(true);
+  });
+
   it('지수 창(index:*)에서는 일봉 fetch 를 걸지 않는다 — 종목 전용 엔드포인트', () => {
     // `/api/live/past-daily-candles` 는 6자리 종목만 받는다. 지수 코드로는 시리즈가
     // 애초에 안 그려지므로 요청만 헛돌았다. `!!code` 만 보던 게이트의 구멍.

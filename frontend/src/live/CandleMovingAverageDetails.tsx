@@ -7,7 +7,7 @@ import { resolveMaColor } from '../util/maColor';
 import { priceDirClass } from '../ui/priceDir';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 import { isNonDomesticStockCode } from './liveInstrument';
-import { formatInstrumentPrice } from './instrumentPriceFormat';
+import { formatInstrumentPrice, isUsWorkareaCode } from './instrumentPriceFormat';
 import { readSeriesValueAtTime } from './legendRows';
 import { useWindowIndicators, useWindowScopeId } from './workspace/windowView';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
@@ -70,7 +70,7 @@ export default function CandleMovingAverageDetails(props: Props) {
   const base = useWindowIndicators();
   const scope = useWindowScopeId();
   const displayed = displayIndicatorSettings(base);
-  const dailyApplicable = isMinuteTimeframe(props.timeframe) && !!props.code && !isNonDomesticStockCode(props.code);
+  const dailyApplicable = isMinuteTimeframe(props.timeframe) && !!props.code && (!isNonDomesticStockCode(props.code) || isUsWorkareaCode(props.code));
   const groups: Group[] = [];
   const add = (scope: Group['scope'], daily: boolean, configs: readonly LiveMAConfig[]) => {
     const visible = configs.filter(cfg => cfg.enabled && !cfg.hidden);

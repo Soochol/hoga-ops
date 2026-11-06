@@ -10,14 +10,15 @@ import { CATEGORIES } from './IndicatorPanelHelpers';
 import { readFlagLegendValues } from './flagLegendValueRegistry';
 import { usePaneLegendRegistry } from './paneLegendRegistry';
 import { useMaSeriesRegistry } from './maSeriesRegistry';
+import { useDailyMaSeriesRegistry } from './dailyMaSeriesRegistry';
 import { scopeEntries } from './windowScopedRegistry';
-import { readSeriesValue } from '../legendRows';
+import { readSeriesValue, readSeriesValueAtTime } from '../legendRows';
 import EyeGlyph from '../EyeGlyph';
 import type { LegendFlagId } from '../legendRows';
 
 /** Instance controls always target the captured window/timeframe and stable id. */
-export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }: {
-  id: string; cursorTimeSec?: number | null; seriesData?: MouseEventParams<Time>['seriesData'];
+export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData, latestTimeSec = null, strictVolume = false }: {
+  id: string; cursorTimeSec?: number | null; latestTimeSec?: number | null; strictVolume?: boolean; seriesData?: MouseEventParams<Time>['seriesData'];
 }) {
   const base = useWindowIndicators();
   const theme = useThemePrefsStore(s => s.themePreference);
@@ -30,6 +31,7 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }
   const row = rows?.find(item => item.id === id);
   const registryScope = `${windowId?.split(':indicator:')[0] ?? 'ambient'}:indicator:${id}`;
   const ma = useMaSeriesRegistry(s => scopeEntries(s.byScope, registryScope));
+  const dailyMa = useDailyMaSeriesRegistry(s => scopeEntries(s.byScope, registryScope));
   const panes = usePaneLegendRegistry(s => scopeEntries(s.byScope, windowId?.split(':indicator:')[0] ?? null));
   if (!row) return null;
   const settings = instanceSettings(base, row);
@@ -43,12 +45,12 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }
     : row.category === 'peak-walls' ? (['ask-peak', 'bid-peak'] as const).flatMap(type => readFlagLegendValues(registryScope, type, 'main', cursorTimeSec))
     : flagType ? readFlagLegendValues(registryScope, flagType, 'main', cursorTimeSec) : [];
   const paneValues = [...panes.entries()].filter(([name]) => name.startsWith(`indicator:${id}:`)).flatMap(([, entries]) => entries.flatMap(entry => {
-    const value = readSeriesValue(entry.series, seriesData ?? null, cursorTimeSec);
-    return value === null ? [] : [`${entry.meta.label} ${entry.meta.format?.(value) ?? Math.round(value).toLocaleString('ko-KR')}`];
+    const value = row.category === 'volume' && strictVolume ? readSeriesValueAtTime(entry.series, cursorTimeSec ?? latestTimeSec) : readSeriesValue(entry.series, seriesData ?? null, cursorTimeSec);
+    return value === null ? [] : [`${entry.meta.label} ${entry.meta.format?.(value) ?? entry.series.priceFormatter().format(value)}`];
   }));
-  const values = row.category === 'moving-average' ? settings.movingAverages.filter(m => m.enabled && !m.hidden).flatMap(m => {
-    const series = ma.get(m.id); const value = series ? readSeriesValue(series, seriesData ?? null, cursorTimeSec) : null;
-    return value === null ? [] : [`${m.period}: ${Math.round(value).toLocaleString('ko-KR')}`];
+  const values = maSlots.length ? maSlots.filter(m => m.enabled && !m.hidden).flatMap(m => {
+    const series = (row.category === 'daily-moving-average' ? dailyMa : ma).get(m.id); const value = series ? readSeriesValue(series, seriesData ?? null, cursorTimeSec) : null;
+    return value === null ? [] : [`${m.period}: ${series?.priceFormatter().format(value)}`];
   }) : [...cells.map(cell => `${cell.label ?? ''} ${cell.value}`.trim()), ...paneValues];
   const update = (remove: boolean) => {
     const s = useLivePageStore.getState();

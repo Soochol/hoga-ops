@@ -54,7 +54,7 @@ export type StockDate = {
   blocked: boolean;
 };
 
-export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number; trade_value_won?: number | null };
+export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number; volume_available?: boolean; trade_value_won?: number | null };
 
 export type QuoteRatioPoint = {
   t: number;
@@ -916,6 +916,7 @@ export type LocalCandleHistory = {
 };
 
 export type RangeBundle = {
+  candle_basis?: { price_basis: string; adjusted_as_of: string | null };
   code: string;
   from_date: string;
   to_date: string;

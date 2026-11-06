@@ -44,7 +44,7 @@ it('reveals detailed option help while retaining essential limits and input erro
   render(<IndicatorPanel timeframe="D" onClose={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: '신고가 음봉 시가선' }));
   expect(screen.getByText('하락률은 양수로 입력합니다.', { exact: true })).toBeVisible();
-  expect(screen.getByText(/마감된 국내 종목 일봉 전용/)).toBeVisible();
+  expect(screen.getByText(/마감된 일봉 전용/)).toBeVisible();
   expect(screen.queryByText(/5일선에는 해당 봉의 종가를 포함합니다/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '신고가 음봉 시가선 설명' }));
   expect(screen.getByText(/5일선에는 해당 봉의 종가를 포함합니다/)).toBeVisible();

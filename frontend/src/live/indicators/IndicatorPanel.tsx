@@ -254,10 +254,11 @@ export default function IndicatorPanel({
   }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
-    if (c.id === 'new-high-bearish') return timeframe === 'D' && capabilities.investorNet === 'stock';
+    if (c.id === 'new-high-bearish') return timeframe === 'D' && (capabilities.investorNet === 'stock' || capabilities.dailyPriceSignals === true);
     if (isSecondTimeframe(timeframe)) return ['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume', 'fill-strength'].includes(c.id);
     if (c.id === 'volume' && capabilities.volume === false) return false;
     if (c.id === 'trade-value') return capabilities.tradeValue === true && isCalendarTimeframe(timeframe);
+    if (c.id === 'broker-late-entry') return capabilities.hogaPanes;
     if (c.id === 'program-daily') return capabilities.investorNet === 'stock';
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
     if ((c.id === 'foreign-net' || c.id === 'institution-net') && capabilities.investorNet === 'none') {

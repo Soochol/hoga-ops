@@ -34,6 +34,7 @@ class UsDailyBar(BaseModel):
     low: float
     close: float
     volume: int = 0
+    volume_available: bool = False
 
 
 class UsDateRange(BaseModel):
@@ -100,7 +101,7 @@ def parse_bar(row: dict, *, fields: tuple[str, str, str, str, str, str]) -> UsDa
         op, hi, lo, cl = values
         if not (lo <= min(op, cl) <= max(op, cl) <= hi):
             raise ValueError("inconsistent OHLC")
-        volume = Decimal(str(row.get(volume_key, "0")).strip().replace(",", "") or "0")
+        volume = Decimal(str(row.get(volume_key) or "0").strip().replace(",", "") or "0")
         if not volume.is_finite() or volume < 0 or volume != volume.to_integral_value():
             raise ValueError("invalid volume")
     except InvalidOperation as exc:
@@ -113,6 +114,7 @@ def parse_bar(row: dict, *, fields: tuple[str, str, str, str, str, str]) -> UsDa
         low=float(lo),
         close=float(cl),
         volume=int(volume),
+        volume_available=row.get(volume_key) is not None and str(row[volume_key]).strip() != "",
     )
 
 
