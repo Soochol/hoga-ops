@@ -36,6 +36,8 @@ import { useCursorSyncResolution } from './useCursorSyncResolution';
 import { priceDirClass } from '../ui/priceDir';
 import { buildCandleTooltip } from './candleTooltipModel';
 import { legendCrosshairSnapshot, sameLegendCrosshair } from './legendCrosshairSnapshot';
+import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
+import { hasLocalCrosshairPointer } from '../chart/persistentCrosshair';
 import {
   useIndicatorActions,
   useWindowIndicator,
@@ -1004,6 +1006,14 @@ function PaneLegendOverlay({
       });
     };
     const onCrosshair = (param: MouseEventParams) => {
+      if (param.point && !param.sourceEvent && hasSyntheticCrosshair(chart, 'cursor-sync') && !hasLocalCrosshairPointer(chart)) {
+        if (paramRef.current !== null) {
+          paramRef.current = null;
+          previous = null;
+          schedule();
+        }
+        return;
+      }
       const next = legendCrosshairSnapshot(param);
       paramRef.current = param.point == null ? null : param;
       if (sameLegendCrosshair(previous, next)) return;

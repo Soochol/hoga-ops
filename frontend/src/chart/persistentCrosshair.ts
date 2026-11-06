@@ -1,5 +1,5 @@
 import type { IChartApi, MouseEventParams, Time } from 'lightweight-charts';
-import { hasSyntheticCrosshair, markSyntheticCrosshair, releaseSyntheticCrosshair } from './syntheticCrosshair';
+import { hasSyntheticCrosshair, markSyntheticCrosshair, releaseSyntheticCrosshair, type SyntheticCrosshairSource } from './syntheticCrosshair';
 
 type Series = Parameters<IChartApi['setCrosshairPosition']>[2];
 type Hover = { kind: 'pointer'; clientX: number; clientY: number }
@@ -23,16 +23,16 @@ export function subscribeCrosshairPointer(chart: IChartApi, listener: () => void
   return controllers.get(chart)?.subscribePointer(listener) ?? (() => {});
 }
 
-export function applySyncedCrosshair(position: Parameters<typeof applySyntheticCrosshair>[0]): (() => void) | undefined {
+export function applySyncedCrosshair(position: Omit<Parameters<typeof applySyntheticCrosshair>[0], 'source'>): (() => void) | undefined {
   if (hasLocalCrosshairPointer(position.chart)) return;
-  return applySyntheticCrosshair(position);
+  return applySyntheticCrosshair({ ...position, source: 'cursor-sync' });
 }
 
-export function applySyntheticCrosshair({ chart, price, time, series }: {
-  chart: IChartApi; price: number; time: Time; series: Series;
+export function applySyntheticCrosshair({ chart, price, time, series, source }: {
+  chart: IChartApi; price: number; time: Time; series: Series; source: SyntheticCrosshairSource;
 }): () => void {
   chart.setCrosshairPosition(price, time, series);
-  markSyntheticCrosshair(chart);
+  markSyntheticCrosshair(chart, source);
   const controller = controllers.get(chart);
   const applied = controller?.currentHover();
   let released = false;
@@ -41,7 +41,8 @@ export function applySyntheticCrosshair({ chart, price, time, series }: {
     released = true;
     const current = controller?.currentHover();
     if (controller && current !== applied && current?.kind === 'synthetic') return;
-    if (controller ? current === applied : hasSyntheticCrosshair(chart)) chart.clearCrosshairPosition();
+    if (!controller && !hasSyntheticCrosshair(chart, source)) return;
+    if (!controller || current === applied) chart.clearCrosshairPosition();
     releaseSyntheticCrosshair(chart);
   };
 }

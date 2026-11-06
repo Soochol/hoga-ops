@@ -79,7 +79,7 @@ test('one move into receiving D/W/M preserves local line and axis pixels while s
     await page.mouse.move(point.x, point.y);
     await expectSyncPaint(page, target.id, true, undefined, 0, point);
     await expect.poll(async () => (await syncBus(page)).origin?.windowId ?? null)
-      .toBe(target.timeframe === 'D' ? target.id : null);
+      .toBe(target.id);
     await expectSyncPaint(page, target.id, true, undefined, 0, point);
     expect((await syncPixels(page, target.id)).pointerInside).toBe(true);
   }
@@ -110,7 +110,7 @@ test('target tooltip toggles immediately by keyboard while source pointer and or
   }
 });
 
-test('daily publication maps into W/M, source whitespace and leave clear remote, W/M hover never publishes', async ({ page }) => {
+test('daily publication maps into W/M, source whitespace and leave clear remote, W/M hover takes ownership', async ({ page }) => {
   const windows = syncWindows(true, false);
   await installSyncWorkspace(page, windows);
   await hoverSyncChart(page, windows[1]);
@@ -130,7 +130,7 @@ test('daily publication maps into W/M, source whitespace and leave clear remote,
   for (const win of windows.slice(2)) {
     const point = await hoverSyncChart(page, win);
     await expectSyncPaint(page, win.id, true, undefined, 0, point);
-    expect((await syncBus(page)).ms).toBeNull();
+    await expect.poll(async () => (await syncBus(page)).origin?.windowId).toBe(win.id);
   }
 });
 

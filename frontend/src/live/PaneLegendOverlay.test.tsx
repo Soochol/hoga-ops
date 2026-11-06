@@ -3,6 +3,10 @@ import { bindPaneSpec } from '../chart/paneSpecs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
+import { markSyntheticCrosshair, releaseSyntheticCrosshair } from '../chart/syntheticCrosshair';
+import { applySyncedCrosshair, createPersistentCrosshairChart, hasLocalCrosshairPointer } from '../chart/persistentCrosshair';
+import { TradeBrowseCrosshair } from '../chart/TradeBrowseCrosshair';
+import { useTradeBrowseStore } from './tradeBrowse';
 import { CANDLE_SPEC } from '../chart/projectors/candle';
 import { PEAK_WALL_SPEC } from './indicators/peakWallPaneSpec';
 import { FACTORY_INDICATOR_SETTINGS } from '../state/indicatorSettingsV2';
@@ -51,8 +55,8 @@ function makeChart(paneHeights: number[], plotWidth = 500) {
   } as never;
 }
 
-const seriesWithValue = (value: number) =>
-  ({ data: () => [{ time: 1, value: value - 1 }, { time: 2, value }] }) as never;
+const seriesWithValue = (value: number, rows = [{ time: 1, value: value - 1 }, { time: 2, value }]) =>
+  ({ data: () => rows, priceToCoordinate: () => 10 }) as never;
 
 /** Register a pane's legend entries (mirrors what RangeSeriesPane fires). */
 function registerLegend(
@@ -245,19 +249,26 @@ describe('PaneLegendOverlay — 동기화 크로스헤어 연동', () => {
   });
 
   /** 크로스헤어 핸들러를 붙잡는 차트 — 「내 마우스」 경로를 재려면 필요하다. */
-  let crosshairHandler: ((p: { time?: unknown; point?: unknown; seriesData?: unknown }) => void) | null = null;
-  const capturingChart = () => ({
-    subscribeCrosshairMove: (h: (p: { time?: unknown; point?: unknown }) => void) => {
-      crosshairHandler = h;
-    },
-    unsubscribeCrosshairMove: () => { crosshairHandler = null; },
-    timeScale: () => ({
-      subscribeVisibleLogicalRangeChange: () => {},
-      unsubscribeVisibleLogicalRangeChange: () => {},
-      width: () => 500,
-    }),
-    panes: () => [{ getHeight: () => 120 }],
-  }) as never;
+  let crosshairHandler: ((p: { time?: unknown; point?: unknown; seriesData?: unknown; sourceEvent?: unknown }) => void) | null = null;
+  const capturingChart = () => {
+    const handlers = new Set<NonNullable<typeof crosshairHandler>>();
+    crosshairHandler = param => { for (const handler of handlers) handler(param); };
+    return {
+      subscribeCrosshairMove: (handler: NonNullable<typeof crosshairHandler>) => { handlers.add(handler); },
+      unsubscribeCrosshairMove: (handler: NonNullable<typeof crosshairHandler>) => { handlers.delete(handler); },
+      clearCrosshairPosition: noop,
+      setCrosshairPosition: noop,
+      remove: noop,
+      timeScale: () => ({
+        subscribeVisibleLogicalRangeChange: noop,
+        unsubscribeVisibleLogicalRangeChange: noop,
+        width: () => 500,
+        timeToCoordinate: () => 50,
+        getVisibleLogicalRange: () => ({ from: 0, to: 100 }),
+      }),
+      panes: () => [{ getHeight: () => 120 }],
+    } as never;
+  };
 
   const renderWithCandles = () => render(
     <PaneLegendOverlay
@@ -343,6 +354,126 @@ describe('PaneLegendOverlay — 동기화 크로스헤어 연동', () => {
     expect(openText(container)).toContain('100'); // DAY1 시가 — 내 마우스가 이긴다
   });
 
+  it.each([false, true])('actual TradeBrowse redraw wins with retained bus=%s and yields its snapshot to cursor sync', async retainedBus => {
+    resetStore();
+    const chart = createPersistentCrosshairChart(capturingChart());
+    const series = seriesWithValue(33300, [DAY1, DAY2, DAY3].map((day, i) => ({ time: day / 1000, value: 11100 * (i + 1) })));
+    useMaSeriesRegistry.getState().register(null, 'ma-1', series);
+    if (retainedBus) publish(DAY3);
+    useTradeBrowseStore.setState({ session: {
+      ownerId: 'tape', origin: { windowId: 'chart', group: null, code: '005930', timeframe: '1m', venue: 'KRX' },
+      seed: { date: '20250618', fromMs: DAY1, toMs: DAY1 + 60000, timeframe: '1m', venue: 'KRX', regularSessionOnly: false },
+      cursorMs: DAY1, browsing: true, selectedVenue: 'KRX', sourcePref: 'hogaplay', minAmountManwon: 0,
+    } });
+    const { container, unmount } = render(<>
+      <TradeBrowseCrosshair chart={chart} axis={axis} candles={CANDLES} paneSeries={new Map([['candle', series]])}
+        windowId="chart" group={null} code="005930" timeframe="1m" venue="KRX" />
+      <PaneLegendOverlay chart={chart} timeframe="1m" candles={CANDLES} axis={axis} code="005930"
+        paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }} />
+    </>);
+    let release: (() => void) | undefined;
+    try {
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      act(() => { crosshairHandler?.({ time: DAY1 / 1000, point: { x: 10, y: 10 },
+        seriesData: new Map([[series, { time: DAY1 / 1000, value: 11100 }]]) }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(openText(container)).toContain('100');
+      expect(container.querySelector('.legend-row-ma')).toHaveTextContent('11,100');
+      act(() => { useTradeBrowseStore.getState().end(); });
+      publish(DAY2);
+      release = applySyncedCrosshair({ chart, price: 120, time: '2025-06-19', series });
+      act(() => { crosshairHandler?.({ time: DAY2 / 1000, point: { x: 20, y: 10 },
+        seriesData: new Map([[series, { time: DAY2 / 1000, value: 22200 }]]) }); });
+      release?.();
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(openText(container)).toContain('105');
+      expect(container.querySelector('.legend-row-ma')).toHaveTextContent('22,200');
+      publish(DAY3);
+      expect(container.querySelector('.legend-row-ma')).toHaveTextContent('33,300');
+      expect(openText(container)).toContain('120');
+      act(() => { crosshairHandler?.({ seriesData: new Map() }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(openText(container)).toContain('120');
+    } finally {
+      release?.();
+      unmount();
+      chart.remove();
+      useTradeBrowseStore.getState().end();
+    }
+  });
+
+  it('accepts an empty clear while a cursor-sync marker remains', async () => {
+    const chart = capturingChart();
+    const { container } = render(<PaneLegendOverlay chart={chart} timeframe="D" candles={CANDLES} axis={axis}
+      code="005930" paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }} />);
+    publish(DAY2);
+    markSyntheticCrosshair(chart, 'cursor-sync');
+    try {
+      act(() => { crosshairHandler?.({ time: DAY1 / 1000, point: { x: 10, y: 10 }, sourceEvent: { clientX: 10, clientY: 10 } }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(openText(container)).toContain('100');
+      act(() => { crosshairHandler?.({ seriesData: new Map() }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(openText(container)).toContain('105');
+    } finally {
+      releaseSyntheticCrosshair(chart);
+    }
+  });
+
+  it.each(['D', 'M'] as const)('%s remote resize snapshot does not pin the legend after W takeover', async timeframe => {
+    const chart = capturingChart();
+    const { container } = render(<PaneLegendOverlay chart={chart} timeframe="D"
+      paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }}
+      candles={CANDLES} axis={axis} code="005930" />);
+    const setRemote = (tsMs: number, sourceTimeframe: LiveTimeframe) => act(() => {
+      useLiveCursorStore.getState().setSyncCursor(tsMs, {
+        windowId: 'remote', group: null, code: '005930', timeframe: sourceTimeframe,
+      });
+    });
+    markSyntheticCrosshair(chart, 'cursor-sync');
+    try {
+      setRemote(DAY3, timeframe);
+      act(() => { crosshairHandler?.({ time: DAY3 / 1000, point: { x: 30, y: 10 }, seriesData: new Map() }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      setRemote(DAY2, 'W');
+      expect(openText(container)).toContain('105');
+      act(() => { crosshairHandler?.({ time: DAY1 / 1000, point: { x: 10, y: 10 }, sourceEvent: { clientX: 10, clientY: 10 } }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(openText(container)).toContain('100');
+    } finally {
+      releaseSyntheticCrosshair(chart);
+    }
+  });
+
+  it.each([false, true])('retains a stationary local pointer redraw before synthetic cleanup, tooltip %s', async tooltipEnabled => {
+    useChartPrefsStore.getState().setToggle('candleTooltipEnabled', tooltipEnabled);
+    const chart = createPersistentCrosshairChart(capturingChart());
+    const series = seriesWithValue(33300);
+    useMaSeriesRegistry.getState().register(null, 'ma-1', series);
+    const { container, unmount } = render(<PaneLegendOverlay chart={chart} timeframe="D"
+      paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }}
+      candles={CANDLES} axis={axis} code="005930" />);
+    markSyntheticCrosshair(chart, 'cursor-sync');
+    try {
+      act(() => { crosshairHandler?.({ time: DAY1 / 1000, point: { x: 10, y: 10 }, sourceEvent: { clientX: 10, clientY: 10 } }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(hasLocalCrosshairPointer(chart)).toBe(true);
+      expect(openText(container)).toContain('100');
+      act(() => { crosshairHandler?.({ time: DAY2 / 1000, point: { x: 20, y: 10 } }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(openText(container)).toContain('105');
+      act(() => { crosshairHandler?.({ time: DAY2 / 1000, point: { x: 20, y: 10 },
+        seriesData: new Map([[series, { time: DAY2 / 1000, value: 22200 }]]) }); });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(container.querySelector('.legend-row-ma')).toHaveTextContent('22,200');
+    } finally {
+      releaseSyntheticCrosshair(chart);
+      unmount();
+      chart.remove();
+      useChartPrefsStore.getState().resetToDefaults();
+    }
+  });
+
   it('창번호가 다르면 따라가지 않는다 — 게이트는 크로스헤어와 같은 판정을 쓴다', () => {
     const { container } = renderWithCandles();
     act(() => {
@@ -404,7 +535,7 @@ describe('PaneLegendOverlay — 동기화 크로스헤어의 값 행 연동', ()
   });
 
   /** 크로스헤어 핸들러를 붙잡는 차트 — 「내 마우스」 경로를 재려면 필요하다. */
-  let crosshairHandler: ((p: { time?: unknown; point?: unknown; seriesData?: unknown }) => void) | null = null;
+  let crosshairHandler: ((p: { time?: unknown; point?: unknown; seriesData?: unknown; sourceEvent?: unknown }) => void) | null = null;
   const capturingChart = () => ({
     subscribeCrosshairMove: (h: (p: { time?: unknown; point?: unknown }) => void) => {
       crosshairHandler = h;
@@ -434,6 +565,26 @@ describe('PaneLegendOverlay — 동기화 크로스헤어의 값 행 연동', ()
       code="005930"
     />,
   );
+
+  it('rejects a synthetic value snapshot before its marker is released and a queued paint runs', async () => {
+    const chart = capturingChart();
+    const series = seriesPerDay(11100, 22200, 33300);
+    useMaSeriesRegistry.getState().register(null, 'ma-1', series);
+    const { container } = renderD(chart);
+    markSyntheticCrosshair(chart, 'cursor-sync');
+    try {
+      publish(DAY3);
+      act(() => { crosshairHandler?.({ time: DAY3 / 1000, point: { x: 30, y: 10 },
+        seriesData: new Map([[series, { time: DAY3 / 1000, value: 33300 }]]) }); });
+      publish(DAY2);
+      releaseSyntheticCrosshair(chart);
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(container.querySelector('.legend-ohlc-open')).toHaveTextContent('105');
+      expect(container.querySelector('.legend-row-ma')).toHaveTextContent('22,200');
+    } finally {
+      releaseSyntheticCrosshair(chart);
+    }
+  });
 
   it('이동평균 값이 **동기화 봉**을 읽는다 — 최신 봉이 아니라', () => {
     useMaSeriesRegistry.getState().register(null, 'ma-1', seriesPerDay(11100, 22200, 33300));

@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import type { IChartApi } from 'lightweight-charts';
 import { setup, hoverCandle, START, DATE } from './helpers/tradeCursorMocks';
@@ -12,8 +13,8 @@ async function frame(page: Page) {
 async function scrollTo(scroll: Locator, top: number) {
   return await scroll.evaluate((el, value) => { el.scrollTop = value; return el.scrollTop; }, top);
 }
-async function arrange(page: Page, tf: LiveTimeframe, options: { failure?: boolean; changed?: boolean; targetCandle?: boolean } = {}) {
-  const result = await setup(page, tf, true, options.targetCandle ? 1000 : 240, !!options.targetCandle);
+async function arrange(page: Page, tf: LiveTimeframe, options: { failure?: boolean; changed?: boolean; targetCandle?: boolean; distinctOhlc?: boolean } = {}) {
+  const result = await setup(page, tf, true, options.targetCandle ? 1000 : 240, !!options.targetCandle, !!options.distinctOhlc);
   const step = Number(tf.slice(0, -1)) * (tf.endsWith('s') ? 1000 : 60000);
   const requests: URL[] = [], books: URL[] = [];
   let seed = 0, failed = false;
@@ -221,5 +222,47 @@ test('탐색 중 hogaplay 우선 설정 변경은 기존 탐색을 종료하고 
   expect(requests.at(-1)!.searchParams.get('source_pref')).toBe('kiwoom_live');
   expect(books.at(-1)!.searchParams.get('source_pref')).toBe('kiwoom_live');
   await expect(tape.getByRole('columnheader', { name: '합산량(주)' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+
+test('1m: 체결 탐색의 실제 봉 OHLC와 MA는 native repaint·resize 뒤에도 최신 봉으로 바뀌지 않는다', async ({ page }, testInfo) => {
+  const { tape, scroll, seed, step, errors } = await arrange(page, '1m', { distinctOhlc: true });
+  await scrollTo(scroll, 1e8);
+  await expect(tape).toHaveAttribute('data-loaded-count', '240');
+  await scrollTo(scroll, 1e8);
+  await expect(tape).toHaveAttribute('data-loaded-count', '320');
+  const rowHeight = await tape.locator('[data-tape-event]').first().evaluate(el => el.getBoundingClientRect().height);
+  await scrollTo(scroll, 240 * rowHeight + 36);
+  const older = seed - step * 2;
+  const marker = page.locator('[data-win="cursor-chart"] [data-testid="trade-browse-crosshair"]');
+  await expect(tape).toHaveAttribute('data-reading-ms', String(older));
+  await expect(marker).toHaveAttribute('data-rendered-ms', String(older));
+  const expected = await page.evaluate(index => {
+    const chart = (window as unknown as ChartsWindow).__liveCharts.get('cursor-chart');
+    const series = chart?.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick');
+    const bar = series?.data()[index];
+    const latest = series?.data().at(-1);
+    if (!bar || !('open' in bar) || !latest || !('open' in latest) || !series) throw new Error('fixture candle OHLC unavailable');
+    series.update({ ...latest });
+    return { bar, latest, ma5: bar.close - 20 };
+  }, Math.round((older - START) / step));
+  expect(expected.bar.open).not.toBe(expected.latest.open);
+  const chartWindow = page.locator('[data-win="cursor-chart"]');
+  const observations = [];
+  for (const stage of ['native-repaint', 'native-resize'] as const) {
+    if (stage === 'native-resize') await page.setViewportSize({ width: 1600, height: 1040 });
+    await frame(page);
+    const open = chartWindow.locator('.legend-ohlc-open');
+    const ma = chartWindow.locator('.legend-row-ma');
+    await expect(open).toContainText(expected.bar.open.toLocaleString('en-US') + '원');
+    await expect(chartWindow.getByTestId('pane-legend-rows-candle').getByText('종가', { exact: true }).locator('..')).toContainText(expected.bar.close.toLocaleString('en-US') + '원');
+    await expect(ma).toContainText(expected.ma5.toLocaleString('en-US'));
+    await expect(tape).toHaveAttribute('data-reading-ms', String(older));
+    await expect(marker).toHaveAttribute('data-rendered-ms', String(older));
+    observations.push({ stage, expected, open: await open.innerText(), ma: await ma.innerText() });
+    await page.screenshot({ path: testInfo.outputPath(stage + '.png') });
+  }
+  await writeFile(testInfo.outputPath('legend-observations.json'), JSON.stringify(observations, null, 2));
   expect(errors).toEqual([]);
 });

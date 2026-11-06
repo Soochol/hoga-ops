@@ -119,13 +119,8 @@ describe('resolveSyncTarget', () => {
     expect(target({ windowId: 'daily-window' })).toBeNull();
   });
 
-  it('W/M 발행은 무시한다 — 한 캔들이 여러 날이라 스냅할 다리가 없다', () => {
-    // 원래 여기 「일봉 발행은 무시한다 — 같은 축이면 동기화할 것이 없다」가 있었다.
-    // 2026-08-21 에 **뒤집혔다**: 창마다 뷰포트가 독립이라 "같은 축이면 같은 칸" 이
-    // 애초에 참이 아니었다(일봉→일봉은 아래 전용 describe 가 고정한다). 남은 것은
-    // 정말로 다리가 없는 W/M 뿐이다.
-    expect(target({ timeframe: 'W' })).toBeNull();
-    expect(target({ timeframe: 'M' })).toBeNull();
+  it.each(['W', 'M'] as const)('%s 발행의 실제 대표 날짜를 일봉에 대응한다', timeframe => {
+    expect(target({ timeframe })).toEqual(CANDLES[0]);
   });
 
   it('종목이 다르면 무시한다 — `allowCrossSymbol` 이 꺼진 모드', () => {
@@ -244,9 +239,9 @@ describe('resolveSyncTarget — 다른 종목까지(cursorSyncCrossSymbol 켬)',
     expect(targetCross({ windowId: 'daily-window', code: '005930' })).toBeNull();
   });
 
-  it('W/M 발행은 여전히 무시한다 — 토글이 연 건 종목 축뿐이다', () => {
-    expect(targetCross({ timeframe: 'W', code: '005930' })).toBeNull();
-    expect(targetCross({ timeframe: 'M', code: '005930' })).toBeNull();
+  it.each(['W', 'M'] as const)('%s 발행도 다른 Code 허용 조건을 따른다', timeframe => {
+    expect(targetCross({ timeframe, code: '005930' })).toEqual(CANDLES[0]);
+    expect(target({ timeframe, code: '005930' })).toBeNull();
   });
 
   it('그 날의 일봉이 이 창에 없으면 여전히 대상이 없다 — 휴장', () => {
@@ -262,7 +257,6 @@ describe('resolveSyncTarget — 다른 종목까지(cursorSyncCrossSymbol 켬)',
  * **창마다 뷰포트가 독립**이라 그 전제가 애초에 성립하지 않았다. 종목까지 다르면
  * 더더욱 아니다.
  *
- * **이 블록이 막는 방향**: `date` 소비자가 W/M 발행까지 받는 것(한 캔들이 여러 날).
  */
 describe('resolveSyncTarget — 일봉 → 일봉', () => {
   it('일봉 발행을 받는다', () => {
@@ -283,9 +277,8 @@ describe('resolveSyncTarget — 일봉 → 일봉', () => {
     expect(target({ timeframe: 'D', windowId: 'daily-window' })).toBeNull();
   });
 
-  it('W/M 발행은 받지 않는다 — 한 캔들이 여러 날이라 다리가 없다', () => {
-    expect(target({ timeframe: 'W', windowId: 'other' })).toBeNull();
-    expect(target({ timeframe: 'M', windowId: 'other' })).toBeNull();
+  it('초봉 발행은 받지 않는다', () => {
+    expect(target({ timeframe: '1s', windowId: 'other' })).toBeNull();
   });
 });
 
@@ -400,9 +393,9 @@ describe('resolveSyncTarget — 일봉 → 분봉', () => {
       .toEqual({ kind: 'none' });
   });
 
-  it('W 발행은 무시한다 — 칩도 뜨지 않는다', () => {
+  it('초봉 발행은 무시한다 — 칩도 뜨지 않는다', () => {
     const far = Date.UTC(2025, 5, 10, 0, 0); // 범위 밖이지만 게이트가 먼저 걸린다
-    expect(minuteResolution({ windowId: 'w-window', timeframe: 'W' }, far))
+    expect(minuteResolution({ windowId: 'seconds-window', timeframe: '1s' }, far))
       .toEqual({ kind: 'none' });
   });
 });
@@ -494,18 +487,14 @@ describe('snapToLastOfKstDay', () => {
 });
 
 describe('발행 ↔ 소비 집합', () => {
-  it('분봉과 D 만 발행하고 W/M까지 소비한다', () => {
-    for (const tf of ['1m', '5m', '60m', '240m', 'D'] as const) {
+  it('분봉과 D/W/M이 발행하고 소비한다', () => {
+    for (const tf of ['1m', '5m', '60m', '240m', 'D', 'W', 'M'] as const) {
       expect(canPublishSyncCursor(tf)).toBe(true);
       expect(isSyncConsumerTimeframe(tf)).toBe(true);
     }
     for (const tf of ['1s', '5s'] as const) {
       expect(canPublishSyncCursor(tf)).toBe(false);
       expect(isSyncConsumerTimeframe(tf)).toBe(false);
-    }
-    for (const tf of ['W', 'M'] as const) {
-      expect(canPublishSyncCursor(tf)).toBe(false);
-      expect(isSyncConsumerTimeframe(tf)).toBe(true);
     }
   });
 });
@@ -541,7 +530,7 @@ for (const granularity of ['W', 'M'] as const) {
       const middle = granularity === 'W' ? '2024-12-26' : '2024-11-15';
       const end = granularity === 'W' ? '2024-12-29' : '2024-11-30';
       for (const date of [beforeTrading, middle, end]) {
-        for (const timeframe of ['3m', 'D'] as const) {
+        for (const timeframe of ['3m', 'D', 'W', 'M'] as const) {
           expect(resolve(date, { timeframe })).toEqual({ kind: 'hit', candle: candles[0] });
         }
       }
@@ -563,9 +552,89 @@ for (const granularity of ['W', 'M'] as const) {
 
     it('retains self, group, Code and origin timeframe gates', () => {
       for (const gate of [{ windowId: 'receiver' }, { group: 2 }, { code: '005930' },
-        { timeframe: 'W' as const }, { timeframe: 'M' as const }, { timeframe: '1s' as const }]) {
+        { timeframe: '1s' as const }]) {
         expect(resolve(dates[0], gate)).toEqual({ kind: 'none' });
       }
     });
   });
 }
+
+
+describe('W/M representative-point sources', () => {
+  const ms = (date: string) => Date.parse(`${date}T09:00:00+09:00`);
+  const resolve = (timeframe: 'W' | 'M', date: string, targetTimeframe: '1m' | 'D' | 'W' | 'M', candles: SyncCandle[], venue?: SidebarCursorOrigin['venue']) =>
+    resolveSyncTarget({
+      cursor: { tsMs: ms(date), origin: origin({ timeframe, venue }) },
+      myWindowId: 'receiver', myGroup: 1, myCode: '064350',
+      source: buildSyncTargetSource(candles, targetTimeframe), allowCrossSymbol: false,
+    });
+
+  it.each(['W', 'M'] as const)('%s publishes its exact representative date to D and the last loaded partial minute', timeframe => {
+    const daily = { ts_ms: ms('2026-11-02'), close: 110 };
+    const partial = { ts_ms: ms('2026-11-02') + 7 * 60000, close: 221 };
+    expect(canPublishSyncCursor(timeframe)).toBe(true);
+    expect(resolve(timeframe, '2026-11-02', 'D', [daily])).toEqual({ kind: 'hit', candle: daily });
+    expect(resolve(timeframe, '2026-11-02', '1m', [
+      { ts_ms: ms('2026-11-02'), close: 220 }, partial, { ts_ms: ms('2026-11-06'), close: 230 },
+    ])).toEqual({ kind: 'hit', candle: partial });
+  });
+
+  it('M to W to M follows each actual representative rather than round-trip identity', () => {
+    const week = { ts_ms: ms('2026-03-30'), close: 300 };
+    const march = { ts_ms: ms('2026-03-03'), close: 400 };
+    const april = { ts_ms: ms('2026-04-02'), close: 500 };
+    expect(resolve('M', '2026-04-01', 'W', [week])).toEqual({ kind: 'hit', candle: week });
+    expect(resolve('W', '2026-03-30', 'M', [march, april])).toEqual({ kind: 'hit', candle: march });
+    expect(resolve('W', '2026-04-01', 'M', [march, april])).toEqual({ kind: 'hit', candle: april });
+  });
+
+  it.each(['W', 'M'] as const)('%s never substitutes another date in its period', timeframe => {
+    for (const targetTimeframe of ['1m', 'D'] as const) {
+      expect(resolve(timeframe, '2026-11-02', targetTimeframe, [])).toEqual({ kind: 'none' });
+      expect(resolve(timeframe, '2026-11-02', targetTimeframe, [
+        { ts_ms: ms('2026-11-01'), close: 10 }, { ts_ms: ms('2026-11-03'), close: 30 },
+      ])).toEqual({ kind: 'none' });
+      expect(resolve(timeframe, '2026-11-02', targetTimeframe, [{ ts_ms: ms('2026-11-06'), close: 60 }]))
+        .toEqual({ kind: 'out-of-range', side: 'left' });
+      expect(resolve(timeframe, '2026-11-06', targetTimeframe, [{ ts_ms: ms('2026-11-02'), close: 20 }]))
+        .toEqual({ kind: 'out-of-range', side: 'right' });
+    }
+  });
+
+  it('controlled venue representatives share W buckets but can select different M and D dates across a year', () => {
+    const week = { ts_ms: ms('2024-12-31'), close: 100 };
+    const december = { ts_ms: ms('2024-12-03'), close: 200 };
+    const january = { ts_ms: ms('2025-01-02'), close: 300 };
+    const venues = [
+      { venue: 'KRX', date: '2024-12-31', month: december },
+      { venue: 'NXT', date: '2025-01-01', month: january },
+      { venue: 'UN', date: '2025-01-02', month: january },
+    ] satisfies { venue: NonNullable<SidebarCursorOrigin['venue']>; date: string; month: SyncCandle }[];
+    for (const row of venues) {
+      expect(resolve('W', row.date, 'W', [week], row.venue), row.venue).toEqual({ kind: 'hit', candle: week });
+      expect(resolve('W', row.date, 'M', [december, january], row.venue), row.venue).toEqual({ kind: 'hit', candle: row.month });
+      const day = { ts_ms: ms(row.date), close: 400 };
+      expect(resolve('W', row.date, 'D', [day], row.venue), row.venue).toEqual({ kind: 'hit', candle: day });
+    }
+  });
+
+  it.each(['W', 'M'] as const)('%s keeps self, group and Code gates before range classification', timeframe => {
+    const outside = ms('2026-10-01');
+    for (const gate of [{ windowId: 'minute-consumer' }, { group: 2 }]) {
+      expect(minuteResolution({ timeframe, ...gate }, outside)).toEqual({ kind: 'none' });
+    }
+    expect(target({ timeframe, code: '005930' }, outside)).toBeNull();
+    expect(targetCross({ timeframe, code: '005930' })).toEqual(CANDLES[0]);
+  });
+
+  it('uses KST midnight and resolves target refresh without changing the source point', () => {
+    const point = Date.parse('2026-11-01T15:00:00Z');
+    const candle = { ts_ms: point + 60000, close: 101 };
+    expect(minuteResolution({ timeframe: 'M' }, point, [
+      { ts_ms: point - 60000, close: 99 }, candle,
+    ])).toEqual({ kind: 'hit', candle });
+    expect(minuteResolution({ timeframe: 'M' }, point, [])).toEqual({ kind: 'none' });
+    const updated = { ts_ms: point + 120000, close: 102 };
+    expect(minuteResolution({ timeframe: 'M' }, point, [candle, updated])).toEqual({ kind: 'hit', candle: updated });
+  });
+});
