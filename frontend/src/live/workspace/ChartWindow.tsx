@@ -37,6 +37,7 @@ import { useLiveVenueStore } from '../../state/liveVenue';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import {
   groupTargetChartWindow,
+  windowSymbolOf,
   useWorkspaceStore,
   type GroupSymbol,
   type WorkspaceWindow,
@@ -97,11 +98,14 @@ import { JumpToMinuteButton } from './JumpToMinuteButton';
 import type { JumpRange } from '../minuteJumpDestination';
 import { MinuteJumpChip } from './MinuteJumpChip';
 import { ViewedDateChip } from './ViewedDateChip';
-import { canPublishTimeframeJump, isTimeframeJumpTarget } from '../../chart/timeframeJump';
+import { canPublishTimeframeJump, domesticStockCode, isTimeframeJumpTarget, type JumpReceiver } from '../../chart/timeframeJump';
 import { jumpReceiverIds, registerJumpRunner } from './jumpControls';
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import { useActivePrefs } from '../../state/chartPrefs';
 import { todayKstYyyymmdd } from '../liveDateTime';
+import { calendarJumpSource } from '../calendarJump';
+import type { CalendarJumpState } from '../useCalendarJumpReceiver';
+import { CalendarJumpChip } from './CalendarJumpChip';
 import { minuteJumpChipState, useMinuteJumpTarget } from '../useTimeframeJump';
 import { useWatchlistMembership } from '../../watchlist/useWatchlistMembership';
 import type { CollectVisibleRange } from './collectDialogControls';
@@ -322,7 +326,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // `view.code` 를 그대로 쓰지 않는 이유는 그것이 지수 창에서 `null` 이기 때문이다
   // (그 계약은 `windowView.ts` 의 `liveWorkareaCode` 주석) — 그러면 KOSPI→KOSDAQ
   // 교체가 이 축에 안 보인다. 훅의 `mySymbolKey` 도크스트링 참조.
-  const jumpSymbolKey = symbol ? `${symbol.kind}:${symbol.code}` : null;
+  const jumpSymbolKey = symbol ? `${symbol.kind ?? 'stock'}:${symbol.code}` : null;
   const minuteJumpTarget = useMinuteJumpTarget({
     enabled: !usInstrument && savedRangeFreeze === null && isTimeframeJumpTarget(view.timeframe),
     myWindowId: win.id,
@@ -539,20 +543,36 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 훅이 **callback ref** 를 준다: 아래 `if (!instrument)` 빈 상태를 지나 종목이
   // 붙는 순간 헤더가 처음 마운트되는데, ref 객체로는 그 등장을 관측자에게 알릴 수
   // 없었다(그 훅의 주석 참조 — 리사이즈가 통째로 죽던 원인).
-  // ── 「분봉으로」 기간 점프 ────────────────────────────────────────────────
-  // 발행(캘린더 창)과 소비(분봉 창)가 한 창에 동시에 있을 수 없다 — 봉이 하나라
-  // 헤더에도 둘 중 하나만 뜬다.
   const canJump = !usInstrument && canPublishTimeframeJump(view.timeframe);
   // 모든 액션은 도구 행에 두고, 좁은 창에서는 줄바꿈한다.
   const [headerFold, headerRef] = useChartHeaderFold(
     LIVE_FOCUS_HEADER_FOLD,
   );
-  // 보낼 곳이 있는가. **자기 자신은 세지 않는다**(캘린더 창이라 어차피 대상이 아니지만,
-  // 조건을 창 종류에 기대면 봉이 바뀔 때 조용히 어긋난다).
-  const hasMinuteWindow = useWorkspaceStore((s) => s.windows.some(
-    (w) => w.id !== win.id && w.kind === 'chart' && w.group === win.group
-      && w.chart !== undefined && isMinuteTimeframe(w.chart.timeframe),
-  ));
+  const jumpWindows = useWorkspaceStore(s => s.windows);
+  const jumpGroups = useWorkspaceStore(s => s.groupSymbols);
+  const sourceStockCode = domesticStockCode(symbol);
+  const jumpOrigin = { windowId: win.id, group: win.group, code: view.code, timeframe: view.timeframe };
+  const receiverTargets = (windows: readonly WorkspaceWindow[], groupSymbols: typeof jumpGroups): JumpReceiver[] =>
+    windows.filter(w => w.kind === 'chart' && w.chart).map(w => {
+      const actual = windowSymbolOf({ groupSymbols }, w);
+      const tf = w.chart?.timeframe ?? '1m';
+      const stockCode = domesticStockCode(actual);
+      return { windowId: w.id, group: w.group, timeframe: tf, code: stockCode, stockCode,
+        usInstrument: actual?.kind === 'us_stock' || (actual?.kind === 'index' && isUsIndexId(actual.code)),
+        frozen: isMinuteTimeframe(tf) && savedRangeAppliesTo(savedRangeFocus, stockCode, tf) };
+    });
+  const hasJumpReceiver = jumpReceiverIds(receiverTargets(jumpWindows, jumpGroups), [], jumpOrigin,
+    sourceStockCode, jumpCrossSymbol).length > 0;
+  const calendarSourceKey = `${win.id}|${win.group}|${jumpSymbolKey}|${view.timeframe}|${candleVenue}|${d.candleSourceKey}|${savedIdentity}`;
+  useEffect(() => () => {
+    const store = useLiveCursorStore.getState();
+    const current = store.jumpRequest;
+    if (current?.origin.windowId === win.id) store.invalidateCalendarJumpSource(current.seq, calendarSourceKey);
+  }, [calendarSourceKey, win.id]);
+  const [calendarJump, setCalendarJump] = useState<{ state: CalendarJumpState | null; clear: () => void }>({ state: null, clear: () => {} });
+  const handleCalendarJumpChange = useCallback((state: CalendarJumpState | null, clear: () => void) => {
+    setCalendarJump({ state, clear });
+  }, []);
   // 차트 좌표와 캔들 배열은 `LiveChartRoot` 안에만 있다 — 헤더가 직접 계산할 수
   // 없어 등록으로 받는다(`captureViewport` 와 같은 패턴).
   const jumpSourceRef = useRef<() => JumpRange | null>(() => null);
@@ -569,28 +589,20 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 발행 판정은 **여기 하나**다. 버튼과 `g` 가 각자 판정하면 "버튼은 막았는데
   // 단축키는 보내는" 상태가 생기고, 그 어긋남은 눌러 보기 전엔 안 보인다.
   const runJump = useCallback(() => {
-    if (!hasMinuteWindow) return;
-    const range = jumpSourceRef.current();
-    // 「그 날짜는 데이터가 없다」는 여기서 막지 않는다 — 하한을 아는 것은 소비하는
-    // 분봉 창뿐이고(모드에 따라 갈린다, #1497) 이 창은 항상 `null` 을 본다. 보내고,
-    // 갈 수 없으면 그 창의 칩이 사유를 말한다.
-    if (range === null
-      || !Number.isFinite(range.fromMs) || !Number.isFinite(range.toMs)) return;
-    useLiveCursorStore.getState().requestTimeframeJump(range.fromMs, range.toMs, {
-      windowId: win.id, group: win.group, code: view.code, timeframe: view.timeframe,
-    });
-    // 결과는 **다른 창**에서 일어난다. 그 창이 가려져 있으면 누른 쪽에서는 아무 일도
-    // 안 일어난 것처럼 보인다 — 실측(2026-08-23): 「창 추가」 기본 배치가 기존 분봉 창
-    // 위에 겹쳐(일봉 404×261 @97,186 vs 분봉 711×596 @13,99) 칩도 뷰포트 이동도
-    // 눈에 안 들어왔다. 그래서 수신 창을 앞으로 올린다.
-    //
-    // ⚠ 이 모델에서 **올리기 = 포커스**다(`focusedId = zOrder 끝`). 즉 이 조작 뒤
-    // `g`·Shift+1~4 의 대상이 분봉 창으로 넘어간다 — 결과를 보고 있는 창이 포커스인
-    // 것이 자연스러우므로 수용한다. 여럿이면 zOrder 순으로 올려 **상대 순서를 보존**한다.
     const ws = useWorkspaceStore.getState();
-    jumpReceiverIds(ws.windows, ws.zOrder, win.id, win.group)
-      .forEach((id) => ws.focusWindow(id));
-  }, [hasMinuteWindow, win.id, win.group, view.code, view.timeframe]);
+    const ids = jumpReceiverIds(receiverTargets(ws.windows, ws.groupSymbols), ws.zOrder, jumpOrigin,
+      sourceStockCode, jumpCrossSymbol);
+    if (!canJump || ids.length === 0) return;
+    const range = jumpSourceRef.current();
+    if (!range || !Number.isFinite(range.fromMs) || !Number.isFinite(range.toMs)) return;
+    const metadata = sourceStockCode && isCalendarTimeframe(view.timeframe)
+      ? calendarJumpSource({ range, timeframe: view.timeframe, code: sourceStockCode,
+          venue: candleVenue, source: d.candleSourceKey.startsWith('disk') ? 'disk' : 'vendor',
+          sourceKey: calendarSourceKey, cutoffDate: d.today }) : undefined;
+    useLiveCursorStore.getState().requestTimeframeJump(range.fromMs, range.toMs, jumpOrigin, metadata);
+    ids.forEach(id => ws.focusWindow(id));
+  }, [canJump, jumpWindows, jumpGroups, savedRangeFocus, sourceStockCode, jumpCrossSymbol, win.id,
+    win.group, view.code, view.timeframe, candleVenue, d.candleSourceKey, d.today, calendarSourceKey]);
   // `g` 는 셸이 포커스 창을 정하고 실행은 그 창이 한다 — 목적지가 차트 좌표라
   // 스토어를 통해서는 도달할 수 없다(`jumpControls` 헤더).
   useEffect(() => {
@@ -879,6 +891,9 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             <MinuteJumpChip state={minuteJumpState} onClear={minuteJumpTarget.clear} />
           </div>
         )}
+        {calendarJump.state && <div className="ml-1 flex min-w-0 items-center">
+          <CalendarJumpChip state={calendarJump.state} onClear={calendarJump.clear} />
+        </div>}
         {/* hogaplay 소스 칩 — 저장뷰 칩과 **같은 자리·다른 의미**다. 둘이 동시에 뜰 수
             있는 조합은 하나뿐이다: 저장뷰가 **다른 종목**을 가리켜 이 창이 얼지 않은
             경우(그때 저장뷰 칩은 "이 창에도 함께 표시 중" 이라는 기간 안내이고, 이
@@ -903,7 +918,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             onClick={inspectVisibleMinute} disabled={!d.workareaChartBundle?.candles.length}
             icon={<AppIcon name="arrowDownRight" />} />}
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
-            destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
+            destinationDate={jumpDestination} hasJumpReceiver={hasJumpReceiver} onRun={runJump}
             showLabel={false} />}
           <RegularSessionAction win={win} disabled={usInstrument || !isMinuteTimeframe(view.timeframe)} showLabel={false} />
           <HogaplaySourceButton enabled={hogaplaySourceEnabled} disabledReason={hogaplayDisabledReason}
@@ -945,6 +960,12 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               hoverLinked={hoverLinked}
               regularSessionOnly={win.chart?.regularSessionOnly ?? false}
               indicatorLegendsVisible={indicatorLegendsVisible}
+              calendarJumpSourceKey={calendarSourceKey}
+              calendarJumpTarget={{ windowId: win.id, group: win.group, timeframe: view.timeframe,
+                code: view.code, stockCode: sourceStockCode, usInstrument, frozen: savedRangeFreeze !== null }}
+              calendarJumpIdentity={`${win.group}|${jumpSymbolKey}|${view.timeframe}|${candleVenue}|${d.candleSourceKey}`}
+              calendarQueryStatus={d.calendarQueryStatus}
+              onCalendarJumpChange={handleCalendarJumpChange}
               code={d.workareaCode}
               timeframe={view.timeframe}
               onInspectSeconds={!isIndex && isMinuteTimeframe(view.timeframe) ? inspectSeconds : undefined}

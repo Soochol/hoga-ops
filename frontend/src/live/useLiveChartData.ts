@@ -205,6 +205,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     indicatorCoverageFromDate,
     rangeWindowFromDate,
     pastSettledFromDate,
+    calendarQueryStatus,
     adjustFactors,
     gapFill,
   } = useLiveBundle(activeCode, timeframe, today, live, {
@@ -477,6 +478,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     indicatorCoverageFromDate,
     rangeWindowFromDate,
     pastSettledFromDate,
+    calendarQueryStatus,
     indexSettledFromDate,
     dayAskPeaks,
     dayBidPeaks,

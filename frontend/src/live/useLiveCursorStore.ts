@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { LiveTimeframe } from '../state/livePage';
 import type { RangeSyncBars, RangeSyncPublication } from '../chart/rangeSync';
-import type { JumpPublication } from '../chart/timeframeJump';
+import type { CalendarJumpSource, JumpPublication } from '../chart/timeframeJump';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 /**
@@ -75,8 +75,9 @@ interface State {
   /** 점프 명령 발행. `seq` 는 스토어가 매긴다 — 기간 동기화와 같은 이유(발행자가
    *  세면 창마다 자기 카운터를 갖게 되어 소비자의 래치·stale 판정이 깨진다). */
   requestTimeframeJump: (
-    fromMs: number, toMs: number, origin: SidebarCursorOrigin,
+    fromMs: number, toMs: number, origin: SidebarCursorOrigin, calendarSource?: CalendarJumpSource,
   ) => void;
+  invalidateCalendarJumpSource: (seq: number, sourceKey: string) => void;
   clearCursor: () => void;
   /** 발행자만 자기 것을 지운다 — 근거는 `clearSyncCursorFrom` 과 동일(아래). */
   clearSidebarCursorFrom: (windowId: string | null) => void;
@@ -235,7 +236,7 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     }
     set({ syncRange: { fromMs, toMs, bars, seq: (prev?.seq ?? 0) + 1, origin } });
   },
-  requestTimeframeJump: (fromMs, toMs, origin) => {
+  requestTimeframeJump: (fromMs, toMs, origin, calendarSource) => {
     // **같은 값이어도 no-op 하지 않는다.** 다른 채널은 값이 안 바뀌면 건너뛰지만
     // 이건 명령이라 "같은 날짜로 한 번 더" 가 유효한 요청이다 — 사용자가 분봉을
     // 팬해서 다른 곳을 보다가 같은 버튼을 다시 누르면 되돌아와야 한다. seq 가
@@ -244,7 +245,13 @@ export const useLiveCursorStore = create<State>((set, get) => ({
     // seq 는 **슬롯이 아니라 스토어 수명**을 따른다(#1506) — `prev?.seq` 에서 세면
     // 슬롯이 비워질 때마다 1 로 되감겨 소비 창의 래치와 충돌한다.
     const seq = get().jumpSeqLast + 1;
-    set({ jumpRequest: { fromMs, toMs, seq, origin }, jumpSeqLast: seq });
+    set({ jumpRequest: { fromMs, toMs, seq, origin, calendarSource }, jumpSeqLast: seq });
+  },
+  invalidateCalendarJumpSource: (seq, sourceKey) => {
+    const current = get().jumpRequest;
+    if (current?.seq !== seq || current.calendarSource?.sourceKey !== sourceKey) return;
+    const { calendarSource: _source, ...minuteRequest } = current;
+    set({ jumpRequest: minuteRequest });
   },
   clearSyncRangeFrom: (windowId) => {
     const cur = get().syncRange;

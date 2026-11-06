@@ -133,6 +133,7 @@ const screenerDailyCandlesSpy = vi.fn(() => ({
     from: screenerDailyCandlesMock.from,
     to: '',
     source: 'screener_daily',
+    data_warnings: [],
     candles: screenerDailyCandlesMock.candles,
   },
   isLoading: false,

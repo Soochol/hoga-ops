@@ -1,3 +1,5 @@
+import { useCalendarJumpReceiver, type CalendarJumpState } from './useCalendarJumpReceiver';
+import type { CalendarQueryStatus } from './calendarJump';
 import { useSecondViewport } from './workspace/useSecondViewport';
 import { usePagedChartHistory, type PagedChartHistory } from './usePagedChartHistory';
 import { isUsWorkareaCode } from './instrumentPriceFormat';
@@ -40,7 +42,7 @@ import { hasSyntheticCrosshair, releaseSyntheticCrosshair } from '../chart/synth
 import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
-import { canPublishTimeframeJump } from '../chart/timeframeJump';
+import { canPublishTimeframeJump, type JumpReceiver } from '../chart/timeframeJump';
 import type { Candle, RangeSegment } from '../api/types';
 import { hasBlockingWarnings } from '../api/livePastCandles';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
@@ -438,6 +440,11 @@ interface Props {
   };
   /** Save flows can read the current chart viewport without coupling to chart internals. */
   onViewportCaptureReady?: (capture: () => TabViewport | null) => void;
+  calendarJumpSourceKey?: string;
+  calendarJumpTarget?: JumpReceiver;
+  calendarJumpIdentity?: string;
+  calendarQueryStatus?: CalendarQueryStatus | null;
+  onCalendarJumpChange?: (state: CalendarJumpState | null, clear: () => void) => void;
   /**
    * 「분봉으로」 버튼이 이 캘린더 창의 **목적지 구간**을 읽는 통로(칸의 시작·포함 상한,
    * 없으면 null). `onViewportCaptureReady` 와 같은 등록 패턴이다 — 좌표 변환과 캔들
@@ -527,6 +534,11 @@ export function LiveChartRoot({
   dailyMovingAverageOverride,
   tradeVolumePocOverride,
   onViewportCaptureReady,
+  calendarJumpSourceKey,
+  calendarJumpTarget,
+  calendarJumpIdentity = '',
+  calendarQueryStatus = null,
+  onCalendarJumpChange,
   onJumpSourceReady,
   onJumpDestinationChange,
   onViewedDateChange,
@@ -851,7 +863,9 @@ export function LiveChartRoot({
     userAdjustedViewportKeyRef.current = viewKey;
     userAdjustedViewportRef.current = restoreViewport?.userAdjusted === true;
   }
+  const [viewportInputRevision, setViewportInputRevision] = useState(0);
   const markViewportUserAdjusted = useCallback(() => {
+    setViewportInputRevision(value => value + 1);
     userAdjustedViewportRef.current = true;
   }, []);
   // Last real candle's real-ms, read by the crosshair handler to detect the
@@ -1110,6 +1124,23 @@ export function LiveChartRoot({
   const sidecarCapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revealStartedRef = useRef(performance.now());
   const chartReady = revealedKey === viewKey;
+  useEffect(() => () => {
+    const store = useLiveCursorStore.getState();
+    const current = store.jumpRequest;
+    if (calendarJumpSourceKey && current?.origin.windowId === winCtxWindowId) {
+      store.invalidateCalendarJumpSource(current.seq, calendarJumpSourceKey);
+    }
+  }, [viewKey, calendarJumpSourceKey, winCtxWindowId]);
+  const calendarJump = useCalendarJumpReceiver({
+    target: calendarJumpTarget ?? { windowId: null, group: null, timeframe, code: null },
+    identity: calendarJumpIdentity, viewKey, inputRevision: viewportInputRevision,
+    chart, axis, candles: cb?.candles ?? EMPTY_CANDLES, ready: chartReady,
+    queryStatus: calendarQueryStatus, extend: historicalRange.extend,
+  });
+  const calendarPlacementClaim = calendarJump.hasPlacementClaim;
+  useEffect(() => {
+    onCalendarJumpChange?.(calendarJump.state, calendarJump.clear);
+  }, [calendarJump.state?.date, calendarJump.state?.status, calendarJump.clear, onCalendarJumpChange]);
   useEffect(() => {
     lastAppliedCountRef.current = null;
     initialMinuteHistoryRef.current = null;
@@ -1407,7 +1438,7 @@ export function LiveChartRoot({
     }
     const seatKey = `${viewKey}|${savedRangeAnchorMs}`;
     if (savedRangeSeatedRef.current === seatKey) return;
-    if (savedRangeCandlesPending) return;
+    if (savedRangeCandlesPending || calendarPlacementClaim) return;
     const candles = cb?.candles ?? [];
     const ts = chart.timeScale();
     if (isCalendarTimeframe(timeframe)) {
@@ -1459,7 +1490,7 @@ export function LiveChartRoot({
     } catch {
       /* chart torn down between effect runs */
     }
-  }, [chart, savedRangeAnchorMs, savedRangeCandlesPending, cb, viewKey, restoreViewport, timeframe]);
+  }, [chart, savedRangeAnchorMs, savedRangeCandlesPending, cb, viewKey, restoreViewport, timeframe, calendarPlacementClaim]);
   useEffect(() => {
     // Reveal the chart two rAFs after the viewport is applied, so lightweight-
     // charts' one-frame-late barSpacing settle (the cold-load zoom flash) lands
@@ -1502,6 +1533,7 @@ export function LiveChartRoot({
       if (!isPastCandlesLoading && (!isHogaLoading || sidecarCapReached)) reveal();
       return;
     }
+    if (isCalendarTimeframe(timeframe) && calendarPlacementClaim) { revealWhenSettled(); return; }
     const initialHistory = initialMinuteHistoryRef.current;
     if (initialHistory && initialHistory.sourceKey === candleSourceKey
       && isInitialMinuteHistoryPending && hasBlockingWarnings({ data_warnings: pastDataWarnings ?? [] })) {
@@ -1776,7 +1808,7 @@ export function LiveChartRoot({
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isInitialMinuteHistoryPending, isHogaLoading, isSidecarLoading, sidecarCapReached, viewKey, revealedKey, restoreViewport, viewportLayoutTick, candleSourceKey, pastDataWarnings]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isInitialMinuteHistoryPending, isHogaLoading, isSidecarLoading, sidecarCapReached, viewKey, revealedKey, restoreViewport, viewportLayoutTick, candleSourceKey, pastDataWarnings, calendarPlacementClaim]);
 
   useEffect(() => {
     const el = containerRef.current;
