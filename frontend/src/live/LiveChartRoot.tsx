@@ -66,6 +66,7 @@ import { useTradeBrowseStore } from './tradeBrowse';
 import { TradeBrowseCrosshair } from '../chart/TradeBrowseCrosshair';
 import { alignSidebarCursorMs, sidebarCursorPublishDelayMs, LIVE_SIDEBAR_CURSOR_THROTTLE_MS } from './sidebarCursorRateLimit';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
+import IchimokuOverlay from './indicators/IchimokuOverlay';
 import BollingerOverlay from './indicators/BollingerOverlay';
 import EnvelopeOverlay from './indicators/EnvelopeOverlay';
 import NewHighBearishOverlay from './indicators/NewHighBearishOverlay';
@@ -2834,6 +2835,7 @@ export function LiveChartRoot({
                   depthHeatmapPoints={depthHeatmapPoints} />
               </IndicatorInstanceProvider>)}
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
+              <IchimokuOverlay bundle={cb} axis={axis} paneSeries={paneSeries} />
               <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
               <EnvelopeOverlay chart={chart} bundle={cb} axis={axis} />
               <SupertrendOverlay chart={chart} bundle={cb} axis={axis} />
@@ -2876,6 +2878,7 @@ export function LiveChartRoot({
                   depthHeatmapPoints={depthHeatmapPoints} />
               </IndicatorInstanceProvider>)}
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
+              <IchimokuOverlay bundle={cb} axis={axis} paneSeries={paneSeries} />
               <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
               <EnvelopeOverlay chart={chart} bundle={cb} axis={axis} />
               <SupertrendOverlay chart={chart} bundle={cb} axis={axis} />

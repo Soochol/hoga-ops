@@ -74,6 +74,7 @@ export const INDICATOR_GLYPH: Record<CategoryId, ReactNode> = {
         stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </>,
   ),
+  ichimoku: svg(<>{GHOST_CANDLES}<path d="M1 5L5 3L10 7L15 4L15 9L10 11L5 7L1 9Z" fill="currentColor" opacity="0.25" /><path d="M1 5L5 3L10 7L15 4M1 9L5 7L10 11L15 9" stroke="currentColor" strokeWidth="1.2" /></>),
   bollinger: svg(
     <>
       {GHOST_CANDLES}

@@ -438,6 +438,25 @@ describe('full-history chart / bounded native renderer', () => {
     vi.unstubAllGlobals();
   });
 
+  it('adapts primitive autoscale with the current full-history window offset after pans', () => {
+    const { chart, native, rows } = fixture();
+    const line = chart.addSeries(LineSeries);
+    line.setData(rows); flushWindowedChart(chart);
+    const autoscaleInfo = vi.fn(() => ({ priceRange: { minValue: 1, maxValue: 2 } }));
+    line.attachPrimitive({ autoscaleInfo });
+    const wrapped = native.panes()[0].getSeries()[0].attachPrimitive.mock.lastCall![0];
+    const offsets: number[] = [];
+    for (const from of [1900, 5900, 100]) {
+      chart.timeScale().setVisibleLogicalRange({ from, to: from + 100 }); flushWindowedChart(chart);
+      const offset = windowedChartDiagnostics(chart)!.offset; offsets.push(offset);
+      expect(wrapped.autoscaleInfo!((from - offset) as never, (from + 100 - offset) as never)).toEqual({ priceRange: { minValue: 1, maxValue: 2 } });
+      expect(autoscaleInfo.mock.lastCall).toEqual([from, from + 100]);
+    }
+    expect(new Set(offsets).size).toBeGreaterThan(1);
+    expect(offsets.some(offset => offset > 0)).toBe(true);
+    chart.remove();
+  });
+
   it('translates crosshair series/indices and primitive attachment; removal cancels queued work', async () => {
     const { chart, native, rows, mouse } = fixture();
     const line = chart.addSeries(LineSeries);

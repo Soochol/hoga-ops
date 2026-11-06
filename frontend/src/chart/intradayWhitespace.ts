@@ -94,3 +94,9 @@ export function maskIntradayLineGaps<T extends Point>(data: T[], bundle: RangeBu
   }
   return out;
 }
+
+export function intradayCaptureBreaks(times: readonly number[], bundle: RangeBundle, axis: VirtualAxis): boolean[] {
+  if (!bundle.timeline_sessions || axis.mode !== 'intraday') return times.map(() => false);
+  const coverage = candleCoverage(bundle, axis);
+  return times.map((time, i) => i > 0 && intervalAt(time, coverage) !== intervalAt(times[i - 1], coverage));
+}

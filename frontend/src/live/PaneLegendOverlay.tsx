@@ -410,6 +410,7 @@ const FLAG_SET_HIDDEN: Record<
   'bid-peak': (a, h) => a.setBidPeakHidden(h),
   'trade-volume-poc': (a, h) => a.setTradeVolumePocHidden(h),
   'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
+  ichimoku: (a, h) => a.setIchimokuHidden(h),
   bollinger: (a, h) => a.setBollingerHidden(h),
   envelope: (a, h) => a.setEnvelopeHidden(h),
   'new-high-bearish': (a, h) => a.setNewHighBearishHidden(h),
@@ -661,7 +662,7 @@ function FlagLegendRow({ row }: { row: Extract<LegendRow, { kind: 'flag' }> }) {
         >
           {c.color && <span aria-hidden="true" style={{ ...swatchStyle, background: c.color }} />}
           {c.label && <span style={{ color: 'var(--fg-dim)' }}>{c.label}</span>}
-          <span style={valueCellStyle}>{c.value}</span>
+          <span style={row.type === 'ichimoku' ? maValueCellStyle : valueCellStyle}>{c.value}</span>
         </span>
       ))}
       <HoverIcon
@@ -917,6 +918,21 @@ function PaneLegendOverlay({
   const supertrendMultiplier = useWindowIndicator((s) => s.supertrendMultiplier);
   const supertrendUpColor = useWindowIndicator((s) => s.supertrendUpColor);
   const supertrendDownColor = useWindowIndicator((s) => s.supertrendDownColor);
+  const ichimokuEnabled = useWindowIndicator(s => s.ichimokuEnabled);
+  const ichimokuHidden = useWindowIndicator(s => s.ichimokuHidden);
+  const ichimokuConversionPeriod = useWindowIndicator(s => s.ichimokuConversionPeriod);
+  const ichimokuBasePeriod = useWindowIndicator(s => s.ichimokuBasePeriod);
+  const ichimokuLeadingBPeriod = useWindowIndicator(s => s.ichimokuLeadingBPeriod);
+  const ichimokuDisplacement = useWindowIndicator(s => s.ichimokuDisplacement);
+  const ichimokuConversionColor = useWindowIndicator(s => s.ichimokuConversionColor);
+  const ichimokuBaseColor = useWindowIndicator(s => s.ichimokuBaseColor);
+  const ichimokuLeadingAColor = useWindowIndicator(s => s.ichimokuLeadingAColor);
+  const ichimokuLeadingBColor = useWindowIndicator(s => s.ichimokuLeadingBColor);
+  const ichimokuLaggingColor = useWindowIndicator(s => s.ichimokuLaggingColor);
+  const ichimokuCloudVisible = useWindowIndicator(s => s.ichimokuCloudVisible);
+  const ichimokuCloudOpacity = useWindowIndicator(s => s.ichimokuCloudOpacity);
+  const ichimokuCloudPositiveColor = useWindowIndicator(s => s.ichimokuCloudPositiveColor);
+  const ichimokuCloudNegativeColor = useWindowIndicator(s => s.ichimokuCloudNegativeColor);
   const bollingerEnabled = useWindowIndicator((s) => s.bollingerEnabled);
   const bollingerHidden = useWindowIndicator((s) => s.bollingerHidden);
   const bollingerPeriod = useWindowIndicator((s) => s.bollingerPeriod);
@@ -976,10 +992,10 @@ function PaneLegendOverlay({
   // Hoga-only ticks retain candles/axis and do not trigger another legend render;
   // the provider registry itself stays non-reactive.
   useEffect(() => {
-    if (!bollingerEnabled && !envelopeEnabled && !supertrendEnabled && !newHighBearishEnabled) return;
+    if (!ichimokuEnabled && !extraInstances.some(row => row.category === 'ichimoku') && !bollingerEnabled && !envelopeEnabled && !supertrendEnabled && !newHighBearishEnabled) return;
     const raf = requestAnimationFrame(() => tick());
     return () => cancelAnimationFrame(raf);
-  }, [chart, windowId, candles, axis, bollingerEnabled, bollingerPeriod, bollingerMultiplier,
+  }, [chart, windowId, candles, axis, lineVisibility, extraInstances, ichimokuEnabled, ichimokuHidden, ichimokuConversionPeriod, ichimokuBasePeriod, ichimokuLeadingBPeriod, ichimokuDisplacement, ichimokuConversionColor, ichimokuBaseColor, ichimokuLeadingAColor, ichimokuLeadingBColor, ichimokuLaggingColor, ichimokuCloudVisible, ichimokuCloudOpacity, ichimokuCloudPositiveColor, ichimokuCloudNegativeColor, bollingerEnabled, bollingerPeriod, bollingerMultiplier,
     bollingerSource, bollingerUpperColor, bollingerMiddleColor, bollingerLowerColor,
     envelopeEnabled, envelopePeriod, envelopePercent, envelopeSource, envelopeUpperColor, envelopeMiddleColor, envelopeLowerColor,
     supertrendEnabled, supertrendPeriod, supertrendMultiplier, supertrendUpColor, supertrendDownColor,
@@ -1183,6 +1199,13 @@ function PaneLegendOverlay({
       swatches: [supertrendUpColor, supertrendDownColor].filter((_, i) => lineVisible(lineVisibility, i ? 'supertrendDown' : 'supertrendUp')),
       cells: indicatorLegendsVisible && supertrendEnabled
         ? readFlagLegendValues(windowId, 'supertrend', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
+    },
+    {
+      type: 'ichimoku', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
+      label: `일목균형표 (${ichimokuConversionPeriod}/${ichimokuBasePeriod}/${ichimokuLeadingBPeriod}, 이동 ${ichimokuDisplacement})`,
+      enabled: ichimokuEnabled, hidden: ichimokuHidden, applicable: true,
+      swatches: [ichimokuConversionColor, ichimokuBaseColor, ichimokuLeadingAColor, ichimokuLeadingBColor, ichimokuLaggingColor].filter((_, i) => lineVisible(lineVisibility, (['ichimokuConversion', 'ichimokuBase', 'ichimokuLeadingA', 'ichimokuLeadingB', 'ichimokuLagging'] as const)[i])),
+      cells: indicatorLegendsVisible && ichimokuEnabled ? readFlagLegendValues(windowId, 'ichimoku', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
     },
     {
       type: 'bollinger', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',

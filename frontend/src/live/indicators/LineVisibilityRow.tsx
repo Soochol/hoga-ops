@@ -11,6 +11,7 @@ export default function LineVisibilityRow({ lineKey, label, toggleLabel, childre
   const actions = useIndicatorActions();
   const toggle = () => {
     actions.setIndicatorLineVisible(lineKey, !visible);
+    if (!visible && lineKey.startsWith('ichimoku')) actions.setIchimokuHidden(false);
     if (!visible && lineKey.startsWith('bollinger')) actions.setBollingerHidden(false);
     if (!visible && lineKey.startsWith('envelope')) actions.setEnvelopeHidden(false);
     if (!visible && lineKey.startsWith('supertrend')) actions.setSupertrendHidden(false);

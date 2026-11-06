@@ -210,7 +210,7 @@ describe('IndicatorPanel', () => {
     expect(screen.queryByRole('button', { name: '거래대금 추가' })).not.toBeInTheDocument();
   });
 
-  it('내 지표 + 카탈로그의 합집합이 19종이다 (어디에도 안 뜨는 지표는 없다)', () => {
+  it('내 지표 + 카탈로그의 합집합이 20종이다 (어디에도 안 뜨는 지표는 없다)', () => {
     useLivePageStore.setState({
       quoteTotalsEnabled: true,
       ratioEnabled: true,
@@ -230,7 +230,7 @@ describe('IndicatorPanel', () => {
     openCatalog();
     const addable = within(screen.getByRole('navigation')).getAllByRole('button').filter(b => b.parentElement?.classList.contains('indicator-nav-row') && b.parentElement.firstElementChild === b).map(b => b.getAttribute('aria-label'));
 
-    expect(new Set([...mine, ...addable]).size).toBe(19);
+    expect(new Set([...mine, ...addable]).size).toBe(20);
     // 켜 둔 것은 전부 "내 지표" 쪽이다.
     for (const name of ['총잔량', '호가비', '체결강도', '연속체결 매물대 분포', '프로그램 순매수', '당일 최대 매물대']) {
       expect(mine).toContain(name);

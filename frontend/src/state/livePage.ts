@@ -397,6 +397,9 @@ type Store = Persisted & IndicatorSettings & {
   setSupertrendEnabled: (enabled: boolean) => void;
   setSupertrendHidden: (hidden: boolean) => void;
   setSupertrendSettings: import('./indicatorOps').BoundIndicatorOps['setSupertrendSettings'];
+  setIchimokuEnabled: (enabled: boolean) => void;
+  setIchimokuHidden: (hidden: boolean) => void;
+  setIchimokuSettings: import('./indicatorOps').BoundIndicatorOps['setIchimokuSettings'];
   setBollingerEnabled: (enabled: boolean) => void;
   setBollingerHidden: (hidden: boolean) => void;
   setBollingerSettings: import('./indicatorOps').BoundIndicatorOps['setBollingerSettings'];

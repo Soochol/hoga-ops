@@ -37,6 +37,7 @@ export function dotColorsFor(id: CategoryId, ind: IndicatorSettings, theme?: str
     case 'new-high-bearish': return [ind.newHighBearishColor];
     case 'supertrend':
       return [ind.supertrendUpColor, ind.supertrendDownColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, i ? 'supertrendDown' : 'supertrendUp'));
+    case 'ichimoku': return [ind.ichimokuConversionColor, ind.ichimokuBaseColor, ind.ichimokuLeadingAColor, ind.ichimokuLeadingBColor, ind.ichimokuLaggingColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, (['ichimokuConversion', 'ichimokuBase', 'ichimokuLeadingA', 'ichimokuLeadingB', 'ichimokuLagging'] as const)[i]));
     case 'bollinger':
       return [ind.bollingerUpperColor, ind.bollingerMiddleColor, ind.bollingerLowerColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, (['bollingerUpper', 'bollingerMiddle', 'bollingerLower'] as const)[i]));
     case 'envelope':

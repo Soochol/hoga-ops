@@ -412,6 +412,7 @@ class WindowedChart {
       attachPrimitive: (primitive: ISeriesPrimitive<Time>) => {
         const wrapped = facade(primitive, {
           attached: (param: SeriesAttachedParameter<Time>) => primitive.attached?.({ ...param, chart: this.chart, series: api }),
+          autoscaleInfo: (from: Logical, to: Logical) => primitive.autoscaleInfo?.((from + this.offset) as Logical, (to + this.offset) as Logical) ?? null,
         });
         primitives.set(primitive, wrapped);
         native.attachPrimitive(wrapped);
