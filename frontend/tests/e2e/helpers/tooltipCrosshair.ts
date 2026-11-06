@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import type { IChartApi } from 'lightweight-charts';
+import type { LivePastDailyCandle } from '../../../src/api/livePastDailyCandles';
 import { installLiveMocks } from './liveMocks';
 import { apiExact } from './apiRoutes';
 
@@ -39,6 +40,9 @@ function calendarCandles(timeframe: 'W' | 'M') {
 
 const calendar = { W: calendarCandles('W'), M: calendarCandles('M') };
 
+export type SyncFixtures = Record<Timeframe, LivePastDailyCandle[]>;
+const defaultFixtures: SyncFixtures = { '1m': minute, D: daily, ...calendar };
+
 export function syncWindows(sourceTooltip = false, targetTooltip = false): SyncWindow[] {
   return (['1m', 'D', 'W', 'M'] as const).map((timeframe, i) => ({
     id: ['s', 'd', 'w', 'm'][i], timeframe, group: 1, code: i ? '005930' : '098460',
@@ -46,13 +50,16 @@ export function syncWindows(sourceTooltip = false, targetTooltip = false): SyncW
   }));
 }
 
-export async function installSyncWorkspace(page: Page, windows: SyncWindow[], crossSymbol = true) {
+export async function installSyncWorkspace(page: Page, windows: SyncWindow[], crossSymbol = true, fixtures: SyncFixtures | ((code: string | null) => SyncFixtures) = defaultFixtures) {
   await page.clock.setFixedTime(new Date('2026-11-05T18:00:00+09:00'));
+  await page.route(/^https?:\/\/[^/]+\/api\//, route => route.abort('blockedbyclient'));
   await page.routeWebSocket(/\/api\/ws/, () => {});
   await installLiveMocks(page);
-  for (const [endpoint, candles] of [['live/past-daily-candles', daily], ['live/past-candles', minute]] as const) {
+  const rowsFor = (code: string | null) => typeof fixtures === 'function' ? fixtures(code) : fixtures;
+  for (const [endpoint, timeframe] of [['live/past-daily-candles', 'D'], ['live/past-candles', '1m']] as const) {
     await page.route(apiExact(endpoint), route => route.fulfill({ json: {
-      code: new URL(route.request().url()).searchParams.get('code'), from: '20250601', to: '20261104', candles,
+      code: new URL(route.request().url()).searchParams.get('code'), from: '20250601', to: '20261104',
+      candles: rowsFor(new URL(route.request().url()).searchParams.get('code'))[timeframe],
       cached_dates: [], fresh_dates: [], cached_batches: [], fresh_batches: [], data_warnings: [],
     } }));
   }
@@ -62,7 +69,7 @@ export async function installSyncWorkspace(page: Page, windows: SyncWindow[], cr
     if (timeframe !== 'W' && timeframe !== 'M') throw new Error(`Unexpected calendar timeframe ${timeframe}`);
     return route.fulfill({ json: {
       code: params.get('code'), timeframe, venue: params.get('venue'),
-      from: '20250601', to: '20261104', candles: calendar[timeframe],
+      from: '20250601', to: '20261104', candles: rowsFor(params.get('code'))[timeframe],
       cached_batches: [], fresh_batches: [], data_warnings: [],
     } });
   });
@@ -118,31 +125,32 @@ export async function verifySyncChart(page: Page, win: SyncWindow) {
   expect(verified.canvases).toBeGreaterThan(0);
 }
 
-export async function syncPoint(page: Page, win: SyncWindow, pane = 0, whitespace = false) {
+export async function syncPoint(page: Page, win: SyncWindow, pane = 0, whitespace = false, tsMs?: number) {
   await verifySyncChart(page, win);
-  return page.evaluate(({ id, pane, whitespace }) => {
+  return page.evaluate(({ id, pane, whitespace, label }) => {
     const chart = (window as unknown as SyncBrowser).__liveCharts.get(id)!;
     const scale = chart.timeScale();
     const series = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
     const visible = series.data().map(bar => ({ bar, x: scale.timeToCoordinate(bar.time) }))
       .filter((p): p is typeof p & { x: number } => p.x !== null && p.x > 30 && p.x < scale.width() - 30);
-    const selected = visible[Math.floor(visible.length * .65)];
+    const selected = label === undefined ? visible[Math.floor(visible.length * .65)]
+      : visible.find(p => chart.options().localization.timeFormatter?.(p.bar.time) === label);
     if (!selected) throw new Error(`no visible candle in ${id}`);
     const top = [...chart.panes()[pane].getHTMLElement()!.querySelectorAll('canvas')]
       .find(canvas => canvas.style.zIndex === '2' && canvas.getBoundingClientRect().width > scale.width() - 2)!;
     const rect = top.getBoundingClientRect();
     const lastX = scale.timeToCoordinate(series.data().at(-1)!.time);
-    const x = rect.x + (whitespace ? Math.min(scale.width() - 12, (lastX ?? scale.width()) + 40) : selected.x);
+    const x = rect.x + (whitespace ? Math.min(scale.width() - 12, (lastX ?? scale.width()) + Math.max(40, scale.options().barSpacing)) : selected.x);
     const y = rect.y + rect.height * .65;
     const hit = document.elementFromPoint(x, y);
     if (!hit || !chart.chartElement().contains(hit)) throw new Error(`pointer blocked over ${id}`);
-    if (whitespace && (lastX === null || x - rect.x <= lastX + 5)) throw new Error(`no right whitespace in ${id}`);
+    if (whitespace && (lastX === null || x - rect.x <= lastX + scale.options().barSpacing / 2)) throw new Error(`no right whitespace in ${id}`);
     return { x, y, time: selected.bar.time };
-  }, { id: win.id, pane, whitespace });
+  }, { id: win.id, pane, whitespace, label: tsMs === undefined ? undefined : syncAxisLabel(tsMs, win.timeframe) });
 }
 
-export async function hoverSyncChart(page: Page, win: SyncWindow, pane = 0, whitespace = false) {
-  const point = await syncPoint(page, win, pane, whitespace);
+export async function hoverSyncChart(page: Page, win: SyncWindow, pane = 0, whitespace = false, tsMs?: number) {
+  const point = await syncPoint(page, win, pane, whitespace, tsMs);
   await page.mouse.move(point.x, point.y);
   return point;
 }
@@ -161,10 +169,35 @@ function period(ms: number, tf: Timeframe) {
   return d.toISOString().slice(0, 10);
 }
 
-export function expectedSyncCandle(ms: number, timeframe: Timeframe) {
-  const matches = daily.filter(d => period(d.t_ms, timeframe) === period(ms, timeframe));
+export function expectedSyncCandle(ms: number, timeframe: Timeframe, fixtures = defaultFixtures) {
+  const matches = fixtures[timeframe].filter(d => period(d.t_ms, timeframe) === period(ms, timeframe));
   expect(matches.length).toBeGreaterThan(0);
-  return { tsMs: matches[0].t_ms, close: matches.at(-1)!.close };
+  const candle = timeframe === '1m' ? matches.at(-1)! : matches[0];
+  return { tsMs: candle.t_ms, close: candle.close };
+}
+
+function syncAxisLabel(ms: number, timeframe: Timeframe) {
+  const d = new Date(ms + 9 * 3600000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const date = `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}`;
+  return timeframe === '1m' ? `${d.getUTCFullYear()} ${date} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+    : `${d.getUTCFullYear()}/${date}`;
+}
+
+export async function expectSyncCandle(page: Page, win: SyncWindow, expected: { tsMs: number; close: number }, visible = true, baseline?: { ink: number; priceAxis: number; timeAxis: number }) {
+  const row = await page.evaluate(({ id, close }) => {
+    const chart = (window as unknown as SyncBrowser).__liveCharts.get(id)!;
+    const series = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
+    const bars = series.data().filter(b => 'close' in b && b.close === close);
+    if (bars.length !== 1) throw new Error(`expected one row with close ${close} in ${id}`);
+    const bar = bars[0];
+    return { label: chart.options().localization.timeFormatter?.(bar.time), close: 'close' in bar ? bar.close : null };
+  }, { id: win.id, close: expected.close });
+  expect(row).toEqual({ label: syncAxisLabel(expected.tsMs, win.timeframe), close: expected.close });
+  await expectSyncPaint(page, win.id, visible, expected.close, 0, undefined, baseline);
+  await expect(page.locator(`[data-win="${win.id}"]`).getByTestId('pane-legend-rows-candle'))
+    .toContainText(expected.close.toLocaleString('en-US'));
+  await expect(page.locator(`[data-win="${win.id}"]`).getByTestId('candle-tooltip')).toHaveCount(0);
 }
 
 export async function syncPixels(page: Page, id: string, close?: number, pane = 0, pointer?: { x: number; y: number }) {
@@ -210,12 +243,12 @@ export async function syncPixels(page: Page, id: string, close?: number, pane = 
   }, { id, close, pane, pointer });
 }
 
-export async function expectSyncPaint(page: Page, id: string, visible: boolean, close?: number, pane = 0, pointer?: { x: number; y: number }) {
+export async function expectSyncPaint(page: Page, id: string, visible: boolean, close?: number, pane = 0, pointer?: { x: number; y: number }, baseline = { ink: 0, priceAxis: 0, timeAxis: 0 }) {
   if (!visible) {
     await expect.poll(async () => {
       const p = await syncPixels(page, id, close, pane, pointer);
       return [p.ready, p.ink, p.priceAxis, p.timeAxis];
-    }).toEqual([true, 0, 0, 0]);
+    }).toEqual([true, baseline.ink, baseline.priceAxis, baseline.timeAxis]);
     return;
   }
   await expect.poll(async () => {

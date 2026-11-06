@@ -4700,35 +4700,16 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
     }
   });
 
-  /**
-   * 동기화 채널(`syncCursorMs`)은 **소비자가 있는 봉만** 쓴다(분봉 · `D`).
-   *
-   * **이 가드가 막는 방향**: 아무도 받지 않는 봉이 단일 슬롯을 덮어써 유효한 발행을
-   * 밀어내는 것. `/live` 실측(2026-08-11)에서 포인터가 분봉 창에 있는데 일봉 창
-   * 발행이 슬롯을 가져가 동기화 표시가 사라졌다 — **그때는 일봉에 소비자가 없었다.**
-   * 2026-08-21 에 일봉이 소비자가 되면서 그 근거가 일봉에 대해 사라졌고, 술어가
-   * `canPublishSyncCursor`(= `isSyncConsumerTimeframe`)로 바뀌었다. W/M 은 여전히
-   * 소비자가 없어 발행하지 않는다 — **이 테스트가 지키는 것이 그 남은 절반이다.**
-   *
-   * **못 보는 것**: 소비 측 필터는 이 테스트가 검증하지 않는다(`cursorSync.test.ts`
-   * 담당). 여기서 재는 것은 발행 측이 슬롯에 손대는지 여부뿐이다.
-   */
-  it('발행 집합은 분봉 + D — W/M 은 동기화 슬롯에 쓰지 않는다', () => {
+  it('분봉과 D/W/M 실제 커서가 자기 대표 시각을 동기화 슬롯에 발행한다', () => {
     vi.useFakeTimers();
     try {
-      const fireOn = (timeframe: 'D' | '1m' | 'W') => {
+      const fireOn = (timeframe: 'D' | '1m' | 'W' | 'M') => {
         vi.mocked(createChartEx).mockClear();
-        const { unmount } = render(
-          <LiveChartRoot
-            code="005930"
-            timeframe={timeframe}
-            bundle={DEFAULT_BUNDLE}
-            clampEngaged={false}
-            captureFloorEngaged={false}
-            isPastCandlesLoading={false}
-          />,
-          { wrapper },
-        );
+        const props = {
+          code: '005930', timeframe, bundle: DEFAULT_BUNDLE,
+          clampEngaged: false, captureFloorEngaged: false, isPastCandlesLoading: false,
+        } satisfies ComponentProps<typeof LiveChartRoot>;
+        const { unmount, rerender } = render(<LiveChartRoot {...props} />, { wrapper });
         const chart = vi.mocked(createChartEx).mock.results[0].value;
         act(() => chart.subscribeCrosshairMove.mock.calls.forEach(
           ([h]: [(p: { time?: unknown; point?: { x: number } | null }) => void]) => h({ time: 0, point: { x: 1 } }),
@@ -4736,28 +4717,25 @@ describe('LiveChartRoot crosshair → cursor store (ADR-0044)', () => {
         act(() => { vi.advanceTimersByTime(16); });
         const s = useLiveCursorStore.getState();
         const snap = { cursorMs: s.cursorMs, syncCursorMs: s.syncCursorMs, syncTf: s.syncCursorOrigin?.timeframe ?? null };
+        rerender(<LiveChartRoot {...props} bundle={{ ...DEFAULT_BUNDLE,
+          candles: DEFAULT_BUNDLE.candles.map(candle => ({ ...candle, close: candle.close + 1 })),
+        }} />);
+        act(() => { vi.advanceTimersByTime(32); });
+        expect(useLiveCursorStore.getState()).toMatchObject({
+          cursorMs: snap.cursorMs, syncCursorMs: snap.syncCursorMs,
+          syncCursorOrigin: { timeframe },
+        });
         unmount();
         useLiveCursorStore.getState().resetCursor();
         return snap;
       };
 
-      // 분봉: 커서와 동기화 슬롯 둘 다 선다.
-      const minute = fireOn('1m');
-      expect(minute.cursorMs).not.toBeNull();
-      expect(minute.syncCursorMs).toBe(minute.cursorMs);
-      expect(minute.syncTf).toBe('1m');
-
-      // 일봉: 이제 **발행한다**(2026-08-21 — 일봉↔일봉 방향이 생겼다).
-      const daily = fireOn('D');
-      expect(daily.cursorMs).not.toBeNull();
-      expect(daily.syncCursorMs).toBe(daily.cursorMs);
-      expect(daily.syncTf).toBe('D');
-
-      // 주봉: **커서는 서는데**(핸들러가 돈 증거) 동기화 슬롯은 그대로 null 이다.
-      // 두 단언이 같이 있어야 "게이트가 걸렸다" 와 "이벤트가 안 들어왔다" 가 갈린다.
-      const weekly = fireOn('W');
-      expect(weekly.cursorMs).not.toBeNull();
-      expect(weekly.syncCursorMs).toBeNull();
+      for (const timeframe of ['1m', 'D', 'W', 'M'] as const) {
+        const published = fireOn(timeframe);
+        expect(published.cursorMs).not.toBeNull();
+        expect(published.syncCursorMs).toBe(published.cursorMs);
+        expect(published.syncTf).toBe(timeframe);
+      }
     } finally {
       vi.useRealTimers();
     }

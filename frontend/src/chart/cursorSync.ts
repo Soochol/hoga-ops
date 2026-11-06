@@ -21,7 +21,7 @@ export function isSyncConsumerTimeframe(tf: LiveTimeframe): boolean {
 }
 
 export function canPublishSyncCursor(tf: LiveTimeframe): boolean {
-  return isMinuteTimeframe(tf) || tf === 'D';
+  return isSyncConsumerTimeframe(tf);
 }
 
 export type SyncTargetSource =
@@ -137,18 +137,6 @@ export function snapToInstant(
   return unixMsToKSTDate(nearest.ts_ms) === unixMsToKSTDate(cursorMs) ? nearest : null;
 }
 
-/**
- * 이 소비자가 저 발행 봉을 받는가(게이트 3).
- *
- * 이제 **소비자 종류와 무관하게 분봉·일봉을 다 받는다**(2026-08-21 에 일봉→분봉이
- * 열리며 마지막 비대칭이 사라졌다). 그래도 이 함수를 남겨 두는 이유는 W/M 이다:
- * `canPublishSyncCursor` 가 W/M 발행을 이미 막지만 판정 층은 발행 층의 규율에
- * 기대지 않고 혼자 서 있어야 한다.
- */
-function acceptsOriginTimeframe(originTimeframe: LiveTimeframe): boolean {
-  return isMinuteTimeframe(originTimeframe) || originTimeframe === 'D';
-}
-
 /** 다리를 건넌 결과 — 대상 캔들이거나 `null`. 게이트는 이미 통과한 뒤다. */
 function crossBridge(source: SyncTargetSource, cursor: SyncCursor): SyncCandle | null {
   if (source.axis === 'calendar') {
@@ -164,7 +152,7 @@ function crossBridge(source: SyncTargetSource, cursor: SyncCursor): SyncCandle |
  *
  * 1. 발행이 없다.
  * 2. **내가 발행자다** — 자기 호버를 되받으면 lwc 자체 크로스헤어와 이중이 된다.
- * 3. **받지 않는 발행 봉이다**(W/M) — `acceptsOriginTimeframe`.
+ * 3. **받지 않는 발행 봉이다**(초봉) — `canPublishSyncCursor`.
  * 4. **창번호(링크 그룹)가 다르다** — 아래 「범위는 창번호다」 절.
  * 5. **종목이 다르다** — 단 `allowCrossSymbol` 이 이 게이트를 **끈다**(아래).
  *
@@ -227,7 +215,7 @@ export function resolveSyncTarget(params: {
   if (!cursor) return none;
   const { origin } = cursor;
   if (origin.windowId !== null && origin.windowId === myWindowId) return none;
-  if (!acceptsOriginTimeframe(origin.timeframe)) return none;
+  if (!canPublishSyncCursor(origin.timeframe)) return none;
   // 창번호. **엄격 비교다** — code 게이트의 관대한 `!== null` 방식을 쓰지 않는다.
   // 그쪽은 code 가 늦게 붙는 창이 있어 관대해야 했지만, group 은 Provider 값이라
   // 렌더 첫 프레임부터 확정이고, 관대하면 "번호 없는 창" 이 모두와 동기화된다.

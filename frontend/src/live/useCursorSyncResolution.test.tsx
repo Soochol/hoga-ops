@@ -76,3 +76,25 @@ it('does not resolve a remote cursor for a seconds receiver', () => {
   act(() => useLiveCursorStore.getState().setSyncCursor(day, origin));
   expect(result.current).toEqual({ kind: 'none' });
 });
+
+
+for (const timeframe of ['W', 'M'] as const) {
+  it(`${timeframe} keeps the source point while target refresh reveals or replaces the exact last loaded minute`, () => {
+    const point = Date.UTC(2026, 10, 2);
+    const owner = { ...origin, timeframe };
+    const first = { ts_ms: point + 60000, close: 100 };
+    const last = { ts_ms: point + 120000, close: 200 };
+    const { result, rerender } = renderHook(({ data }) =>
+      useCursorSyncResolution({ candles: data, timeframe: '1m', code: '005930' }),
+    { wrapper, initialProps: { data: candles.slice(0, 0) } });
+    act(() => useLiveCursorStore.getState().setSyncCursor(point, owner));
+    expect(result.current).toEqual({ kind: 'none' });
+    rerender({ data: [first] });
+    expect(result.current).toEqual({ kind: 'hit', candle: first });
+    rerender({ data: [first, last] });
+    expect(result.current).toEqual({ kind: 'hit', candle: last });
+    rerender({ data: [first, { ...last, close: 250 }] });
+    expect(result.current).toEqual({ kind: 'hit', candle: { ...last, close: 250 } });
+    expect(useLiveCursorStore.getState()).toMatchObject({ syncCursorMs: point, syncCursorOrigin: owner });
+  });
+}

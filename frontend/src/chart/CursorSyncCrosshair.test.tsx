@@ -307,11 +307,10 @@ describe('CursorSyncCrosshair', () => {
       expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries);
     });
 
-    it('W 발행은 일봉 창도 받지 않는다 — 열린 건 D 까지다', () => {
+    it.each(['W', 'M'] as const)('%s 발행의 실제 대표 날짜를 일봉 창에 표시한다', timeframe => {
       renderCrosshair();
-      publish(CURSOR_1500, { ...DAILY_ORIGIN, timeframe: 'W' });
-
-      expect(setCrosshairPosition).not.toHaveBeenCalled();
+      publish(CURSOR_1500, { ...DAILY_ORIGIN, timeframe });
+      expect(setCrosshairPosition).toHaveBeenCalledWith(212000, DAY_20250619 / 1000, candleSeries);
     });
 
     it('분봉 창은 같은 순간으로 스냅한다 — 날짜 다리를 쓰면 하루 한 점만 가리킨다', () => {
