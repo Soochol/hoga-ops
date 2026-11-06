@@ -88,7 +88,7 @@ export function overlayUsBundle(base: RangeBundle | null, live: UsStockCandleEve
     if (same && row.observed_at_ms < restStartedMs) continue;
     const next: Candle = same ? { ...original, high: Math.max(original.high, row.high),
       low: Math.min(original.low, row.low), close: row.close } : { ts_ms: stamp, open: row.open,
-      high: row.high, low: row.low, close: row.close, vol_a: 0, vol_b: 0 };
+      high: row.high, low: row.low, close: row.close, vol_a: 0, vol_b: 0, volume_available: false };
     if (same && original.high === next.high && original.low === next.low && original.close === next.close) continue;
     candles ??= base.candles.slice();
     if (same) candles[index] = next;

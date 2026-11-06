@@ -45,6 +45,7 @@ export interface LiveIndexCandle {
   low: number;
   close: number;
   volume: number;
+  volume_available?: boolean;
   /** Actual turnover for a calendar candle, in KRW. */
   trade_value_won?: number | null;
 }

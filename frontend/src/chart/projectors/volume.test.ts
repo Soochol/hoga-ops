@@ -145,3 +145,15 @@ describe('VOLUME_SPEC', () => {
     expect(data.at(-1)?.value).toBe(4);
   });
 });
+
+
+it('keeps an actual zero and omits unavailable volume without a false comparison', () => {
+  const bundle = rangeBundleFixture({ candles: [
+    { ts_ms: sessionOpenMs, open: 2, close: 1, high: 2, low: 1, vol_a: 0, vol_b: 0, volume_available: true },
+    { ts_ms: sessionOpenMs + 60_000, open: 2, close: 1, high: 2, low: 1, vol_a: 0, vol_b: 0, volume_available: false },
+    { ts_ms: sessionOpenMs + 120_000, open: 2, close: 1, high: 2, low: 1, vol_a: 12, vol_b: 0, volume_available: true },
+  ] });
+  const rows = projectVolume(bundle, axis, false, undefined, 'previous-volume');
+  expect(rows.map(r => r.value)).toEqual([0, 12]);
+  expect(rows[1].color).toBe(rows[0].color);
+});

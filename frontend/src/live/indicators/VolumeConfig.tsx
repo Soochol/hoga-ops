@@ -60,6 +60,7 @@ export default function VolumeConfig() {
         ? '직전 봉보다 거래량이 많으면 양봉 색상, 같거나 적으면 음봉 색상으로 표시합니다. 직전 봉이 없으면 캔들 색상을 사용합니다.'
         : '해당 캔들의 양봉·음봉 색상으로 표시합니다.'}</IndicatorExplanation>
       {additional && <p className="text-xs text-fg-dim">추가 거래량 · 별도 패널</p>}
+      <p className="text-xs text-fg-dim">공급자가 거래량을 제공하지 않는 구간은 막대와 거래량비를 표시하지 않습니다.</p>
       {seconds && <p className="text-xs text-fg-dim">수집된 체결의 관측 거래량입니다. 미수집 구간은 포함되지 않습니다.</p>}
     </div>
   );

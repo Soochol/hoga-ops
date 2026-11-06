@@ -1,3 +1,4 @@
+import { formatInstrumentPrice, isUsWorkareaCode } from '../instrumentPriceFormat';
 import { lineVisible } from '../../state/indicatorLineVisibility';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
@@ -49,7 +50,7 @@ function BollingerOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: R
     if (!enabled) return;
     const series = BANDS.map(() => chart.addSeries(LineSeries, {
       priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-      priceFormat: { type: 'custom', formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'), minMove: 1 },
+      priceFormat: { type: 'custom', formatter: (p: number) => formatInstrumentPrice(p, bundle.code), minMove: isUsWorkareaCode(bundle.code) ? 0.01 : 1 },
     }, 0));
     seriesRef.current = series;
     return () => {
@@ -77,7 +78,7 @@ function BollingerOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: R
       const index = time === null ? projection.values.length - 1 : projection.grid.vsecToIndex.get(time);
       const value = index === undefined ? null : projection.values[index];
       return value == null ? [] : BANDS.filter((_, i) => lineVisible(visibility, LINE_KEYS[i])).map((band) => ({
-        key: band, label: LABELS[band], color: colors[band], value: Math.round(value[band]).toLocaleString('ko-KR'),
+        key: band, label: LABELS[band], color: colors[band], value: formatInstrumentPrice(value[band], bundle.code),
       }));
     };
     registerFlagLegendValues(scope, 'bollinger', 'main', provider);

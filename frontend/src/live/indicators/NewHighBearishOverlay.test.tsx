@@ -50,3 +50,20 @@ it('ends each ray at its calendar-month deadline and recalculates its endpoint w
   act(() => useLivePageStore.getState().setNewHighBearishSettings({ newHighBearishMonths: 1 }));
   expect(ray().endTime).toBe(Date.parse('2026-02-07T09:00:00+09:00') / 1000);
 });
+
+for (const code of ['us-stock:NASDAQ:NVDA', 'index:SP500']) {
+  it(`excludes the current NY trading date for ${code}`, () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-08T10:00:00-04:00'));
+    useLivePageStore.setState({ ...FACTORY_INDICATOR_SETTINGS, indicatorsByTimeframe: {}, indicatorsByWindow: {},
+      indicatorTimeframe: 'D', newHighBearishEnabled: true, newHighBearishLookback: 5, newHighBearishMaxCount: 2 });
+    const ohlc = [...Array.from({ length: 5 }, () => [100, 101, 99, 100]), [110, 120, 109, 110], [109, 111, 99, 100], [99, 100, 89, 90]];
+    const candles = ohlc.map(([open, high, low, close], i) => ({ ts_ms: Date.UTC(2026, 8, 1 + i), open, high, low, close, vol_a: 0, vol_b: 0 }));
+    const data = vi.spyOn(NewHighBearishRaysPrimitive.prototype, 'setData');
+    render(<NewHighBearishOverlay bundle={{ candles } as never}
+      axis={{ contains: () => true, toVirtual: (t: number) => t, toReal: (t: number) => t } as never}
+      paneSeries={new Map([['candle', { attachPrimitive: vi.fn(), detachPrimitive: vi.fn() }]]) as never}
+      timeframe="D" venue="KRX" code={code} />);
+    expect(data.mock.calls.at(-1)![0]).toHaveLength(1);
+    expect(data.mock.calls.at(-1)![0][0]).toMatchObject({ price: 109, time: candles[6].ts_ms / 1000 });
+  });
+}

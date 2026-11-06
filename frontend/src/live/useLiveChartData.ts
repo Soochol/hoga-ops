@@ -256,7 +256,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     return raw ? quantizeDailyMaFloorDate(today, raw) : null;
   }, [freeze?.fromDate, historicalFromDate, today]);
   const isDailyMaLoading = useDailyMaRevealGate({
-    code: activeCode,
+    code: activeInstrument?.kind === 'us_stock' ? usStockKey(activeInstrument.exchange, activeInstrument.symbol) : activeIndexId ? indexWorkareaCode(activeIndexId) : activeCode,
     timeframe,
     venue,
     todayKst: today,
@@ -272,8 +272,10 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const usRealtime = useUsStockRealtime(activeUsStock && (timeframe === 'D' || isMinuteTimeframe(timeframe)) ? activeUsStock.exchange : null,
     activeUsStock && (timeframe === 'D' || isMinuteTimeframe(timeframe)) ? activeUsStock.symbol : null);
   const usBaseBundle = useMemo(() => activeUsStock && usCandles.data
-    ? buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: INDEX_BUCKET_MS[timeframe as keyof typeof INDEX_BUCKET_MS], observedSessions: isMinuteTimeframe(timeframe), candles: usCandles.data.candles.map(c => ({ ...c, volume: 0 })) })
-    : null, [activeUsStock, usCandles.data, timeframe]);
+    ? { ...buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: INDEX_BUCKET_MS[timeframe as keyof typeof INDEX_BUCKET_MS], observedSessions: isMinuteTimeframe(timeframe), candles: usCandles.data.candles }),
+      candle_basis: { price_basis: isMinuteTimeframe(timeframe) ? usMinuteCandles.data?.minute_metadata.price_basis ?? '' : usDailyCandles.data?.daily_metadata.price_basis ?? '',
+        adjusted_as_of: (isMinuteTimeframe(timeframe) ? usMinuteCandles.data?.minute_metadata.adjusted_as_of : usDailyCandles.data?.daily_metadata.adjusted_as_of) ?? null } }
+    : null, [activeUsStock, usCandles.data, timeframe, usMinuteCandles.data?.minute_metadata, usDailyCandles.data?.daily_metadata]);
   const usAdjustedAsOf = isMinuteTimeframe(timeframe)
     ? usMinuteCandles.data?.minute_metadata.adjusted_as_of : usDailyCandles.data?.daily_metadata.adjusted_as_of;
   const usBundle = useMemo(() => overlayUsBundle(usBaseBundle, usRealtime, timeframe,
@@ -300,7 +302,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
       from: data.from,
       to: data.to,
       bucketMs: isSecondTimeframe(timeframe) ? Number(timeframe.slice(0, -1)) * 1000 : INDEX_BUCKET_MS[timeframe],
-      candles: data.candles.map(c => data.daily_metadata ? ({ ...c, volume: 0 }) : c),
+      candles: data.candles,
       investorPoints: indexInvestorNet.data?.points ?? [],
     });
   }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);

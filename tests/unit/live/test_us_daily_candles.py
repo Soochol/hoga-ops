@@ -352,6 +352,7 @@ def test_us_calendar_ohlc_and_anchor_need_the_entire_period_prefix(timeframe, st
         "low": 110,
         "close": 123,
         "volume": 4,
+        "volume_available": False,
     }
     # A missing holiday/calendar prefix still cannot be assumed empty.
     assert not aggregate_us_calendar(rows, timeframe, end, [UsDateRange(start="20240604", end=end)])
@@ -427,3 +428,23 @@ async def test_calendar_keeps_verified_last_good_after_refresh_failure(timeframe
     assert extended == original
     assert meta.refresh_status == "stale" and meta.missing
     await api.daily.aclose()
+
+
+def test_volume_availability_distinguishes_zero_from_missing_and_calendar_gaps():
+    from hoga.live.us_calendar_candles import aggregate_us_calendar
+    from hoga.live.us_daily_candles import parse_bar
+
+    fields = ("date", "open", "high", "low", "close", "volume")
+    raw = {"date": "20240603", "open": "120", "high": "125", "low": "119", "close": "121"}
+    missing = parse_bar(raw, fields=fields)
+    zero = parse_bar({**raw, "volume": "0"}, fields=fields)
+    actual = parse_bar({**raw, "date": "20240604", "volume": "12345"}, fields=fields)
+    assert not missing.volume_available
+    assert zero.volume_available and zero.volume == 0
+    assert actual.volume_available and actual.volume == 12345
+    coverage = [UsDateRange(start="20240603", end="20240609")]
+    complete = aggregate_us_calendar([zero, actual], "W", "20240609", coverage)[0]
+    partial = aggregate_us_calendar([missing, actual], "W", "20240609", coverage)[0]
+    assert complete.volume_available and complete.volume == 12345
+    assert not partial.volume_available
+    assert partial.close == complete.close

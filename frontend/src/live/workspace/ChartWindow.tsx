@@ -916,6 +916,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             name={symbol?.name ?? null} showLabel={false} getVisibleRange={getCollectVisibleRange} />
         </div>
       </div>
+      {usInstrument && ind.volumeEnabled && (d.workareaChartBundle ?? d.workareaBundle)?.candles.some(c => c.volume_available === false) &&
+        <div className="px-2 py-1 text-xs text-fg-dim">거래량 미제공 구간은 표시하지 않습니다.</div>}
       {usInstrument && !latestMinutesOnly && hasDailyIssue && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
         {d.dailyMetadata?.refresh_status === 'unconfigured' && <span>조회 API 키 설정 필요</span>}
         {d.dailyMetadata?.refresh_status === 'partial' && <><span>과거 일부 조회됨</span><button type="button" className="text-accent" onClick={() => { void d.refetchCandles(); }}>더 조회</button></>}
@@ -1000,7 +1002,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               // ⚙️ 설정 → 차트의 「다른 종목까지」가 정한다(핀 때문에 같은 번호여도
               // 종목이 갈릴 수 있다).
               cursorSyncCrosshair
-              paneTogglesOverride={{ hogaPanes: d.capabilities.hogaPanes, ...(usInstrument ? { volumeEnabled: false, tradeValueEnabled: false, programTradeEnabled: false } : {}) }}
+              paneTogglesOverride={{ hogaPanes: d.capabilities.hogaPanes, ...(usInstrument ? { tradeValueEnabled: false, programTradeEnabled: false } : {}) }}
             />
           </ChartDrawingShell>
         </ChartErrorBoundary>

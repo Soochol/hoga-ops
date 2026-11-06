@@ -73,6 +73,7 @@ function projectVolumeRows(
   const down = alpha(style?.volumeOverlayDownColor || tokens.down);
   const out: VolumeProjection[] = [];
   for (const c of candles) {
+    if (c.volume_available === false) { previousVolume = undefined; continue; }
     const volume = c.vol_a + c.vol_b;
     const isUp = colorMode === 'previous-volume' && previousVolume !== undefined
       ? volume > previousVolume : c.close >= c.open;
@@ -139,7 +140,7 @@ export function projectVolumeCached(bundle: RangeBundle, axis: VirtualAxis, swap
   }
 
   const previous = candles[splitIdx - 1];
-  const previousVolume = previous ? previous.vol_a + previous.vol_b : undefined;
+  const previousVolume = previous && previous.volume_available !== false ? previous.vol_a + previous.vol_b : undefined;
   return entry.pastData.concat(projectVolumeRows(candles.slice(splitIdx), axis, swapColors, style, colorMode, previousVolume));
 }
 

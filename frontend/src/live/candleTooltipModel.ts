@@ -9,7 +9,7 @@ export interface CandleTooltipModel {
   high: number;
   low: number;
   close: number;
-  volume: number;           // vol_a + vol_b
+  volume: number | null;           // vol_a + vol_b
   // 직전 봉(이전 캔들) 종가 대비 변동률 % — OHLC 각각. prev 없거나 prev.close<=0 → null.
   openPct: number | null;
   highPct: number | null;
@@ -74,7 +74,7 @@ export function buildCandleTooltip(
 ): CandleTooltipModel | null {
   if (index < 0 || index >= candles.length) return null;
   const c = candles[index];
-  const volume = c.vol_a + c.vol_b;
+  const volume = c.volume_available === false ? null : c.vol_a + c.vol_b;
   const { dateLabel, timeLabel } = kstLabels(c.ts_ms, timeframe);
   const prev = index > 0 ? candles[index - 1] : null;
   // 기준 = 직전 봉 종가(이전 캔들), 전 타임프레임 동일 (봉대비, ADR-0059). <=0 → null 로 Infinity 방지.
@@ -111,7 +111,7 @@ export function buildCandleTooltip(
     lowPct: pct(c.low),
     closePct: pct(c.close),
     barOverBarWon: basis === null ? null : c.close - basis,
-    volumeRatioPct: prev && prevVol > 0 ? (volume / prevVol) * 100 : null,
+    volumeRatioPct: volume !== null && prev && prev.volume_available !== false && prevVol > 0 ? (volume / prevVol) * 100 : null,
     quoteAskTotal,
     quoteBidTotal,
     askBidRatio,

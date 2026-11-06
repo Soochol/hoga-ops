@@ -8,6 +8,7 @@ export type LiveInstrumentCapabilities = {
   studySave: boolean;
   tradeValue?: boolean;
   volume?: boolean;
+  dailyPriceSignals?: boolean;
 };
 
 export const STOCK_CAPABILITIES: LiveInstrumentCapabilities = {
@@ -20,7 +21,7 @@ export const STOCK_CAPABILITIES: LiveInstrumentCapabilities = {
 export function capabilitiesForInstrument(
   instrument: LiveInstrument | null,
 ): LiveInstrumentCapabilities {
-  if (instrument?.kind === 'us_stock' || (instrument?.kind === 'index' && isUsIndexId(instrument.id))) return { hogaPanes: false, investorNet: 'none', studySave: false, tradeValue: false, volume: false };
+  if (instrument?.kind === 'us_stock' || (instrument?.kind === 'index' && isUsIndexId(instrument.id))) return { hogaPanes: false, investorNet: 'none', studySave: false, tradeValue: false, volume: true, dailyPriceSignals: true };
   if (!instrument || instrument.kind === 'stock') return STOCK_CAPABILITIES;
   return {
     hogaPanes: false,

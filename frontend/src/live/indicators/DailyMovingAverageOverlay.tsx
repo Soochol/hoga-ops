@@ -1,3 +1,4 @@
+import { formatInstrumentPrice, isUsWorkareaCode } from '../instrumentPriceFormat';
 import { resolveMaColor } from '../../util/maColor';
 import { useThemePrefsStore } from '../../state/themePrefs';
 import { memo, useEffect, useMemo, useRef } from 'react';
@@ -14,7 +15,6 @@ import type { SeriesDataSink } from '../../chart/seriesDataDiff';
 import { syncChartSeriesData } from '../../chart/replaceSeriesData';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
-import { isNonDomesticStockCode } from '../liveInstrument';
 import { useDailyMaSeriesRegistry } from './dailyMaSeriesRegistry';
 import { useWindowScopeId } from '../workspace/windowView';
 import { useWindowIndicator } from '../workspace/windowView';
@@ -40,14 +40,12 @@ type Props = {
   };
 };
 
+const EMPTY_DAILY: ReturnType<typeof useResolvedDailyCandles>['candles'] = [];
+
 type LineApi = ISeriesApi<'Line'>;
 const excludeFromAutoscale: AutoscaleInfoProvider = () => null;
 const includeInAutoscale: AutoscaleInfoProvider = (original) => original();
-const priceFormat = {
-  type: 'custom' as const,
-  formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'),
-  minMove: 1,
-};
+
 
 /** 일봉 이동평균선 오버레이 — 일봉 종가 SMA를 분봉 축에 거래일-계단으로 투영
  *  (ADR-0073). 현재봉 MovingAverageOverlay의 series-reconcile 패턴을 미러링하되,
@@ -64,15 +62,10 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
   if (projectRef.current === null) projectRef.current = createDailyMovingAverageProjection();
   const pushedRef = useRef(new WeakMap<LineApi, ReturnType<typeof syncChartSeriesData>>());
 
-  // 지수 제외: 일봉 소스가 `/api/live/past-daily-candles`(6자리 종목 전용)라 지수
-  // 코드로는 애초에 시리즈가 그려지지 않는다. 즉 기능 제거가 아니라 헛요청 제거다
-  // (지수 일봉 MA 를 지원하려면 `/api/live/index-candles` D 를 태워야 한다 — 별건).
-  // 종전 마스터 토글의 자리 — 이제 "켜진 슬롯이 하나라도 있는가" 다. 전부 꺼져
-  // 있으면 일봉 fetch 까지 통째로 건너뛴다(마스터 off 와 같은 절약).
   const enabled = configs.some((c) => c.enabled)
     && isMinuteTimeframe(timeframe)
     && !!code
-    && !isNonDomesticStockCode(code)
+    && (!code.startsWith('index:') || isUsWorkareaCode(code))
     && !!todayKst;
 
   // 일봉 fetch 창은 today 앵커라 좌측 팬에 불변 → react-query 키 안정 → 재fetch 없이
@@ -86,7 +79,11 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
     enabled,
     kisEnabled: dailyCandleKisEnabled,
   });
-  const daily = dailyQuery.candles;
+  const basisMatches = !code?.startsWith('us-stock:') || (bundle.candle_basis !== undefined
+    && dailyQuery.candleBasis !== undefined
+    && bundle.candle_basis.price_basis === dailyQuery.candleBasis.price_basis
+    && bundle.candle_basis.adjusted_as_of === dailyQuery.candleBasis.adjusted_as_of);
+  const daily = basisMatches ? dailyQuery.candles : EMPTY_DAILY;
   // 레지스트리 키를 창별로 가른다 — 고정 슬롯 id 는 창끼리 충돌한다.
   const scope = useWindowScopeId();
 
@@ -115,7 +112,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
-            priceFormat,
+            priceFormat: { type: 'custom', formatter: (p: number) => formatInstrumentPrice(p, bundle.code), minMove: isUsWorkareaCode(bundle.code) ? 0.01 : 1 },
             ...createScaleOptions,
           }, 0); // paneIndex 0 — candle pane overlay
           map.set(cfg.id, s);
@@ -142,7 +139,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
 
   // 오늘 현재가 프록시 (dailyMaProjection, 테스트됨).
   const todayLiveClose = useMemo(
-    () => (enabled ? pickTodayLiveClose(bundle.candles, todayKst) : null),
+    () => (enabled ? isUsWorkareaCode(code) ? null : pickTodayLiveClose(bundle.candles, todayKst) : null),
     [enabled, bundle, todayKst],
   );
 

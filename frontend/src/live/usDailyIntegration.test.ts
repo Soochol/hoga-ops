@@ -92,12 +92,12 @@ describe('US daily chart identity and capability boundaries', () => {
       expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
     }
   });
-  it('disables domestic sidecars, collection, volume and turnover but allows price indicators', () => {
+  it('disables domestic sidecars, collection and turnover but allows price indicators', () => {
     for (const instrument of [usStockInstrument('NASDAQ', 'NVDA'), indexInstrument('NASDAQ_COMPOSITE'), indexInstrument('SP500'), indexInstrument('SOX'), indexInstrument('VIX')]) {
-      expect(capabilitiesForInstrument(instrument)).toMatchObject({ hogaPanes: false, investorNet: 'none', studySave: false, tradeValue: false, volume: false });
+      expect(capabilitiesForInstrument(instrument)).toMatchObject({ hogaPanes: false, investorNet: 'none', studySave: false, tradeValue: false, volume: true });
     }
     expect(indicatorInstanceApplicable('moving-average', 'D', false, true)).toBe(true);
-    expect(indicatorInstanceApplicable('volume', 'D', false, true)).toBe(false);
+    expect(indicatorInstanceApplicable('volume', 'D', false, true)).toBe(true);
     expect(indicatorInstanceApplicable('foreign-net', 'D', false, true)).toBe(false);
   });
   it('finds the S&P 500 index when typed without its display space', () => {

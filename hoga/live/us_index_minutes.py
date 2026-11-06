@@ -56,7 +56,7 @@ def parse_snapshot(body: dict) -> list[UsDailyBar]:
         if len(clock) != len("HHMMSS") or not clock.isdigit() or clock[-2:] != "00":
             raise ValueError("invalid KIS minute clock")
         local = datetime.strptime(bar.trading_date + clock, "%Y%m%d%H%M%S").replace(tzinfo=NY)
-        bar = bar.model_copy(update={"t_ms": int(local.timestamp() * 1000), "volume": 0})
+        bar = bar.model_copy(update={"t_ms": int(local.timestamp() * 1000), "volume": 0, "volume_available": False})
         if bar.t_ms in seen and seen[bar.t_ms] != bar:
             raise ValueError("conflicting KIS minute timestamps")
         seen[bar.t_ms] = bar
@@ -103,7 +103,7 @@ def current_daily_candle(body: dict, bars: list[UsDailyBar], code: str, now: dat
         "date", "ovrs_prod_oprc", "ovrs_prod_hgpr", "ovrs_prod_lwpr", "ovrs_nmix_prpr", "acml_vol"))
     if daily.close != bars[-1].close:
         raise ValueError("index day/minute snapshot mismatch")
-    return daily.model_copy(update={"volume": 0})
+    return daily.model_copy(update={"volume": 0, "volume_available": False})
 
 
 @dataclass

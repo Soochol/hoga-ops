@@ -1,3 +1,4 @@
+import { formatInstrumentPrice, isUsWorkareaCode } from '../instrumentPriceFormat';
 import { lineVisible } from '../../state/indicatorLineVisibility';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi } from 'lightweight-charts';
@@ -44,7 +45,7 @@ function SupertrendOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: 
     if (!enabled) return;
     const series = chart.addSeries(LineSeries, {
       title: '슈퍼트렌드', priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-      priceFormat: { type: 'custom', formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'), minMove: 1 },
+      priceFormat: { type: 'custom', formatter: (p: number) => formatInstrumentPrice(p, bundle.code), minMove: isUsWorkareaCode(bundle.code) ? 0.01 : 1 },
     }, 0);
     seriesRef.current = series;
     pushedRef.current = null;
@@ -72,7 +73,7 @@ function SupertrendOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: 
       return point == null || !(point.direction === 'up' ? upVisible : downVisible) ? [] : [{
         key: 'trend', label: point.direction === 'up' ? '상승' : '하락',
         color: point.direction === 'up' ? upColor : downColor,
-        value: Math.round(point.value).toLocaleString('ko-KR'),
+        value: formatInstrumentPrice(point.value, bundle.code),
       }];
     };
     registerFlagLegendValues(scope, 'supertrend', 'main', provider);

@@ -1,4 +1,4 @@
-import { formatInstrumentPrice, isUsWorkareaCode } from './instrumentPriceFormat';
+import { formatInstrumentPrice } from './instrumentPriceFormat';
 import { drawnCandleIndex, EMPTY_DRAWN_CANDLE_INDEX } from '../chart/drawnCandleIndex';
 import DailyCandleDetails from './DailyCandleDetails';
 import CandleMovingAverageDetails from './CandleMovingAverageDetails';
@@ -256,10 +256,10 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
       <CandleMovingAverageDetails chart={chart} timeSec={axis.toVirtual(m.tsMs) / 1000}
         close={m.close} code={bundle.code} timeframe={timeframe} />
       <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-      {!isUsWorkareaCode(bundle.code) && <Row k="거래량"><span style={valStyle}>{formatKoreanInt(m.volume)}</span></Row>}
-      {!isUsWorkareaCode(bundle.code) && <Row k="거래량비">
+      <Row k="거래량"><span style={valStyle}>{m.volume === null ? '미제공' : formatKoreanInt(m.volume)}</span></Row>
+      <Row k="거래량비">
         <span style={valStyle}>{m.volumeRatioPct == null ? '—' : `${Math.round(m.volumeRatioPct)}%`}</span>
-      </Row>}
+      </Row>
       {timeframe === 'D' && /^\d{6}$/.test(bundle.code) && (
         <DailyCandleDetails candle={drawn[idx]} />
       )}
