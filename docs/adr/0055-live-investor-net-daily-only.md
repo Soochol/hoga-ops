@@ -91,3 +91,43 @@
 - 투자자 *금액*(`_ntby_tr_pbmn`)이나 개인/세부기관(투신·연기금·보험 등)이 필요 →
   와이어 모델 확장(output2는 이미 그 컬럼들을 담고 있음).
 - walk-back 호출량이 rate-limit 비용으로 커지면 → 디스크 영속 캐시 검토(ADR-0048 참조).
+
+## 2026-11-07 exception for cumulative net-buy shares
+
+The separate `외국인 누적 순매수` and `기관 누적 순매수` indicators use
+`GET /api/live/investor-daily-flow`. This is a narrow exception to decision 3's
+ban on a dedicated investor cache. The normalized daily cache has already lost
+missing-versus-zero and duplicate-conflict information. It cannot prove a
+cumulative sum. Existing daily bars and lines keep their source and cache.
+
+`InvestorDailyFlowCache` retains strict ka10059 pages and quality in memory.
+It uses the existing client, scheduler and capacity governor. Institution shares
+come from `orgn`. Foreign shares use the app's existing
+`frgnr_invsr + natfor` aggregate, meaning foreign investors plus domestic/foreign
+investors. Both components must be valid. Defects and duplicate conflicts are
+independent per subject. Invalid dates and unknown pagination affect both.
+
+Each history has a maximum of 128 pages. Each collection reads at most six new
+pages. A maximum of 64 Code and end-date histories may coexist. Active callers
+protect their generation from replacement and eviction. The last accepted page
+sets freshness. Warm reads only update eviction order. An idle today generation
+can refresh after 300 seconds, and a historical generation after 3600 seconds.
+A fresh generation accepts corrected values without comparing them with an old
+generation. Incomplete collections retain their input cursor for explicit
+continuation and retry.
+
+A response is covered only after an explicit terminal `cont-yn=N`. Missing or
+malformed continuation metadata remains incomplete. Reaching the requested
+oldest date alone cannot prove stream coverage. Actual terminal-header behavior
+with live credentials remains unverified. The frontend keeps the first valid
+loaded observation at zero and withholds every later sum while pagination is
+incomplete. Source-only dates enter arithmetic before candle-axis projection.
+Missing candle-date rows, nulls, conflicts and unsafe sums taint the whole suffix.
+
+The oldest valid loaded observation is the dynamic baseline. Its own daily flow
+is excluded. Actual earlier observations rebase the whole curve and its label
+together. Viewport changes do not change this baseline. These indicators provide
+shares only. They are neither holdings nor holdings percentages. Historical
+share-count denominators are unavailable, and corporate actions are not adjusted.
+The existing actual holdings display is named `외국인 보유`; its stable IDs and
+quantity/ratio wire contract are unchanged.

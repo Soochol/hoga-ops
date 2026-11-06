@@ -1,5 +1,3 @@
-"""Strict foreign and institution net shares. ADR-0055 exception preserves raw quality."""
-
 from __future__ import annotations
 
 import asyncio

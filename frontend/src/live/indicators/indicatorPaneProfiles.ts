@@ -17,6 +17,8 @@ export type IndicatorPanePrefs = {
   volumeEnabled: boolean;
   tradeValueEnabled?: boolean;
   investorNetLineEnabled?: boolean;
+  foreignCumulativeEnabled?: boolean;
+  institutionCumulativeEnabled?: boolean;
   investorHoldingsEnabled?: boolean;
   quoteTotalsEnabled: boolean;
   ratioEnabled: boolean;
@@ -32,8 +34,8 @@ export type PanePrefKey = keyof IndicatorPanePrefs;
 
 /** 소비자가 store 에서 골라오는, 이미 resolve 된 pane 토글 7종. */
 export type PanePrefsIndicatorSource = Pick<
-  PersistedIndicators, Exclude<PanePrefKey, 'dailyProgramEnabled' | 'tradeValueEnabled' | 'investorNetLineEnabled' | 'investorHoldingsEnabled'>
-> & { dailyProgramEnabled?: boolean; tradeValueEnabled?: boolean; investorNetLineEnabled?: boolean; investorHoldingsEnabled?: boolean };
+  PersistedIndicators, Exclude<PanePrefKey, 'dailyProgramEnabled' | 'tradeValueEnabled' | 'investorNetLineEnabled' | 'investorHoldingsEnabled' | 'institutionCumulativeEnabled' | 'foreignCumulativeEnabled'>
+> & { dailyProgramEnabled?: boolean; tradeValueEnabled?: boolean; investorNetLineEnabled?: boolean; investorHoldingsEnabled?: boolean; institutionCumulativeEnabled?: boolean; foreignCumulativeEnabled?: boolean };
 
 export type PersistedPanePrefsByTimeframe =
   Partial<Record<IndicatorPaneProfileKey, Partial<IndicatorPanePrefs>>>;
@@ -45,6 +47,8 @@ export const INDICATOR_PANE_PREF_KEYS: readonly PanePrefKey[] = [
   'volumeEnabled',
   'tradeValueEnabled',
   'investorNetLineEnabled',
+  'foreignCumulativeEnabled',
+  'institutionCumulativeEnabled',
   'investorHoldingsEnabled',
   'quoteTotalsEnabled',
   'ratioEnabled',
@@ -98,6 +102,8 @@ export function pickPanePrefs(indicators: PanePrefsIndicatorSource): IndicatorPa
   return {
     volumeEnabled: indicators.volumeEnabled,
     tradeValueEnabled: indicators.tradeValueEnabled === true,
+    foreignCumulativeEnabled: indicators.foreignCumulativeEnabled === true,
+    institutionCumulativeEnabled: indicators.institutionCumulativeEnabled === true,
     investorHoldingsEnabled: indicators.investorHoldingsEnabled === true,
     investorNetLineEnabled: indicators.investorNetLineEnabled === true,
     quoteTotalsEnabled: indicators.quoteTotalsEnabled,
@@ -136,6 +142,8 @@ export function resolvePaneToggles(input: {
     institutionNet: prefs.institutionNetEnabled,
     volumeEnabled: prefs.volumeEnabled,
     tradeValueEnabled: prefs.tradeValueEnabled,
+    foreignCumulativeEnabled: prefs.foreignCumulativeEnabled,
+    institutionCumulativeEnabled: prefs.institutionCumulativeEnabled,
     investorHoldingsEnabled: prefs.investorHoldingsEnabled,
     investorNetLineEnabled: prefs.investorNetLineEnabled,
     quoteTotalsEnabled: prefs.quoteTotalsEnabled,

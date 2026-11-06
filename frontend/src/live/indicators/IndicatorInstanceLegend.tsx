@@ -46,7 +46,7 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData, 
     : row.category === 'peak-walls' ? (['ask-peak', 'bid-peak'] as const).flatMap(type => readFlagLegendValues(registryScope, type, 'main', cursorTimeSec))
     : flagType ? readFlagLegendValues(registryScope, flagType, 'main', cursorTimeSec) : [];
   const paneValues = [...panes.entries()].filter(([name]) => name.startsWith(`indicator:${id}:`)).flatMap(([, entries]) => entries.flatMap(entry => {
-    if (row.category === 'investor-net-line' || row.category === 'investor-holdings') {
+    if (row.category === 'investor-net-line' || row.category === 'investor-holdings' || (row.category === 'institution-cumulative' || row.category === 'foreign-cumulative')) {
       if (!entry.series.options().visible) return [];
       const value = readSeriesValueAtTime(entry.series, cursorTimeSec ?? latestTimeSec);
       return [`${entry.meta.notice ? `${entry.meta.notice} · ` : ''}${entry.meta.label} ${value === null ? '—' : entry.meta.format?.(value) ?? entry.series.priceFormatter().format(value)}`];
@@ -72,7 +72,7 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData, 
     {!hidden && maSlots.filter(m => m.enabled && !m.hidden).map(m => <span key={m.id}
       aria-label={`${m.period} ${row.category === 'daily-moving-average' ? '일봉' : '현재봉'} 이평선 색상`}
       style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: resolveMaColor(m, theme) }} />)}
-    {!hidden && row.category === 'investor-holdings' && <button type="button" aria-label="보유 자료 다시 조회"
+    {!hidden && (row.category === 'investor-holdings' || (row.category === 'institution-cumulative' || row.category === 'foreign-cumulative')) && <button type="button" aria-label={(row.category === 'institution-cumulative' || row.category === 'foreign-cumulative') ? '누적 자료 계속 조회·재시도' : '보유 자료 다시 조회'}
       disabled={![...panes.entries()].some(([name, entries]) => name.startsWith(`indicator:${id}:`) && entries[0]?.meta.retry)}
       onClick={() => [...panes.entries()].find(([name]) => name.startsWith(`indicator:${id}:`))?.[1][0]?.meta.retry?.()}>다시 조회</button>}
     <span className={hidden ? 'text-fg-dimmer' : undefined} data-tooltip={title}>{title}</span>

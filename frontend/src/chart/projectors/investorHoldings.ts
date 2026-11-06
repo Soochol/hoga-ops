@@ -36,7 +36,7 @@ const formatQuantity = (value: number) => `${formatKoreanK(value)}주`;
 const formatRatio = (value: number) => `${value.toFixed(2)}%`;
 export const INVESTOR_HOLDINGS_SPEC: BoundPaneSpec<HoldingsPaneContext> = {
   name: 'investor-holdings', bundleKind: 'candle', stretch: 0.5,
-  legendTitle: '외국인·기관 보유', legendToggleKey: 'investorHoldingsEnabled',
+  legendTitle: '외국인 보유', legendToggleKey: 'investorHoldingsEnabled',
   series: [{
     type: LineSeries,
     options: { priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false },

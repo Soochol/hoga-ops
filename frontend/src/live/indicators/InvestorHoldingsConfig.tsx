@@ -1,4 +1,3 @@
-import { ToggleSwitch } from '../settings/SettingsRow';
 import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import { IndicatorSettingsGroup, IndicatorLineWidthRow } from './IndicatorSettingsLayout';
 import LineVisibilityRow from './LineVisibilityRow';
@@ -21,7 +20,6 @@ export default function InvestorHoldingsConfig() {
         <ColorSwatchPicker label="보유 외국인" color={settings.investorHoldingsForeignColor}
           onChange={investorHoldingsForeignColor => setInvestorHoldingsSettings({ investorHoldingsForeignColor })} />
       </LineVisibilityRow>
-      <label className="flex items-center gap-2 text-xs text-fg-dim"><ToggleSwitch label="보유 기관 표시 · 미지원" checked={false} disabled size="sm" />기관 · 실제 과거 보유자료 미지원</label>
       <IndicatorLineWidthRow label="보유" value={settings.investorHoldingsWidth}
         onChange={investorHoldingsWidth => setInvestorHoldingsSettings({ investorHoldingsWidth })} />
     </IndicatorSettingsGroup>

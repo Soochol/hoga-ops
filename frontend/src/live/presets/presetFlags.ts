@@ -33,6 +33,8 @@ export const PRESET_INDICATOR_FLAG_KEYS = [
   'programTradeEnabled',
   'foreignNetEnabled',
   'investorNetLineEnabled',
+  'foreignCumulativeEnabled',
+  'institutionCumulativeEnabled',
   'investorHoldingsEnabled',
   'institutionNetEnabled',
   'peakWallPaneEnabled',

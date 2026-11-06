@@ -238,6 +238,12 @@ export type PersistedIndicators = {
   institutionTradeSide: import('../api/types').InvestorTradeSide;
   /** ADR-0055: institution net-buy bar pane. Opt-in (default false). */
   institutionNetEnabled: boolean;
+  foreignCumulativeEnabled: boolean;
+  institutionCumulativeEnabled: boolean;
+  foreignCumulativeColor: string;
+  institutionCumulativeColor: string;
+  foreignCumulativeWidth: 1 | 2 | 3 | 4;
+  institutionCumulativeWidth: 1 | 2 | 3 | 4;
   investorHoldingsEnabled: boolean;
   investorHoldingsMetric: import('../chart/projectors/investorHoldings').HoldingsMetric;
   investorHoldingsForeignColor: string;
@@ -814,6 +820,12 @@ export function mergeLiveIndicatorPrefs(
     foreignTradeSide: normalizeInvestorTradeSide(obj?.foreignTradeSide ?? obj?.investorTradeSide),
     institutionTradeSide: normalizeInvestorTradeSide(obj?.institutionTradeSide ?? obj?.investorTradeSide),
     institutionNetEnabled: iNet,
+    foreignCumulativeEnabled: obj?.foreignCumulativeEnabled === true,
+    institutionCumulativeEnabled: obj?.institutionCumulativeEnabled === true,
+    foreignCumulativeColor: typeof obj?.foreignCumulativeColor === 'string' && HEX_COLOR.test(obj.foreignCumulativeColor) ? obj.foreignCumulativeColor : '#22D3EE',
+    institutionCumulativeColor: typeof obj?.institutionCumulativeColor === 'string' && HEX_COLOR.test(obj.institutionCumulativeColor) ? obj.institutionCumulativeColor : '#EC4899',
+    foreignCumulativeWidth: obj?.foreignCumulativeWidth === 1 || obj?.foreignCumulativeWidth === 3 || obj?.foreignCumulativeWidth === 4 ? obj.foreignCumulativeWidth : 2,
+    institutionCumulativeWidth: obj?.institutionCumulativeWidth === 1 || obj?.institutionCumulativeWidth === 3 || obj?.institutionCumulativeWidth === 4 ? obj.institutionCumulativeWidth : 2,
     investorHoldingsEnabled: obj?.investorHoldingsEnabled === true,
     investorHoldingsMetric: obj?.investorHoldingsMetric === 'ratio' ? 'ratio' : 'quantity',
     investorHoldingsForeignColor: typeof obj?.investorHoldingsForeignColor === 'string' && HEX_COLOR.test(obj.investorHoldingsForeignColor) ? obj.investorHoldingsForeignColor : '#EC4899',

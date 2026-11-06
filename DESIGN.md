@@ -1613,6 +1613,17 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 - 창 헤더처럼 드래그 시작을 위해 `pointerdown`을 취소하는 영역을 눌러도 열린 팝오버를 닫는다. 이때 생략되는 `mousedown`에만 의존하지 않는다. 트리거·메뉴 내부 및 중첩 팝오버의 예외는 유지한다.
 - A copied `addEventListener('mousedown'|'keydown')` is how this drifts (one site on `document`, another on `window`; one forgets Escape) — the helpers concentrate the contract so it can't.
 
+### 2026-11-07 사용자 요청. 보유 이름과 누적 순매수 지표
+
+실제 보유 지표의 이름은 `외국인 보유`다. 수량·비중 선택과 저장 식별자는 유지한다.
+`외국인 누적 순매수`와 `기관 누적 순매수`는 별도 보조지표이며 수량(주)만 제공한다.
+조회자료 첫날 0과 현재 기준 날짜, 실제 보유잔고가 아니라는 의미를 범례에 표시한다.
+과거 자료가 추가되면 기준일과 전체 값이 함께 바뀌고 팬·줌만으로는 바뀌지 않는다.
+누락·상충 이후와 페이지 미완료에는 합계를 비우고 기존 보조 글자·버튼으로
+계속 조회·재시도를 제공한다. 설정은 기존 선 표시·색·굵기 폼과 예시 미리보기를 쓴다.
+반복 추가는 독립 pane이며 같은 자료 조회를 공유한다. 실제 보유선은 동일 종목의
+지연된 과거 조회 중 기존 관측을 유지하며 새 날짜를 임의로 채우지 않는다.
+
 ## Decisions Log
 
 | Date | Decision | Rationale |

@@ -6,7 +6,7 @@ describe('CANONICAL_PANE_ORDER', () => {
     expect(CANONICAL_PANE_ORDER[0]).toBe('candle');
     expect(CANONICAL_PANE_ORDER).toContain('investor-foreign');
     expect(CANONICAL_PANE_ORDER).toContain('investor-institution');
-    expect(CANONICAL_PANE_ORDER).toHaveLength(13);
+    expect(CANONICAL_PANE_ORDER).toHaveLength(15);
   });
 });
 
@@ -22,7 +22,7 @@ describe('normalizePaneOrder', () => {
     // candle 앞에 있던 volume/ratio 는 candle 뒤로 밀리고, 나머지 누락은 append.
     expect(out).toEqual([
       'candle', 'volume', 'ratio', 'program-trade',
-      'trade-value', 'quote-totals', 'peak-wall', 'fill-strength', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
+      'trade-value', 'quote-totals', 'peak-wall', 'fill-strength', 'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings', 'foreign-cumulative', 'institution-cumulative',
     ]);
   });
 
@@ -31,7 +31,7 @@ describe('normalizePaneOrder', () => {
     expect(out).toEqual([
       'candle', 'ratio', 'volume',
       'trade-value', 'quote-totals', 'peak-wall', 'fill-strength', 'program-trade',
-      'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
+      'investor-foreign', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings', 'foreign-cumulative', 'institution-cumulative',
     ]);
   });
 });
@@ -96,10 +96,10 @@ describe('movePaneBeside', () => {
     const out = movePaneBeside(order, 'investor-foreign', 'volume', 'before');
     expect(out).toEqual([
       'candle', 'investor-foreign', 'volume', 'trade-value', 'quote-totals', 'peak-wall', 'ratio',
-      'fill-strength', 'program-trade', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings',
+      'fill-strength', 'program-trade', 'investor-institution', 'program-daily', 'investor-net-line', 'investor-holdings', 'foreign-cumulative', 'institution-cumulative',
     ]);
     // 분봉 투영(IF/II 제외): volume 이 여전히 candle 바로 뒤 → leapfrog 없음.
-    const minuteView = out.filter((id) => id !== 'investor-foreign' && id !== 'investor-institution' && id !== 'program-daily' && id !== 'trade-value' && id !== 'investor-net-line' && id !== 'investor-holdings');
+    const minuteView = out.filter((id) => id !== 'investor-foreign' && id !== 'investor-institution' && id !== 'program-daily' && id !== 'trade-value' && id !== 'investor-net-line' && id !== 'investor-holdings' && id !== 'foreign-cumulative' && id !== 'institution-cumulative');
     expect(minuteView).toEqual(['candle', 'volume', 'quote-totals', 'peak-wall', 'ratio', 'fill-strength', 'program-trade']);
   });
 });

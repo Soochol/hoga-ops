@@ -11,6 +11,8 @@ import type { BasePaneId } from '../../chart/drawing/types';
 // 없는 고정 pane 이라 패널에 항목이 없다 — 그래서 전수가 아니라 **겹치는 것만** 잰다.
 const CATEGORY_TO_PANE: Record<string, BasePaneId> = {
   'investor-net-line': 'investor-net-line',
+  'foreign-cumulative': 'foreign-cumulative',
+  'institution-cumulative': 'institution-cumulative',
   'investor-holdings': 'investor-holdings',
   volume: 'volume',
   'trade-value': 'trade-value',
