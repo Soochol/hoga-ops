@@ -74,7 +74,7 @@ export function TradeBrowseCrosshair({ chart, axis, candles, paneSeries, windowI
         if (retry++ < 2) frame = requestAnimationFrame(paint);
         return;
       }
-      release = applySyntheticCrosshair({ chart, price: close, time, series });
+      release = applySyntheticCrosshair({ chart, price: close, time, series, source: 'trade-browse' });
       setDrawn(targetMs);
     };
     frame = requestAnimationFrame(paint);

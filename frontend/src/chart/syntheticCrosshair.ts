@@ -1,8 +1,8 @@
 /**
- * 이 차트의 크로스헤어가 **지금 합성인가** — 내 포인터가 아니라 옆 창의 호버를
- * `CursorSyncCrosshair` 가 `setCrosshairPosition` 으로 옮겨 그린 것인가.
+ * 이 차트의 크로스헤어가 **지금 합성인가** — 내 포인터가 아니라 창 간 동기화나
+ * 체결 탐색이 `setCrosshairPosition` 으로 옮겨 그린 것인가.
  *
- * 차트 인스턴스를 키로 쓰는 `WeakSet` 하나가 전부다. 창 id 를 실어 나르지 않는
+ * 차트 인스턴스를 키로 쓰는 `WeakMap` 하나가 전부다. 창 id 를 실어 나르지 않는
  * 이유는 묻는 쪽과 답하는 쪽이 **같은 `IChartApi` 객체**를 이미 쥐고 있어서다
  * (`LiveChartRoot` 가 만들어 `CursorSyncCrosshair` 에 prop 으로 넘긴다). 차트가
  * 버려지면 항목도 함께 사라지므로 정리 경로가 따로 필요 없다.
@@ -31,17 +31,19 @@
  *   풀린 뒤 슬롯을 되찾는 경로가 그것이다(`publishCursorMs` 의 「값이 같아도 다시
  *   발행한다」). 그 경로까지 막으려면 `fromUserPointer` 를 발행 조건으로 요구해야
  *   하는데, 그것이 정확히 이 파일이 피하려는 회귀다.
- * - 이 표시는 **위치를 담지 않는다** — "합성이다/아니다" 뿐이다. 어느 창이 걸었는지는
+ * - 이 표시는 **위치를 담지 않는다** — 합성 작성자만 구분한다. 동기화 출처 창은
  *   슬롯의 origin 이 갖는다.
  *
  * ── 등록 의존 ────────────────────────────────────────────────────────────
  * `setCrosshairPosition` 을 부르는 **모든** 곳이 여기 표시를 남겨야 성립한다. 지금
- * 그 호출처는 `CursorSyncCrosshair` 하나뿐이고, 새 호출처가 생기면 같이 표시해야
+ * 그 호출처는 `CursorSyncCrosshair` 와 `TradeBrowseCrosshair` 이며, 새 호출처도 표시해야
  * 한다(`grep setCrosshairPosition`). 표시를 빠뜨리면 가드가 **조용히** 열린다.
  */
 import type { IChartApi } from 'lightweight-charts';
 
-const synthetic = new WeakSet<IChartApi>();
+export type SyntheticCrosshairSource = 'cursor-sync' | 'trade-browse';
+
+const synthetic = new WeakMap<IChartApi, SyntheticCrosshairSource>();
 
 /**
  * 합성 크로스헤어를 걸었다고 표시한다.
@@ -51,8 +53,8 @@ const synthetic = new WeakSet<IChartApi>();
  * 없고, 호출이 던지면 표시가 남지 않는다 — 남으면 위 「못 보는 것」의 재획득 경로가
  * 그 창에서 영영 막힌다.
  */
-export function markSyntheticCrosshair(chart: IChartApi): void {
-  synthetic.add(chart);
+export function markSyntheticCrosshair(chart: IChartApi, source: SyntheticCrosshairSource): void {
+  synthetic.set(chart, source);
 }
 
 /** 합성 크로스헤어를 걷었다고 표시한다(`clearCrosshairPosition` 과 짝). */
@@ -70,6 +72,6 @@ export function releaseSyntheticCrosshair(chart: IChartApi): void {
  * `hasSourceEvent`·`point` 를 rAF 밖에서 뽑는 것과 같은 이유(원인은 다르다 — 그쪽은
  * lwc 의 param 재사용이고, 이쪽은 해제와의 경쟁이다).
  */
-export function hasSyntheticCrosshair(chart: IChartApi): boolean {
-  return synthetic.has(chart);
+export function hasSyntheticCrosshair(chart: IChartApi, source?: SyntheticCrosshairSource): boolean {
+  return source === undefined ? synthetic.has(chart) : synthetic.get(chart) === source;
 }

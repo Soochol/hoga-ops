@@ -6279,7 +6279,7 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
       publishOtherOwner();
       act(() => {
         fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } });
-        markSyntheticCrosshair(chart);
+        markSyntheticCrosshair(chart, 'cursor-sync');
         fire()?.({ time: vsec + 60, point: { x: 40 } });
       });
       await flushRaf();
@@ -6444,9 +6444,9 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
    * **등록 의존**: 표시는 `CursorSyncCrosshair` 가 남긴다(그쪽 스펙이 그 절반).
    */
   describe('빈 슬롯을 합성 재발화가 차지하지 못한다', () => {
-    it('합성 크로스헤어의 재발화는 빈 슬롯에도 발행하지 않는다', async () => {
+    it.each(['cursor-sync', 'trade-browse'] as const)('%s 합성 크로스헤어의 재발화는 빈 슬롯에도 발행하지 않는다', async source => {
       const { fire, vsec, chart } = renderWithCrosshair();
-      markSyntheticCrosshair(chart);           // 옆 창 발행을 받아 그린 상태
+      markSyntheticCrosshair(chart, source);
       expect(useLiveCursorStore.getState().syncCursorMs).toBeNull(); // 슬롯은 비어 있다
 
       act(() => { fire()?.({ time: vsec, point: { x: 10 } }); });
@@ -6468,7 +6468,7 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
 
     it('합성 표시가 있어도 실제 포인터는 통과한다', async () => {
       const { fire, vsec, chart } = renderWithCrosshair();
-      markSyntheticCrosshair(chart);
+      markSyntheticCrosshair(chart, 'cursor-sync');
 
       act(() => { fire()?.({ time: vsec, point: { x: 10 }, sourceEvent: { localX: 10 } }); });
       await flushRaf();
@@ -6476,11 +6476,11 @@ describe('LiveChartRoot — sync 소비 창의 발행 억제', () => {
       expect(useLiveCursorStore.getState().syncCursorMs).not.toBeNull();
     });
 
-    it('⚠ 판정은 **이벤트 시점**이다 — rAF 안에서 읽으면 해제와의 경쟁에 진다', async () => {
+    it.each(['cursor-sync', 'trade-browse'] as const)('%s 판정은 이벤트 시점이다 — rAF 안에서 읽으면 해제와의 경쟁에 진다', async source => {
       // 실측 순서: 옆 창이 슬롯 비움 → 이 창 cleanup(합성 해제) → 미뤄진 rAF 발행.
       // 표시를 rAF 안에서 읽으면 그때는 이미 해제된 뒤라 가드가 통째로 무력해진다.
       const { fire, vsec, chart } = renderWithCrosshair();
-      markSyntheticCrosshair(chart);
+      markSyntheticCrosshair(chart, source);
 
       act(() => { fire()?.({ time: vsec, point: { x: 10 } }); });
       act(() => { releaseSyntheticCrosshair(chart); });   // rAF 가 돌기 **전에** 해제

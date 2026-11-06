@@ -152,7 +152,7 @@ it('bridges the blank native draw with hover layers only and removes them after 
 
 it('releasing remote ownership preserves the new local pointer and its pending data restore (#2433)', () => {
   const h = fixture();
-  const release = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series });
+  const release = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series, source: 'cursor-sync' });
   h.pointer(620, 310);
   preserveCrosshairDuringDataChange(h.chart, () => {});
   h.native.clearCrosshairPosition.mockClear();
@@ -167,7 +167,7 @@ it('releasing remote ownership preserves the new local pointer and its pending d
 
 it('releasing a synthetic position cancels its pending restore and is idempotent', () => {
   const h = fixture();
-  const release = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series });
+  const release = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series, source: 'cursor-sync' });
   preserveCrosshairDuringDataChange(h.chart, () => {});
   h.native.clearCrosshairPosition.mockClear();
   h.native.setCrosshairPosition.mockClear();
@@ -181,8 +181,8 @@ it('releasing a synthetic position cancels its pending restore and is idempotent
 
 it('an older synthetic writer cannot clear or unmark a newer writer', () => {
   const h = fixture();
-  const first = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series });
-  const second = applySyntheticCrosshair({ chart: h.chart, price: 20, time: 200 as Time, series: h.series });
+  const first = applySyntheticCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series, source: 'cursor-sync' });
+  const second = applySyntheticCrosshair({ chart: h.chart, price: 20, time: 200 as Time, series: h.series, source: 'cursor-sync' });
   h.native.clearCrosshairPosition.mockClear();
   first();
   expect(h.native.clearCrosshairPosition).not.toHaveBeenCalled();
@@ -219,5 +219,53 @@ it('refuses remote application while a local pointer owns any pane', () => {
   const h = fixture(); h.pointer();
   expect(applySyncedCrosshair({ chart: h.chart, price: 10, time: 100 as Time, series: h.series })).toBeUndefined();
   expect(h.native.setCrosshairPosition).not.toHaveBeenCalled();
+  h.chart.remove();
+});
+
+for (const source of ['cursor-sync', 'trade-browse'] as const) {
+  it(`retains ${source} classification through native replay and a chart alias`, () => {
+    const h = fixture();
+    const alias = new Proxy(h.chart, {});
+    aliasPersistentCrosshairChart(alias, h.chart);
+    const release = applySyntheticCrosshair({ chart: alias, price: 10, time: '2025-06-18', series: h.series, source });
+    expect(hasSyntheticCrosshair(alias)).toBe(true);
+    expect(hasSyntheticCrosshair(alias, source)).toBe(true);
+    expect(hasSyntheticCrosshair(alias, source === 'cursor-sync' ? 'trade-browse' : 'cursor-sync')).toBe(false);
+    preserveCrosshairDuringDataChange(alias, () => {});
+    h.native.setCrosshairPosition.mockClear();
+    h.draw();
+    expect(h.native.setCrosshairPosition).toHaveBeenCalledWith(10, '2025-06-18', h.series);
+    expect(hasSyntheticCrosshair(alias, source)).toBe(true);
+    release();
+    expect(hasSyntheticCrosshair(alias)).toBe(false);
+    h.chart.remove();
+  });
+
+  it(`an older ${source} release preserves the replacing writer and its replay`, () => {
+    const h = fixture();
+    const first = applySyntheticCrosshair({ chart: h.chart, price: 10, time: '2025-06-18', series: h.series, source });
+    const next = source === 'cursor-sync' ? 'trade-browse' : 'cursor-sync';
+    const second = applySyntheticCrosshair({ chart: h.chart, price: 20, time: '2025-06-19', series: h.series, source: next });
+    h.native.clearCrosshairPosition.mockClear();
+    first();
+    expect(h.native.clearCrosshairPosition).not.toHaveBeenCalled();
+    expect(hasSyntheticCrosshair(h.chart, next)).toBe(true);
+    preserveCrosshairDuringDataChange(h.chart, () => {});
+    h.native.setCrosshairPosition.mockClear();
+    h.draw();
+    expect(h.native.setCrosshairPosition).toHaveBeenCalledWith(20, '2025-06-19', h.series);
+    expect(hasSyntheticCrosshair(h.chart, next)).toBe(true);
+    second();
+    expect(hasSyntheticCrosshair(h.chart)).toBe(false);
+    h.chart.remove();
+  });
+}
+
+it('applySyncedCrosshair classifies the writer without caller input', () => {
+  const h = fixture();
+  const release = applySyncedCrosshair({ chart: h.chart, price: 10, time: '2025-06-18', series: h.series });
+  expect(hasSyntheticCrosshair(h.chart, 'cursor-sync')).toBe(true);
+  expect(hasSyntheticCrosshair(h.chart, 'trade-browse')).toBe(false);
+  release?.();
   h.chart.remove();
 });

@@ -13,7 +13,7 @@ type DriverWindow = Window & { __qa: {
   hit: (id: string, fraction: number) => { x: number; y: number };
 } };
 
-export async function setup(page: Page, timeframe: LiveTimeframe, book = false, secondCount = 240, boundedSeconds = false) {
+export async function setup(page: Page, timeframe: LiveTimeframe, book = false, secondCount = 240, boundedSeconds = false, distinctOhlc = false) {
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.clock.setFixedTime(new Date('2026-10-01T10:00:00+09:00'));
   await page.addInitScript(({ timeframe, book }) => {
@@ -43,7 +43,8 @@ export async function setup(page: Page, timeframe: LiveTimeframe, book = false, 
     const params = new URL(route.request().url()).searchParams;
     const step = Number(params.get('bucket_ms') ?? 60000);
     return route.fulfill({ json: { code: CODE, from: params.get('from'), to: params.get('to'), bucket_ms: step,
-      candles: Array.from({ length: 60 }, (_, i) => ({ t_ms: START + i * step, open: 35000, high: 35200, low: 34900, close: 35100, volume: 100 })),
+      candles: Array.from({ length: 60 }, (_, i) => ({ t_ms: START + i * step, open: 35000 + (distinctOhlc ? i * 10 : 0), high: 35200 + (distinctOhlc ? i * 10 : 0),
+        low: 34900 + (distinctOhlc ? i * 10 : 0), close: 35100 + (distinctOhlc ? i * 10 : 0), volume: 100 })),
       cached_dates: [DATE], fresh_dates: [], data_warnings: [] } });
   });
   await page.route('**/api/live/second-trade-dates?**', route => route.fulfill({ json: { dates: [DATE] } }));

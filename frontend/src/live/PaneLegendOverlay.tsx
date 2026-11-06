@@ -1006,7 +1006,14 @@ function PaneLegendOverlay({
       });
     };
     const onCrosshair = (param: MouseEventParams) => {
-      if (param.point && !param.sourceEvent && hasSyntheticCrosshair(chart) && !hasLocalCrosshairPointer(chart)) return;
+      if (param.point && !param.sourceEvent && hasSyntheticCrosshair(chart, 'cursor-sync') && !hasLocalCrosshairPointer(chart)) {
+        if (paramRef.current !== null) {
+          paramRef.current = null;
+          previous = null;
+          schedule();
+        }
+        return;
+      }
       const next = legendCrosshairSnapshot(param);
       paramRef.current = param.point == null ? null : param;
       if (sameLegendCrosshair(previous, next)) return;

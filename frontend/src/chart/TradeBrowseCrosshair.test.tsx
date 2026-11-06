@@ -38,7 +38,8 @@ it('draws the actual candle close without moving an already-visible viewport', (
   const { chart, scale } = scene();
   expect(chart.setCrosshairPosition).toHaveBeenCalledWith(100, T / 1000, expect.anything());
   expect(scale.setVisibleLogicalRange).not.toHaveBeenCalled();
-  expect(hasSyntheticCrosshair(chart as unknown as IChartApi)).toBe(true);
+  expect(hasSyntheticCrosshair(chart as unknown as IChartApi, 'trade-browse')).toBe(true);
+  expect(hasSyntheticCrosshair(chart as unknown as IChartApi, 'cursor-sync')).toBe(false);
   expect(screen.getByTestId('trade-browse-crosshair')).toHaveAttribute('data-rendered-ms', String(T));
   act(() => useTradeBrowseStore.getState().end());
   expect(chart.clearCrosshairPosition).toHaveBeenCalledOnce();
