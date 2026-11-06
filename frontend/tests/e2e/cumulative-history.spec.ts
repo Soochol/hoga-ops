@@ -8,6 +8,7 @@ type Frame = {
     holdingValues: number;
     holdingSame: boolean;
     holdingKnownUnchanged: boolean;
+    cumulativeHandlesSame: boolean;
     foreignValues: number;
     foreignFirst: number | null;
     foreignLast: number | null;
@@ -64,6 +65,10 @@ async function probe(page: Page) {
         const w = window as unknown as ProbeWindow;
         const [chartId, chart] = [...w.__liveCharts.entries()][0];
         const holding = chart.panes().flatMap(p => p.getSeries()).find(s => { const options = s.options(); return s.seriesType() === 'Line' && 'color' in options && options.color === '#EC4899'; })!;
+        const cumulative = chart.panes().flatMap(p => p.getSeries()).filter(s => {
+            const options = s.options();
+            return s.seriesType() === 'Line' && 'color' in options && ['#F97316', '#22D3EE'].includes(String(options.color));
+        });
         const knownValues = holding.data().flatMap(point => 'value' in point ? [point.value] : []);
         const read = (): Frame => {
             const live = chart.panes().flatMap(p => p.getSeries());
@@ -72,7 +77,7 @@ async function probe(page: Page) {
             const foreignValues = foreign?.data().flatMap(point => 'value' in point ? [point.value] : []) ?? [];
             const heldValues = new Set(holding.data().flatMap(point => 'value' in point ? [point.value] : []));
             const values = institution?.data().flatMap(p => 'value' in p ? [p.value] : []) ?? [];
-            return { foreignValues: foreignValues.length, foreignFirst: foreignValues[0] ?? null, foreignLast: foreignValues.at(-1) ?? null, holdingKnownUnchanged: knownValues.every(value => heldValues.has(value)), holdingValues: holding.data().filter(p => 'value' in p).length, holdingSame: live.includes(holding), institutionValues: values.length, institutionFirst: values[0] ?? null, institutionLast: values.at(-1) ?? null,
+            return { cumulativeHandlesSame: cumulative.length === 2 && cumulative.every(series => live.includes(series)), foreignValues: foreignValues.length, foreignFirst: foreignValues[0] ?? null, foreignLast: foreignValues.at(-1) ?? null, holdingKnownUnchanged: knownValues.every(value => heldValues.has(value)), holdingValues: holding.data().filter(p => 'value' in p).length, holdingSame: live.includes(holding), institutionValues: values.length, institutionFirst: values[0] ?? null, institutionLast: values.at(-1) ?? null,
                 institutionNotice: document.querySelector('[data-testid="pane-legend-rows-institution-cumulative"] [role="status"]')?.textContent ?? '', foreignNotice: document.querySelector('[data-testid="pane-legend-rows-foreign-cumulative"] [role="status"]')?.textContent ?? '',
                 candleCount: live.find(s => s.seriesType() === 'Candlestick')?.data().length ?? 0, range: chart.timeScale().getVisibleRange() };
         };
@@ -175,20 +180,15 @@ for (const failure of [false, true])
             expect(frames.every(frame => frame.holdingSame && frame.holdingValues >= before.holdingValues)).toBe(true);
             for (const frame of frames) {
                 expect(frame.holdingKnownUnchanged).toBe(true);
-                if (frame.institutionValues > 0) {
-                    expect(frame.institutionFirst).toBe(0);
-                    expect(frame.institutionLast).toBe((frame.institutionValues - 1) * 100);
-                    expect(frame.institutionNotice).toBe('');
-                }
-                else
-                    expect(frame.institutionNotice).not.toContain('누적 기준');
-                if (frame.foreignValues > 0) {
-                    expect(frame.foreignFirst).toBe(0);
-                    expect(frame.foreignLast).toBe((frame.foreignValues - 1) * -50);
-                    expect(frame.foreignNotice).toBe('');
-                }
-                else
-                    expect(frame.foreignNotice).not.toContain('누적 기준');
+                expect(frame.cumulativeHandlesSame).toBe(true);
+                expect(frame.institutionValues).toBeGreaterThanOrEqual(before.institutionValues);
+                expect(frame.institutionFirst).toBe(0);
+                expect(frame.institutionLast).toBe((frame.institutionValues - 1) * 100);
+                expect(frame.institutionNotice).toBe('');
+                expect(frame.foreignValues).toBeGreaterThanOrEqual(before.foreignValues);
+                expect(frame.foreignFirst).toBe(0);
+                expect(frame.foreignLast).toBe((frame.foreignValues - 1) * -50);
+                expect(frame.foreignNotice).toBe('');
             }
             await page.screenshot({ path: resolve(output, `history-${failure ? 'failure' : 'success'}-resolved.png`) });
             writeFileSync(resolve(output, `history-${failure ? 'failure' : 'success'}.json`), JSON.stringify({ syntheticBoundary: 'external market-data APIs; real product range loading, cumulative math and series', before, ordinary, pending, after, requestCount, requests, frames }, null, 2));

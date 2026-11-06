@@ -126,9 +126,16 @@ Missing candle-date rows, nulls, conflicts and unsafe sums taint the whole suffi
 
 The oldest valid loaded observation is the dynamic baseline. Its own daily flow
 is excluded. Actual earlier observations rebase the whole curve.
+While a same-Code range expands backward with the same end date, the pane retains
+its last covered response and baseline until expanded data is covered. New earlier candles
+remain blank during that wait. An explicit conflict with a retained subject value
+or an unlocated defect invalidates retention. Covered corrections and missing rows
+replace retained values even when the new curve has fewer numeric points.
+Retained data is projected against current candles so a newly exposed missing day
+inside the old interval still taints the suffix.
 Viewport changes do not change this baseline. Per the later 2026-11-07 user
-request, the legend shows query status and retry controls. The indicator settings
-explain the baseline and limitations. These indicators provide
+request, the legend shows only indicator names and values. Query status and retry
+controls are omitted. The indicator settings explain the baseline and limitations. These indicators provide
 shares only. They are neither holdings nor holdings percentages. Historical
 share-count denominators are unavailable, and corporate actions are not adjusted.
 The existing actual holdings display is named `외국인 보유`; its stable IDs and

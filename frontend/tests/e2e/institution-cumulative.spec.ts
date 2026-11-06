@@ -51,7 +51,7 @@ async function setup(page: Page, mode: { partial: boolean; gap: boolean }, reque
   await panel.getByRole('button', { name: label, exact: true }).click();
 }
 
-test('catalog add, truthful partial continuation, styles and real rendered preview', async ({ page }) => {
+test('catalog add, partial gaps, unobtrusive legends, styles and real rendered preview', async ({ page }) => {
   const requests: string[] = [], errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   const mode = { partial: true, gap: false };
@@ -65,7 +65,8 @@ test('catalog add, truthful partial continuation, styles and real rendered previ
   await panel.getByRole('button', { name: '닫기', exact: true }).click();
   const legend = page.getByTestId('pane-legend-rows-institution-cumulative');
   await expect(legend).not.toContainText('누적 기준');
-  await expect(legend).toContainText('일부 자료 · 6페이지 확인 · 기준일 이후 합계 미확인');
+  await expect(legend.getByRole('status')).toHaveCount(0);
+  await expect(legend.getByRole('button', { name: '누적 자료 계속 조회·재시도' })).toHaveCount(0);
   await expect.poll(async () => (await lines(page)).length).toBe(1);
   expect((await lines(page))[0].data.filter(point => 'value' in point).map(point => 'value' in point ? point.value : null)).toEqual([0]);
   await expect(page.locator('[data-testid="indicator-panel-shell"]')).toHaveCount(0);
@@ -73,11 +74,11 @@ test('catalog add, truthful partial continuation, styles and real rendered previ
   mkdirSync(preview, { recursive: true });
   await page.screenshot({ path: resolve(preview, 'institution-cumulative-partial.png') });
   mode.partial = false;
-  await legend.getByRole('button', { name: '누적 자료 계속 조회·재시도' }).click();
-  await expect(legend).toContainText('조회 완료');
+  await page.reload();
+  await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
   let sum = 0;
   const expected = observations.map((point, index) => index === 0 ? 0 : (sum += point.institution_net_shares));
-  await expect.poll(async () => (await lines(page))[0].data.filter(point => 'value' in point).map(point => 'value' in point ? point.value : null)).toEqual(expected);
+  await expect.poll(async () => (await lines(page))[0]?.data.filter(point => 'value' in point).map(point => 'value' in point ? point.value : null) ?? []).toEqual(expected);
   const line = (await lines(page))[0];
   expect(line.options).toMatchObject({ color: '#F97316', lineWidth: 3 });
   await page.screenshot({ path: resolve(preview, 'institution-cumulative-netbuy.png') });
@@ -109,6 +110,8 @@ test('two distinct cumulative categories, repeated panes, persistence, hide, del
   await expect.poll(async () => (await chartState(page))[0].panes.filter(p => p.series.some(s => s.type === 'Line' && 'color' in s.options && ['#EC4899','#22D3EE'].includes(String(s.options.color)))).length).toBe(3);
   const foreignLegend = page.getByTestId('pane-legend-rows-foreign-cumulative');
   await expect(foreignLegend).toContainText('외국인 누적 순매수(주)');
+  await expect(page.getByTestId(/^indicator-instance-legend-/).getByRole('button', { name: '누적 자료 계속 조회·재시도' })).toHaveCount(0);
+  await expect(page.getByTestId(/^indicator-instance-legend-/)).not.toContainText('조회 완료');
   const before = requests.length;
   await page.reload();
   await expect(foreignLegend).not.toContainText('누적 기준');
@@ -178,11 +181,8 @@ test('cumulative exact gaps and two-window cursor survive actual 700px resize', 
       await expect(target).toContainText('외국인 누적 순매수(주)—');
     }
   }
-  await expect(source.getByRole('button', { name: '누적 자료 계속 조회·재시도' })).toBeInViewport();
-  expect(await source.getByRole('status').evaluate(node => {
-    const range = document.createRange(); range.selectNodeContents(node);
-    return range.getBoundingClientRect().right <= node.closest('[data-testid]')!.getBoundingClientRect().right + 1;
-  })).toBe(true);
+  await expect(source.getByRole('button', { name: '누적 자료 계속 조회·재시도' })).toHaveCount(0);
+  await expect(source.getByRole('status')).toHaveCount(0);
   mkdirSync(preview, { recursive: true });
   await page.locator('[data-win="s"]').screenshot({ path: resolve(preview, 'cumulative-window-700.png') });
 });
