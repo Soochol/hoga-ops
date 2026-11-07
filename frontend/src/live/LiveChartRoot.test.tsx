@@ -54,7 +54,7 @@ vi.mock('lightweight-charts', async () => {
         priceToCoordinate: vi.fn(() => 100),
         removeSeries: vi.fn(),
         applyOptions: vi.fn(),
-        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(),
         attachPrimitive: vi.fn(),
@@ -217,7 +217,7 @@ describe('LiveChartRoot', () => {
       update: vi.fn(),
       removeSeries: vi.fn(),
       applyOptions: vi.fn(),
-      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
       createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
       removePriceLine: vi.fn(),
       attachPrimitive: vi.fn(),
@@ -641,7 +641,7 @@ describe('LiveChartRoot', () => {
       update: vi.fn(),
       removeSeries: vi.fn(),
       applyOptions: vi.fn(),
-      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
       createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
       removePriceLine: vi.fn(),
       attachPrimitive: vi.fn(),
@@ -727,7 +727,7 @@ describe('LiveChartRoot', () => {
         update: vi.fn(),
         removeSeries: vi.fn(),
         applyOptions: vi.fn(),
-        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(),
         attachPrimitive: vi.fn(),
@@ -815,7 +815,7 @@ describe('LiveChartRoot', () => {
         update: vi.fn(),
         removeSeries: vi.fn(),
         applyOptions: vi.fn(),
-        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(),
         attachPrimitive: vi.fn(),
@@ -1007,7 +1007,7 @@ describe('LiveChartRoot', () => {
     const chart = {
       addSeries: vi.fn(() => ({
         setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
-        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
         setMarkers: vi.fn(),
@@ -1337,7 +1337,7 @@ describe('LiveChartRoot', () => {
       update: vi.fn(),
       removeSeries: vi.fn(),
       applyOptions: vi.fn(),
-      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
       createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
       removePriceLine: vi.fn(),
       attachPrimitive: vi.fn(),
@@ -2908,7 +2908,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     return {
       addSeries: vi.fn(() => ({
         setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
-        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
         setMarkers: vi.fn(),
@@ -3827,7 +3827,7 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     return {
       addSeries: vi.fn(() => ({
         setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
-        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
         setMarkers: vi.fn(),
@@ -4133,7 +4133,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
         // 실제로 바뀌는 순간과 같다.
         setData: vi.fn(() => applyPending()),
         update: vi.fn(), removeSeries: vi.fn(), applyOptions: vi.fn(),
-        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
         setMarkers: vi.fn(),
@@ -4466,7 +4466,7 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
       addSeries: vi.fn(() => ({
         setData: vi.fn(() => applyPending()),
         update: vi.fn(), removeSeries: vi.fn(), applyOptions: vi.fn(),
-        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
         setMarkers: vi.fn(),
@@ -5184,7 +5184,7 @@ function buildChartMockCapturing(handlers: Array<(r: unknown) => void>) {
       update: vi.fn(),
       removeSeries: vi.fn(),
       applyOptions: vi.fn(),
-      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
       createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
       removePriceLine: vi.fn(),
       attachPrimitive: vi.fn(),
@@ -5378,7 +5378,7 @@ describe('LiveChartRoot timeframe-switch axis freshness (regression)', () => {
         },
         update: vi.fn(),
         applyOptions: vi.fn(),
-        priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(),
         attachPrimitive: vi.fn(),
@@ -5595,7 +5595,7 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
       const chart = {
         addSeries: vi.fn(() => ({
           setData: vi.fn(), update: vi.fn(), applyOptions: vi.fn(),
-          priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+          priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
           createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
           removePriceLine: vi.fn(), attachPrimitive: vi.fn(),
           detachPrimitive: vi.fn(), setMarkers: vi.fn(),
@@ -5777,7 +5777,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     const chart = {
       addSeries: vi.fn(() => ({
         setData: vi.fn(), update: vi.fn(), removeSeries: vi.fn(),
-        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+        applyOptions: vi.fn(), priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
         createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
         removePriceLine: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
         setMarkers: vi.fn(),
@@ -5847,6 +5847,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
     getStretchFactor: vi.fn(() => stretch),
     // PaneLegendOverlay 가 pane top 오프셋 계산에 사용한다(드래그 캡처는 아님).
     getHeight: vi.fn(() => 100),
+    getSeries: vi.fn(() => []),
   });
 
   // 1m 기본 토글 = candle, volume, quote-totals, ratio, fill-strength,
@@ -5857,7 +5858,7 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
       update: vi.fn(),
       removeSeries: vi.fn(),
       applyOptions: vi.fn(),
-      priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
+      priceScale: vi.fn(() => ({ applyOptions: vi.fn(), setAutoScale: vi.fn() })),
       createPriceLine: vi.fn(() => ({ applyOptions: vi.fn() })),
       removePriceLine: vi.fn(),
       attachPrimitive: vi.fn(),

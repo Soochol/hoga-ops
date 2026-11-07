@@ -27,11 +27,16 @@ function makeChart() {
     paneIndex: number;
     attachPrimitive: ReturnType<typeof vi.fn>;
     detachPrimitive: ReturnType<typeof vi.fn>;
+    options: () => { priceScaleId: string };
+    priceScale: () => { setAutoScale: ReturnType<typeof vi.fn> };
   }> = [];
-  const addSeries = vi.fn((_type: unknown, _opts: unknown, paneIndex: number) => {
+  const addSeries = vi.fn((_type: unknown, options: { priceScaleId?: string } | undefined, paneIndex: number) => {
+    const scale = { setAutoScale: vi.fn() };
     const series = {
       setData: vi.fn(), update: vi.fn(), paneIndex,
       attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+      options: () => ({ priceScaleId: options?.priceScaleId ?? 'right' }),
+      priceScale: () => scale,
     };
     created.push(series);
     return series;
@@ -39,6 +44,9 @@ function makeChart() {
   const removeSeries = vi.fn();
   const clearCrosshairPosition = vi.fn();
   const chart = {
+    panes: () => Array.from({ length: Math.max(-1, ...created.map(series => series.paneIndex)) + 1 }, (_, paneIndex) => ({
+      getSeries: () => created.filter(series => series.paneIndex === paneIndex),
+    })),
     addSeries,
     clearCrosshairPosition,
     removeSeries,
@@ -79,8 +87,104 @@ const PROJECT_SPEC: PaneSpec = {
 };
 const candleBundle = (rows: Array<{ time: number; close: number }>) => ({ candles: rows }) as never;
 
+function makeScaleChart() {
+  let defaultAutoScale = false;
+  const scales = new Map<string, { autoScale: boolean; setAutoScale: ReturnType<typeof vi.fn<(on: boolean) => void>> }>();
+  const panes: { options: () => { priceScaleId: string | undefined } }[][] = [];
+  const chart = {
+    panes: () => panes.map(series => ({ getSeries: () => series })),
+    addSeries: (_type: unknown, options: { priceScaleId?: string } | undefined, paneIndex: number) => {
+      const priceScaleId = options?.priceScaleId ?? 'right';
+      const key = `${paneIndex}:${priceScaleId}`;
+      let scale = scales.get(key);
+      if (!scale) {
+        const created = { autoScale: defaultAutoScale, setAutoScale: vi.fn((on: boolean) => {
+          created.autoScale = on;
+          defaultAutoScale = on;
+        }) };
+        scales.set(key, created);
+        scale = created;
+      }
+      const series = {
+        options: () => ({ priceScaleId: options?.priceScaleId }), priceScale: () => scale,
+        setData: vi.fn(), update: vi.fn(), attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+      };
+      while (panes.length <= paneIndex) panes.push([]);
+      panes[paneIndex].push(series);
+      return series;
+    },
+    removeSeries: vi.fn((series: (typeof panes)[number][number]) => {
+      panes.forEach((pane, index) => { panes[index] = pane.filter(existing => existing !== series); });
+    }),
+    clearCrosshairPosition: vi.fn(),
+  };
+  return { chart: chart as never, scales, addSeries: chart.addSeries };
+}
+
 describe('RangeSeriesPane', () => {
   afterEach(cleanup);
+
+  it('initializes new axes independently of a linked pane manual-scale default', () => {
+    const { chart, scales, addSeries } = makeScaleChart();
+    addSeries({}, { priceScaleId: 'right' }, 0);
+    const linked = scales.get('0:right')!;
+    const spec: PaneSpec = {
+      ...SPEC,
+      series: [
+        { ...SPEC.series[0], options: { priceScaleId: 'right' } },
+        { ...SPEC.series[0], options: { priceScaleId: 'right' } },
+        { ...SPEC.series[0], options: { priceScaleId: 'independent' } },
+      ],
+    };
+    const { rerender } = render(<RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={1} precedingPaneKey="" spec={spec} />);
+    const right = scales.get('1:right')!;
+    const independent = scales.get('1:independent')!;
+    expect(linked.autoScale).toBe(false);
+    expect(linked.setAutoScale).not.toHaveBeenCalled();
+    expect(right.autoScale).toBe(true);
+    expect(right.setAutoScale).toHaveBeenCalledExactlyOnceWith(true);
+    expect(independent.setAutoScale).toHaveBeenCalledExactlyOnceWith(true);
+
+    right.setAutoScale(false);
+    rerender(<RangeSeriesPane chart={chart} bundle={{ candles: [] } as never} axis={axis} paneIndex={1} precedingPaneKey="" spec={spec} />);
+    expect(right.autoScale).toBe(false);
+    expect(right.setAutoScale).toHaveBeenCalledTimes(2);
+    expect(independent.autoScale).toBe(true);
+  });
+
+  it('keeps an existing shared axis manual and lets afterAdd override a new axis', () => {
+    const { chart, scales, addSeries } = makeScaleChart();
+    addSeries({}, { priceScaleId: 'right' }, 0);
+    const spec: PaneSpec = {
+      ...SPEC,
+      series: [
+        { ...SPEC.series[0], options: { priceScaleId: 'right' } },
+        { ...SPEC.series[0], options: { priceScaleId: 'independent' },
+          afterAdd: series => series.priceScale().setAutoScale(false) },
+        { ...SPEC.series[0], options: { priceScaleId: 'independent' } },
+      ],
+    };
+    render(<RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} precedingPaneKey="" spec={spec} />);
+    expect(scales.get('0:right')!.setAutoScale).not.toHaveBeenCalled();
+    expect(scales.get('0:right')!.autoScale).toBe(false);
+    expect(scales.get('0:independent')!.setAutoScale.mock.calls).toEqual([[true], [false]]);
+    expect(scales.get('0:independent')!.autoScale).toBe(false);
+  });
+
+  it('keeps a manual default axis when a retained overlay omits its priceScaleId', () => {
+    const { chart, scales, addSeries } = makeScaleChart();
+    addSeries({}, undefined, 0);
+    const right = scales.get('0:right')!;
+    right.setAutoScale(false);
+    const spec = { ...SPEC, name: 'candle' };
+    const { rerender } = render(<RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} precedingPaneKey="" spec={spec} />);
+    expect(right.autoScale).toBe(false);
+    expect(right.setAutoScale.mock.calls).toEqual([[false]]);
+
+    rerender(<RangeSeriesPane chart={chart} bundle={bundle} axis={axis} paneIndex={0} precedingPaneKey="" spec={spec} candleAlwaysOnTop />);
+    expect(right.autoScale).toBe(false);
+    expect(right.setAutoScale.mock.calls).toEqual([[false]]);
+  });
 
   it('re-pushes data after a paneIndex change re-creates the series', () => {
     // Regression: removing a pane above (volume off) shifts this pane's index,
@@ -436,15 +540,18 @@ describe('RangeSeriesPane', () => {
 // 동작을 그대로 재현한다 — pane 의 마지막 series 를 지우면 그 pane 이 사라지고
 // 아래 pane 들의 인덱스가 당겨진다.
 function makePaneChart() {
-  const panes: unknown[][] = [];
+  const panes: { options: () => { priceScaleId: string } }[][] = [];
   /** `addSeries` 가 현재 pane 수보다 **2 이상 큰** 인덱스를 요구한 횟수. 정상 경로는
    *  오름차순 append 뿐이라 항상 0 이어야 한다(0 이 아니면 중간에 빈 pane 이 생긴다). */
   const gapRequests: number[] = [];
   const chart = {
-    addSeries: vi.fn((_type: unknown, _opts: unknown, paneIndex: number) => {
+    panes: () => panes.map(series => ({ getSeries: () => series })),
+    addSeries: vi.fn((_type: unknown, options: { priceScaleId?: string } | undefined, paneIndex: number) => {
       const series = {
         setData: vi.fn(), update: vi.fn(),
         attachPrimitive: vi.fn(), detachPrimitive: vi.fn(),
+        options: () => ({ priceScaleId: options?.priceScaleId ?? 'right' }),
+        priceScale: () => ({ setAutoScale: vi.fn() }),
       };
       // 재생성된 핸들이 **데이터를 받았는지**까지 봐야 한다. pane 구성(개수)만 재면
       // "series 는 제자리인데 전부 비어 있는" 상태가 초록으로 통과한다.
@@ -454,7 +561,7 @@ function makePaneChart() {
       return series;
     }),
     clearCrosshairPosition: vi.fn(),
-    removeSeries: vi.fn((series: unknown) => {
+    removeSeries: vi.fn((series: (typeof panes)[number][number]) => {
       const i = panes.findIndex((p) => p.includes(series));
       if (i < 0) return;
       panes[i] = panes[i].filter((x) => x !== series);

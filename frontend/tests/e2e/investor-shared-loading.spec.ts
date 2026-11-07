@@ -39,10 +39,19 @@ async function readChart(page: Page) {
     return {
       id,
       owner: chart.chartElement().closest<HTMLElement>('[data-win]')?.dataset.win,
+      rightAutoScale: chart.options().rightPriceScale.autoScale,
+      logicalRange: chart.timeScale().getVisibleLogicalRange(),
+      timeRange: chart.timeScale().getVisibleRange(),
       panes: chart.panes().map(pane => ({
+        height: pane.getHeight(),
         series: pane.getSeries().map(series => ({
           type: series.seriesType(),
+          visible: series.options().visible,
           data: series.data().map(point => ({ time: point.time, value: 'value' in point ? point.value : null })),
+          coordinates: series.data().flatMap(point => 'value' in point ? [series.priceToCoordinate(point.value)] : []),
+          range: series.priceScale().getVisibleRange(),
+          autoScale: series.priceScale().options().autoScale,
+          scaleId: series.options().priceScaleId,
         })),
       })),
     };
@@ -96,11 +105,28 @@ test('daily bars, daily lines and cumulative lines share one strict net quantity
   releaseNextPage();
   await expect.poll(async () => (await readChart(page)).panes.flatMap(pane => pane.series)
     .some(series => series.type === 'Line' && JSON.stringify(series.data.map(point => point.value)) === JSON.stringify([99, 109, 109, 105, 110, 110, 118, 116]))).toBe(true);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await info.attach('curve geometry before visibility assertion', {
+    body: JSON.stringify({ progressive, corrected: await readChart(page) }, null, 2),
+    contentType: 'application/json',
+  });
+  await expect.poll(async () => {
+    const state = await readChart(page);
+    return [116, 87].map(value => state.panes.some(pane => pane.series.some(series =>
+      series.type === 'Line' && series.data.at(-1)?.value === value
+      && series.coordinates.every(y => y !== null && Number.isFinite(y) && y >= 0 && y <= pane.height))));
+  }).toEqual([true, true]);
   const chart = await readChart(page);
   expect(chart.owner).toBe(chartWindow.id);
+  expect(chart.logicalRange).toEqual(progressive.logicalRange);
+  expect(chart.timeRange).toEqual(progressive.timeRange);
   const histograms = chart.panes.flatMap(pane => pane.series).filter(series => series.type === 'Histogram');
   const lines = chart.panes.flatMap(pane => pane.series).filter(series => series.type === 'Line');
   const values = (series: (typeof lines)[number]) => series.data.map(point => point.value);
+  expect(histograms.filter(series => [99, 77].includes(series.data[0]?.value ?? 0))
+    .map(series => series.autoScale)).toEqual([false, false]);
+  expect(lines.filter(series => series.data.some(point => point.value !== null))
+    .every(series => series.autoScale)).toBe(true);
   expect(histograms.map(values)).toEqual(expect.arrayContaining([
     quantities.map(row => row.foreign), quantities.map(row => row.institution),
   ]));
