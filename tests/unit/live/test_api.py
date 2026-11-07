@@ -2104,6 +2104,27 @@ class _FakeKisForInvestor:
         #: 실으면 모든 포인트가 같은 분해를 든다. 기본 None 은 지수 경로와 같은 모양이다.
         self.breakdown: InvestorSubjectBreakdown | None = None
 
+    async def call(self, api_id, body, **_kwargs):
+        from hoga.live.kiwoom_rest import Page
+
+        assert api_id == "ka10059"
+        result = await self.fetch_investor_net(body["stk_cd"], "20240101", body["dt"])
+        parts = {
+            "fin_invest": "fnnc_invt", "insurance": "insrnc", "trust": "invtrt", "other_fin": "etc_fnnc",
+            "bank": "bank", "pension": "penfnd_etc", "private_fund": "samo_fund", "nation": "natn",
+            "individual": "ind_invsr", "native_foreign": "natfor", "other_corp": "etc_corp",
+        }
+        rows = []
+        for point in result.points:
+            breakdown = point.breakdown.model_dump() if point.breakdown is not None else {"fin_invest": -50}
+            native = breakdown.get("native_foreign", 0)
+            rows.append({
+                "dt": datetime.datetime.fromtimestamp(point.t_ms / 1000, datetime.UTC).strftime("%Y%m%d"),
+                "orgn": point.institution_net, "frgnr_invsr": point.foreign_net - native, "natfor": native,
+                **{raw_key: breakdown.get(field, 0) for field, raw_key in parts.items()},
+            })
+        return Page(rows=rows, cont=False, next_key="", raw={"stk_invsr_orgn": rows}, raw_cont_yn="N")
+
     async def fetch_investor_net(
         self, code: str, from_yyyymmdd: str, to_yyyymmdd: str, *, axis: str = "2", trade_side="net"
     ) -> InvestorNetFetchResult:
@@ -2419,12 +2440,12 @@ def test_past_investor_net_cache_hit_skips_kis(tmp_path, monkeypatch) -> None:
         assert len(fake.calls) == 1
 
 
-def test_past_investor_net_partial_hit_gap_fill(tmp_path, monkeypatch) -> None:
+def test_past_investor_amount_partial_hit_gap_fill(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestor()
     app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
-        c.get("/api/live/past-investor-net?code=005930&from=20240301&to=20240501")
-        r2 = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240501")
+        c.get("/api/live/past-investor-net?code=005930&from=20240301&to=20240501&axis=amount")
+        r2 = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240501&axis=amount")
         body = r2.json()
         assert len(fake.calls) == 2
         _, gap_from, gap_to = fake.calls[1]
@@ -2474,7 +2495,7 @@ def test_past_investor_net_rate_limit_surfaces_warning(tmp_path, monkeypatch) ->
         assert any(w["reason"] == "rate_limit_upstream" for w in body["data_warnings"])
 
 
-def test_past_investor_net_violation_surfaces_to_wire(tmp_path, monkeypatch) -> None:
+def test_past_investor_amount_violation_surfaces_to_wire(tmp_path, monkeypatch) -> None:
     fake = _FakeKisForInvestor()
     fake.violations = [
         InvestorNetInvariantViolation(
@@ -2485,7 +2506,7 @@ def test_past_investor_net_violation_surfaces_to_wire(tmp_path, monkeypatch) -> 
     ]
     app = _investor_app(tmp_path, fake, monkeypatch)
     with TestClient(app) as c:
-        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105")
+        r = c.get("/api/live/past-investor-net?code=005930&from=20240101&to=20240105&axis=amount")
         body = r.json()
         warn = [w for w in body["data_warnings"] if w["reason"] == "invariant_violation"]
         assert len(warn) >= 1
@@ -3651,7 +3672,7 @@ def test_daily_investor_six_modes_have_separate_caches(tmp_path, monkeypatch):
                     assert set(data) == {
                         'code', 'from', 'to', 'unit', 'trade_side', 'points',
                         'cached_batches', 'fresh_batches', 'data_warnings',
-                    }
+                    } | ({'daily_flow'} if axis == 'qty' and side == 'net' else set())
                     assert data['trade_side'] == side
                     assert data['unit'] == unit
                     expected = {'net': -10, 'buy': 120, 'sell': 130}[side] * int(vendor_axis)

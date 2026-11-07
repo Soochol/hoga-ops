@@ -19,6 +19,7 @@ import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectVolume } from '../chart/projectors/volume';
 import type { TradeSnapshot } from './bucketHogaSeries';
+import type { LivePastInvestorNetResponse } from '../api/livePastInvestorNet';
 
 // Live fixture — used to be a mock of useLiveSeries when useLiveBundle owned
 // the hook call. After the LivePage-lift refactor, `live` is a prop passed
@@ -144,16 +145,19 @@ vi.mock('../api/screenerDailyCandles', () => ({
 }));
 
 const investorMock = {
+  responses: [] as LivePastInvestorNetResponse[],
   side: undefined as 'net' | 'buy' | 'sell' | undefined,
   isLoading: false,
   points: [] as Array<{ t_ms: number; foreign_net: number; institution_net: number }>,
 };
-const livePastInvestorNetSpy = vi.fn(() => ({
-  data: { points: investorMock.points, trade_side: investorMock.side },
+const livePastInvestorNetSpy = vi.fn((...args: unknown[]) => ({
+  data: investorMock.responses.find(response => (response.trade_side ?? 'net') === args[4])
+    ?? { points: investorMock.points, trade_side: investorMock.side },
   isLoading: investorMock.isLoading,
   error: null,
 }));
-vi.mock('../api/livePastInvestorNet', () => ({
+vi.mock('../api/livePastInvestorNet', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/livePastInvestorNet')>()),
   useLivePastInvestorNet: (...args: unknown[]) => livePastInvestorNetSpy(...args as []),
 }));
 
@@ -938,6 +942,7 @@ describe('useLiveBundle', () => {
     screenerDailyCandlesMock.from = '';
     rangeMock.isPlaceholderData = false;
     rangeMock.isFetching = false;
+    investorMock.responses = [];
     investorMock.side = undefined;
     investorMock.isLoading = false;
     investorMock.points = [];
@@ -2951,6 +2956,30 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     const lastInvestorCall = livePastInvestorNetSpy.mock.calls.at(-1) as unknown as unknown[];
     expect(lastInvestorCall[0]).toBeNull();
+  });
+
+  it('supplies the requested investor scope even when bars are disabled and candle bounds differ', () => {
+    const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
+    expect(result.current.chartBundle?.investorRequestScope).toMatchObject({ code: '005930', to: '20260527' });
+    expect(result.current.chartBundle?.investorRequestScope?.from).not.toBe(result.current.chartBundle?.from_date);
+    expect(result.current.chartBundle?.investorDailyFlow).toBeNull();
+  });
+
+  it('uses a valid institution net response while the foreign observer requests gross shares', () => {
+    const { result, rerender } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture,
+      { investorNetEnabled: true, foreignTradeSide: 'buy', institutionTradeSide: 'net' }), { wrapper });
+    const scope = result.current.chartBundle!.investorRequestScope!;
+    const flow = { ...scope, source: 'kiwoom_ka10059' as const, provider_scope: 'KRX' as const,
+      unit: 'qty_shares' as const, trade_side: 'net' as const, pagination: 'covered' as const,
+      unlocated_defect: false, observations: [], pages_observed: 1, can_continue: false, data_warnings: [] };
+    investorMock.responses = [
+      { ...scope, unit: 'qty_shares', trade_side: 'buy', points: [], cached_batches: [], fresh_batches: [], data_warnings: [] },
+      { ...scope, unit: 'qty_shares', trade_side: 'net', daily_flow: flow, points: [], cached_batches: [], fresh_batches: [], data_warnings: [] },
+    ];
+    rerender();
+    expect(result.current.chartBundle?.investorDailyFlow).toEqual(flow);
+    expect(result.current.chartBundle?.investorTradeSide).toBe('buy');
+    expect(result.current.chartBundle?.institutionInvestorTradeSide).toBe('net');
   });
 
   it('D timeframe enables investor query and holds reveal loading when investor panes are visible', () => {

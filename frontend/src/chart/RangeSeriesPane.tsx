@@ -311,7 +311,12 @@ function RangeSeriesPaneInner<Ctx>({
         groupPaneIds,
         groupAxisMode,
       );
+      const priceScaleId = options?.priceScaleId ?? 'right';
+      const existingAxis = chart.panes()[paneIndex]?.getSeries()
+        .some(series => (series.options().priceScaleId ?? 'right') === priceScaleId) ?? false;
       const series = chart.addSeries(s.type, options, paneIndex);
+      // lwc's manual right-axis writes also change the defaults for later panes.
+      if (!existingAxis) series.priceScale().setAutoScale(true);
       s.afterAdd?.(series);
       seriesList[specIndex] = series;
     });

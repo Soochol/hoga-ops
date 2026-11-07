@@ -30,18 +30,30 @@ const histogramOptions = {
   lastValueVisible: false,
 } as const;
 
+/** Net quantity panes share nullable subject observations. Gross and index
+ * panes retain their existing numeric points. */
+export function investorSeriesPoints(bundle: RangeBundle, subject: 'foreign' | 'institution'): { t_ms: number; value: number | null }[] {
+  const side = subject === 'institution' ? bundle.institutionInvestorTradeSide ?? bundle.investorTradeSide : bundle.investorTradeSide;
+  if ((side ?? 'net') === 'net' && bundle.investorDailyFlow !== undefined) {
+    return bundle.investorDailyFlow?.observations.map(point => ({ t_ms: point.t_ms,
+      value: subject === 'foreign' ? point.foreign_net_shares : point.institution_net_shares })) ?? [];
+  }
+  const points = subject === 'institution' ? bundle.institutionInvestorPoints ?? bundle.investorPoints : bundle.investorPoints;
+  return points.map(point => ({ t_ms: point.t_ms, value: subject === 'foreign' ? point.foreign_net : point.institution_net }));
+}
+
 export function projectInvestorNet(
   bundle: RangeBundle,
   axis: VirtualAxis,
   which: 'foreign' | 'institution',
 ): HistogramData<Time>[] {
   const { up, down } = resolveTokensThemed(TOKEN_SPEC);
-  const points = which === 'institution' ? bundle.institutionInvestorPoints ?? bundle.investorPoints : bundle.investorPoints;
+  const points = investorSeriesPoints(bundle, which);
   const side = which === 'institution' ? bundle.institutionInvestorTradeSide ?? bundle.investorTradeSide : bundle.investorTradeSide;
   return points
-    .filter((p) => axis.contains(p.t_ms))
+    .filter((p): p is { t_ms: number; value: number } => p.value !== null && axis.contains(p.t_ms))
     .map((p): HistogramData<Time> => {
-      const value = which === 'foreign' ? p.foreign_net : p.institution_net;
+      const value = p.value;
       return {
         time: (axis.toVirtual(p.t_ms) / 1000) as UTCTimestamp,
         value,

@@ -1,7 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiCall } from './client';
-import { isKrxRegularSessionNow } from '../live/liveDateTime';
-
 export type DailyFlowSubject = 'foreign' | 'institution';
 export type DailyFlowSource = 'kiwoom_ka10059';
 export type DailyFlowScope = 'KRX';
@@ -14,11 +10,12 @@ export interface InvestorDailyFlowIssue { reason: DailyFlowIssueReason; date: st
 export interface InvestorDailyFlowResponse {
   code: string; from: string; to: string; source: DailyFlowSource; provider_scope: DailyFlowScope;
   unit: DailyFlowUnit; trade_side: DailyFlowSide; observations: InvestorDailyFlowObservation[];
-  pagination: DailyFlowPagination; unlocated_defect: boolean; pages_observed: number; can_continue: boolean;
+  pagination: DailyFlowPagination; unlocated_defect: boolean; pages_observed: number;
+  /** Whether this requested range can advance now. false does not imply terminal coverage. */
+  can_continue: boolean;
   data_warnings: InvestorDailyFlowIssue[];
 }
 export interface DailyFlowRequestScope { code: string; from: string; to: string }
-const AUTO_REQUEST_LIMIT = 22;
 export function isDailyFlowDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^[0-9]{8}$/.test(value)) return false;
   const date = new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6)}T00:00:00Z`);
@@ -54,24 +51,4 @@ export function parseInvestorDailyFlow(value: unknown, scope: DailyFlowRequestSc
     unit: value.unit, trade_side: value.trade_side, observations: value.observations, pagination: value.pagination,
     unlocated_defect: value.unlocated_defect, pages_observed: value.pages_observed, can_continue: value.can_continue,
     data_warnings: value.data_warnings };
-}
-export function useInvestorDailyFlow(scope: DailyFlowRequestScope | null) {
-  return useQuery({
-    queryKey: ['live', 'investor-daily-flow', scope?.code, scope?.from, scope?.to],
-    enabled: Boolean(scope && isDailyFlowDate(scope.from) && isDailyFlowDate(scope.to) && scope.from <= scope.to),
-    queryFn: async ({ signal }) => {
-      if (!scope) throw new Error('투자자 누적 자료 조회 범위 없음');
-      let previousPages = 0;
-      for (let request = 1; ; request++) {
-        signal.throwIfAborted();
-        const result = parseInvestorDailyFlow(await apiCall<unknown>(`/api/live/investor-daily-flow?code=${scope.code}&from=${scope.from}&to=${scope.to}`, { signal }), scope);
-        signal.throwIfAborted();
-        if (result.pagination !== 'incomplete' || !result.can_continue
-          || !result.data_warnings.some(issue => issue.reason === 'page_budget')
-          || result.pages_observed <= previousPages || request >= AUTO_REQUEST_LIMIT) return result;
-        previousPages = result.pages_observed;
-      }
-    },
-    staleTime: 60_000, refetchInterval: query => query.state.data?.pagination === 'covered' && isKrxRegularSessionNow() ? 60_000 : false, retry: false,
-  });
 }

@@ -1,3 +1,4 @@
+import { netQuantityEnvelope } from './helpers/investorFlow';
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiPrefix } from './helpers/apiRoutes';
@@ -19,8 +20,9 @@ test('investor panes have independent modes, restore after reload and can be rem
     requests.push(side);
     if (side === 'sell') await sellReady;
     const value = side === 'net' ? -10 : side === 'buy' ? 120 : 130;
+    const points = [0, 1].map(i => ({ t_ms: t + i * 86400000, foreign_net: value, institution_net: value * 2 }));
     await r.fulfill({ json: { code: '098460', from: p.get('from'), to: p.get('to'), unit: 'qty_shares', trade_side: side,
-      points: [0, 1].map(i => ({ t_ms: t + i * 86400000, foreign_net: value, institution_net: value * 2 })),
+      ...(side === 'net' ? netQuantityEnvelope(p, points) : {}), points,
       cached_batches: [], fresh_batches: [], data_warnings: [] } });
   });
   await page.goto('/live?code=098460');

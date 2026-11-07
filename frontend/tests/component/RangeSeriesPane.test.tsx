@@ -13,10 +13,18 @@ const makeMockChart = () => {
     setData: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     createPriceLine: ReturnType<typeof vi.fn>;
+    paneIndex: number;
+    options: () => { priceScaleId: string | undefined };
+    priceScale: () => { setAutoScale: ReturnType<typeof vi.fn> };
   }> = [];
   const chart = {
-      addSeries: vi.fn((_definition: unknown, _options?: unknown, _paneIndex?: number) => {
-        const s = { setData: vi.fn(), update: vi.fn(), createPriceLine: vi.fn() };
+      panes: () => Array.from({ length: Math.max(-1, ...seriesList.map(series => series.paneIndex)) + 1 }, (_, paneIndex) => ({
+        getSeries: () => seriesList.filter(series => series.paneIndex === paneIndex),
+      })),
+      addSeries: vi.fn((_definition: unknown, options?: { priceScaleId?: string }, paneIndex = 0) => {
+        const scale = { setAutoScale: vi.fn() };
+        const s = { setData: vi.fn(), update: vi.fn(), createPriceLine: vi.fn(), paneIndex,
+          options: () => ({ priceScaleId: options?.priceScaleId }), priceScale: () => scale };
         seriesList.push(s);
         return s;
       }),

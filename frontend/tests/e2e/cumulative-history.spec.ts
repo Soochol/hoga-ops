@@ -1,3 +1,4 @@
+import { investorNetEnvelope } from './helpers/investorFlow';
 import { expect, test, type Page } from '@playwright/test';
 import type { IChartApi, ISeriesApi, SeriesType } from 'lightweight-charts';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -118,13 +119,13 @@ for (const failure of [false, true])
             const observations = rows(p).map(c => ({ date: ymd(c.t_ms), t_ms: c.t_ms, quantity_shares: 6000000 + all.indexOf(c) * 1000, ratio_pct: 26 + all.indexOf(c) / 1000 }));
             await route.fulfill({ json: { code: p.get('code'), from: p.get('from'), to: p.get('to'), source: 'kiwoom_ka10008', provider_scope: 'KRX', institution_supported: false, observations, oldest_observed_date: observations[0]?.date ?? null, latest_observed_date: observations.at(-1)?.date ?? null, pages_observed: 2, pagination_complete: true, exhausted: true, partial: false, data_warnings: [] } });
         });
-        await page.route(apiExact('live/investor-daily-flow'), async (route) => {
+        await page.route(apiExact('live/past-investor-net'), async (route) => {
             const p = new URL(route.request().url()).searchParams;
             const older = firstFrom && p.get('from')! < firstFrom;
             requests.push({ kind: 'flow', from: p.get('from') });
             if (older && hold)
                 await gate;
-            await route.fulfill({ json: { code: p.get('code'), from: p.get('from'), to: p.get('to'), source: 'kiwoom_ka10059', provider_scope: 'KRX', unit: 'qty_shares', trade_side: 'net', observations: rows(p).map(c => ({ date: ymd(c.t_ms), t_ms: c.t_ms, institution_net_shares: 100, foreign_net_shares: -50 })), pagination: 'covered', unlocated_defect: false, pages_observed: 8, can_continue: false, data_warnings: [] } });
+            await route.fulfill({ json: investorNetEnvelope({ code: p.get('code'), from: p.get('from'), to: p.get('to'), source: 'kiwoom_ka10059', provider_scope: 'KRX', unit: 'qty_shares', trade_side: 'net', observations: rows(p).map(c => ({ date: ymd(c.t_ms), t_ms: c.t_ms, institution_net_shares: 100, foreign_net_shares: -50 })), pagination: 'covered', unlocated_defect: false, pages_observed: 8, can_continue: false, data_warnings: [] }) });
         });
         try {
             await page.goto('/live?code=098460');

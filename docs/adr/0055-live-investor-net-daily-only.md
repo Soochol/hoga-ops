@@ -92,51 +92,67 @@
   와이어 모델 확장(output2는 이미 그 컬럼들을 담고 있음).
 - walk-back 호출량이 rate-limit 비용으로 커지면 → 디스크 영속 캐시 검토(ADR-0048 참조).
 
-## 2026-11-07 exception for cumulative net-buy shares
+## 2026-11-07 shared strict quantity/net history and provisional cumulative sums
 
-The separate `외국인 누적 순매수` and `기관 누적 순매수` indicators use
-`GET /api/live/investor-daily-flow`. This is a narrow exception to decision 3's
-ban on a dedicated investor cache. The normalized daily cache has already lost
-missing-versus-zero and duplicate-conflict information. It cannot prove a
-cumulative sum. Existing daily bars and lines keep their source and cache.
+Quantity/net daily bars, daily lines, cumulative panes, and the daily table use
+`GET /api/live/past-investor-net?axis=qty&trade_side=net`. Its additive
+`daily_flow` field carries strict observations. `InvestorDailyFlowCache` owns
+one ka10059 history and produces both strict observations and the table's legacy
+numeric projection from the same raw rows. This expands the narrow dedicated-cache
+exception to decision 3. The separate `/investor-daily-flow` transport is removed.
+Amount and gross buy/sell requests keep their independent modes and caches.
+Index investor data retains its separate source and wire contract.
 
-`InvestorDailyFlowCache` retains strict ka10059 pages and quality in memory.
-It uses the existing client, scheduler and capacity governor. Institution shares
-come from `orgn`. Foreign shares use the app's existing
-`frgnr_invsr + natfor` aggregate, meaning foreign investors plus domestic/foreign
-investors. Both components must be valid. Defects and duplicate conflicts are
-independent per subject. Invalid dates and unknown pagination affect both.
+Institution shares come from `orgn`. Foreign shares use
+`frgnr_invsr + natfor`, meaning foreign investors plus domestic/foreign investors.
+Both components must be valid. Missing values, literal zero, and duplicate
+conflicts remain independent per subject. Daily stock net bars and lines consume
+these nullable observations, even though the legacy table projection is numeric.
+A pending or invalid strict source cannot fall back to tolerant table values.
 
-Each history has a maximum of 128 pages. Each collection reads at most six new
-pages. A maximum of 64 Code and end-date histories may coexist. Active callers
-protect their generation from replacement and eviction. The last accepted page
-sets freshness. Warm reads only update eviction order. An idle today generation
-can refresh after 300 seconds, and a historical generation after 3600 seconds.
-A fresh generation accepts corrected values without comparing them with an old
-generation. Incomplete collections retain their input cursor for explicit
-continuation and retry.
+Each history has a maximum of 128 pages and 64 Code and end-date histories may
+coexist. A cold collection reads one page so the first observations can appear
+promptly. Later collections read at most six new pages. Active callers protect
+the generation from replacement and eviction. The first accepted page sets head
+freshness; deeper pages record continuation progress without extending the head's
+age. Warm reads only update eviction order. Idle today histories refresh after
+60 seconds and historical histories after 3600 seconds. An unfinished walk with
+recent progress may continue beyond that age until it reaches the requested range
+or stops, so refresh cannot repeatedly reset a slow walk. A new generation can
+accept corrected values without comparison with the old generation.
 
-A response is covered only after an explicit terminal `cont-yn=N`. Missing or
-malformed continuation metadata remains incomplete. Reaching the requested
-oldest date alone cannot prove stream coverage. Actual terminal-header behavior
-with live credentials remains unverified. The frontend keeps the first valid
-loaded observation at zero and withholds every later sum while pagination is
-incomplete. Source-only dates enter arithmetic before candle-axis projection.
-Missing candle-date rows, nulls, conflicts and unsafe sums taint the whole suffix.
+An accepted page with a source date strictly older than the requested `from`
+stops collection for that range. `can_continue=false` expresses this stop without
+claiming complete source coverage. A wider requested range can resume the same
+history. Only explicit terminal `cont-yn=N` sets `pagination=covered`. Missing or
+malformed continuation remains incomplete. Empty pages, the oldest observed date,
+and the candle grid do not prove that unseen observations or conflicts are absent.
+Actual terminal-header behavior with live credentials remains unverified.
 
-The oldest valid loaded observation is the dynamic baseline. Its own daily flow
-is excluded. Actual earlier observations rebase the whole curve.
-While a same-Code range expands backward with the same end date, the pane retains
-its last covered response and baseline until expanded data is covered. New earlier candles
-remain blank during that wait. An explicit conflict with a retained subject value
-or an unlocated defect invalidates retention. Covered corrections and missing rows
-replace retained values even when the new curve has fewer numeric points.
-Retained data is projected against current candles so a newly exposed missing day
-inside the old interval still taints the suffix.
-Viewport changes do not change this baseline. Per the later 2026-11-07 user
-request, the legend shows only indicator names and values. Query status and retry
-controls are omitted. The indicator settings explain the baseline and limitations. These indicators provide
-shares only. They are neither holdings nor holdings percentages. Historical
-share-count denominators are unavailable, and corporate actions are not adjusted.
-The existing actual holdings display is named `외국인 보유`; its stable IDs and
-quantity/ratio wire contract are unchanged.
+The user explicitly chose to show sums from received observations first and
+correct them when more observations arrive. An incomplete response can therefore
+produce provisional cumulative values. A later earlier observation changes the
+baseline and rebases the curve, and a later conflict can remove values. The oldest
+valid loaded observation is zero and its own daily flow is excluded. Source-only
+dates enter arithmetic before candle-axis projection. A missing candle-date row,
+null, conflict, unsafe sum, or unlocated defect still taints the suffix.
+
+All matching observers use one exact React Query key containing Code, requested
+bounds, axis, and side. The bundle carries the requested investor bounds separately
+from its available candle bounds. One query execution publishes each validated
+envelope before requesting the next collection, with at most 23 HTTP requests.
+Continuation stops on `can_continue=false`, terminal coverage, no page progress,
+a fatal source issue, abort, or the page/request limit. No pane owns a continuation
+timer. Normal 60-second regular-session refresh applies to today-ending quantity/net
+ranges and waits while a fetch is running. Historical quantity/net ranges do not
+poll merely because the market is open.
+
+While an expanded same-Code range with the same end date has no response, a pane
+retains its latest observations and baseline. Its first partial response replaces
+that retained source immediately. New earlier candles stay blank until observed.
+Current candles always recheck retained observations for newly exposed missing
+days. Viewport changes do not change the baseline. The legend shows only names
+and values. Settings explain provisional sums and the baseline. These indicators
+provide shares only. They are neither holdings nor holdings percentages, and
+corporate actions are not adjusted. The actual holdings display remains
+`외국인 보유`, with unchanged stable IDs and quantity/ratio wire contract.

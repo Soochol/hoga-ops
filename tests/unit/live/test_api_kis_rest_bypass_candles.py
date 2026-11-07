@@ -297,12 +297,7 @@ def test_index_candles_bypass_serves_cache_only_on_miss(
     assert getattr(fake, fetch_count_attr) == 0
 
 
-def test_investor_net_bypass_cache_only_still_reports_cached_violations() -> None:
-    """`/past-investor-net` 우회 경로도 캐시된 위반을 되살린다 (#1536).
-
-    이 라우트는 일봉과 **같은 캐시 클래스**를 쓰지만(ADR-0055) 조립 함수가 다르다
-    (`_collect_daily_series_cache_only`). 일봉 쪽만 고치면 여기가 조용히 남는다.
-    """
+def test_investor_amount_bypass_cache_only_still_reports_cached_violations() -> None:
     cache = PastDailyCandlesCache()
     cache.append_batch(
         "005930", datetime.date(2024, 1, 1), datetime.date(2024, 1, 5), [],

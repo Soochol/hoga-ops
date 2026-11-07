@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
+import { netQuantityEnvelope } from './helpers/investorFlow';
 
 type ChartWindow = Window & { __liveCharts: Map<string, IChartApi> };
 async function setup(page: Page) {
@@ -92,10 +93,12 @@ test('all indicator kinds mount as independent instances, including daily trade-
     candles: [0, 1].map(i => ({ t_ms: t + i * 86400000, open: 35000, close: 35100, high: 35200, low: 34900, volume: 100 })),
   } }));
   await page.route(apiExact('live/past-investor-net'), route => {
-    const side = new URL(route.request().url()).searchParams.get('trade_side') ?? 'net';
+    const params = new URL(route.request().url()).searchParams;
+    const side = params.get('trade_side') ?? 'net';
     const value = { net: 10, buy: 200, sell: 190 }[side] ?? 0;
-    return route.fulfill({ json: { code: '098460', from: '20260527', to: '20260528', trade_side: side,
-      points: [0, 1].map(i => ({ t_ms: t + i * 86400000, foreign_net: value, institution_net: value * 2 })),
+    const points = [0, 1].map(i => ({ t_ms: t + i * 86400000, foreign_net: value, institution_net: value * 2 }));
+    return route.fulfill({ json: { code: params.get('code'), from: params.get('from'), to: params.get('to'), trade_side: side,
+      ...(params.get('axis') === 'qty' && side === 'net' ? netQuantityEnvelope(params, points) : {}), points,
       cached_batches: [], fresh_batches: [], data_warnings: [] } });
   });
   await page.route(apiExact('live/daily-program-trade'), route => route.fulfill({ json: {

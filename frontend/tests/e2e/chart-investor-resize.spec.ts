@@ -1,3 +1,4 @@
+import { netQuantityEnvelope } from './helpers/investorFlow';
 import { test, expect, type Page } from '@playwright/test';
 import type { IChartApi } from 'lightweight-charts';
 import type { WorkspaceWindow } from '../../src/state/workspace';
@@ -34,10 +35,11 @@ for (const kind of ['stock', 'index'] as const) {
       for (const endpoint of ['live/past-investor-net', 'live/index-investor-net']) {
         await page.route(apiExact(endpoint), route => {
           const p = new URL(route.request().url()).searchParams;
+          const points = candles.map((c, i) => ({ t_ms: c.t_ms, foreign_net: (i - 1) * 1000, institution_net: (1 - i) * 3000 }));
           return route.fulfill({ json: { code: p.get('code'), index_id: p.get('index_id'),
+            ...(kind === 'stock' ? netQuantityEnvelope(p, points) : {}),
             from: p.get('from'), to: p.get('to'), unit: kind === 'stock' ? 'qty_shares' : 'amt_eok',
-            trade_side: 'net', points: candles.map((c, i) => ({ t_ms: c.t_ms,
-              foreign_net: (i - 1) * 1000, institution_net: (1 - i) * 3000 })),
+            trade_side: 'net', points,
             cached_batches: [], fresh_batches: [], data_warnings: [] } });
         });
       }

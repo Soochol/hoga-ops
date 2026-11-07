@@ -74,7 +74,6 @@ from hoga.gc_tuning import (  # 값과 근거 표는 아래 주석, 정의는 �
 )
 from hoga.live import kiwoom_rest_runtime
 from hoga.live.api import build_router as build_live_router
-from hoga.live.investor_daily_flow import build_router as build_investor_daily_flow_router
 from hoga.live.investor_holdings import build_router as build_investor_holdings_router
 from hoga.live.kis_runtime import aclose_kis_client
 from hoga.live.kiwoom_diagnostics import configure_failure_context
@@ -659,7 +658,6 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_news_router(data_dir=data_dir))
     app.include_router(build_investor_holdings_router(data_dir=data_dir))
-    app.include_router(build_investor_daily_flow_router(data_dir=data_dir))
     def publish_toss_order(account, order, revision):
         bus.publish({"type": "trading_order", "mode": "live", "account_seq": account,
                      "order": order.model_dump(), "revision": revision})

@@ -3,7 +3,7 @@ import { InvestorHoldingsPane } from './InvestorHoldingsPane';
 import { useMemo, type ComponentProps } from 'react';
 import { IndicatorInstanceProvider } from './IndicatorInstanceProvider';
 import RangeSeriesPane from '../../chart/RangeSeriesPane';
-import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
+import { useLivePastInvestorNet, investorDailyFlowForScope } from '../../api/livePastInvestorNet';
 import { useLiveDailyProgramTrade } from '../../api/liveDailyProgramTrade';
 import { useWindowIndicator } from '../workspace/windowView';
 import { InvestorNetLinePane } from './InvestorNetLinePane';
@@ -16,18 +16,23 @@ export function IndicatorInstancePane({ code, ...props }: ComponentProps<typeof 
   const institution = useWindowIndicator(s => s.institutionTradeSide);
   const program = useWindowIndicator(s => s.dailyProgramTradeSide);
   const investor = pane === 'investor-foreign' || pane === 'investor-institution';
-  const stock = code && /^\d{6}$/.test(code) ? code : null;
+  const stock = code && /^[0-9A-Z]{6}$/.test(code) ? code : null;
   const side = pane === 'investor-institution' ? institution : foreign;
-  const query = useLivePastInvestorNet(investor ? stock : null, props.bundle.from_date, props.bundle.to_date, 'qty', side);
+  const scope = props.bundle.investorRequestScope ?? { code: stock ?? '', from: props.bundle.from_date, to: props.bundle.to_date };
+  const query = useLivePastInvestorNet(investor ? stock : null, scope.from, scope.to, 'qty', side);
   const dailyProgram = useLiveDailyProgramTrade(pane === 'program-daily' ? stock : null, props.bundle.from_date, props.bundle.to_date);
   const bundle = useMemo(() => {
     if (pane === 'program-daily') return { ...props.bundle, dailyProgramTradeSide: program, dailyProgramPoints: dailyProgram.data?.points ?? props.bundle.dailyProgramPoints };
     if (!investor || !stock) return props.bundle;
-    const points = query.data?.trade_side === side || (side === 'net' && query.data?.trade_side === undefined) ? query.data?.points ?? [] : [];
+    const response = query.data;
+    const valid = response?.code === stock && response.from === scope.from && response.to === scope.to
+      && (response.trade_side ?? 'net') === side && (response.unit === undefined || response.unit === 'qty_shares');
+    const points = valid ? response.points : [];
+    const investorDailyFlow = side === 'net' ? investorDailyFlowForScope(response, scope) : props.bundle.investorDailyFlow;
     return pane === 'investor-institution'
-      ? { ...props.bundle, institutionInvestorPoints: points, institutionInvestorTradeSide: side }
-      : { ...props.bundle, investorPoints: points, investorTradeSide: side };
-  }, [pane, props.bundle, investor, stock, query.data, dailyProgram.data, side, program]);
+      ? { ...props.bundle, investorDailyFlow, institutionInvestorPoints: points, institutionInvestorTradeSide: side }
+      : { ...props.bundle, investorDailyFlow, investorPoints: points, investorTradeSide: side };
+  }, [pane, props.bundle, investor, stock, query.data, dailyProgram.data, side, program, scope.code, scope.from, scope.to]);
   if (pane === 'foreign-cumulative' || pane === 'institution-cumulative') return <InvestorCumulativePane subject={pane === 'institution-cumulative' ? 'institution' : 'foreign'} code={code} {...props} />;
   if (pane === 'investor-holdings') return <InvestorHoldingsPane code={code} {...props} />;
   return pane === 'investor-net-line' ? <InvestorNetLinePane code={code} {...props} /> : <RangeSeriesPane {...props} bundle={bundle} />;

@@ -64,8 +64,8 @@ export function buildInvestorCumulative({ source, candleDates, subject }: {
         if (!grid.has(point.date))
             grid.set(point.date, point);
     let shares = 0;
-    let tainted = source.unlocated_defect || source.pagination !== 'covered';
-    let partial = tainted || source.data_warnings.some(issue => issue.subject === null || issue.subject === subject);
+    let tainted = source.unlocated_defect;
+    let partial = tainted || source.pagination !== 'covered' || source.data_warnings.some(issue => issue.subject === null || issue.subject === subject);
     const points: InvestorCumulativePoint[] = [];
     for (const point of [...grid.values()].sort((a, b) => a.date.localeCompare(b.date))) {
         if (point.date < anchor.date) {
