@@ -19,7 +19,7 @@ const SPEC = {
       priceScaleId: 'candle-volume', priceLineVisible: false, lastValueVisible: false,
       priceFormat: { type: 'custom', formatter: formatKoreanK, minMove: 1 },
     },
-    legend: { label: '거래량' },
+    legend: { labelRole: 'pane', label: '거래량' },
     data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Context) => projectVolumeCached(bundle, axis, ctx.swapColors, ctx, ctx.colorMode),
     afterAdd: (series) => series.setSeriesOrder(0),
   }],

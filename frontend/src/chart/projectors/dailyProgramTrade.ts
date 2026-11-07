@@ -27,6 +27,6 @@ export const DAILY_PROGRAM_TRADE_SPEC = {
     options: { priceFormat: { type: 'custom', formatter: formatKoreanInt, minMove: 1 },
       priceScaleId: 'right', priceLineVisible: false, lastValueVisible: false },
     data: projectDailyProgramTrade,
-    legend: { label: '프로그램 순매수량' },
+    legend: { labelRole: 'pane', label: '프로그램 순매수량' },
   }],
 } satisfies PaneSpec;

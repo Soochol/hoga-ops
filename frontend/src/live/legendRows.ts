@@ -33,6 +33,7 @@ import { MismatchDirection } from 'lightweight-charts';
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
 import type { LiveMAConfig } from '../state/livePage';
 import type { FlagIndicatorType } from '../state/indicatorOps';
+import type { SeriesLegendMeta } from '../chart/RangeSeriesPane';
 import type { PaneId } from '../chart/drawing/types';
 import type { PanePrefKey } from './indicators/indicatorPaneProfiles';
 import { formatKoreanInt } from '../util/koreanNumber';
@@ -57,6 +58,7 @@ export type LegendCell = {
   key: string;
   color?: string;
   label: string;
+  labelRole?: SeriesLegendMeta['labelRole'];
   formatted: string;
 };
 
@@ -148,6 +150,7 @@ export type PaneCellInput = {
   cells: ReadonlyArray<{
     key: string;
     label: string;
+    labelRole?: SeriesLegendMeta['labelRole'];
     color?: string;
     value: number | null;
     keepEmpty?: boolean;
@@ -228,6 +231,7 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
         key: c.key,
         color: c.color,
         label: c.label,
+        labelRole: c.labelRole,
         formatted: c.value === null ? '—' : (c.format ?? formatKoreanInt)(c.value),
       });
     }

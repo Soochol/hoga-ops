@@ -48,6 +48,6 @@ export const INVESTOR_HOLDINGS_SPEC: BoundPaneSpec<HoldingsPaneContext> = {
       visible: lineVisible(settings.indicatorLineVisibility, 'investorHoldingsForeign'),
     }),
     data: projectInvestorHoldings,
-    legend: { label: '외국인(주)', format: formatQuantity },
+    legend: { labelRole: 'pane', label: '외국인(주)', format: formatQuantity },
   }],
 };

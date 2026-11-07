@@ -148,6 +148,8 @@ const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
   'candle', // Only the volume overlay registers legend series on this pane.
   'volume',
   'trade-value',
+  'investor-foreign',
+  'investor-institution',
   'investor-net-line',
   'investor-holdings',
   'institution-cumulative',
@@ -693,10 +695,8 @@ function CellsLegendRow({
   row,
   timeframe,
   nameControl,
-  nameLabel,
 }: {
   row: Extract<LegendRow, { kind: 'cells' }>;
-  nameLabel?: string;
   timeframe: LiveTimeframe;
   nameControl?: React.ReactNode;
 }) {
@@ -715,7 +715,7 @@ function CellsLegendRow({
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
         >
           {c.color && <span aria-hidden="true" style={{ ...swatchStyle, background: c.color }} />}
-          {(!nameControl || c.label !== (nameLabel ?? PANE_DISPLAY_NAME[basePaneId(row.paneId)])) && (
+          {(c.labelRole !== 'pane' || (!nameControl && !row.title)) && (
             <span style={{ color: 'var(--fg-dim)' }}>{c.label}</span>
           )}
           <span style={valueCellStyle}>{c.formatted}</span>
@@ -1152,7 +1152,7 @@ function PaneLegendOverlay({
   const exactTimeSec = (typeof paramRef.current?.time === 'number' ? paramRef.current.time : null)
     ?? syncValueTimeSec
     ?? (latestCandle && axis ? axis.toVirtual(latestCandle.ts_ms) / 1000 : null);
-  const exactLogicalIndex = exactTimeSec === null || !indicatorLegendsVisible || (!hasMissingVolume && !legendPanes.has('peak-wall') && !legendPanes.has('investor-net-line') && !legendPanes.has('investor-holdings') && !legendPanes.has('institution-cumulative') && !legendPanes.has('foreign-cumulative')) ? null
+  const exactLogicalIndex = exactTimeSec === null || !indicatorLegendsVisible || (!hasMissingVolume && !legendPanes.has('investor-foreign') && !legendPanes.has('investor-institution') && !legendPanes.has('peak-wall') && !legendPanes.has('investor-net-line') && !legendPanes.has('investor-holdings') && !legendPanes.has('institution-cumulative') && !legendPanes.has('foreign-cumulative')) ? null
     : chart.timeScale().timeToIndex?.(exactTimeSec as Time) ?? null;
   for (const [paneId, entries] of legendPanes) {
     if (!indicatorLegendsVisible || !LEGEND_CELL_PANES.has(paneId)) continue;
@@ -1164,10 +1164,11 @@ function PaneLegendOverlay({
       cells: entries.map((entry, i) => ({
         key: `${paneId}:${i}`,
         label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,
+        labelRole: entry.meta.labelRole,
         color: entry.meta.color?.(),
-        keepEmpty: paneId === 'foreign-cumulative' ? lineVisible(lineVisibility, 'foreignCumulative') : paneId === 'institution-cumulative' ? lineVisible(lineVisibility, 'institutionCumulative') : paneId === 'investor-holdings' ? lineVisible(lineVisibility, 'investorHoldingsForeign') : paneId === 'investor-net-line' && lineVisible(lineVisibility, i === 0 ? 'investorNetLineForeign' : 'investorNetLineInstitution'),
+        keepEmpty: paneId === 'investor-foreign' || paneId === 'investor-institution' ? true : paneId === 'foreign-cumulative' ? lineVisible(lineVisibility, 'foreignCumulative') : paneId === 'institution-cumulative' ? lineVisible(lineVisibility, 'institutionCumulative') : paneId === 'investor-holdings' ? lineVisible(lineVisibility, 'investorHoldingsForeign') : paneId === 'investor-net-line' && lineVisible(lineVisibility, i === 0 ? 'investorNetLineForeign' : 'investorNetLineInstitution'),
         value: lineKeysByPane[paneId]?.[i] && !lineVisible(lineVisibility, lineKeysByPane[paneId]![i]) ? null
-          : paneId === 'peak-wall' || paneId === 'investor-net-line' || paneId === 'investor-holdings' || paneId === 'institution-cumulative' || paneId === 'foreign-cumulative' || (hasMissingVolume && (paneId === 'volume' || paneId === 'candle'))
+          : paneId === 'investor-foreign' || paneId === 'investor-institution' || paneId === 'peak-wall' || paneId === 'investor-net-line' || paneId === 'investor-holdings' || paneId === 'institution-cumulative' || paneId === 'foreign-cumulative' || (hasMissingVolume && (paneId === 'volume' || paneId === 'candle'))
           ? readSeriesValueAtTime(entry.series, exactTimeSec, exactLogicalIndex)
           : readSeriesValue(entry.series, seriesData, syncValueTimeSec, syncLogicalIndex),
         format: entry.meta.format,
@@ -1515,7 +1516,7 @@ function PaneLegendOverlay({
                       ) : row.kind === 'flag' ? (
                         <FlagLegendRow row={row} />
                       ) : (
-                        <CellsLegendRow nameLabel={paneDisplayName(row.paneId)} row={row} timeframe={timeframe} nameControl={nameControl} />
+                        <CellsLegendRow row={row} timeframe={timeframe} nameControl={nameControl} />
                       )}
                       {row.paneId === 'investor-holdings' && <div className="flex basis-full flex-wrap items-center gap-1 text-xs text-fg-dim">
                         <span role="status">{legendPanes.get(row.paneId)?.[0]?.meta.notice}</span>

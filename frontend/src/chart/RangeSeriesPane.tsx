@@ -34,6 +34,8 @@ export type SeriesLegendMeta = {
   retry?: () => void;
   /** Cell label, e.g. '매수', '누적'. */
   label: string;
+  /** Pane names are redundant beside a pane title; series names distinguish lines. */
+  labelRole?: 'pane' | 'series';
   /** Swatch color thunk (theme-resolved lazily via `resolveTokensThemed` so it
    *  re-reads `var(--…)` after a theme swap). Omit for series with no single
    *  color — per-bar histograms (volume/investor) and the bi-color baseline

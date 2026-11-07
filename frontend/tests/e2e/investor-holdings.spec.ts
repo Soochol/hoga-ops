@@ -138,9 +138,11 @@ test('actual holdings units, gaps, independent instances, styles and saved setti
   await hoverCandle(page, 21);
   await expect(legend).toContainText('26.21%');
   const duplicate = page.getByTestId(/^indicator-instance-legend-/);
-  await expect(duplicate).toContainText('외국인(주)');
+  await expect(duplicate).toContainText('수량 · 주');
+  await expect(duplicate).not.toContainText('외국인(주)');
+  expect((await duplicate.innerText()).split(label)).toHaveLength(2);
   await hoverCandle(page, 35);
-  await expect(duplicate).toContainText('외국인(주) —');
+  await expect(duplicate).toContainText('—');
   await hoverCandle(page, 21);
   await expect(legend).toContainText('26.21%');
   mkdirSync(preview, { recursive: true });
@@ -180,7 +182,10 @@ test('actual holdings units, gaps, independent instances, styles and saved setti
   await frame.getByRole('button', { name: '창 최대화', exact: true }).click();
   await page.reload();
   await expect.poll(async () => (await holdingsLines(page)).length).toBe(2);
-  await expect(legend).toContainText('외국인(%)');
+  await expect(legend).toContainText('—');
+  await hoverVisibleHolding(page);
+  await expect(legend).toContainText('%');
+  await expect(legend).not.toContainText('외국인(%)');
   await page.getByTestId('live-indicators-button').first().click();
   await panel.getByRole('button', { name: `${label} 2 설정`, exact: true }).click();
   await panel.getByRole('button', { name: `${label} 2 숨기기`, exact: true }).click();
@@ -255,7 +260,7 @@ test('holdings exact-date legends sync between independent units and survive res
     await panel.getByRole('combobox', { name: '보유 기준' }).selectOption(metric);
     await panel.getByRole('button', { name: '설정대로 추가', exact: true }).click();
     await panel.getByRole('button', { name: '닫기', exact: true }).click();
-    await expect(root.getByTestId('pane-legend-rows-investor-holdings')).toContainText(metric === 'quantity' ? '외국인(주)' : '외국인(%)');
+    await expect(root.getByTestId('pane-legend-rows-investor-holdings')).toContainText(metric === 'quantity' ? '주' : '%');
   }
   const source = page.locator('[data-win="s"]').getByTestId('pane-legend-rows-investor-holdings');
   const target = page.locator('[data-win="d"]').getByTestId('pane-legend-rows-investor-holdings');
@@ -266,21 +271,23 @@ test('holdings exact-date legends sync between independent units and survive res
     await expect.poll(async () => { await hoverSyncChart(page, windows[0], 0, false, candles[validIndex].t_ms); return (await syncBus(page)).ms; }).toBe(candles[validIndex].t_ms);
     await expect.poll(async () => (await syncBus(page)).origin?.windowId).toBe('s');
     expect((await syncBus(page)).origin).toMatchObject({ group: 1, code: '098460', timeframe: 'D' });
-    await expect(source).toContainText(`외국인(주)${formatKoreanK(valid.quantity_shares)}주`);
-    await expect(target).toContainText(`외국인(%)${valid.ratio_pct.toFixed(2)}%`);
+    await expect(source).toContainText(`${formatKoreanK(valid.quantity_shares)}주`);
+    await expect(target).toContainText(`${valid.ratio_pct.toFixed(2)}%`);
     await expect.poll(async () => { await hoverSyncChart(page, windows[0], 0, false, candles[35].t_ms); return (await syncBus(page)).ms; }).toBe(candles[35].t_ms);
-    await expect(source).toContainText('외국인(주)—');
-    await expect(target).toContainText('외국인(%)—');
+    await expect(source).toContainText('—');
+    await expect(target).toContainText('—');
   }
   await page.reload();
   await loadSyncDriver(page);
   for (const win of windows) await verifySyncChart(page, win);
-  await expect(source).toContainText('외국인(주)');
-  await expect(target).toContainText('외국인(%)');
+  await expect(source).toContainText('주');
+  await expect(source).not.toContainText('외국인(주)');
+  await expect(target).toContainText('%');
+  await expect(target).not.toContainText('외국인(%)');
   await expect.poll(async () => { await hoverSyncChart(page, windows[0], 0, false, candles[validIndex].t_ms); return (await syncBus(page)).ms; }).toBe(candles[validIndex].t_ms);
   await expect.poll(async () => (await syncBus(page)).origin?.windowId).toBe('s');
-  await expect(source).toContainText(`외국인(주)${formatKoreanK(valid.quantity_shares)}주`);
-  await expect(target).toContainText(`외국인(%)${valid.ratio_pct.toFixed(2)}%`);
+  await expect(source).toContainText(`${formatKoreanK(valid.quantity_shares)}주`);
+  await expect(target).toContainText(`${valid.ratio_pct.toFixed(2)}%`);
 });
 
 

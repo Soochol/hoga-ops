@@ -62,7 +62,7 @@ export const INVESTOR_FOREIGN_SPEC = {
       options: histogramOptions,
       data: (bundle: RangeBundle, axis: VirtualAxis) =>
         projectInvestorNet(bundle, axis, 'foreign'),
-      legend: { label: '외국인 순매수량', format: formatKoreanK },
+      legend: { labelRole: 'pane', label: '외국인 순매수량', format: formatKoreanK },
     },
   ],
 } satisfies PaneSpec;
@@ -77,7 +77,7 @@ export const INVESTOR_INSTITUTION_SPEC = {
       options: histogramOptions,
       data: (bundle: RangeBundle, axis: VirtualAxis) =>
         projectInvestorNet(bundle, axis, 'institution'),
-      legend: { label: '기관 순매수량', format: formatKoreanK },
+      legend: { labelRole: 'pane', label: '기관 순매수량', format: formatKoreanK },
     },
   ],
 } satisfies PaneSpec;

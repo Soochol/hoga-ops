@@ -135,7 +135,7 @@ test('all indicator kinds mount as independent instances, including daily trade-
     const workspacePath = '/src/state/workspace.ts'; const { useWorkspaceStore } = await import(workspacePath);
     useWorkspaceStore.getState().setChartTimeframe(id, 'D');
   }, id);
-  await expect.poll(count).toBe(10);
+  await expect.poll(count).toBe(12);
   const paneValues = () => page.evaluate(id => (window as unknown as ChartWindow).__liveCharts.get(id)!.panes().map(pane => pane.getSeries().filter(series => series.seriesType() === 'Histogram').map(series => series.data().map(point => 'value' in point ? point.value : null))), id);
   await expect.poll(async () => (await paneValues()).flat(2)).toEqual(expect.arrayContaining([200, 380, 90, 10]));
   expect(errors.filter(message => !message.startsWith('ResizeObserver loop'))).toEqual([]);

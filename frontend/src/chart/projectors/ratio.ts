@@ -257,7 +257,7 @@ export const RATIO_SPEC = {
       // No swatch: the baseline is bi-color (red above / blue below the zero
       // baseline), so a single color would mislead. Value format mirrors the
       // pane's price axis (magnitude, sign shown by the chart's color).
-      legend: { label: '호가비', format: priceFormat.formatter },
+      legend: { labelRole: 'pane', label: '호가비', format: priceFormat.formatter },
       options: () => {
         const { ratioBid, ratioAsk } = resolveTokensThemed(TOKEN_SPEC);
         return {
