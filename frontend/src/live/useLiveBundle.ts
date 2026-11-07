@@ -7,7 +7,7 @@ import type { LiveSeriesData } from '../api/liveSeries';
 import { useLiveSettings } from '../api/liveSettings';
 import { hasBlockingWarnings, useLivePastCandles, type LivePastCandlesResponse } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
-import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
+import { useLivePastInvestorNet, investorDailyFlowForScope } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
 import { useRange, useRangeCandlesDelta, useRangeHogaDelta } from '../api/range';
 import type { RangeRequestOptions } from '../api/range';
@@ -809,6 +809,8 @@ export function useLiveBundle(
     'qty',
     options.foreignTradeSide ?? 'net',
   );
+  const investorRequestScope = useMemo(() => code && /^[0-9A-Z]{6}$/.test(code) && timeframe === 'D'
+    ? { code, from: dailyPastFrom, to: dailyPastTo } : undefined, [code, timeframe, dailyPastFrom, dailyPastTo]);
   const investorTradeSide = investorQuery.data ? investorQuery.data.trade_side ?? 'net' : options.foreignTradeSide ?? 'net';
   const investorStatus = !enableForeignInvestor ? undefined : investorQuery.error ? 'error' as const
     : investorQuery.isLoading || investorTradeSide !== (options.foreignTradeSide ?? 'net') ? 'loading' as const : undefined;
@@ -826,6 +828,10 @@ export function useLiveBundle(
     'qty',
     options.institutionTradeSide ?? 'net',
   );
+  const investorDailyFlow = useMemo(() => investorRequestScope
+    ? investorDailyFlowForScope(investorQuery.data, investorRequestScope)
+      ?? investorDailyFlowForScope(institutionQuery.data, investorRequestScope)
+    : undefined, [investorRequestScope, investorQuery.data, institutionQuery.data]);
   const institutionInvestorTradeSide = institutionQuery.data
     ? institutionQuery.data.trade_side ?? 'net' : options.institutionTradeSide ?? 'net';
   const institutionInvestorStatus = !enableInstitutionInvestor ? undefined : institutionQuery.error ? 'error' as const
@@ -1260,6 +1266,8 @@ export function useLiveBundle(
     built.dailyProgramPoints = enableDailyProgram ? dailyProgramPoints : undefined;
     built.dailyProgramTradeSide = dailyProgramTradeSide;
     built.dailyProgramStatus = dailyProgramStatus;
+    built.investorRequestScope = investorRequestScope;
+    built.investorDailyFlow = investorDailyFlow;
     built.investorTradeSide = investorTradeSide;
     built.investorStatus = investorStatus;
     built.institutionInvestorPoints = institutionInvestorPoints;
@@ -1337,6 +1345,8 @@ export function useLiveBundle(
     investorPoints,
     investorTradeSide,
     investorStatus,
+    investorRequestScope,
+    investorDailyFlow,
     enableDailyProgram, dailyProgramPoints, dailyProgramTradeSide, dailyProgramStatus,
     institutionInvestorPoints,
     institutionInvestorTradeSide,

@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import { isDailyFlowDate, parseInvestorDailyFlow, type DailyFlowRequestScope, type InvestorDailyFlowResponse } from './investorDailyFlow';
 import type { InvestorNetPoint, InvestorNetUnit, InvestorTradeSide } from './types';
-import { isKrxRegularSessionNow } from '../live/liveDateTime';
+import { isKrxRegularSessionNow, todayKstYyyymmdd } from '../live/liveDateTime';
 
 export interface LivePastInvestorNetWarning {
   batch: string;
@@ -22,27 +23,29 @@ export interface LivePastInvestorNetResponse {
   from: string;
   to: string;
   /** 값의 물리량 — 축이 정한다. **표시 포맷은 저장된 토글이 아니라 이 값으로
-   *  고른다**(아래 훅 도크스트링). 옛 백엔드는 이 키가 없어 옵셔널이다. */
+   *  고른다**. 옛 백엔드는 이 키가 없어 옵셔널이다. */
   unit?: InvestorNetUnit;
   /** Legacy responses omitted this field and always contained net buys. */
   trade_side?: InvestorTradeSide;
+  /** Strict stock quantity/net history. Other modes omit this field. */
+  daily_flow?: InvestorDailyFlowResponse | null;
   points: InvestorNetPoint[];
   cached_batches: string[];
   fresh_batches: string[];
   data_warnings: LivePastInvestorNetWarning[];
 }
 
-/** GET /api/live/past-investor-net — daily investor net-buy across [from, to].
- * `ka10059` walks back by date cursor, so this mirrors useLivePastDailyCandles
- * with a batch/gap cache (ADR-0055). 차트 pane 은 축을 안 넘겨 수량으로 돈다.
- *
- * ⚠ **소비자는 `data.unit` 으로 포맷터를 고를 것 — 저장된 토글로 고르면 안 된다.**
- * 축이 쿼리 키에 들어 있고 `placeholderData` 가 이전 데이터를 넘겨주므로, 축을
- * 바꾼 직후 한 프레임 동안 **옛 축의 값이 새 데이터인 척** 손에 들어온다. 그때
- * 토글을 따라 포맷하면 1,589,169주가 "15,892억" 으로 그려진다(#1119 부류, 100배).
- * 응답이 자기 단위를 말하므로 그 값을 따르면 낡은 데이터도 제 단위로 그려진다.
- *
- * placeholder 를 끄는 것은 답이 아니다 — 축을 오갈 때마다 표가 통째로 사라진다. */
+/** A placeholder may belong to another range or unit. Strict chart consumers
+ * accept only the exact canonical quantity/net response. */
+export function investorDailyFlowForScope(
+  response: LivePastInvestorNetResponse | undefined,
+  scope: DailyFlowRequestScope,
+): InvestorDailyFlowResponse | null {
+  if (!response || response.code !== scope.code || response.from !== scope.from || response.to !== scope.to
+    || response.unit !== 'qty_shares' || response.trade_side !== 'net' || !response.daily_flow) return null;
+  try { return parseInvestorDailyFlow(response.daily_flow, scope); } catch { return null; }
+}
+
 export function useLivePastInvestorNet(
   code: string | null,
   from: string | null,
@@ -50,20 +53,41 @@ export function useLivePastInvestorNet(
   axis: InvestorNetAxis = 'qty',
   tradeSide: InvestorTradeSide = 'net',
 ) {
-  const enabled = !!(code && from && to && from <= to);
+  const queryClient = useQueryClient();
+  const canonical = axis === 'qty' && tradeSide === 'net';
+  const enabled = !!(code && isDailyFlowDate(from) && isDailyFlowDate(to) && from <= to);
+  const queryKey = ['live', 'past-investor-net', code, from, to, axis, tradeSide] as const;
   return useQuery({
-    queryKey: ['live', 'past-investor-net', code, from, to, axis, tradeSide] as const,
+    queryKey,
     queryFn: async ({ signal }) => {
-      const response = await apiCall<LivePastInvestorNetResponse>(
-        `/api/live/past-investor-net?code=${code}&from=${from}&to=${to}&axis=${axis}&trade_side=${tradeSide}`,
-        { signal },
-      );
-      if ((response.trade_side ?? 'net') !== tradeSide) throw new Error('매매 기준이 다른 응답입니다');
-      return response;
+      if (!code || !from || !to) throw new Error('투자자 자료 조회 범위 없음');
+      const scope = { code, from, to };
+      let previousPages = 0;
+      for (let request = 1; ; request++) {
+        signal.throwIfAborted();
+        const response = await apiCall<LivePastInvestorNetResponse>(
+          `/api/live/past-investor-net?code=${code}&from=${from}&to=${to}&axis=${axis}&trade_side=${tradeSide}`,
+          { signal },
+        );
+        signal.throwIfAborted();
+        if ((response.trade_side ?? 'net') !== tradeSide) throw new Error('매매 기준이 다른 응답입니다');
+        const flow = canonical && response.daily_flow != null
+          ? investorDailyFlowForScope(response, scope) : null;
+        if (canonical && response.daily_flow != null && !flow) throw new Error('투자자 자료의 응답 기준이 다릅니다');
+        signal.throwIfAborted();
+        queryClient.setQueryData(queryKey, response);
+        if (!flow || flow.pagination !== 'incomplete' || !flow.can_continue
+          || flow.pages_observed >= 128 || flow.pages_observed <= previousPages || request >= 23
+          || !flow.data_warnings.some(issue => issue.reason === 'page_budget')
+          || flow.data_warnings.some(issue => ['invalid_page', 'cursor_stalled', 'api_error', 'unavailable'].includes(issue.reason))) return response;
+        previousPages = flow.pages_observed;
+      }
     },
     enabled,
     staleTime: 60_000,
-    refetchInterval: () => (isKrxRegularSessionNow() ? 60_000 : false),
+    refetchInterval: query => query.state.fetchStatus !== 'fetching' && isKrxRegularSessionNow()
+      && (!canonical || to === todayKstYyyymmdd()) ? 60_000 : false,
+    ...(canonical ? { retry: false } : {}),
     placeholderData: (prev) => (prev && prev.code === code ? prev : undefined),
   });
 }

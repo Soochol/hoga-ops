@@ -22,7 +22,7 @@ function response(scope: DailyFlowRequestScope): InvestorDailyFlowResponse {
 const input = (scope: DailyFlowRequestScope, source: InvestorDailyFlowResponse | undefined): Input => ({ scope, source, subject: 'institution', candleDates });
 const shares = (snapshot: ReturnType<typeof useInvestorCumulativeSnapshot>) => snapshot.points.map(p => p.kind === 'value' ? p.shares : null);
 
-it('retains the old baseline during expansion, leaves older candles blank, and rebases once complete', () => {
+it('retains the baseline while an expanded query is pending, then immediately rebases to its first partial revision', () => {
   const { result, rerender } = renderHook(useInvestorCumulativeSnapshot, { initialProps: input(original, response(original)) });
   expect(shares(result.current)).toEqual([0, 20]);
   rerender(input(expanded, undefined));
@@ -35,11 +35,12 @@ it('retains the old baseline during expansion, leaves older candles blank, and r
     .map(p => 'value' in p ? p.value : null)).toEqual([null, 0, 20]);
   const partial = { ...response(expanded), pagination: 'incomplete' as const, can_continue: true };
   rerender(input(expanded, partial));
-  expect(shares(result.current)).toEqual([0, 20]);
+  expect(result.current).toMatchObject({ kind: 'anchored', anchorDate: dates[0], partial: true });
+  expect(shares(result.current)).toEqual([0, 10, 30]);
   rerender(input(expanded, { ...partial, observations: partial.observations.slice(0, 1) }));
-  expect(shares(result.current)).toEqual([0, 20]);
+  expect(shares(result.current)).toEqual([0, null, null]);
   rerender(input(expanded, undefined));
-  expect(shares(result.current)).toEqual([0, 20]);
+  expect(shares(result.current)).toEqual([0, null, null]);
   rerender(input(expanded, response(expanded)));
   expect(result.current).toMatchObject({ kind: 'anchored', anchorDate: dates[0] });
   expect(shares(result.current)).toEqual([0, 10, 30]);
@@ -74,7 +75,7 @@ it('invalidates old values when an incomplete result explicitly conflicts with t
   rerender(input(expanded, source));
   expect(shares(result.current)).toEqual([0, null, null]);
   rerender(input(expanded, undefined));
-  expect(result.current.kind).toBe('empty');
+  expect(shares(result.current)).toEqual([0, null, null]);
 });
 
 it('does not discard confirmed institution data for a foreign-only conflict', () => {
@@ -82,7 +83,7 @@ it('does not discard confirmed institution data for a foreign-only conflict', ()
   const source = { ...response(expanded), pagination: 'incomplete' as const };
   source.observations[1].foreign_net_shares = null;
   rerender(input(expanded, source));
-  expect(shares(result.current)).toEqual([0, 20]);
+  expect(shares(result.current)).toEqual([0, 10, 30]);
 });
 
 it('does not retain values across an unlocated source defect', () => {
@@ -99,4 +100,16 @@ it('rechecks retained data when new candles expose a missing day inside the old 
   expect(shares(result.current)).toEqual([0, 20]);
   rerender({ ...input({ ...expanded, from: '20260104' }, undefined), candleDates });
   expect(shares(result.current)).toEqual([0, null, null]);
+});
+
+it('corrects provisional values when a later partial page supplies an earlier source-only day', () => {
+  const first = { ...response(expanded), pagination: 'incomplete' as const, observations: response(expanded).observations.slice(1) };
+  const currentCandles = candleDates.slice(1);
+  const { result, rerender } = renderHook(useInvestorCumulativeSnapshot,
+    { initialProps: { ...input(expanded, first), candleDates: currentCandles } });
+  expect(shares(result.current)).toEqual([0, 20]);
+  const later = { ...response(expanded), pagination: 'incomplete' as const };
+  rerender({ ...input(expanded, later), candleDates: currentCandles });
+  expect(result.current).toMatchObject({ kind: 'anchored', anchorDate: dates[0], partial: true });
+  expect(shares(result.current)).toEqual([0, 10, 30]);
 });

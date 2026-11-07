@@ -38,11 +38,15 @@ describe('dynamic loaded-first-day cumulative shares', () => {
         data.observations.splice(1, 1);
         expect(values(buildInvestorCumulative({ subject: 'foreign', source: data, candleDates: grid(dates) }))).toEqual([0, null, null, null]);
     });
-    it('incomplete or unlocated source keeps only anchor zero until coherent completion', () => {
+    it('shows provisional sums from incomplete pages without declaring coverage', () => {
         const dates = ['20260105', '20260106', '20260107'];
-        for (const extra of [{ pagination: 'incomplete' as const }, { unlocated_defect: true }]) {
-            expect(values(buildInvestorCumulative({ subject: 'institution', source: { ...source(dates, [10, 20, 30]), ...extra }, candleDates: grid(dates) }))).toEqual([0, null, null]);
-        }
+        const snapshot = buildInvestorCumulative({ subject: 'institution', source: { ...source(dates, [10, 20, 30]), pagination: 'incomplete' }, candleDates: grid(dates) });
+        expect(values(snapshot)).toEqual([0, 20, 50]);
+        expect(snapshot).toMatchObject({ kind: 'anchored', partial: true });
+    });
+    it('an unlocated defect still withholds every sum after the anchor', () => {
+        const dates = ['20260105', '20260106', '20260107'];
+        expect(values(buildInvestorCumulative({ subject: 'institution', source: { ...source(dates, [10, 20, 30]), unlocated_defect: true }, candleDates: grid(dates) }))).toEqual([0, null, null]);
     });
     it('unsafe running sums and same-date conflicts cannot become visible values', () => {
         const dates = ['20260105', '20260106', '20260107'];

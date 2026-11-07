@@ -947,13 +947,15 @@ export type RangeBundle = {
   /** 읽을 것이 없어 빠진 거래일 + 사유 (#1133). 구백엔드는 부재 → optional. */
   missing_dates?: RangeMissingDate[];
   volume_distributions: DayVolumeDistribution[];
-  /** ADR-0055: daily foreign/institution net-buy bars across the requested
-   *  range (FHPTJ04160001 date-cursor walk-back).
-   *  Empty on minute timeframes (KIS provides investor data for D/W/M only).
-   *  Separate array (not on Candle) so minute candles never carry null. */
+  /** Legacy numeric daily investor projection. Stock quantity/net panes use
+   * investorDailyFlow; gross and index panes retain these points. */
   investorPoints: InvestorNetPoint[];
   /** Client-composed investor series metadata; absent in server /range responses (net default). */
   investorTradeSide?: InvestorTradeSide;
+  /** Requested investor bounds can differ from the currently available candle bounds. */
+  investorRequestScope?: import('./investorDailyFlow').DailyFlowRequestScope;
+  /** undefined: legacy/index. null: canonical stock source is pending or invalid. */
+  investorDailyFlow?: import('./investorDailyFlow').InvestorDailyFlowResponse | null;
   investorStatus?: 'loading' | 'error';
   /** Per-pane data; absent on legacy/index bundles which share investorPoints. */
   dailyProgramPoints?: import('./liveDailyProgramTrade').DailyProgramTradePoint[];

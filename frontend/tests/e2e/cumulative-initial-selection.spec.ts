@@ -1,3 +1,4 @@
+import { investorNetEnvelope } from './helpers/investorFlow';
 import { expect, test, type Page } from '@playwright/test';
 import type { IChartApi } from 'lightweight-charts';
 import { installLiveMocks } from './helpers/liveMocks';
@@ -47,7 +48,7 @@ test('watchlist selection completes cumulative history without a candle prepend,
   const late = new Promise<void>(resolve => { releaseLate = resolve; });
   let lateStarted = false;
   let lateFinished = false;
-  for (const kind of ['past-daily-candles', 'investor-daily-flow']) {
+  for (const kind of ['past-daily-candles', 'past-investor-net']) {
     await page.route(apiExact(`live/${kind}`), async route => {
       const p = new URL(route.request().url()).searchParams;
       const code = p.get('code'), from = p.get('from'), to = p.get('to');
@@ -65,12 +66,12 @@ test('watchlist selection completes cumulative history without a candle prepend,
         lateStarted = true;
         await late;
       }
-      await route.fulfill({ json: { code, from, to, source: 'kiwoom_ka10059', provider_scope: 'KRX',
+      await route.fulfill({ json: investorNetEnvelope({ code, from, to, source: 'kiwoom_ka10059', provider_scope: 'KRX',
         unit: 'qty_shares', trade_side: 'net', observations: dates.map(t_ms => ({ date: ymd(t_ms), t_ms,
           institution_net_shares: code === '000660' ? 100 : 200, foreign_net_shares: -50 })),
         pagination: partial ? 'incomplete' : 'covered', unlocated_defect: false, pages_observed: partial ? 6 : 7,
         can_continue: partial, data_warnings: partial ? [{ reason: 'page_budget', date: null, subject: null,
-          message: '합성 공급자 페이지 한도' }] : [] } });
+          message: '합성 공급자 페이지 한도' }] : [] }) });
       if (code === '005930' && n === 2) lateFinished = true;
     });
   }
@@ -85,7 +86,7 @@ test('watchlist selection completes cumulative history without a candle prepend,
   const panel = page.getByTestId('watchlist-panel');
   if (!await panel.isVisible()) await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
   await panel.getByTestId('watchlist-row-000660').click();
-  await expect.poll(() => requests.filter(r => r.kind === 'investor-daily-flow' && r.code === '000660').length).toBeGreaterThan(0);
+  await expect.poll(() => requests.filter(r => r.kind === 'past-investor-net' && r.code === '000660').length).toBeGreaterThan(0);
   await page.screenshot({ path: info.outputPath('initial-selection.png') });
   await waitForCumulative(page, 100);
   await expect(institution.getByRole('status')).toHaveCount(0);
@@ -102,7 +103,7 @@ test('watchlist selection completes cumulative history without a candle prepend,
   expect(lineValues).toContainEqual(Array.from({ length: count }, (_, i) => i * 100));
   expect(lineValues).toContainEqual(Array.from({ length: count }, (_, i) => i === 0 ? 0 : i * -50));
   await page.screenshot({ path: info.outputPath('completed-selection.png') });
-  expect(new Set(requests.filter(r => r.kind === 'investor-daily-flow' && r.code === '000660').map(r => r.from)).size).toBe(1);
+  expect(new Set(requests.filter(r => r.kind === 'past-investor-net' && r.code === '000660').map(r => r.from)).size).toBe(1);
   expect(requests.filter(r => r.kind === 'past-daily-candles' && r.code === '000660')).toHaveLength(1);
   await panel.getByTestId('watchlist-row-098460').click();
   await waitForCumulative(page, 200);

@@ -1,3 +1,4 @@
+import { investorNetEnvelope } from './helpers/investorFlow';
 import { expect, test, type Page } from '@playwright/test';
 import type { IChartApi } from 'lightweight-charts';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -31,14 +32,14 @@ async function setup(page: Page, mode: { partial: boolean; gap: boolean }, reque
     return route.fulfill({ json: { code: p.get('code'), from: p.get('from'), to: p.get('to'), candles,
       cached_batches: [], fresh_batches: [], data_warnings: [] } });
   });
-  await page.route(apiExact('live/investor-daily-flow'), route => {
+  await page.route(apiExact('live/past-investor-net'), route => {
     requests.push(route.request().url());
     const p = new URL(route.request().url()).searchParams;
-    return route.fulfill({ json: { code: p.get('code'), from: p.get('from'), to: p.get('to'),
+    return route.fulfill({ json: investorNetEnvelope({ code: p.get('code'), from: p.get('from'), to: p.get('to'),
       source: 'kiwoom_ka10059', provider_scope: 'KRX', unit: 'qty_shares', trade_side: 'net',
       observations: observations.filter((_, i) => !mode.gap || i !== 35), pagination: mode.partial ? 'incomplete' : 'covered',
-      unlocated_defect: false, pages_observed: mode.partial ? 6 : 8, can_continue: mode.partial,
-      data_warnings: mode.partial ? [{ reason: 'page_budget', date: null, subject: null, message: '합성 자료 · 6페이지 한도 · 같은 커서부터 계속 조회' }] : [] } });
+      unlocated_defect: false, pages_observed: mode.partial ? 6 : 8, can_continue: false,
+      data_warnings: mode.partial ? [{ reason: 'page_budget', date: null, subject: null, message: '합성 자료 · 조회 범위 도달 · 전체 완료 미확인' }] : [] }) });
   });
   await page.goto('/live?code=098460');
   await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
@@ -68,7 +69,9 @@ test('catalog add, partial gaps, unobtrusive legends, styles and real rendered p
   await expect(legend.getByRole('status')).toHaveCount(0);
   await expect(legend.getByRole('button', { name: '누적 자료 계속 조회·재시도' })).toHaveCount(0);
   await expect.poll(async () => (await lines(page)).length).toBe(1);
-  expect((await lines(page))[0].data.filter(point => 'value' in point).map(point => 'value' in point ? point.value : null)).toEqual([0]);
+  let provisionalSum = 0;
+  expect((await lines(page))[0].data.filter(point => 'value' in point).map(point => 'value' in point ? point.value : null))
+    .toEqual(observations.map((point, index) => index === 0 ? 0 : (provisionalSum += point.institution_net_shares)));
   await expect(page.locator('[data-testid="indicator-panel-shell"]')).toHaveCount(0);
   await page.waitForTimeout(250);
   mkdirSync(preview, { recursive: true });
@@ -83,7 +86,7 @@ test('catalog add, partial gaps, unobtrusive legends, styles and real rendered p
   expect(line.options).toMatchObject({ color: '#F97316', lineWidth: 3 });
   await page.screenshot({ path: resolve(preview, 'institution-cumulative-netbuy.png') });
   writeFileSync(resolve(preview, 'institution-cumulative-netbuy.json'), JSON.stringify({ synthetic: true,
-    boundary: 'external daily candles and investor-daily-flow market-data API responses; no live vendor proof', requests, errors, chart: await chartState(page) }, null, 2));
+    boundary: 'external daily candles and past-investor-net market-data API responses; no live vendor proof', requests, errors, chart: await chartState(page) }, null, 2));
   expect(errors.filter(error => !error.startsWith('ResizeObserver loop'))).toEqual([]);
 });
 
@@ -149,11 +152,11 @@ test('cumulative exact gaps and two-window cursor survive actual 700px resize', 
   ];
   const fixtures: SyncFixtures = { D: candles, '1m': candles, W: candles, M: candles };
   await installSyncWorkspace(page, windows, false, fixtures);
-  await page.route(apiExact('live/investor-daily-flow'), route => {
+  await page.route(apiExact('live/past-investor-net'), route => {
     const p = new URL(route.request().url()).searchParams;
-    return route.fulfill({ json: { code: p.get('code'), from: p.get('from'), to: p.get('to'), source: 'kiwoom_ka10059',
+    return route.fulfill({ json: investorNetEnvelope({ code: p.get('code'), from: p.get('from'), to: p.get('to'), source: 'kiwoom_ka10059',
       provider_scope: 'KRX', unit: 'qty_shares', trade_side: 'net', observations: observations.filter((_, i) => i !== 35),
-      pagination: 'covered', unlocated_defect: false, pages_observed: 8, can_continue: false, data_warnings: [] } });
+      pagination: 'covered', unlocated_defect: false, pages_observed: 8, can_continue: false, data_warnings: [] }) });
   });
   const panel = page.getByTestId('indicator-panel-shell');
   for (const [index, name] of [label, '외국인 누적 순매수'].entries()) {

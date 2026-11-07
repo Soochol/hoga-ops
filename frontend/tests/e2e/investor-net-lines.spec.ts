@@ -1,3 +1,4 @@
+import { netQuantityEnvelope } from './helpers/investorFlow';
 import { test, expect, type Page } from '@playwright/test';
 import type { IChartApi } from 'lightweight-charts';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -46,6 +47,7 @@ async function setup(page: Page, source: { unit: string; code: string }, request
     const points = quantities.filter((_, i) => i !== 35 && i !== quantities.length - 1).map(point => side === 'net' ? point
       : { ...point, foreign_net: 9900000, institution_net: 8800000 });
     return r.fulfill({ json: { code: p.get('code'), from: p.get('from'), to: p.get('to'), unit: source.unit, trade_side: side,
+      ...(side === 'net' && source.unit === 'qty_shares' ? netQuantityEnvelope(p, points) : {}),
       points, cached_batches: [], fresh_batches: [], data_warnings: [] } });
   });
   await page.goto(`/live?code=${source.code}`);
@@ -70,6 +72,8 @@ test('daily lines retain signed values independently of bars, restore styles and
   await add(page, '외국인 순매수량');
   const panel = page.getByTestId('indicator-panel-shell');
   await panel.getByRole('combobox', { name: '투자자 매매 기준' }).selectOption('buy');
+  await add(page, '기관 순매수량');
+  await panel.getByRole('combobox', { name: '투자자 매매 기준' }).selectOption('sell');
   await add(page, label);
   await panel.getByRole('combobox', { name: '순매수 라인 공통 선 두께' }).selectOption('3');
   await panel.getByRole('button', { name: '닫기', exact: true }).click();
@@ -85,6 +89,7 @@ test('daily lines retain signed values independently of bars, restore styles and
   expect(lines[0].data).toHaveLength(quantities.length - 2);
   expect(lines[0].options).toHaveProperty('lineWidth', 3);
   expect(state.panes.flatMap(p => p.series).filter(s => s.type === 'Histogram').some(s => s.data.some(p => 'value' in p && p.value === 9900000))).toBe(true);
+  expect(state.panes.flatMap(p => p.series).filter(s => s.type === 'Histogram').some(s => s.data.some(p => 'value' in p && p.value === 8800000))).toBe(true);
   await expect(page.getByTestId('pane-legend-rows-investor-net-line')).toContainText('외국인(주)');
   await expect(page.getByText('외국인(주)', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('기관(주)', { exact: true }).first()).toBeVisible();
@@ -141,6 +146,7 @@ test('daily lines retain signed values independently of bars, restore styles and
   await expect(chip).toHaveCount(0);
   expect(requests.some(url => url.includes('trade_side=net') && url.includes('axis=qty'))).toBe(true);
   expect(requests.some(url => url.includes('trade_side=buy'))).toBe(true);
+  expect(requests.some(url => url.includes('trade_side=sell'))).toBe(true);
   expect(errors.filter(e => e !== 'ResizeObserver loop completed with undelivered notifications.')).toEqual([]);
 });
 

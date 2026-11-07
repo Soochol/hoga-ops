@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type ComponentProps } from 'react';
 import RangeSeriesPane from '../../chart/RangeSeriesPane';
-import { useInvestorDailyFlow } from '../../api/investorDailyFlow';
+import { useLivePastInvestorNet, investorDailyFlowForScope } from '../../api/livePastInvestorNet';
 import { CUMULATIVE_SPECS, investorCandleDates, type InvestorCumulativeContext } from '../../chart/projectors/investorCumulative';
 import { useWindowIndicators } from '../workspace/windowView';
 import { useInvestorCumulativeSnapshot } from './useInvestorCumulativeSnapshot';
@@ -9,9 +9,9 @@ export function InvestorCumulativePane({ code, subject, ...props }: ComponentPro
     subject: 'foreign' | 'institution';
 }) {
     const settings = useWindowIndicators();
-    const scope = useMemo(() => ({ code: code ?? '', from: props.bundle.from_date, to: props.bundle.to_date }), [code, props.bundle.from_date, props.bundle.to_date]);
-    const query = useInvestorDailyFlow(code && /^[0-9A-Z]{6}$/.test(code) ? scope : null);
-    const source = query.data;
+    const scope = useMemo(() => props.bundle.investorRequestScope ?? { code: code ?? '', from: props.bundle.from_date, to: props.bundle.to_date }, [code, props.bundle.investorRequestScope, props.bundle.from_date, props.bundle.to_date]);
+    const query = useLivePastInvestorNet(code && /^[0-9A-Z]{6}$/.test(code) ? code : null, scope.from, scope.to, 'qty', 'net');
+    const source = useMemo(() => investorDailyFlowForScope(query.data, scope) ?? undefined, [query.data, scope]);
     const candleDates = useMemo(() => investorCandleDates(props.bundle), [props.bundle]);
     const snapshot = useInvestorCumulativeSnapshot({ scope, subject, source, candleDates });
     const context: InvestorCumulativeContext = useMemo(() => ({ settings, snapshot }), [settings, snapshot]);

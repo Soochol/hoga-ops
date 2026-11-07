@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import type { InvestorNetPoint } from '../../src/api/types';
 import { apiExact } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
+import { netQuantityEnvelope } from './helpers/investorFlow';
 
 const preview = resolve(process.cwd(), '../.audit/preview/pane-legend-values');
 const days = Array.from({ length: 80 }, (_, index) => Date.UTC(2026, 1, 5 + index))
@@ -38,7 +39,9 @@ async function setup(page: Page, requests: string[]) {
       : tradeSide === 'sell' ? { ...point, foreign_net: 1010000 + index * 1000, institution_net: 1040000 + index * 1000 }
       : point).filter((_, index) => index !== gapIndex);
     return route.fulfill({ json: { code: params.get('code'), from: params.get('from'), to: params.get('to'),
-      unit: 'qty_shares', trade_side: tradeSide, points, cached_batches: [], fresh_batches: [], data_warnings: [] } });
+      unit: 'qty_shares', trade_side: tradeSide,
+      ...(params.get('axis') === 'qty' && tradeSide === 'net' ? netQuantityEnvelope(params, points) : {}),
+      points, cached_batches: [], fresh_batches: [], data_warnings: [] } });
   });
   await page.goto('/live?code=098460');
   await expect(page.getByTestId('live-chart-root').first()).toBeVisible();

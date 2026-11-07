@@ -588,7 +588,7 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
     }),
     LivePastInvestorNetResponse: frozenset({
         "code", "from_", "to", "unit", "trade_side", "points",
-        "cached_batches", "fresh_batches", "data_warnings",
+        "cached_batches", "fresh_batches", "data_warnings", "daily_flow",
     }),
     ProgramResponse: frozenset({"axis", "markets", "truncated"}),
     FundsRow: frozenset({

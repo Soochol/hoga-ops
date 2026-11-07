@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { InvestorDailyFlowResponse } from '../../src/api/investorDailyFlow';
+import { investorNetEnvelope } from './helpers/investorFlow';
 import { apiExact } from './helpers/apiRoutes';
 import { installSyncWorkspace, verifySyncChart, type SyncBrowser, type SyncWindow } from './helpers/tooltipCrosshair';
 
@@ -55,27 +55,26 @@ test('daily bars, daily lines and cumulative lines share one strict net quantity
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await installSyncWorkspace(page, [chartWindow], false, { D: candles, '1m': candles, W: candles, M: candles });
-  // The two responses use identical raw shares so the old path can render before the request assertion fails.
+  let releaseNextPage: () => void = () => {};
+  const nextPage = new Promise<void>(resolve => { releaseNextPage = resolve; });
+  let collections = 0;
   await page.route(apiExact('live/investor-daily-flow'), async route => {
-    const params = new URL(route.request().url()).searchParams;
-    requests.push({ endpoint: 'investor-daily-flow', code: params.get('code'), from: params.get('from'), to: params.get('to'),
-      axis: params.get('axis') ?? 'qty', side: params.get('trade_side') ?? 'net' });
-    const response = {
-      code: params.get('code') ?? '', from: params.get('from') ?? '', to: params.get('to') ?? '',
-      source: 'kiwoom_ka10059', provider_scope: 'KRX', unit: 'qty_shares', trade_side: 'net',
-      observations, pagination: 'covered', unlocated_defect: false, pages_observed: 1, can_continue: false, data_warnings: [],
-    } satisfies InvestorDailyFlowResponse;
-    await route.fulfill({ json: response });
+    requests.push({ endpoint: 'investor-daily-flow', code: null, from: null, to: null, axis: 'qty', side: 'net' });
+    await route.fulfill({ status: 410, json: { detail: 'removed transport' } });
   });
   await page.route(apiExact('live/past-investor-net'), async route => {
     const params = new URL(route.request().url()).searchParams;
     requests.push({ endpoint: 'past-investor-net', code: params.get('code'), from: params.get('from'), to: params.get('to'),
       axis: params.get('axis') ?? 'qty', side: params.get('trade_side') ?? 'net' });
-    await route.fulfill({ json: {
-      code: params.get('code'), from: params.get('from'), to: params.get('to'), unit: 'qty_shares', trade_side: 'net',
-      points: observations.map(row => ({ t_ms: row.t_ms, foreign_net: row.foreign_net_shares, institution_net: row.institution_net_shares })),
-      cached_batches: [], fresh_batches: [], data_warnings: [],
-    } });
+    const partial = ++collections === 1;
+    if (!partial) await nextPage;
+    await route.fulfill({ json: investorNetEnvelope({
+      code: params.get('code'), from: params.get('from'), to: params.get('to'),
+      source: 'kiwoom_ka10059', provider_scope: 'KRX', unit: 'qty_shares', trade_side: 'net',
+      observations: partial ? observations : [{ date: '20261023', t_ms: Date.UTC(2026, 9, 23), foreign_net_shares: 500, institution_net_shares: 400 }, ...observations], pagination: partial ? 'incomplete' : 'covered', unlocated_defect: false,
+      pages_observed: partial ? 1 : 7, can_continue: partial,
+      data_warnings: partial ? [{ reason: 'page_budget', date: null, subject: null, message: 'continue' }] : [],
+    }) });
   });
   const owner = page.locator(`[data-win="${chartWindow.id}"]`);
   await owner.getByTestId('live-indicators-button').click();
@@ -86,6 +85,17 @@ test('daily bars, daily lines and cumulative lines share one strict net quantity
   await verifySyncChart(page, chartWindow);
   await expect.poll(async () => (await readChart(page)).panes.slice(1).flatMap(pane => pane.series)
     .filter(series => series.type === 'Line' && series.data.some(point => point.value !== null)).length).toBe(4);
+  await expect.poll(() => requests.length).toBe(2);
+  const progressive = await readChart(page);
+  const progressiveValues = progressive.panes.flatMap(pane => pane.series).map(series =>
+    series.data.flatMap(point => point.value === null ? [] : [point.value]));
+  expect(progressiveValues).toEqual(expect.arrayContaining([
+    quantities.map(row => row.foreign), quantities.map(row => row.institution),
+    [0, 10, 10, 6, 11, 11, 19, 17], [0, -3, -3, 5, 4, 4, 6, 10],
+  ]));
+  releaseNextPage();
+  await expect.poll(async () => (await readChart(page)).panes.flatMap(pane => pane.series)
+    .some(series => series.type === 'Line' && JSON.stringify(series.data.map(point => point.value)) === JSON.stringify([99, 109, 109, 105, 110, 110, 118, 116]))).toBe(true);
   const chart = await readChart(page);
   expect(chart.owner).toBe(chartWindow.id);
   const histograms = chart.panes.flatMap(pane => pane.series).filter(series => series.type === 'Histogram');
@@ -96,15 +106,16 @@ test('daily bars, daily lines and cumulative lines share one strict net quantity
   ]));
   expect(lines.map(values)).toEqual(expect.arrayContaining([
     quantities.map(row => row.foreign), quantities.map(row => row.institution),
-    [0, 10, 10, 6, 11, 11, 19, 17], [0, -3, -3, 5, 4, 4, 6, 10],
+    [99, 109, 109, 105, 110, 110, 118, 116], [77, 74, 74, 82, 81, 81, 83, 87],
   ]));
   await info.attach('actual chart handles and API requests', {
-    body: JSON.stringify({ boundary: 'mocked investor and candle APIs; real workspace, indicators and chart series', requests, chart, errors }, null, 2),
+    body: JSON.stringify({ boundary: 'mocked investor and candle APIs; real workspace, indicators and chart series', requests, progressive, chart, errors }, null, 2),
     contentType: 'application/json',
   });
   await page.screenshot({ path: info.outputPath('shared-investor-flow.png') });
   expect(errors.filter(error => error !== 'ResizeObserver loop completed with undelivered notifications.')).toEqual([]);
-  expect(requests.filter(request => request.endpoint === 'past-investor-net')).toEqual([]);
-  expect(requests).toHaveLength(1);
-  expect(requests[0]).toMatchObject({ endpoint: 'investor-daily-flow', code: chartWindow.code, axis: 'qty', side: 'net' });
+  expect(requests.filter(request => request.endpoint === 'investor-daily-flow')).toEqual([]);
+  expect(requests).toHaveLength(2);
+  expect(new Set(requests.map(request => JSON.stringify(request))).size).toBe(1);
+  expect(requests[0]).toMatchObject({ endpoint: 'past-investor-net', code: chartWindow.code, axis: 'qty', side: 'net' });
 });

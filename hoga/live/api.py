@@ -68,6 +68,7 @@ from hoga.live.index_registry import (
     list_representative_indices,
 )
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide, InvestorTrendEstimateRow
+from hoga.live.investor_daily_flow import InvestorDailyFlowCache, InvestorDailyFlowResponse
 from hoga.live.kis_client import (
     KisApiError,
     KisAuthError,
@@ -1748,6 +1749,7 @@ class LivePastInvestorNetResponse(BaseModel):
     cached_batches: list[str] = Field(default_factory=list)
     fresh_batches: list[str] = Field(default_factory=list)
     data_warnings: list[LiveDataWarning] = Field(default_factory=list)
+    daily_flow: InvestorDailyFlowResponse | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class LiveIndexCandlesResponse(BaseModel):
@@ -3028,24 +3030,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     global index_minute_candles_cache_instance  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     if data_dir is not None and index_minute_candles_cache_instance is None:
         index_minute_candles_cache_instance = IndexMinuteCandlesCache()
-    # Investor net-buy reuses the daily candle cache (ADR-0055): same date-cursor
-    # walk-back + batch/gap memory cache shape, just storing point dicts.
-    #: 축(수량/금액) × 매매 기준(순매수/총매수/총매도)마다 캐시와 백필을 둔다.
-    #:
-    #: 한 캐시를 공유할 수 없다: 배치 키가 `(venue, code)` 뿐이라 축이 들어갈 자리가
-    #: 없고, 그러면 수량 배치가 금액 요청에 그대로 응답한다. 값이 그럴듯해서
-    #: 화면에서도 안 드러나는 부류다. 축을 `venue` 슬롯에 밀어 넣는 우회는 쓰지
-    #: 않는다 — `stats_snapshot` 을 비롯한 모든 독자에게 거짓말을 한다.
+    investor_cache_instance = InvestorDailyFlowCache() if data_dir is not None else None
     investor_caches: dict[tuple[str, InvestorTradeSide], PastDailyCandlesCache] = (
         {(axis, side): PastDailyCandlesCache()
          for axis in _INVESTOR_AXIS_PARAM.values()
-         for side in kiwoom_investor.INVESTOR_TRADE_PARAM}
+         for side in kiwoom_investor.INVESTOR_TRADE_PARAM
+         if (axis, side) != (kiwoom_investor.AMT_QTY_QUANTITY, "net")}
         if data_dir is not None else {}
-    )
-    #: 수량 축 캐시 — 기존 관측(`stats_snapshot` 의 `investor_net_daily`)과 REST
-    #: 우회 경로가 이 이름으로 잡고 있다. 금액 축은 아래 dict 로만 닿는다.
-    investor_cache_instance: PastDailyCandlesCache | None = investor_caches.get(
-        (kiwoom_investor.AMT_QTY_QUANTITY, "net")
     )
     investor_net_backfills: dict[tuple[str, InvestorTradeSide], LiveInvestorNetBackfill] = (
         {
@@ -3258,10 +3249,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     ) -> LivePastInvestorNetResponse:
         """Daily investor trading across [from, to], one axis and trade side per call.
 
-        Kiwoom ka10059 supports date-cursor
-        walk-back (ADR-0055), so this mirrors /past-daily-candles: batch/gap
-        memory cache + per-gap walk-back fetch + today tri-state. Net-buy is
-        signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
+        Net-buy is signed (+ buy / − sell). Today's row is provisional until ~15:40 (가집계).
 
         `axis` 는 `ka10059` 의 `amt_qty_tp` 다 — **한 응답에 두 축이 함께 오지
         않는다.** 기본이 `qty` 인 것은 일봉 차트 pane 이 그 축을 쓰기 때문이고,
@@ -3278,6 +3266,29 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         frm, too, today_d = _validate_past_request(code, from_, to, max_days=None)
         vendor_axis = _INVESTOR_AXIS_PARAM[axis]
         unit = {"unit": _INVESTOR_AXIS_UNIT[axis], "trade_side": trade_side}
+        if axis == "qty" and trade_side == "net" and investor_cache_instance is not None:
+            run_page = None
+            if not live_settings.rest_bypass_enabled(data_dir):
+                client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+                if client is None:
+                    raise HTTPException(503, {
+                        "code": LiveErrorCode.NOT_WIRED, "message": "kiwoom client not initialized",
+                    })
+                scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+
+                def run_page(fetch, _index):
+                    return kiwoom_access.run_with_capacity(
+                        scheduler, key=("live-investor-net", fetch.request_identity), api_id="ka10059",
+                        priority="user_visible", fetch_fn=fetch, client=client,
+                    )
+
+            snapshot = await investor_cache_instance.collect(code=code, from_=from_, to=to, run_page=run_page)
+            return LivePastInvestorNetResponse(
+                code=code, **{"from": from_}, to=to, **unit,
+                points=[LiveInvestorNetPoint.model_validate(point.model_dump()) for point in snapshot.points],
+                daily_flow=snapshot.daily_flow, cached_batches=snapshot.cached_batches,
+                fresh_batches=snapshot.fresh_batches, data_warnings=snapshot.data_warnings,
+            )
         axis_cache = investor_caches.get((vendor_axis, trade_side))
         if (
             data_dir is not None

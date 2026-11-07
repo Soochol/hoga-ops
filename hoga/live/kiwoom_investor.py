@@ -191,43 +191,12 @@ def _mrkt_tp(index_id: str) -> str:
     return _MRKT_KOSDAQ if index_id in _KOSDAQ_IDS else _MRKT_KOSPI
 
 
-async def fetch_investor_net(
-    client: KiwoomRestClient,
-    code: str,
-    from_yyyymmdd: str,
-    to_yyyymmdd: str,
-    *,
-    axis: str = AMT_QTY_QUANTITY,
-    trade_side: InvestorTradeSide = "net",
-    run_page: PageRunner | None = None,
+def parse_investor_net_rows(
+    rows: list[dict[str, Any]], from_yyyymmdd: str, to_yyyymmdd: str, *,
+    axis: str = AMT_QTY_QUANTITY, trade_side: InvestorTradeSide = "net",
 ) -> InvestorNetFetchResult:
-    """종목별 투자자 일별 순매수(`ka10059`). KIS `fetch_investor_net` 대체.
-
-    `axis` 는 `AMT_QTY_QUANTITY`(주) 또는 `AMT_QTY_AMOUNT`(백만원)다. **한 응답에
-    둘이 함께 오지 않는다** — 별개의 콜이라 축을 바꾸면 벤더 콜이 하나 더 난다.
-    기본값이 수량인 것은 일봉 차트 pane 이 그 축을 쓰기 때문이다.
-
-    `run_page` 는 유량 페이싱 이음매다 — walk 는 최대 `_MAX_PAGES` 콜이고,
-    주입하지 않으면 그 전부가 한 submit 안에서 페이싱 없이 나간다(ADR-0137).
-    """
-    # 금액 축은 컬럼마다 반올림돼 오므로 항등식이 정확히 맞지 않는다(위 상수).
+    """Project already fetched ka10059 rows into the legacy table contract."""
     tolerance = _AMOUNT_ROUNDING_TOLERANCE if axis == AMT_QTY_AMOUNT else 0
-    def _covered(rows: list[dict[str, Any]], _page: Any) -> bool:
-        oldest = min((str(r.get("dt") or "") for r in rows if r.get("dt")), default="")
-        return bool(oldest) and oldest < from_yyyymmdd
-
-    rows, truncated = await client.walk(
-        "ka10059",
-        {
-            "stk_cd": code, "dt": to_yyyymmdd,
-            "amt_qty_tp": axis, "trde_tp": INVESTOR_TRADE_PARAM[trade_side],
-            "unit_tp": UNIT_TP_SHARES,
-        },
-        max_pages=_MAX_PAGES,
-        stop=_covered,
-        run_page=run_page,
-    )
-
     def value(raw: object) -> int:
         parsed = _signed(raw)
         # Gross buy/sell are magnitudes; net alone preserves direction.
@@ -273,6 +242,49 @@ async def fetch_investor_net(
                 **parts,
             ),
         ))
+    points.sort(key=lambda p: p.t_ms)
+    return InvestorNetFetchResult(points=points, violations=violations)
+
+
+async def fetch_investor_net(
+    client: KiwoomRestClient,
+    code: str,
+    from_yyyymmdd: str,
+    to_yyyymmdd: str,
+    *,
+    axis: str = AMT_QTY_QUANTITY,
+    trade_side: InvestorTradeSide = "net",
+    run_page: PageRunner | None = None,
+) -> InvestorNetFetchResult:
+    """종목별 투자자 일별 순매수(`ka10059`). KIS `fetch_investor_net` 대체.
+
+    `axis` 는 `AMT_QTY_QUANTITY`(주) 또는 `AMT_QTY_AMOUNT`(백만원)다. **한 응답에
+    둘이 함께 오지 않는다** — 별개의 콜이라 축을 바꾸면 벤더 콜이 하나 더 난다.
+    기본값이 수량인 것은 일봉 차트 pane 이 그 축을 쓰기 때문이다.
+
+    `run_page` 는 유량 페이싱 이음매다 — walk 는 최대 `_MAX_PAGES` 콜이고,
+    주입하지 않으면 그 전부가 한 submit 안에서 페이싱 없이 나간다(ADR-0137).
+    """
+    def _covered(rows: list[dict[str, Any]], _page: Any) -> bool:
+        oldest = min((str(r.get("dt") or "") for r in rows if r.get("dt")), default="")
+        return bool(oldest) and oldest < from_yyyymmdd
+
+    rows, truncated = await client.walk(
+        "ka10059",
+        {
+            "stk_cd": code, "dt": to_yyyymmdd,
+            "amt_qty_tp": axis, "trde_tp": INVESTOR_TRADE_PARAM[trade_side],
+            "unit_tp": UNIT_TP_SHARES,
+        },
+        max_pages=_MAX_PAGES,
+        stop=_covered,
+        run_page=run_page,
+    )
+
+    result = parse_investor_net_rows(
+        rows, from_yyyymmdd, to_yyyymmdd, axis=axis, trade_side=trade_side,
+    )
+    points, violations = result.points, result.violations
     if truncated:
         # 조용한 절단 금지 — reason 집합이 닫혀 있어 malformed_row 로 싣되
         # detail 에 진짜 사유를 남긴다.

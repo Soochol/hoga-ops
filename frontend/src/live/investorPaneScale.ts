@@ -1,3 +1,4 @@
+import { investorSeriesPoints } from '../chart/projectors/investorNet';
 import type { Time } from 'lightweight-charts';
 import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
@@ -23,23 +24,22 @@ export function linkedInvestorPriceRange(
   let found = false;
 
   const collect = (
-    points: RangeBundle['investorPoints'],
-    field: 'foreign_net' | 'institution_net',
+    subject: 'foreign' | 'institution',
   ): void => {
-    for (const point of points) {
+    for (const point of investorSeriesPoints(bundle, subject)) {
       if (!axis.contains(point.t_ms)) continue;
       const time = axis.toVirtual(point.t_ms) / 1000;
       if (time < from || time > to) continue;
-      const value = point[field];
-      if (!Number.isFinite(value)) continue;
+      const value = point.value;
+      if (value === null || !Number.isFinite(value)) continue;
       min = Math.min(min, value);
       max = Math.max(max, value);
       found = true;
     }
   };
 
-  collect(bundle.investorPoints, 'foreign_net');
-  collect(bundle.institutionInvestorPoints ?? bundle.investorPoints, 'institution_net');
+  collect('foreign');
+  collect('institution');
   if (!found) return null;
 
   const span = max - min;

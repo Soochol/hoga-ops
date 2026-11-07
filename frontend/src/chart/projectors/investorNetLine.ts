@@ -1,3 +1,4 @@
+import { investorSeriesPoints } from './investorNet';
 import { LineSeries, type LineData, type Time, type UTCTimestamp, type WhitespaceData } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
@@ -18,16 +19,15 @@ const SUBJECTS = [
 
 export function projectInvestorNetLine(bundle: RangeBundle, axis: VirtualAxis, subject: Subject): (LineData<Time> | WhitespaceData<Time>)[] {
   if (bundle.investorTradeSide !== 'net') return [];
-  const points = new Map(bundle.investorPoints.map(point => [point.t_ms, point]));
+  const points = new Map(investorSeriesPoints(bundle, subject).map(point => [point.t_ms, point.value]));
   const out: (LineData<Time> | WhitespaceData<Time>)[] = [];
   let lastValueIndex: number | null = null;
   let gap = false;
   for (const candle of bundle.candles) {
     if (!axis.contains(candle.ts_ms)) continue;
     const time = (axis.toVirtual(candle.ts_ms) / 1000) as UTCTimestamp;
-    const point = points.get(candle.ts_ms);
-    const value = subject === 'foreign' ? point?.foreign_net : point?.institution_net;
-    if (value === undefined || !Number.isFinite(value)) {
+    const value = points.get(candle.ts_ms);
+    if (value == null || !Number.isFinite(value)) {
       if (!gap && lastValueIndex !== null) {
         // LWC joins across whitespace. Mask the last real point's outgoing segment without inventing a zero.
         const previous = out[lastValueIndex];
