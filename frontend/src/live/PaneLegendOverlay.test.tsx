@@ -63,9 +63,12 @@ function registerLegend(
   paneId: PaneId,
   cells: { label: string; value: number | null; color?: () => string; format?: (v: number) => string }[],
 ) {
-  const entries: LegendSeriesEntry[] = cells.map((c) => ({
+  const spec = paneSpecsForTimeframe('D', { foreignNet: true, institutionNet: true, volumeEnabled: true,
+    tradeValueEnabled: true, foreignCumulativeEnabled: true, institutionCumulativeEnabled: true,
+    investorHoldingsEnabled: true, forceHogaPanes: true }).find(item => item.name === paneId);
+  const entries: LegendSeriesEntry[] = cells.map((c, index) => ({
     series: c.value === null ? ({ data: () => [] } as never) : seriesWithValue(c.value),
-    meta: { label: c.label, color: c.color, format: c.format },
+    meta: { ...spec?.series[index]?.legend, label: c.label, color: c.color, format: c.format },
   }));
   usePaneLegendRegistry.getState().register(null, paneId, entries);
 }
@@ -1643,5 +1646,61 @@ describe('PaneLegendOverlay — automatic MA colors', () => {
     act(() => useThemePrefsStore.getState().setThemePreference('toss-dark'));
     expect(automatic).toHaveStyle({ color: '#CBD5E1' });
     expect(manual).toHaveStyle({ color: '#000000' });
+  });
+});
+
+describe('Pane Legend single-series names and exact daily values', () => {
+  const toggles: PaneToggles = { foreignNet: true, institutionNet: true, volumeEnabled: true,
+    investorHoldingsEnabled: true, foreignCumulativeEnabled: true, institutionCumulativeEnabled: true,
+    forceHogaPanes: true };
+  const candles = [1, 2, 3, 4].map(time => ({ ts_ms: time * 1000, open: 10, high: 12, low: 9, close: 11, vol_a: 1, vol_b: 0 }));
+  const axis = { contains: () => true, toVirtual: (ms: number) => ms,
+    classifyAndProject: (ms: number) => ({ contained: true, virtual: ms }) } as never;
+  beforeEach(() => { resetStore(); useLiveCursorStore.getState().resetCursor(); useLivePageStore.setState({ movingAverages: [] }); });
+  afterEach(cleanup);
+
+  it.each([
+    ['foreign-cumulative', '외국인 누적 순매수(주)', '외국인 누적 순매수', '-2,500주'],
+    ['institution-cumulative', '기관 누적 순매수(주)', '기관 누적 순매수', '-2,500주'],
+    ['investor-holdings', '외국인(주)', '외국인 보유', '-2K주'],
+  ] as const)('%s shows one actionable name while retaining the quantity format', (pane, label, title, formatted) => {
+    registerLegend(pane, [{ label, value: -2500, format: pane === 'investor-holdings' ? value => `${Math.round(value / 1000)}K주` : value => `${value.toLocaleString('ko-KR')}주` }]);
+    render(<PaneLegendOverlay chart={makeChart(Array(12).fill(100))} timeframe="D" paneToggles={toggles} candles={candles.slice(0, 2)} axis={axis} />);
+    const legend = screen.getByTestId(`pane-legend-rows-${pane}`);
+    expect(within(legend).getByRole('button', { name: `${title} pane 이동/병합` })).toBeInTheDocument();
+    expect(within(legend).queryByText(label)).toBeNull();
+    expect(legend).toHaveTextContent(formatted);
+    expect(within(legend).getByRole('button', { name: `${title} 지표 끄기` })).toBeInTheDocument();
+  });
+
+  it('keeps a multi-series label with one surviving cell and keeps the unnamed candle volume label', () => {
+    registerLegend('quote-totals', [{ label: '매수', value: 14663 }, { label: '매도', value: null }]);
+    usePaneLegendRegistry.getState().register(null, 'candle', [{ series: seriesWithValue(1250), meta: { label: '거래량', labelRole: 'pane' } }]);
+    render(<PaneLegendOverlay chart={makeChart(Array(12).fill(100))} timeframe="D" paneToggles={toggles} />);
+    expect(within(screen.getByTestId('pane-legend-rows-quote-totals')).getByText('매수')).toBeInTheDocument();
+    expect(within(screen.getByTestId('pane-legend-rows-candle')).getByText('거래량')).toBeInTheDocument();
+  });
+
+  it.each(['investor-foreign', 'investor-institution'] as const)('%s reads positive, negative, zero and missing exact dates without copying data', async pane => {
+    let move: ((param: unknown) => void) | undefined;
+    const points = [{ time: 1, value: 125000 }, { time: 2, value: -250000 }, { time: 3, value: 0 }];
+    const data = vi.fn(() => points);
+    const series = { data, dataByIndex: (index: number) => points[index] } as never;
+    const spec = paneSpecsForTimeframe('D', toggles).find(item => item.name === pane)!;
+    usePaneLegendRegistry.getState().register(null, pane, [{ series, meta: spec.series[0].legend! }]);
+    const chart = { subscribeCrosshairMove: (handler: (param: unknown) => void) => { move = handler; }, unsubscribeCrosshairMove: noop,
+      panes: () => Array.from({ length: 12 }, () => ({ getHeight: () => 100 })),
+      timeScale: () => ({ width: () => 500, subscribeVisibleLogicalRangeChange: noop, unsubscribeVisibleLogicalRangeChange: noop,
+        timeToIndex: (time: number) => time - 1 }) } as never;
+    render(<PaneLegendOverlay chart={chart} timeframe="D" paneToggles={toggles} candles={candles} axis={axis} />);
+    const legend = screen.getByTestId(`pane-legend-rows-${pane}`);
+    expect(legend).toHaveTextContent('—');
+    for (const [time, expected] of [[1, '125K'], [2, '-250K'], [3, '0K'], [4, '—']] as const) {
+      act(() => move?.({ time, point: { x: 10, y: 10 }, seriesData: new Map([[series, { time, value: 999000 }]]) }));
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(legend).toHaveTextContent(expected);
+      expect(legend).not.toHaveTextContent('999K');
+    }
+    expect(data).not.toHaveBeenCalled();
   });
 });

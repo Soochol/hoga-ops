@@ -40,19 +40,23 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData, 
     : row.category === 'daily-moving-average' ? settings.dailyMovingAverages : [];
   const category = CATEGORIES.find(c => c.id === row.category)!;
   const hidden = row.hidden || indicatorGroupHidden(row.category, settings);
-  const title = `${category.label} · ${indicatorInstanceSummary(row.category, settings)}`;
+  const summary = row.category === 'foreign-cumulative' || row.category === 'institution-cumulative' ? ''
+    : row.category === 'investor-holdings' ? settings.investorHoldingsMetric === 'ratio' ? '비중 · %' : '수량 · 주'
+    : indicatorInstanceSummary(row.category, settings);
+  const title = summary ? `${category.label} · ${summary}` : category.label;
   const flagType = ({ 'new-high-bearish': 'new-high-bearish', envelope: 'envelope', ichimoku: 'ichimoku', bollinger: 'bollinger', supertrend: 'supertrend', 'depth-heatmap': 'depth-heatmap', 'trade-volume-poc': 'trade-volume-poc', 'peak-walls': 'ask-peak' } as Partial<Record<string, LegendFlagId>>)[row.category];
   const cells = row.category === 'broker-late-entry' ? settings.brokerLateEntries.flatMap(slot => readFlagLegendValues(registryScope, 'broker-late-entry', slot.id, cursorTimeSec))
     : row.category === 'peak-walls' ? (['ask-peak', 'bid-peak'] as const).flatMap(type => readFlagLegendValues(registryScope, type, 'main', cursorTimeSec))
     : flagType ? readFlagLegendValues(registryScope, flagType, 'main', cursorTimeSec) : [];
   const paneValues = [...panes.entries()].filter(([name]) => name.startsWith(`indicator:${id}:`)).flatMap(([, entries]) => entries.flatMap(entry => {
-    if (row.category === 'investor-net-line' || row.category === 'investor-holdings' || (row.category === 'institution-cumulative' || row.category === 'foreign-cumulative')) {
+    const label = entry.meta.labelRole === 'pane' ? '' : `${entry.meta.label} `;
+    if (row.category === 'foreign-net' || row.category === 'institution-net' || row.category === 'investor-net-line' || row.category === 'investor-holdings' || (row.category === 'institution-cumulative' || row.category === 'foreign-cumulative')) {
       if (!entry.series.options().visible) return [];
       const value = readSeriesValueAtTime(entry.series, cursorTimeSec ?? latestTimeSec);
-      return [`${entry.meta.notice ? `${entry.meta.notice} · ` : ''}${entry.meta.label} ${value === null ? '—' : entry.meta.format?.(value) ?? entry.series.priceFormatter().format(value)}`];
+      return [`${entry.meta.notice ? `${entry.meta.notice} · ` : ''}${label}${value === null ? '—' : entry.meta.format?.(value) ?? entry.series.priceFormatter().format(value)}`];
     }
     const value = row.category === 'volume' && strictVolume ? readSeriesValueAtTime(entry.series, cursorTimeSec ?? latestTimeSec) : readSeriesValue(entry.series, seriesData ?? null, cursorTimeSec);
-    return value === null ? [] : [`${entry.meta.label} ${entry.meta.format?.(value) ?? entry.series.priceFormatter().format(value)}`];
+    return value === null ? [] : [`${label}${entry.meta.format?.(value) ?? entry.series.priceFormatter().format(value)}`];
   }));
   const values = maSlots.length ? maSlots.filter(m => m.enabled && !m.hidden).flatMap(m => {
     const series = (row.category === 'daily-moving-average' ? dailyMa : ma).get(m.id); const value = series ? readSeriesValue(series, seriesData ?? null, cursorTimeSec) : null;

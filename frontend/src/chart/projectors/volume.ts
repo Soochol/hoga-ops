@@ -157,7 +157,7 @@ export const VOLUME_SPEC = {
       type: HistogramSeries,
       // No swatch: bars are per-candle colored (up/down), so a single color
       // would mislead — matches the pre-existing volume legend (label only).
-      legend: { label: '거래량' },
+      legend: { labelRole: 'pane', label: '거래량' },
       options: {
         priceFormat,
         priceScaleId: 'right',

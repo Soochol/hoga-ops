@@ -135,6 +135,6 @@ function cumulativeSpec(subject: DailyFlowSubject): BoundPaneSpec<InvestorCumula
                     visible: lineVisible(settings.indicatorLineVisibility, visibility),
                     priceFormat: { type: 'custom', formatter: formatCumulativeShares, minMove: 1 } }),
                 afterAdd: series => addZeroBaselineGuide(series, resolveTokensThemed({ baseline: ['--fg-dimmer', '#64748B'] }).baseline),
-                data: projectInvestorCumulative, legend: { label: `${label}(주)`, format: formatCumulativeShares } }],
+                data: projectInvestorCumulative, legend: { labelRole: 'pane', label: `${label}(주)`, format: formatCumulativeShares } }],
     };
 }

@@ -109,7 +109,13 @@ test('two distinct cumulative categories, repeated panes, persistence, hide, del
   await panel.getByRole('button', { name: '닫기', exact: true }).click();
   await expect.poll(async () => (await chartState(page))[0].panes.filter(p => p.series.some(s => s.type === 'Line' && 'color' in s.options && ['#EC4899','#22D3EE'].includes(String(s.options.color)))).length).toBe(3);
   const foreignLegend = page.getByTestId('pane-legend-rows-foreign-cumulative');
-  await expect(foreignLegend).toContainText('외국인 누적 순매수(주)');
+  await expect(foreignLegend).toContainText('외국인 누적 순매수');
+  await expect(foreignLegend).not.toContainText('외국인 누적 순매수(주)');
+  expect((await foreignLegend.innerText()).split('외국인 누적 순매수')).toHaveLength(2);
+  const repeatedLegend = page.getByTestId(/^indicator-instance-legend-/);
+  await expect(repeatedLegend).not.toContainText('조회자료 첫날');
+  await expect(repeatedLegend).not.toContainText('기관 누적 순매수(주)');
+  expect((await repeatedLegend.innerText()).split(label)).toHaveLength(2);
   await expect(page.getByTestId(/^indicator-instance-legend-/).getByRole('button', { name: '누적 자료 계속 조회·재시도' })).toHaveCount(0);
   await expect(page.getByTestId(/^indicator-instance-legend-/)).not.toContainText('조회 완료');
   const before = requests.length;
@@ -177,8 +183,8 @@ test('cumulative exact gaps and two-window cursor survive actual 700px resize', 
     await expect(target).toContainText(`${foreign.toLocaleString('ko-KR')}주`);
     for (const index of [35, 40]) {
       await hoverSyncChart(page, windows[0], 0, false, candles[index].t_ms);
-      await expect(source).toContainText('기관 누적 순매수(주)—');
-      await expect(target).toContainText('외국인 누적 순매수(주)—');
+      await expect(source).toContainText('기관 누적 순매수—');
+      await expect(target).toContainText('외국인 누적 순매수—');
     }
   }
   await expect(source.getByRole('button', { name: '누적 자료 계속 조회·재시도' })).toHaveCount(0);

@@ -350,6 +350,7 @@ export const PROGRAM_TRADE_SPEC = {
       data: (bundle: RangeBundle, axis: VirtualAxis) => programTradeCachedData(bundle, axis),
       legend: {
         label: '프로그램 순매수',
+        labelRole: 'pane',
         color: () => resolveTokensThemed(TOKEN_SPEC).line,
         format: formatKoreanWonEok, // 억 단위 (라인 축과 동일)
       },

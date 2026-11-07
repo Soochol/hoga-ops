@@ -36,7 +36,7 @@ export const TRADE_VALUE_SPEC = {
   legendToggleKey: 'tradeValueEnabled',
   series: [{
     type: HistogramSeries,
-    legend: { label: '거래대금', format: formatTradeValueSeriesValue },
+    legend: { labelRole: 'pane', label: '거래대금', format: formatTradeValueSeriesValue },
     options: {
       priceFormat: { type: 'custom', formatter: formatTradeValueSeriesValue, minMove: 1 / TRADE_VALUE_WON_PER_UNIT },
       priceScaleId: 'right',
