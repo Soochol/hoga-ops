@@ -1,5 +1,3 @@
-"""Serve deterministic vendor rows through the production index history collector."""
-
 from __future__ import annotations
 
 import asyncio
