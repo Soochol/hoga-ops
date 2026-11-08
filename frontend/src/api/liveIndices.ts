@@ -2,8 +2,8 @@ import { isUsIndexId, US_MINUTE_TIMEFRAMES } from '../live/liveInstrument';
 import { usDailyRefetchInterval, type UsDailyMetadata } from './usDailyCandles';
 import { usIndexRefreshInterval } from './usIndexRefreshPolicy';
 import { restoreUsIndexDailyHistory } from './usIndexDailyTransfer';
-import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { skipToken, useQuery, useQueryClient, type Query } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { indexRealtimeKey, overlayIndexCandles, type IndexRealtimeSession } from './indexRealtimeCandles';
 import { apiCall } from './client';
 import type { WireDataWarning } from './dataWarnings';
@@ -130,6 +130,85 @@ export function indexCandlesRefetchInterval(
   return liveVenueRefetchInterval('KRX');
 }
 
+type DailyDemand = Pick<LiveIndexCandlesResponse, 'index_id' | 'from' | 'to'>;
+
+function matchesDailySource(key: readonly unknown[], demand: DailyDemand): boolean {
+  return key.length === 6 && key[0] === 'live' && key[1] === 'index-candles'
+    && key[2] === demand.index_id && key[3] === 'D' && typeof key[4] === 'string'
+    && key[4] <= demand.from && key[5] === demand.to;
+}
+
+function healthyDailySource(data: IndexCandleQueryData): boolean {
+  const meta = data.daily_metadata;
+  return !hasBlockingWarnings(data) && !meta?.truncated && !meta?.missing?.length
+    && meta?.refresh_status !== 'partial' && meta?.refresh_status !== 'error' && meta?.refresh_status !== 'unconfigured';
+}
+
+function useActiveDailySourceFrom(demand: DailyDemand | null): string | null {
+  const client = useQueryClient();
+  const retainedSource = useRef<Query | null>(null);
+  const subscribe = useCallback((onChange: () => void) => {
+    if (!demand) return () => {};
+    return client.getQueryCache().subscribe(event => {
+      if (matchesDailySource(event.query.queryKey, demand)) onChange();
+    });
+  }, [client, demand]);
+  const snapshot = useCallback(() => {
+    if (!demand) return null;
+    let from = demand.from;
+    for (const query of client.getQueryCache().findAll({ queryKey: ['live', 'index-candles', demand.index_id, 'D'] })) {
+      const key = query.queryKey;
+      if (!query.isActive() || !matchesDailySource(key, demand) || typeof key[4] !== 'string') continue;
+      const raw = client.getQueryData<IndexCandleQueryData>(key);
+      if (!raw || raw.index_id !== demand.index_id || raw.timeframe !== 'D' || raw.from !== key[4] || raw.to !== demand.to) continue;
+      if (retainedSource.current !== query && !healthyDailySource(raw)) continue;
+      if (key[4] < from) from = key[4];
+    }
+    return from;
+  }, [client, demand]);
+  const from = useSyncExternalStore(subscribe, snapshot, snapshot);
+  useEffect(() => {
+    if (!demand || !from) {
+      retainedSource.current = null;
+      return;
+    }
+    const queryKey = ['live', 'index-candles', demand.index_id, 'D', from, demand.to];
+    const query = client.getQueryCache().find({ queryKey, exact: true });
+    const raw = client.getQueryData<IndexCandleQueryData>(queryKey);
+    if (query && raw && raw.index_id === demand.index_id && raw.timeframe === 'D' && raw.from === from && raw.to === demand.to
+      && (healthyDailySource(raw) || retainedSource.current === query)) retainedSource.current = query;
+    else retainedSource.current = null;
+  }, [client, demand, from]);
+  return from;
+}
+
+function projectDailyWindow(data: IndexCandleQueryData, demand: DailyDemand, placeholder: boolean): IndexCandleQueryData {
+  if (placeholder) return data;
+  const from = data.from > demand.from ? data.from : demand.from;
+  const to = data.to < demand.to ? data.to : demand.to;
+  const candles = data.candles.filter(row => {
+    const date = row.trading_date ?? realMsToYyyymmdd(row.t_ms);
+    return date >= demand.from && date <= demand.to;
+  });
+  const latest = data.daily_metadata?.latest_bar_date;
+  const clipRanges = (ranges: UsDailyMetadata['completed']) => ranges
+    .map(range => ({ start: range.start > from ? range.start : from, end: range.end < to ? range.end : to }))
+    .filter(range => range.start <= range.end);
+  return {
+    ...data,
+    from,
+    to,
+    daily_history_revision: data.from === demand.from && data.to === demand.to ? data.daily_history_revision : undefined,
+    candles,
+    daily_metadata: data.daily_metadata ? {
+      ...data.daily_metadata,
+      ...(data.daily_metadata.completed ? { completed: clipRanges(data.daily_metadata.completed) } : {}),
+      ...(data.daily_metadata.missing ? { missing: clipRanges(data.daily_metadata.missing) } : {}),
+      latest_bar_date: latest && latest >= from && latest <= to ? latest : null,
+    } : undefined,
+  };
+}
+
 export function useLiveIndexCandles(
   indexId: LiveIndexId | null,
   timeframe: LiveTimeframe,
@@ -138,6 +217,9 @@ export function useLiveIndexCandles(
 ) {
   const queryClient = useQueryClient();
   const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || [...US_MINUTE_TIMEFRAMES, 'D', 'W', 'M'].includes(timeframe));
+  const demand = useMemo(() => enabled && isUsIndexId(indexId) && timeframe === 'D' && from && to
+    ? { index_id: indexId, from, to } : null, [enabled, indexId, timeframe, from, to]);
+  const sourceFrom = useActiveDailySourceFrom(demand) ?? from;
   const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number; error?: unknown } }) => {
     if (!isUsIndexId(indexId)) return indexCandlesRefetchInterval(timeframe, to);
     if (query.state.error) return 60_000;
@@ -147,7 +229,7 @@ export function useLiveIndexCandles(
     return usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount);
   };
   const realtime = useQuery<IndexRealtimeSession>({ queryKey: indexRealtimeKey(indexId), queryFn: skipToken });
-  const queryKey = ['live', 'index-candles', indexId, timeframe, from, to] as const;
+  const queryKey = ['live', 'index-candles', indexId, timeframe, sourceFrom, to] as const;
   const result = useQuery({
     queryKey,
     queryFn: async ({ signal }) => {
@@ -157,7 +239,7 @@ export function useLiveIndexCandles(
       // entry is removed/replaced while the response is in flight.
       const previous = compactDaily ? queryClient.getQueryData<IndexCandleQueryData>(queryKey) : undefined;
       const revision = previous && !hasBlockingWarnings(previous) ? previous.daily_history_revision : undefined;
-      const path = `/api/live/index-candles?index_id=${indexId}&timeframe=${timeframe}&from=${from}&to=${to}`;
+      const path = `/api/live/index-candles?index_id=${indexId}&timeframe=${timeframe}&from=${sourceFrom}&to=${to}`;
       let response = await apiCall<LiveIndexCandlesResponse>(
         path + (revision ? `&daily_history_revision=${encodeURIComponent(revision)}` : ''),
         { signal },
@@ -188,7 +270,7 @@ export function useLiveIndexCandles(
         if (previous?.index_id !== indexId || previous.timeframe !== timeframe) continue;
         realtimeBaseMs = Math.min(realtimeBaseMs, previous.realtimeBaseMs ?? 0);
         for (const row of previous.candles) {
-          const date = realMsToYyyymmdd(row.t_ms);
+          const date = compactDaily ? row.trading_date ?? realMsToYyyymmdd(row.t_ms) : realMsToYyyymmdd(row.t_ms);
           if (date >= response.from && date <= response.to) byTime.set(row.t_ms, row);
         }
       }
@@ -206,9 +288,11 @@ export function useLiveIndexCandles(
     refetchOnWindowFocus: (query) => refetchInterval(query) !== false,
     placeholderData: (prev) => (prev && prev.index_id === indexId && prev.timeframe === timeframe ? prev : undefined),
   });
-  const data = useMemo(() => result.data ? overlayIndexCandles(
-    result.data, realtime.data, result.data.realtimeBaseMs ?? 0,
-  ) : undefined, [result.data, realtime.data]);
+  const data = useMemo(() => {
+    if (!result.data) return undefined;
+    const overlaid = overlayIndexCandles(result.data, realtime.data, result.data.realtimeBaseMs ?? 0);
+    return demand ? projectDailyWindow(overlaid, demand, result.isPlaceholderData) : overlaid;
+  }, [result.data, realtime.data, demand, result.isPlaceholderData]);
   return { ...result, data };
 }
 

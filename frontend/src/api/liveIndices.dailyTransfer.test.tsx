@@ -33,15 +33,16 @@ describe('US index D history transfer', () => {
   });
 
   it('accepts full correction/rollover responses and uses their replacement revision', async () => {
-    const corrected = { ...full(), daily_history_revision: 'r2', candles: [bar(20, 99), bar(21), bar(22), bar(23)] };
-    const spy = vi.spyOn(client, 'apiCall').mockResolvedValueOnce(full()).mockResolvedValueOnce(corrected)
+    const baseline = { ...full(), to: '20261023' };
+    const corrected = { ...baseline, daily_history_revision: 'r2', candles: [bar(20, 99), bar(21), bar(22), bar(23)] };
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValueOnce(baseline).mockResolvedValueOnce(corrected)
       .mockResolvedValueOnce({ ...corrected, daily_history_unchanged: true, candles: [bar(23, 115)] });
-    const { result } = renderHook(() => useLiveIndexCandles('SOX', 'D', '20261001', '20261022'), setup());
+    const { result } = renderHook(() => useLiveIndexCandles('SOX', 'D', '20261001', '20261023'), setup());
     await waitFor(() => expect(result.current.data?.candles).toHaveLength(3));
     await result.current.refetch();
     await waitFor(() => expect(result.current.data?.candles).toEqual(corrected.candles));
     await result.current.refetch();
-    expect(spy.mock.calls[2][0]).toBe(`${path}&daily_history_revision=r2`);
+    expect(spy.mock.calls[2][0]).toBe(`${path.replace('to=20261022', 'to=20261023')}&daily_history_revision=r2`);
     await waitFor(() => expect(result.current.data?.candles).toEqual([...corrected.candles.slice(0, -1), bar(23, 115)]));
   });
 
