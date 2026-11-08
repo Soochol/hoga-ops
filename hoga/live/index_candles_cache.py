@@ -99,9 +99,6 @@ class IndexCandlesCache:
         *,
         count: bool = True,
     ) -> IndexCandleCacheHit | None:
-        # `count` gates stats: collect_index_candles_with_cache calls covered()
-        # twice — once as the real lookup, once to re-assemble after fetching the
-        # gaps. Only the first (count=True) is a cache lookup (advisor #2 pattern).
         hit = self._covered(key, frm, to)
         if count:
             if hit is not None:
@@ -116,36 +113,43 @@ class IndexCandlesCache:
         frm: date,
         to: date,
     ) -> IndexCandleCacheHit | None:
-        batches = self._per_key.get(key, [])
-        if not batches:
-            return None
-        covered_start: date | None = None
-        covered_end: date | None = None
-        candles: list[IndexCandlePoint] = []
-        violations: list[DailyInvariantViolation] = []
-        for batch_from, batch_to, batch_candles, batch_violations in sorted(batches, key=lambda b: b[0]):
-            if batch_to < frm or batch_from > to:
-                continue
-            if covered_start is None:
-                covered_start = batch_from
-                covered_end = batch_to
-            elif covered_end is not None and batch_from <= covered_end + timedelta(days=1):
-                covered_end = max(covered_end, batch_to)
-            else:
-                return None
-            candles.extend(batch_candles)
-            violations.extend(batch_violations)
-        if (
-            covered_start is not None
-            and covered_end is not None
-            and covered_start <= frm
-            and covered_end >= to
-        ):
-            return IndexCandleCacheHit(
-                candles=_filter_dedupe_points(candles, frm, to),
-                violations=_filter_violations(violations, frm, to),
-            )
+        return _covered_batches(self._per_key.get(key, []), frm, to)
+
+
+def _covered_batches(
+    batches: list[IndexCandleCacheBatch],
+    frm: date,
+    to: date,
+) -> IndexCandleCacheHit | None:
+    if not batches:
         return None
+    covered_start: date | None = None
+    covered_end: date | None = None
+    candles: list[IndexCandlePoint] = []
+    violations: list[DailyInvariantViolation] = []
+    for batch_from, batch_to, batch_candles, batch_violations in sorted(batches, key=lambda b: b[0]):
+        if batch_to < frm or batch_from > to:
+            continue
+        if covered_start is None:
+            covered_start = batch_from
+            covered_end = batch_to
+        elif covered_end is not None and batch_from <= covered_end + timedelta(days=1):
+            covered_end = max(covered_end, batch_to)
+        else:
+            return None
+        candles.extend(batch_candles)
+        violations.extend(batch_violations)
+    if (
+        covered_start is not None
+        and covered_end is not None
+        and covered_start <= frm
+        and covered_end >= to
+    ):
+        return IndexCandleCacheHit(
+            candles=_filter_dedupe_points(candles, frm, to),
+            violations=_filter_violations(violations, frm, to),
+        )
+    return None
 
 
 def _parse_yyyymmdd(s: str) -> date:
@@ -281,7 +285,10 @@ async def _collect_past_candles(
 
     # A prior day's mutable row is not a verified closing value. Re-fetch it
     # after rollover instead of treating the cache-only fallback as history.
-    existing = list(cache._per_key.get(key, []))
+    existing = [
+        batch for batch in cache._per_key.get(key, [])
+        if batch[1] >= frm and batch[0] <= to
+    ]
     fetch_ranges = _missing_ranges(existing, frm, to)
 
     violations = []
@@ -290,6 +297,7 @@ async def _collect_past_candles(
             continue
         result = await fetch_batch(_fmt(fetch_from), _fmt(fetch_to))
         violations.extend(result.violations)
+        existing.append((fetch_from, fetch_to, result.candles, result.violations))
         cache.append_batch(
             key,
             fetch_from,
@@ -298,7 +306,7 @@ async def _collect_past_candles(
             violations=result.violations,
         )
 
-    final_hit = cache.covered(key, frm, to, count=False)
+    final_hit = _covered_batches(existing, frm, to)
     candles = final_hit.candles if final_hit is not None else []
     final_violations = final_hit.violations if final_hit is not None else violations
     return IndexCandleFetchResult(candles=candles, violations=final_violations or [])

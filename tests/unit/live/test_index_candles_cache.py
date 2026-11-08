@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -282,3 +282,118 @@ def test_per_key_batches_are_capped_oldest_dropped() -> None:
     assert cache.covered(key, date(2026, 1, 10), date(2026, 1, 20)) is None
     # 최근 배치들은 유지
     assert cache.covered(key, date(2026, 3, 10), date(2026, 3, 20)) is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timeframe", ["D", "W", "M"])
+async def test_left_extension_keeps_candles_evicted_during_the_request(timeframe) -> None:
+    cache = IndexCandlesCache(max_batches_per_key=2)
+    key = ("KOSPI", timeframe)
+    cache.append_batch(key, date(2026, 2, 1), date(2026, 2, 28), [point("20260203", 2)])
+    cache.append_batch(key, date(2026, 3, 1), date(2026, 3, 31), [point("20260304", 3)])
+    calls = []
+
+    async def fetch(frm, to):
+        calls.append((frm, to))
+        return IndexCandleFetchResult(candles=[point("20260102", 1)])
+
+    result = await collect_index_candles_with_cache(
+        cache, key, "20260101", "20260331", fetch, today=date(2026, 10, 4),
+    )
+
+    assert calls == [("20260101", "20260131")]
+    assert [c.close for c in result.candles] == [1, 2, 3]
+    assert result.violations == []
+    assert len(cache.list_batches(key)) == 2
+    assert cache.stats_snapshot()["evictions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_multiple_gaps_keep_cached_and_fetched_warnings_with_a_one_batch_cap() -> None:
+    cache = IndexCandlesCache(max_batches_per_key=1)
+    key = ("KOSPI", "D")
+    cached_warning = DailyInvariantViolation("20260210", "malformed_row", "cached")
+    left_warning = DailyInvariantViolation("20260110", "malformed_row", "left")
+    right_warning = DailyInvariantViolation("20260310", "malformed_row", "right")
+    outside_warning = DailyInvariantViolation("20251231", "out_of_range", "outside")
+    cache.append_batch(key, date(2026, 2, 1), date(2026, 2, 28), [point("20260203", 2)],
+                       violations=[cached_warning, outside_warning])
+    calls = []
+
+    async def fetch(frm, to):
+        calls.append((frm, to))
+        if frm == "20260101":
+            return IndexCandleFetchResult(candles=[], violations=[left_warning, outside_warning])
+        return IndexCandleFetchResult(candles=[point("20260304", 3)], violations=[right_warning])
+
+    result = await collect_index_candles_with_cache(
+        cache, key, "20260101", "20260331", fetch, today=date(2026, 10, 4),
+    )
+
+    assert calls == [("20260101", "20260131"), ("20260301", "20260331")]
+    assert [c.close for c in result.candles] == [2, 3]
+    assert result.violations == [left_warning, cached_warning, right_warning]
+    assert len(cache.list_batches(key)) == 1
+
+
+@pytest.mark.asyncio
+async def test_eviction_preserves_coverage_order_when_clipping_and_deduplicating() -> None:
+    cache = IndexCandlesCache(max_batches_per_key=2)
+    key = ("KOSPI", "D")
+    cache.append_batch(key, date(2026, 3, 1), date(2026, 3, 31), [point("20260304", 3)])
+    cache.append_batch(key, date(2026, 2, 1), date(2026, 2, 28), [point("20260203", 2)])
+
+    async def fetch(frm, to):
+        return IndexCandleFetchResult(candles=[
+            point("20260401", 4), point("20260203", 99), point("20260115", 1),
+            point("20260102", 0), point("20260115", 15), point("20251231", -1),
+        ])
+
+    result = await collect_index_candles_with_cache(
+        cache, key, "20260101", "20260331", fetch, today=date(2026, 10, 4),
+    )
+
+    assert result.candles == [point("20260102", 0), point("20260115", 15),
+                              point("20260203", 2), point("20260304", 3)]
+
+
+@pytest.mark.asyncio
+async def test_default_batch_cap_does_not_limit_the_collected_history() -> None:
+    cache = IndexCandlesCache()
+    key = ("KOSPI", "D")
+    start = date(2026, 1, 1)
+    seeded = [point((start + timedelta(days=i)).strftime("%Y%m%d")) for i in range(128)]
+    for i, candle in enumerate(seeded):
+        day = start + timedelta(days=i)
+        cache.append_batch(key, day, day, [candle])
+
+    async def fetch(frm, to):
+        return IndexCandleFetchResult(candles=[point("20251231")])
+
+    result = await collect_index_candles_with_cache(
+        cache, key, "20251231", "20260508", fetch, today=date(2026, 10, 4),
+    )
+
+    assert result.candles == [point("20251231"), *seeded]
+    assert len(cache.list_batches(key)) == 128
+
+
+@pytest.mark.asyncio
+async def test_successful_gap_remains_cached_when_a_later_gap_raises() -> None:
+    cache = IndexCandlesCache(max_batches_per_key=1)
+    key = ("KOSPI", "D")
+    cache.append_batch(key, date(2026, 2, 1), date(2026, 2, 28), [point("20260203")])
+
+    async def fetch(frm, to):
+        if frm == "20260101":
+            return IndexCandleFetchResult(candles=[point("20260102")])
+        raise RuntimeError("right gap unavailable")
+
+    with pytest.raises(RuntimeError, match="right gap unavailable"):
+        await collect_index_candles_with_cache(
+            cache, key, "20260101", "20260331", fetch, today=date(2026, 10, 4),
+        )
+
+    assert cache.covered(key, date(2026, 1, 1), date(2026, 1, 31)) == IndexCandleCacheHit(
+        candles=[point("20260102")],
+    )
